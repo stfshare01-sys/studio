@@ -17,14 +17,14 @@ import { usePathname } from "next/navigation";
 import Link from "next/link";
 import {
   FolderKanban,
-  FileText,
-  Settings,
-  LayoutDashboard,
   FilePlus,
+  LayoutDashboard,
+  LogOut,
 } from "lucide-react";
 import { Logo } from "@/components/icons";
 import { Button } from "./ui/button";
-import { users } from "@/lib/data";
+import { useAuth, useUser } from "@/firebase";
+import { signOut } from "firebase/auth";
 
 const navItems = [
   { href: "/", icon: LayoutDashboard, label: "Panel" },
@@ -34,7 +34,16 @@ const navItems = [
 
 export default function SiteLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const currentUser = users[0];
+  const auth = useAuth();
+  const { user, isUserLoading } = useUser();
+
+  const handleSignOut = async () => {
+    await signOut(auth);
+  };
+
+  const displayName = user?.isAnonymous ? 'Usuario Anónimo' : (user?.displayName || user?.email || 'Usuario');
+  const displayEmail = user?.isAnonymous ? 'Sesión de invitado' : (user?.email || '');
+
 
   return (
     <SidebarProvider>
@@ -65,17 +74,21 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
             ))}
           </SidebarMenu>
         </SidebarContent>
-        <SidebarFooter className="p-4 border-t">
+        <SidebarFooter className="p-4 border-t space-y-2">
           <div className="flex items-center gap-3">
             <Avatar className="h-9 w-9">
-              <AvatarImage src={currentUser.avatarUrl} alt={currentUser.name} />
-              <AvatarFallback>{currentUser.name.charAt(0)}</AvatarFallback>
+              {user?.photoURL && <AvatarImage src={user.photoURL} alt={displayName} />}
+              <AvatarFallback>{displayName.charAt(0)}</AvatarFallback>
             </Avatar>
-            <div className="flex flex-col text-sm">
-              <span className="font-semibold">{currentUser.name}</span>
-              <span className="text-muted-foreground">{currentUser.email}</span>
+            <div className="flex flex-col text-sm truncate">
+              <span className="font-semibold truncate">{displayName}</span>
+              <span className="text-muted-foreground truncate">{displayEmail}</span>
             </div>
           </div>
+          <Button variant="outline" size="sm" className="w-full" onClick={handleSignOut} disabled={isUserLoading}>
+            <LogOut className="mr-2 h-4 w-4" />
+            Cerrar sesión
+          </Button>
         </SidebarFooter>
       </Sidebar>
       <SidebarInset>
