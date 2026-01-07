@@ -39,7 +39,7 @@ export default function NewRequestPage() {
     }
 
     const handleSubmit = async () => {
-        if (!selectedTemplate || !user) {
+        if (!selectedTemplate || !user || !firestore) {
             toast({
                 variant: 'destructive',
                 title: 'Error',
@@ -69,9 +69,9 @@ export default function NewRequestPage() {
         };
 
         try {
-            if (!firestore) return;
             const requestsCollection = collection(firestore, 'users', user.uid, 'requests');
-            await addDocumentNonBlocking(requestsCollection, newRequest);
+            // No se debe esperar a la función no bloqueante
+            addDocumentNonBlocking(requestsCollection, newRequest);
 
             toast({
                 title: '¡Solicitud Enviada!',
