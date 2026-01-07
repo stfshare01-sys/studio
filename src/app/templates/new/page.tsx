@@ -1,7 +1,9 @@
 
+
 "use client";
 
 import { useState } from "react";
+import SiteLayout from "@/components/site-layout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -126,6 +128,14 @@ export default function NewTemplatePage() {
   };
 
   const handleSaveTemplate = async () => {
+    if(!firestore) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Firestore no está disponible. No se puede guardar la plantilla.",
+    });
+      return;
+    }
     if(!templateName) {
         toast({
             variant: "destructive",
@@ -142,6 +152,7 @@ export default function NewTemplatePage() {
     };
 
     try {
+      if (!firestore) return;
       const templatesCollection = collection(firestore, 'request_templates');
       await addDocumentNonBlocking(templatesCollection, newTemplate);
 
@@ -169,207 +180,209 @@ export default function NewTemplatePage() {
   };
   
   return (
-    <DragDropContext onDragEnd={onDragEnd}>
-    <div className="flex flex-1 flex-col">
-       <header className="flex items-center justify-between p-4 sm:p-6">
-        <h1 className="text-2xl font-bold tracking-tight">Crear Nueva Plantilla</h1>
-        <div className="flex gap-2">
-            <Button variant="outline" asChild><Link href="/templates">Cancelar</Link></Button>
-            <Button onClick={handleSaveTemplate}>Guardar Plantilla</Button>
-        </div>
-      </header>
-      <main className="flex flex-1 flex-col gap-4 p-4 pt-0 sm:gap-8 sm:p-6 sm:pt-0">
-        <Card>
-          <CardContent className="p-6">
-            <div className="space-y-4">
-              <div>
-                <Label htmlFor="template-name">Nombre de la Plantilla</Label>
-                <Input 
-                  id="template-name" 
-                  placeholder="p.ej., Orden de Compra"
-                  value={templateName}
-                  onChange={(e) => setTemplateName(e.target.value)}
-                />
-              </div>
-              <div>
-                <Label htmlFor="template-description">Descripción</Label>
-                <Textarea 
-                  id="template-description" 
-                  placeholder="Una breve descripción de para qué sirve este flujo de trabajo."
-                  value={templateDescription}
-                  onChange={(e) => setTemplateDescription(e.target.value)}
-                />
-              </div>
+    <SiteLayout>
+        <DragDropContext onDragEnd={onDragEnd}>
+        <div className="flex flex-1 flex-col">
+        <header className="flex items-center justify-between p-4 sm:p-6">
+            <h1 className="text-2xl font-bold tracking-tight">Crear Nueva Plantilla</h1>
+            <div className="flex gap-2">
+                <Button variant="outline" asChild><Link href="/templates">Cancelar</Link></Button>
+                <Button onClick={handleSaveTemplate}>Guardar Plantilla</Button>
             </div>
-          </CardContent>
-        </Card>
-
-        <div className="grid gap-8 md:grid-cols-2">
-          {/* Fields Designer */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Campos del Formulario</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <p className="text-sm text-muted-foreground">
-                Defina los datos que se recopilarán para esta plantilla.
-              </p>
-              <Droppable droppableId="fields-droppable">
-                {(provided) => (
-                    <div {...provided.droppableProps} ref={provided.innerRef} className="space-y-2 rounded-md border p-4 min-h-[120px]">
-                    {fields.length === 0 && (
-                        <p className="text-center text-sm text-muted-foreground py-4">No hay campos definidos.</p>
-                    )}
-                    {fields.map((field, index) => (
-                        <Draggable key={field.id} draggableId={field.id} index={index}>
-                        {(provided, snapshot) => (
-                            <div
-                            ref={provided.innerRef}
-                            {...provided.draggableProps}
-                            {...provided.dragHandleProps}
-                            className={`group flex items-center gap-2 rounded-md p-3 ${snapshot.isDragging ? 'bg-primary/10' : 'bg-muted'}`}
-                            >
-                            <GripVertical className="h-5 w-5 text-muted-foreground cursor-grab" />
-                            <div className="flex-1 font-medium">{field.label} ({fieldTypeLabels[field.type]})</div>
-                            <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-6 w-6 opacity-0 group-hover:opacity-100"
-                                onClick={() => handleRemoveField(field.id)}
-                            >
-                                <Trash2 className="h-4 w-4 text-destructive" />
-                                <span className="sr-only">Eliminar campo</span>
-                            </Button>
-                            </div>
-                        )}
-                        </Draggable>
-                    ))}
-                    {provided.placeholder}
-                    </div>
-                )}
-                </Droppable>
-
-              <Dialog open={isFieldDialogOpen} onOpenChange={setIsFieldDialogOpen}>
-                <DialogTrigger asChild>
-                    <Button variant="outline" className="w-full">
-                        <PlusCircle className="mr-2 h-4 w-4" /> Añadir Campo
-                    </Button>
-                </DialogTrigger>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>Añadir Nuevo Campo de Formulario</DialogTitle>
-                    </DialogHeader>
-                    <div className="py-4 space-y-4">
-                        <div className="space-y-2">
-                            <Label htmlFor="field-name">Etiqueta del Campo</Label>
-                            <Input
-                                id="field-name"
-                                value={newFieldName}
-                                onChange={(e) => setNewFieldName(e.target.value)}
-                                placeholder="p.ej., Nombre del Solicitante"
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <Label htmlFor="field-type">Tipo de Campo</Label>
-                            <Select value={newFieldType} onValueChange={(value) => setNewFieldType(value as FormField['type'])}>
-                                <SelectTrigger id="field-type">
-                                    <SelectValue placeholder="Seleccione un tipo..." />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="text">Texto</SelectItem>
-                                    <SelectItem value="textarea">Área de texto</SelectItem>
-                                    <SelectItem value="date">Fecha</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-                    </div>
-                    <DialogFooter>
-                        <DialogClose asChild>
-                            <Button variant="ghost">Cancelar</Button>
-                        </DialogClose>
-                        <Button onClick={handleAddField}>Añadir Campo</Button>
-                    </DialogFooter>
-                </DialogContent>
-              </Dialog>
+        </header>
+        <main className="flex flex-1 flex-col gap-4 p-4 pt-0 sm:gap-8 sm:p-6 sm:pt-0">
+            <Card>
+            <CardContent className="p-6">
+                <div className="space-y-4">
+                <div>
+                    <Label htmlFor="template-name">Nombre de la Plantilla</Label>
+                    <Input 
+                    id="template-name" 
+                    placeholder="p.ej., Orden de Compra"
+                    value={templateName}
+                    onChange={(e) => setTemplateName(e.target.value)}
+                    />
+                </div>
+                <div>
+                    <Label htmlFor="template-description">Descripción</Label>
+                    <Textarea 
+                    id="template-description" 
+                    placeholder="Una breve descripción de para qué sirve este flujo de trabajo."
+                    value={templateDescription}
+                    onChange={(e) => setTemplateDescription(e.target.value)}
+                    />
+                </div>
+                </div>
             </CardContent>
-          </Card>
+            </Card>
 
-          {/* Steps Designer */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Pasos del Flujo de Trabajo</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <p className="text-sm text-muted-foreground">
-                Defina las etapas de aprobación para este flujo de trabajo.
-              </p>
-                <Droppable droppableId="steps-droppable">
+            <div className="grid gap-8 md:grid-cols-2">
+            {/* Fields Designer */}
+            <Card>
+                <CardHeader>
+                <CardTitle>Campos del Formulario</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                    Defina los datos que se recopilarán para esta plantilla.
+                </p>
+                <Droppable droppableId="fields-droppable">
                     {(provided) => (
                         <div {...provided.droppableProps} ref={provided.innerRef} className="space-y-2 rounded-md border p-4 min-h-[120px]">
-                        {steps.length === 0 && (
-                        <p className="text-center text-sm text-muted-foreground py-4">No hay pasos definidos.</p>
+                        {fields.length === 0 && (
+                            <p className="text-center text-sm text-muted-foreground py-4">No hay campos definidos.</p>
                         )}
-                        {steps.map((step, index) => (
-                             <Draggable key={step.id} draggableId={step.id} index={index}>
-                             {(provided, snapshot) => (
-                                 <div
-                                 ref={provided.innerRef}
-                                 {...provided.draggableProps}
-                                 {...provided.dragHandleProps}
-                                 className={`group flex items-center gap-2 rounded-md p-3 ${snapshot.isDragging ? 'bg-primary/10' : 'bg-muted'}`}
-                                 >
-                                 <GripVertical className="h-5 w-5 text-muted-foreground cursor-grab" />
-                                 <div className="flex-1 font-medium">{step.name}</div>
-                                 <Button
-                                     variant="ghost"
-                                     size="icon"
-                                     className="h-6 w-6 opacity-0 group-hover:opacity-100"
-                                     onClick={() => handleRemoveStep(step.id)}
-                                 >
-                                     <Trash2 className="h-4 w-4 text-destructive" />
-                                     <span className="sr-only">Eliminar paso</span>
-                                 </Button>
-                                 </div>
-                             )}
-                             </Draggable>
+                        {fields.map((field, index) => (
+                            <Draggable key={field.id} draggableId={field.id} index={index}>
+                            {(provided, snapshot) => (
+                                <div
+                                ref={provided.innerRef}
+                                {...provided.draggableProps}
+                                {...provided.dragHandleProps}
+                                className={`group flex items-center gap-2 rounded-md p-3 ${snapshot.isDragging ? 'bg-primary/10' : 'bg-muted'}`}
+                                >
+                                <GripVertical className="h-5 w-5 text-muted-foreground cursor-grab" />
+                                <div className="flex-1 font-medium">{field.label} ({fieldTypeLabels[field.type]})</div>
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-6 w-6 opacity-0 group-hover:opacity-100"
+                                    onClick={() => handleRemoveField(field.id)}
+                                >
+                                    <Trash2 className="h-4 w-4 text-destructive" />
+                                    <span className="sr-only">Eliminar campo</span>
+                                </Button>
+                                </div>
+                            )}
+                            </Draggable>
                         ))}
                         {provided.placeholder}
                         </div>
                     )}
-                </Droppable>
+                    </Droppable>
 
-              <Dialog open={isStepDialogOpen} onOpenChange={setIsStepDialogOpen}>
-                <DialogTrigger asChild>
-                  <Button variant="outline" className="w-full">
-                    <PlusCircle className="mr-2 h-4 w-4" /> Añadir Paso
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Añadir Nuevo Paso</DialogTitle>
-                  </DialogHeader>
-                  <div className="py-4">
-                    <Label htmlFor="step-name">Nombre del Paso</Label>
-                    <Input
-                      id="step-name"
-                      value={newStepName}
-                      onChange={(e) => setNewStepName(e.target.value)}
-                      placeholder="p.ej., Revisión Legal"
-                    />
-                  </div>
-                  <DialogFooter>
-                    <DialogClose asChild>
-                       <Button variant="ghost">Cancelar</Button>
-                    </DialogClose>
-                    <Button onClick={handleAddStep}>Añadir Paso</Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
-            </CardContent>
-          </Card>
+                <Dialog open={isFieldDialogOpen} onOpenChange={setIsFieldDialogOpen}>
+                    <DialogTrigger asChild>
+                        <Button variant="outline" className="w-full">
+                            <PlusCircle className="mr-2 h-4 w-4" /> Añadir Campo
+                        </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                        <DialogHeader>
+                            <DialogTitle>Añadir Nuevo Campo de Formulario</DialogTitle>
+                        </DialogHeader>
+                        <div className="py-4 space-y-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="field-name">Etiqueta del Campo</Label>
+                                <Input
+                                    id="field-name"
+                                    value={newFieldName}
+                                    onChange={(e) => setNewFieldName(e.target.value)}
+                                    placeholder="p.ej., Nombre del Solicitante"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="field-type">Tipo de Campo</Label>
+                                <Select value={newFieldType} onValueChange={(value) => setNewFieldType(value as FormField['type'])}>
+                                    <SelectTrigger id="field-type">
+                                        <SelectValue placeholder="Seleccione un tipo..." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="text">Texto</SelectItem>
+                                        <SelectItem value="textarea">Área de texto</SelectItem>
+                                        <SelectItem value="date">Fecha</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
+                        <DialogFooter>
+                            <DialogClose asChild>
+                                <Button variant="ghost">Cancelar</Button>
+                            </DialogClose>
+                            <Button onClick={handleAddField}>Añadir Campo</Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+                </CardContent>
+            </Card>
+
+            {/* Steps Designer */}
+            <Card>
+                <CardHeader>
+                <CardTitle>Pasos del Flujo de Trabajo</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                    Defina las etapas de aprobación para este flujo de trabajo.
+                </p>
+                    <Droppable droppableId="steps-droppable">
+                        {(provided) => (
+                            <div {...provided.droppableProps} ref={provided.innerRef} className="space-y-2 rounded-md border p-4 min-h-[120px]">
+                            {steps.length === 0 && (
+                            <p className="text-center text-sm text-muted-foreground py-4">No hay pasos definidos.</p>
+                            )}
+                            {steps.map((step, index) => (
+                                <Draggable key={step.id} draggableId={step.id} index={index}>
+                                {(provided, snapshot) => (
+                                    <div
+                                    ref={provided.innerRef}
+                                    {...provided.draggableProps}
+                                    {...provided.dragHandleProps}
+                                    className={`group flex items-center gap-2 rounded-md p-3 ${snapshot.isDragging ? 'bg-primary/10' : 'bg-muted'}`}
+                                    >
+                                    <GripVertical className="h-5 w-5 text-muted-foreground cursor-grab" />
+                                    <div className="flex-1 font-medium">{step.name}</div>
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-6 w-6 opacity-0 group-hover:opacity-100"
+                                        onClick={() => handleRemoveStep(step.id)}
+                                    >
+                                        <Trash2 className="h-4 w-4 text-destructive" />
+                                        <span className="sr-only">Eliminar paso</span>
+                                    </Button>
+                                    </div>
+                                )}
+                                </Draggable>
+                            ))}
+                            {provided.placeholder}
+                            </div>
+                        )}
+                    </Droppable>
+
+                <Dialog open={isStepDialogOpen} onOpenChange={setIsStepDialogOpen}>
+                    <DialogTrigger asChild>
+                    <Button variant="outline" className="w-full">
+                        <PlusCircle className="mr-2 h-4 w-4" /> Añadir Paso
+                    </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Añadir Nuevo Paso</DialogTitle>
+                    </DialogHeader>
+                    <div className="py-4">
+                        <Label htmlFor="step-name">Nombre del Paso</Label>
+                        <Input
+                        id="step-name"
+                        value={newStepName}
+                        onChange={(e) => setNewStepName(e.target.value)}
+                        placeholder="p.ej., Revisión Legal"
+                        />
+                    </div>
+                    <DialogFooter>
+                        <DialogClose asChild>
+                        <Button variant="ghost">Cancelar</Button>
+                        </DialogClose>
+                        <Button onClick={handleAddStep}>Añadir Paso</Button>
+                    </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+                </CardContent>
+            </Card>
+            </div>
+        </main>
         </div>
-      </main>
-    </div>
-    </DragDropContext>
+        </DragDropContext>
+    </SiteLayout>
   );
 }

@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { DependencyList, createContext, useContext, ReactNode, useMemo, useState, useEffect } from 'react';
@@ -80,10 +81,6 @@ export const FirebaseProvider: React.FC<FirebaseProviderProps> = ({
     const unsubscribe = onAuthStateChanged(
       auth,
       (firebaseUser) => { // Auth state determined
-        if (!firebaseUser) {
-          // If no user, sign in anonymously.
-          initiateAnonymousSignIn(auth);
-        }
         setUserAuthState({ user: firebaseUser, isUserLoading: false, userError: null });
       },
       (error) => { // Auth listener error

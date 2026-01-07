@@ -1,3 +1,4 @@
+
 "use client";
 
 import {
@@ -13,7 +14,7 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   FolderKanban,
@@ -25,6 +26,7 @@ import { Logo } from "@/components/icons";
 import { Button } from "./ui/button";
 import { useAuth, useUser } from "@/firebase";
 import { signOut } from "firebase/auth";
+import { useEffect } from "react";
 
 const navItems = [
   { href: "/", icon: LayoutDashboard, label: "Panel" },
@@ -36,14 +38,36 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
   const pathname = usePathname();
   const auth = useAuth();
   const { user, isUserLoading } = useUser();
+  const router = useRouter();
+
+  useEffect(() => {
+    // Si la autenticación ha terminado de cargar y no hay usuario,
+    // redirigir a la página de login.
+    if (!isUserLoading && !user) {
+      router.replace('/login');
+    }
+  }, [user, isUserLoading, router]);
+
 
   const handleSignOut = async () => {
-    await signOut(auth);
+    if (auth) {
+        await signOut(auth);
+        // La redirección se maneja en el efecto anterior.
+    }
   };
 
   const displayName = user?.isAnonymous ? 'Usuario Anónimo' : (user?.displayName || user?.email || 'Usuario');
   const displayEmail = user?.isAnonymous ? 'Sesión de invitado' : (user?.email || '');
 
+  // No renderizar el layout si estamos en proceso de carga o si no hay usuario
+  // para evitar un parpadeo de la UI protegida.
+  if (isUserLoading || !user) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center">
+        <p>Cargando...</p>
+      </div>
+    );
+  }
 
   return (
     <SidebarProvider>
