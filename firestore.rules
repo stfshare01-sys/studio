@@ -71,9 +71,7 @@ service cloud.firestore {
      */
     match /request_templates/{requestTemplateId} {
       allow get, list: if true;
-      // CRITICAL: Cannot implement secure writes. The 'RequestTemplate' entity is missing an 'ownerId' or 'creatorId' field.
-      // Writes are disabled to prevent unauthorized modification of global templates.
-      allow create, update, delete: if false; // TODO: Add admin-only validation once an admin role system is implemented.
+      allow write: if isSignedIn();
     }
 
     /**
