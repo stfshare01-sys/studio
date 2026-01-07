@@ -1,0 +1,321 @@
+{
+  "entities": {
+    "RequestTemplate": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "RequestTemplate",
+      "type": "object",
+      "description": "Defines the structure and fields for a request workflow.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Request Template."
+        },
+        "name": {
+          "type": "string",
+          "description": "Name of the request template."
+        },
+        "description": {
+          "type": "string",
+          "description": "A more detailed explanation of what the template is used for."
+        },
+        "fields": {
+          "type": "array",
+          "description": "Defines the data input fields for the request template.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "steps": {
+          "type": "array",
+          "description": "Defines the workflow steps for the request template.",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "fields",
+        "steps"
+      ]
+    },
+    "Request": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Request",
+      "type": "object",
+      "description": "Represents an instance of a request based on a template.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Request."
+        },
+        "templateId": {
+          "type": "string",
+          "description": "Reference to RequestTemplate. (Relationship: RequestTemplate 1:N Request)"
+        },
+        "submittedBy": {
+          "type": "string",
+          "description": "Reference to User. (Relationship: User 1:N Request)"
+        },
+        "submissionDate": {
+          "type": "string",
+          "description": "Date and time the request was submitted.",
+          "format": "date-time"
+        },
+        "status": {
+          "type": "string",
+          "description": "Current status of the request (e.g., 'Pending', 'In Progress', 'Completed')."
+        },
+        "data": {
+          "type": "string",
+          "description": "JSON object containing the data entered for the request fields."
+        }
+      },
+      "required": [
+        "id",
+        "templateId",
+        "submittedBy",
+        "submissionDate",
+        "status",
+        "data"
+      ]
+    },
+    "WorkflowStep": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "WorkflowStep",
+      "type": "object",
+      "description": "Represents a single step within a workflow process.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Workflow Step."
+        },
+        "templateId": {
+          "type": "string",
+          "description": "Reference to RequestTemplate. (Relationship: RequestTemplate 1:N WorkflowStep)"
+        },
+        "name": {
+          "type": "string",
+          "description": "Name of the workflow step."
+        },
+        "description": {
+          "type": "string",
+          "description": "A detailed explanation of the workflow step."
+        },
+        "assignee": {
+          "type": "string",
+          "description": "Reference to User assigned to the workflow step. (Relationship: User 1:N WorkflowStep)"
+        },
+        "dueDate": {
+          "type": "string",
+          "description": "The date and time by which this step needs to be completed.",
+          "format": "date-time"
+        },
+        "status": {
+          "type": "string",
+          "description": "Current status of the step (e.g., 'Pending', 'In Progress', 'Completed')."
+        },
+        "requestId": {
+          "type": "string",
+          "description": "Reference to Request. (Relationship: Request 1:N WorkflowStep)"
+        }
+      },
+      "required": [
+        "id",
+        "templateId",
+        "name",
+        "assignee",
+        "status",
+        "requestId"
+      ]
+    },
+    "User": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "User",
+      "type": "object",
+      "description": "Represents a user within the FlowMaster system.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the User."
+        },
+        "username": {
+          "type": "string",
+          "description": "The user's login username."
+        },
+        "email": {
+          "type": "string",
+          "description": "The user's email address.",
+          "format": "email"
+        },
+        "fullName": {
+          "type": "string",
+          "description": "The user's full name."
+        },
+        "department": {
+          "type": "string",
+          "description": "The user's department."
+        }
+      },
+      "required": [
+        "id",
+        "username",
+        "email",
+        "fullName"
+      ]
+    },
+    "Document": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Document",
+      "type": "object",
+      "description": "Represents a document attached to a request.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Document."
+        },
+        "requestId": {
+          "type": "string",
+          "description": "Reference to Request. (Relationship: Request 1:N Document)"
+        },
+        "filename": {
+          "type": "string",
+          "description": "The name of the document file."
+        },
+        "contentType": {
+          "type": "string",
+          "description": "The MIME type of the document (e.g., 'application/pdf')."
+        },
+        "size": {
+          "type": "number",
+          "description": "The size of the document in bytes."
+        },
+        "uploadDate": {
+          "type": "string",
+          "description": "The date and time the document was uploaded.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "requestId",
+        "filename",
+        "contentType",
+        "size",
+        "uploadDate"
+      ]
+    }
+  },
+  "auth": {
+    "providers": [
+      "password",
+      "anonymous"
+    ]
+  },
+  "firestore": {
+    "structure": [
+      {
+        "path": "/request_templates/{requestTemplateId}",
+        "definition": {
+          "entityName": "RequestTemplate",
+          "schema": {
+            "$ref": "#/backend/entities/RequestTemplate"
+          },
+          "description": "Stores request templates. Includes template 'id' as the document ID.",
+          "params": [
+            {
+              "name": "requestTemplateId",
+              "description": "The unique identifier for the request template."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/users/{userId}",
+        "definition": {
+          "entityName": "User",
+          "schema": {
+            "$ref": "#/backend/entities/User"
+          },
+          "description": "Stores user profiles. The 'userId' is the Firebase Auth UID.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique identifier for the user (Firebase Auth UID)."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/users/{userId}/requests/{requestId}",
+        "definition": {
+          "entityName": "Request",
+          "schema": {
+            "$ref": "#/backend/entities/Request"
+          },
+          "description": "Stores requests submitted by users. 'submittedBy' field is denormalized and must match the 'userId' path parameter. This achieves authorization independence.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique identifier for the user who submitted the request."
+            },
+            {
+              "name": "requestId",
+              "description": "The unique identifier for the request."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/users/{userId}/requests/{requestId}/workflow_steps/{workflowStepId}",
+        "definition": {
+          "entityName": "WorkflowStep",
+          "schema": {
+            "$ref": "#/backend/entities/WorkflowStep"
+          },
+          "description": "Stores workflow steps for a specific request. Inherits ownership from the parent request document. Includes denormalized 'templateId' from the parent 'request'.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique identifier for the user who owns the request."
+            },
+            {
+              "name": "requestId",
+              "description": "The unique identifier for the request."
+            },
+            {
+              "name": "workflowStepId",
+              "description": "The unique identifier for the workflow step."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/users/{userId}/requests/{requestId}/documents/{documentId}",
+        "definition": {
+          "entityName": "Document",
+          "schema": {
+            "$ref": "#/backend/entities/Document"
+          },
+          "description": "Stores documents associated with a request. Inherits ownership from the parent request document. The 'requestId' field must match the parent request.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique identifier for the user who owns the request."
+            },
+            {
+              "name": "requestId",
+              "description": "The unique identifier for the request."
+            },
+            {
+              "name": "documentId",
+              "description": "The unique identifier for the document."
+            }
+          ]
+        }
+      }
+    ],
+    "reasoning": "The Firestore structure is designed to manage request workflows, templates, requests, steps, users, and documents, focusing on security, scalability, and debuggability. It adheres to the core design principles of Authorization Independence, Clarity of Intent, DBAC (Database-Based Access Control), and Rules are not Filters. Authorization Independence is achieved through denormalization; for example, access to requests is controlled by the `submittedBy` field, which is a direct reference to the user who submitted the request. This eliminates the need for complex `get()` calls in security rules. Structural Segregation is applied by separating different types of data into distinct collections, ensuring that each collection has a homogeneous security posture. The structure models access using path-based ownership for user-owned data and standardizes on membership maps where collaboration is required.\n\nThe structure supports QAPs by segregating data based on access requirements. Private user data resides under `/users/{userId}`, while collaborative data, if any, would use a membership map to control access. This segregation prevents rules from being used as filters, ensuring that list operations are secure.\n\nInvariants are maintained through the structure by enforcing strict ownership (e.g., a request's `submittedBy` always points to the owner), timestamp fields to track creation and modification times, and denormalized data to ensure data consistency across collections."
+  }
+}

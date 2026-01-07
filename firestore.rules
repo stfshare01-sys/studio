@@ -1,0 +1,136 @@
+/**
+ * # Firestore Security Rules: FlowMaster Prototyping
+ *
+ * ## Core Philosophy
+ * This ruleset enforces a strict user-ownership security model. All user-generated
+ * data (like Requests, Workflow Steps, and Documents) is stored in subcollections
+ * under that user's private document tree. Access is fundamentally controlled by
+ * the path of the document, ensuring users can only interact with their own data.
+ * Publicly accessible data, like request templates, is structurally segregated
+ * into its own top-level collection with read-only permissions for all users.
+ *
+ * ## Data Structure
+ * - `/request_templates/{requestTemplateId}`: A public, read-only collection of available workflow templates.
+ * - `/users/{userId}`: A collection of user profiles. Each user can only access and manage their own document.
+ * - `/users/{userId}/requests/{requestId}`: A private subcollection where each user stores their submitted requests.
+ * - `/users/{userId}/requests/{requestId}/...`: Deeper subcollections for documents and workflow steps, inheriting ownership from the parent request.
+ *
+ * ## Key Security Decisions
+ * - **Strict Ownership**: All data under `/users/{userId}` is accessible only to the authenticated user whose UID matches `{userId}`.
+ * - **No User Enumeration**: Listing documents in the top-level `/users` collection is explicitly disallowed to protect user privacy.
+ * - **Public Read-Only Templates**: Request templates are readable by anyone (including unauthenticated users) to allow for a flexible UI, but are not writable by clients to protect their integrity. Administrative writes would need to be handled by a trusted server environment.
+ * - **Default Secure**: Any path not explicitly matched is inaccessible. All write operations require authentication and ownership verification.
+ *
+ * ## Denormalization for Authorization
+ * To ensure fast and secure authorization, rules rely on denormalized fields. For example, a new document in `/users/{userId}/requests/{requestId}` must contain a `submittedBy` field that matches `{userId}`. This validation on write operations avoids slow and costly `get()` calls in other rules and makes ownership explicit within the data itself.
+ *
+ * ## Structural Segregation
+ * The separation of public data (`/request_templates`) from private user data (`/users`) is a deliberate choice. This segregation creates a clear security boundary, allowing for simple, high-performance rules that prevent data leakage and avoid the need for complex query-based security checks.
+ */
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // -------------------------------------------------------------------------
+    // Helper Functions
+    // -------------------------------------------------------------------------
+
+    /**
+     * Verifies that a user is signed in.
+     */
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    /**
+     * Verifies that the currently signed-in user's UID matches the
+     * provided `userId`. This is the primary ownership check.
+     */
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    /**
+     * Verifies ownership for an existing document. Used for update/delete
+     * operations to prevent acting on non-existent data.
+     */
+    function isExistingOwner(userId) {
+      return isOwner(userId) && resource != null;
+    }
+
+    // -------------------------------------------------------------------------
+    // Collection Rules
+    // -------------------------------------------------------------------------
+
+    /**
+     * @description Defines rules for request templates, which are public and read-only for all clients.
+     * @path /request_templates/{requestTemplateId}
+     * @allow (get) Any user, including unauthenticated ones, can read a specific template.
+     * @deny (create) A signed-in user attempts to create a new template.
+     * @principle Public Read with Owner-Only Writes. Writes are disabled because the data model lacks an owner/creator field, so authorship cannot be verified.
+     */
+    match /request_templates/{requestTemplateId} {
+      allow get, list: if true;
+      // CRITICAL: Cannot implement secure writes. The 'RequestTemplate' entity is missing an 'ownerId' or 'creatorId' field.
+      // Writes are disabled to prevent unauthorized modification of global templates.
+      allow create, update, delete: if false; // TODO: Add admin-only validation once an admin role system is implemented.
+    }
+
+    /**
+     * @description Manages user profiles. A user can create their own profile, and then read, update, or delete it. User enumeration is disallowed.
+     * @path /users/{userId}
+     * @allow (create) A new user with auth.uid 'user_abc' creates their profile document at /users/user_abc.
+     * @deny (list) Any user attempts to list all documents in the /users collection.
+     * @principle Restricts access to a user's own data tree and prevents data leakage.
+     */
+    match /users/{userId} {
+      allow get: if isOwner(userId);
+      allow list: if false;
+      allow create: if isOwner(userId) && request.resource.data.id == userId;
+      allow update: if isExistingOwner(userId) && request.resource.data.id == resource.data.id;
+      allow delete: if isExistingOwner(userId);
+    }
+
+    /**
+     * @description Manages user-submitted requests. Only the owner can perform any action on their requests.
+     * @path /users/{userId}/requests/{requestId}
+     * @allow (create) User 'user_abc' creates a new request document at /users/user_abc/requests/req_123.
+     * @deny (get) User 'user_xyz' attempts to read the request at /users/user_abc/requests/req_123.
+     * @principle Enforces document ownership for all operations based on the collection path. Validates relational integrity on create.
+     */
+    match /users/{userId}/requests/{requestId} {
+      allow get, list: if isOwner(userId);
+      allow create: if isOwner(userId) && request.resource.data.submittedBy == userId;
+      allow update: if isExistingOwner(userId) && request.resource.data.submittedBy == resource.data.submittedBy;
+      allow delete: if isExistingOwner(userId);
+
+      /**
+       * @description Manages workflow steps for a specific request. Access is inherited from the parent request's owner.
+       * @path /users/{userId}/requests/{requestId}/workflow_steps/{workflowStepId}
+       * @allow (list) User 'user_abc' lists all workflow steps for their request at /users/user_abc/requests/req_123/workflow_steps.
+       * @deny (update) User 'user_xyz' attempts to update a step in user 'user_abc's request.
+       * @principle Inherits ownership from the parent path segments, ensuring only the request owner can manage its steps.
+       */
+      match /workflow_steps/{workflowStepId} {
+        allow get, list: if isOwner(userId);
+        allow create: if isOwner(userId);
+        allow update: if isExistingOwner(userId);
+        allow delete: if isExistingOwner(userId);
+      }
+
+      /**
+       * @description Manages documents attached to a specific request. Access is inherited from the parent request's owner.
+       * @path /users/{userId}/requests/{requestId}/documents/{documentId}
+       * @allow (create) User 'user_abc' creates a document for their request at /users/user_abc/requests/req_123/documents/doc_456.
+       * @deny (delete) User 'user_xyz' attempts to delete a document in user 'user_abc's request.
+       * @principle Inherits ownership from the parent path segments and validates the denormalized 'requestId' for data consistency.
+       */
+      match /documents/{documentId} {
+        allow get, list: if isOwner(userId);
+        allow create: if isOwner(userId) && request.resource.data.requestId == requestId;
+        allow update: if isExistingOwner(userId) && request.resource.data.requestId == resource.data.requestId;
+        allow delete: if isExistingOwner(userId);
+      }
+    }
+  }
+}
