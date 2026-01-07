@@ -3,10 +3,9 @@
 
 import SiteLayout from "@/components/site-layout";
 import { notFound, useParams } from "next/navigation";
-import { useDoc, useFirestore, useMemoFirebase, useUser } from "@/firebase";
-import { doc, collection } from "firebase/firestore";
+import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from "@/firebase";
+import { doc, collection, query } from "firebase/firestore";
 import type { Request as RequestType, EnrichedRequest, User, EnrichedWorkflowStep } from "@/lib/types";
-import { users as mockUsers } from "@/lib/data"; // Keep for assignee suggester
 import { ArrowLeft, User as UserIcon, Paperclip, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -20,7 +19,13 @@ import { useEffect, useState } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 
 function SubmittedBy({ userId }: { userId: string }) {
-    const { data: user, isLoading } = useDoc<User>(useMemoFirebase(() => doc(useFirestore(), 'users', userId), [userId]));
+    const firestore = useFirestore();
+    const userRef = useMemoFirebase(() => {
+        if (!firestore || !userId) return null;
+        return doc(firestore, 'users', userId);
+    }, [firestore, userId]);
+    
+    const { data: user, isLoading } = useDoc<User>(userRef);
 
     if (isLoading || !user) {
         return <Skeleton className="h-6 w-32" />;
@@ -29,21 +34,21 @@ function SubmittedBy({ userId }: { userId: string }) {
     return (
         <div className="ml-auto flex items-center gap-2">
             <Avatar className="h-6 w-6">
-                <AvatarImage src={user.avatarUrl} alt={user.name} />
-                <AvatarFallback>{user.name.charAt(0)}</AvatarFallback>
+                <AvatarImage src={user.avatarUrl} alt={user.fullName} />
+                <AvatarFallback>{user.fullName.charAt(0)}</AvatarFallback>
             </Avatar>
-            <span>{user.name}</span>
+            <span>{user.fullName}</span>
         </div>
     );
 }
 
 function enrichRequest(request: RequestType, users: User[]): EnrichedRequest {
-    const submittedBy = users.find(u => u.id === request.submittedBy) ?? mockUsers[0];
+    const submittedBy = users.find(u => u.id === request.submittedBy);
     const steps: EnrichedWorkflowStep[] = request.steps.map(step => ({
         ...step,
         assignee: users.find(u => u.id === step.assigneeId) ?? null,
     }));
-    return { ...request, submittedBy, steps };
+    return { ...request, submittedBy: submittedBy!, steps };
 }
 
 
@@ -97,31 +102,45 @@ export default function RequestDetailPage() {
 
   const { data: request, isLoading: isRequestLoading } = useDoc<RequestType>(requestRef);
 
-  // For now, we'll use the mock users for the assignee suggester.
-  // This would be replaced with a proper user collection query in a real app.
-  const users = mockUsers;
+  const usersQuery = useMemoFirebase(() => {
+      if(!firestore) return null;
+      // This is not ideal, but for now we fetch all users to enrich the data.
+      // In a real app with many users, this should be optimized.
+      return query(collection(firestore, 'users'));
+  }, [firestore]);
+
+  const { data: users, isLoading: areUsersLoading } = useCollection<User>(usersQuery);
   
   const [enrichedRequest, setEnrichedRequest] = useState<EnrichedRequest | null>(null);
 
   useEffect(() => {
     if (request && users) {
-        // Simple enrichment logic, could be more complex
-        const submittedBy = users.find(u => u.id === request.submittedBy) ?? users[0];
+        const submittedByUser = users.find(u => u.id === request.submittedBy);
+        if (!submittedByUser) {
+            // Handle case where submitter is not found, maybe set a default or show an error
+            return;
+        }
+
         const enrichedSteps: EnrichedWorkflowStep[] = request.steps.map(s => ({
             ...s,
             assignee: users.find(u => u.id === s.assigneeId) ?? null,
         }));
-        setEnrichedRequest({ ...request, submittedBy, steps: enrichedSteps });
+        setEnrichedRequest({ ...request, submittedBy: submittedByUser, steps: enrichedSteps });
     }
   }, [request, users]);
 
 
-  if (isUserLoading || isRequestLoading) {
+  if (isUserLoading || isRequestLoading || areUsersLoading) {
     return <SiteLayout><RequestDetailSkeleton /></SiteLayout>;
   }
 
   if (!request || !enrichedRequest) {
-    notFound();
+    // If we are not loading and there's no request, it's a 404
+    if(!isRequestLoading){
+        notFound();
+    }
+    // Otherwise, we might still be enriching, so show skeleton
+    return <SiteLayout><RequestDetailSkeleton /></SiteLayout>;
   }
 
   const activeStep = enrichedRequest.steps.find(s => s.status === 'Active');
@@ -167,7 +186,7 @@ export default function RequestDetailPage() {
                     </CardContent>
                 </Card>
 
-                {activeStep && !activeStep.assignee && (
+                {activeStep && !activeStep.assignee && users && (
                     <AssigneeSuggester step={activeStep} availableUsers={users} />
                 )}
             </div>
@@ -186,11 +205,12 @@ export default function RequestDetailPage() {
                         <Separator />
                         <dl className="grid gap-2">
                             {Object.entries(enrichedRequest.formData).map(([key, value]) => {
-                               const fieldLabel = request.steps.find(f => f.id === key)?.name || key;
+                               // Find the field label from the template data if available, otherwise use the key
+                               const fieldLabel = request.template?.fields.find((f: any) => f.id === key)?.label || key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
                                return (
                                 <div key={key} className="flex justify-between">
                                     <dt className="text-muted-foreground">{fieldLabel}</dt>
-                                    <dd className="font-medium text-right">{value}</dd>
+                                    <dd className="font-medium text-right">{String(value)}</dd>
                                 </div>
                                )
                             })}

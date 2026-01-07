@@ -1,3 +1,4 @@
+
 "use client";
 
 import type { Request } from "@/lib/types";
@@ -14,39 +15,37 @@ import Link from "next/link";
 import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
-import { useCollection, useFirestore, useMemoFirebase } from "@/firebase";
-import { collection, query, where } from "firebase/firestore";
+import { useDoc, useFirestore, useMemoFirebase } from "@/firebase";
+import { doc } from "firebase/firestore";
 import type { User } from "@/lib/types";
+import { Skeleton } from "../ui/skeleton";
 
 function SubmittedBy({ userId }: { userId: string }) {
     const firestore = useFirestore();
     
-    // Although we fetch only one user, useCollection is simpler for a single-doc query
-    const userQuery = useMemoFirebase(() => {
-        if (!firestore) return null;
-        return query(collection(firestore, 'users'), where('id', '==', userId));
+    const userRef = useMemoFirebase(() => {
+        if (!firestore || !userId) return null;
+        return doc(firestore, 'users', userId);
     }, [firestore, userId]);
 
-    const { data: users, isLoading } = useCollection<User>(userQuery);
+    const { data: user, isLoading } = useDoc<User>(userRef);
     
-    if (isLoading || !users || users.length === 0) {
+    if (isLoading || !user) {
         return (
             <div className="flex items-center gap-2">
-                <Avatar className="h-8 w-8 animate-pulse bg-muted"></Avatar>
-                <span className="animate-pulse bg-muted rounded-md h-5 w-24"></span>
+                <Skeleton className="h-8 w-8 rounded-full" />
+                <Skeleton className="h-5 w-24 rounded-md" />
             </div>
         );
     }
-    
-    const user = users[0];
 
     return (
         <div className="flex items-center gap-2">
             <Avatar className="h-8 w-8">
-                <AvatarImage src={user.avatarUrl} alt={user.name} />
-                <AvatarFallback>{user.name.charAt(0)}</AvatarFallback>
+                <AvatarImage src={user.avatarUrl} alt={user.fullName} />
+                <AvatarFallback>{user.fullName.charAt(0)}</AvatarFallback>
             </Avatar>
-            <span>{user.name}</span>
+            <span>{user.fullName}</span>
         </div>
     );
 }
