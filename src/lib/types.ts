@@ -1,10 +1,11 @@
 export type User = {
   id: string;
-  name: string;
-  avatarUrl: string;
+  fullName: string;
+  avatarUrl?: string;
   email: string;
-  skills: string[];
-  currentWorkload: number;
+  department: string;
+  skills?: string[];
+  currentWorkload?: number;
 };
 
 export type WorkflowStepData = {
@@ -26,6 +27,7 @@ export type Request = {
   steps: WorkflowStepData[];
   formData: Record<string, any>;
   documents: { name: string; url: string }[];
+  template?: Template; // Denormalized template data
 };
 
 export type Template = {

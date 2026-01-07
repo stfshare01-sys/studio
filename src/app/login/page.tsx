@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -13,13 +13,14 @@ import {
 } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { useAuth, useUser } from '@/firebase';
+import { useAuth, useUser, setDocumentNonBlocking } from '@/firebase';
 import {
-  initiateEmailSignIn,
-  initiateEmailSignUp,
-} from '@/firebase/non-blocking-login';
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+} from 'firebase/auth';
+import { doc } from 'firebase/firestore';
+import { useFirestore } from '@/firebase';
 import { useRouter } from 'next/navigation';
-import { useEffect } from 'react';
 import { Logo } from '@/components/icons';
 import { FirebaseError } from 'firebase/app';
 import { useToast } from '@/hooks/use-toast';
@@ -27,8 +28,12 @@ import { useToast } from '@/hooks/use-toast';
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [fullName, setFullName] = useState('');
+  const [department, setDepartment] = useState('');
+
   const [isSigningIn, setIsSigningIn] = useState(true);
   const auth = useAuth();
+  const firestore = useFirestore();
   const router = useRouter();
   const { user, isUserLoading } = useUser();
   const { toast } = useToast();
@@ -41,12 +46,30 @@ export default function LoginPage() {
 
   const handleAuthAction = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!auth) return;
+    if (!auth || !firestore) return;
+
     try {
       if (isSigningIn) {
-        initiateEmailSignIn(auth, email, password);
+        await signInWithEmailAndPassword(auth, email, password);
+        // onAuthStateChanged will handle redirection
       } else {
-        initiateEmailSignUp(auth, email, password);
+        // Create user in Auth
+        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        const newUser = userCredential.user;
+
+        // Create user profile in Firestore
+        const userProfile = {
+          id: newUser.uid,
+          fullName,
+          email,
+          department,
+        };
+        
+        const userDocRef = doc(firestore, 'users', newUser.uid);
+        // This is a non-blocking call. We don't wait for it to complete.
+        setDocumentNonBlocking(userDocRef, userProfile, { merge: true });
+
+        // onAuthStateChanged will handle redirection
       }
     } catch (error) {
       if (error instanceof FirebaseError) {
@@ -55,11 +78,17 @@ export default function LoginPage() {
             title: "Error de autenticación",
             description: error.message,
         });
+      } else {
+        toast({
+            variant: "destructive",
+            title: "Error",
+            description: "Ha ocurrido un error inesperado.",
+        });
       }
     }
   };
 
-  if (isUserLoading || user) {
+  if (isUserLoading || (!isUserLoading && user)) {
     return (
       <div className="flex h-screen w-full items-center justify-center">
         <p>Cargando...</p>
@@ -82,10 +111,36 @@ export default function LoginPage() {
             <CardDescription>
               {isSigningIn
                 ? 'Introduce tu correo electrónico a continuación para acceder a tu cuenta.'
-                : 'Introduce tu correo electrónico y contraseña para crear una cuenta.'}
+                : 'Rellene el siguiente formulario para crear una nueva cuenta.'}
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4">
+            {!isSigningIn && (
+              <>
+                <div className="grid gap-2">
+                  <Label htmlFor="fullName">Nombre Completo</Label>
+                  <Input
+                    id="fullName"
+                    type="text"
+                    placeholder="p. ej. Juan Pérez"
+                    required
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="department">Departamento</Label>
+                  <Input
+                    id="department"
+                    type="text"
+                    placeholder="p. ej. Ventas"
+                    required
+                    value={department}
+                    onChange={(e) => setDepartment(e.target.value)}
+                  />
+                </div>
+              </>
+            )}
             <div className="grid gap-2">
               <Label htmlFor="email">Email</Label>
               <Input

@@ -138,11 +138,7 @@
       "properties": {
         "id": {
           "type": "string",
-          "description": "Unique identifier for the User."
-        },
-        "username": {
-          "type": "string",
-          "description": "The user's login username."
+          "description": "Unique identifier for the User (matches Firebase Auth UID)."
         },
         "email": {
           "type": "string",
@@ -156,13 +152,22 @@
         "department": {
           "type": "string",
           "description": "The user's department."
+        },
+        "skills": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "A list of skills the user possesses."
+        },
+        "currentWorkload": {
+            "type": "number",
+            "description": "A numeric value representing the user's current workload."
         }
       },
       "required": [
         "id",
-        "username",
         "email",
-        "fullName"
+        "fullName",
+        "department"
       ]
     },
     "Document": {
