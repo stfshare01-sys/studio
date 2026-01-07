@@ -1,4 +1,4 @@
-import type { User, Template, Request } from './types';
+import type { User, EnrichedRequest as Request } from './types';
 import { PlaceHolderImages } from './placeholder-images';
 
 const findImage = (id: string) => PlaceHolderImages.find(img => img.id === id)?.imageUrl || '';

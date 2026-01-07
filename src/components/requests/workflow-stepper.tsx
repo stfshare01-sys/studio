@@ -1,14 +1,14 @@
 "use client";
 
-import type { WorkflowStep } from "@/lib/types";
+import type { EnrichedWorkflowStep } from "@/lib/types";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { CheckCircle2, Circle, CircleDot, User } from "lucide-react";
+import { CheckCircle2, Circle, CircleDot } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 
-export function WorkflowStepper({ steps }: { steps: WorkflowStep[] }) {
-  const getStatusIcon = (status: WorkflowStep['status']) => {
+export function WorkflowStepper({ steps }: { steps: EnrichedWorkflowStep[] }) {
+  const getStatusIcon = (status: EnrichedWorkflowStep['status']) => {
     switch (status) {
       case 'Completed':
         return <CheckCircle2 className="h-6 w-6 text-primary" />;
@@ -21,7 +21,7 @@ export function WorkflowStepper({ steps }: { steps: WorkflowStep[] }) {
     }
   };
 
-  const getStatusText = (step: WorkflowStep) => {
+  const getStatusText = (step: EnrichedWorkflowStep) => {
     switch (step.status) {
       case 'Completed':
         return (

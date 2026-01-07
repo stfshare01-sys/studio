@@ -7,11 +7,11 @@ export type User = {
   currentWorkload: number;
 };
 
-export type WorkflowStep = {
+export type WorkflowStepData = {
   id: string;
   name: string;
   status: 'Completed' | 'Pending' | 'Active';
-  assignee: User | null;
+  assigneeId: string | null;
   completedAt: string | null;
 };
 
@@ -22,8 +22,8 @@ export type Request = {
   status: 'In Progress' | 'Completed' | 'Rejected';
   createdAt: string;
   updatedAt: string;
-  submittedBy: User;
-  steps: WorkflowStep[];
+  submittedBy: string; // User ID
+  steps: WorkflowStepData[];
   formData: Record<string, any>;
   documents: { name: string; url: string }[];
 };
@@ -34,4 +34,15 @@ export type Template = {
   description: string;
   fields: { id: string; label: string; type: 'text' | 'textarea' | 'date' }[];
   steps: { id: string; name: string }[];
+};
+
+
+// Enriched types for UI
+export type EnrichedWorkflowStep = Omit<WorkflowStepData, 'assigneeId'> & {
+  assignee: User | null;
+};
+
+export type EnrichedRequest = Omit<Request, 'submittedBy' | 'steps'> & {
+  submittedBy: User;
+  steps: EnrichedWorkflowStep[];
 };

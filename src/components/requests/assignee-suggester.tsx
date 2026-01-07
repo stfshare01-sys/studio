@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { User, WorkflowStep } from "@/lib/types";
+import type { User, EnrichedWorkflowStep } from "@/lib/types";
 import { intelligentTaskAssignment } from "@/ai/flows/intelligent-task-assignment";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,7 +13,7 @@ import {
   DialogFooter,
   DialogDescription,
 } from "@/components/ui/dialog";
-import { Bot, Loader2, UserCheck, Sparkles, UserPlus } from "lucide-react";
+import { Bot, Loader2, UserPlus, Sparkles } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
   Card,
@@ -23,7 +23,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Separator } from "../ui/separator";
 
 type Suggestion = {
   suggestedUserId: string;
@@ -34,7 +33,7 @@ export function AssigneeSuggester({
   step,
   availableUsers,
 }: {
-  step: WorkflowStep;
+  step: EnrichedWorkflowStep;
   availableUsers: User[];
 }) {
   const [suggestion, setSuggestion] = useState<Suggestion | null>(null);

@@ -14,6 +14,42 @@ import Link from "next/link";
 import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
+import { useCollection, useFirestore, useMemoFirebase } from "@/firebase";
+import { collection, query, where } from "firebase/firestore";
+import type { User } from "@/lib/types";
+
+function SubmittedBy({ userId }: { userId: string }) {
+    const firestore = useFirestore();
+    
+    // Although we fetch only one user, useCollection is simpler for a single-doc query
+    const userQuery = useMemoFirebase(() => {
+        if (!firestore) return null;
+        return query(collection(firestore, 'users'), where('id', '==', userId));
+    }, [firestore, userId]);
+
+    const { data: users, isLoading } = useCollection<User>(userQuery);
+    
+    if (isLoading || !users || users.length === 0) {
+        return (
+            <div className="flex items-center gap-2">
+                <Avatar className="h-8 w-8 animate-pulse bg-muted"></Avatar>
+                <span className="animate-pulse bg-muted rounded-md h-5 w-24"></span>
+            </div>
+        );
+    }
+    
+    const user = users[0];
+
+    return (
+        <div className="flex items-center gap-2">
+            <Avatar className="h-8 w-8">
+                <AvatarImage src={user.avatarUrl} alt={user.name} />
+                <AvatarFallback>{user.name.charAt(0)}</AvatarFallback>
+            </Avatar>
+            <span>{user.name}</span>
+        </div>
+    );
+}
 
 export function RequestsTable({ requests }: { requests: Request[] }) {
   return (
@@ -38,17 +74,11 @@ export function RequestsTable({ requests }: { requests: Request[] }) {
                   {request.title}
                 </Link>
                 <div className="text-sm text-muted-foreground md:hidden">
-                  {request.status}
+                   {request.status === 'In Progress' ? 'En Progreso' : request.status === 'Completed' ? 'Completado' : 'Rechazado'}
                 </div>
               </TableCell>
               <TableCell className="hidden sm:table-cell">
-                <div className="flex items-center gap-2">
-                  <Avatar className="h-8 w-8">
-                    <AvatarImage src={request.submittedBy.avatarUrl} alt={request.submittedBy.name} />
-                    <AvatarFallback>{request.submittedBy.name.charAt(0)}</AvatarFallback>
-                  </Avatar>
-                  <span>{request.submittedBy.name}</span>
-                </div>
+                <SubmittedBy userId={request.submittedBy} />
               </TableCell>
               <TableCell className="hidden md:table-cell">
                 <Badge
