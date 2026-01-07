@@ -19,6 +19,8 @@ import {
   DialogClose,
 } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useToast } from "@/hooks/use-toast";
+import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 
 type WorkflowStep = {
   id: string;
@@ -31,7 +33,17 @@ type FormField = {
     type: 'text' | 'textarea' | 'date';
 }
 
+const reorder = (list: any[], startIndex: number, endIndex: number) => {
+  const result = Array.from(list);
+  const [removed] = result.splice(startIndex, 1);
+  result.splice(endIndex, 0, removed);
+
+  return result;
+};
+
+
 export default function NewTemplatePage() {
+  const { toast } = useToast();
   const [templateName, setTemplateName] = useState("");
   const [templateDescription, setTemplateDescription] = useState("");
   
@@ -81,6 +93,56 @@ export default function NewTemplatePage() {
     setFields(fields.filter(field => field.id !== id));
   };
 
+  const onDragEnd = (result: DropResult) => {
+    if (!result.destination) {
+      return;
+    }
+
+    const { source, destination } = result;
+
+    if (source.droppableId === 'fields-droppable') {
+        const items = reorder(
+            fields,
+            source.index,
+            destination.index
+        );
+        setFields(items as FormField[]);
+    } else if (source.droppableId === 'steps-droppable') {
+        const items = reorder(
+            steps,
+            source.index,
+            destination.index
+        );
+        setSteps(items as WorkflowStep[]);
+    }
+  };
+
+  const handleSaveTemplate = () => {
+    if(!templateName) {
+        toast({
+            variant: "destructive",
+            title: "Error",
+            description: "El nombre de la plantilla es obligatorio.",
+        });
+        return;
+    }
+    const newTemplate = {
+        id: `template-${Date.now()}`,
+        name: templateName,
+        description: templateDescription,
+        fields,
+        steps: steps.map(s => ({id: s.id, name: s.name})),
+    };
+
+    console.log("Plantilla guardada:", newTemplate);
+
+    toast({
+        title: "¡Plantilla Guardada!",
+        description: `La plantilla "${templateName}" ha sido guardada con éxito.`,
+    });
+    // Here you would typically redirect or clear the form
+  }
+
   const fieldTypeLabels: Record<FormField['type'], string> = {
     text: 'Texto',
     textarea: 'Área de texto',
@@ -88,12 +150,13 @@ export default function NewTemplatePage() {
   };
   
   return (
+    <DragDropContext onDragEnd={onDragEnd}>
     <div className="flex flex-1 flex-col">
        <header className="flex items-center justify-between p-4 sm:p-6">
         <h1 className="text-2xl font-bold tracking-tight">Crear Nueva Plantilla</h1>
         <div className="flex gap-2">
             <Button variant="outline" asChild><Link href="/templates">Cancelar</Link></Button>
-            <Button>Guardar Plantilla</Button>
+            <Button onClick={handleSaveTemplate}>Guardar Plantilla</Button>
         </div>
       </header>
       <main className="flex flex-1 flex-col gap-4 p-4 pt-0 sm:gap-8 sm:p-6 sm:pt-0">
@@ -132,26 +195,41 @@ export default function NewTemplatePage() {
               <p className="text-sm text-muted-foreground">
                 Defina los datos que se recopilarán para esta plantilla.
               </p>
-              <div className="space-y-2 rounded-md border p-4 min-h-[120px]">
-                 {fields.length === 0 && (
-                  <p className="text-center text-sm text-muted-foreground py-4">No hay campos definidos.</p>
+              <Droppable droppableId="fields-droppable">
+                {(provided) => (
+                    <div {...provided.droppableProps} ref={provided.innerRef} className="space-y-2 rounded-md border p-4 min-h-[120px]">
+                    {fields.length === 0 && (
+                        <p className="text-center text-sm text-muted-foreground py-4">No hay campos definidos.</p>
+                    )}
+                    {fields.map((field, index) => (
+                        <Draggable key={field.id} draggableId={field.id} index={index}>
+                        {(provided, snapshot) => (
+                            <div
+                            ref={provided.innerRef}
+                            {...provided.draggableProps}
+                            {...provided.dragHandleProps}
+                            className={`group flex items-center gap-2 rounded-md p-3 ${snapshot.isDragging ? 'bg-primary/10' : 'bg-muted'}`}
+                            >
+                            <GripVertical className="h-5 w-5 text-muted-foreground cursor-grab" />
+                            <div className="flex-1 font-medium">{field.label} ({fieldTypeLabels[field.type]})</div>
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 opacity-0 group-hover:opacity-100"
+                                onClick={() => handleRemoveField(field.id)}
+                            >
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                                <span className="sr-only">Eliminar campo</span>
+                            </Button>
+                            </div>
+                        )}
+                        </Draggable>
+                    ))}
+                    {provided.placeholder}
+                    </div>
                 )}
-                {fields.map(field => (
-                  <div key={field.id} className="group flex items-center gap-2 rounded-md bg-muted p-3">
-                    <GripVertical className="h-5 w-5 text-muted-foreground cursor-grab" />
-                    <div className="flex-1 font-medium">{field.label} ({fieldTypeLabels[field.type]})</div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6 opacity-0 group-hover:opacity-100"
-                      onClick={() => handleRemoveField(field.id)}
-                    >
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                      <span className="sr-only">Eliminar campo</span>
-                    </Button>
-                  </div>
-                ))}
-              </div>
+                </Droppable>
+
               <Dialog open={isFieldDialogOpen} onOpenChange={setIsFieldDialogOpen}>
                 <DialogTrigger asChild>
                     <Button variant="outline" className="w-full">
@@ -206,26 +284,41 @@ export default function NewTemplatePage() {
               <p className="text-sm text-muted-foreground">
                 Defina las etapas de aprobación para este flujo de trabajo.
               </p>
-              <div className="space-y-2 rounded-md border p-4 min-h-[120px]">
-                {steps.length === 0 && (
-                  <p className="text-center text-sm text-muted-foreground py-4">No hay pasos definidos.</p>
-                )}
-                {steps.map((step) => (
-                  <div key={step.id} className="group flex items-center gap-2 rounded-md bg-muted p-3">
-                    <GripVertical className="h-5 w-5 text-muted-foreground cursor-grab" />
-                    <div className="flex-1 font-medium">{step.name}</div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6 opacity-0 group-hover:opacity-100"
-                      onClick={() => handleRemoveStep(step.id)}
-                    >
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                      <span className="sr-only">Eliminar paso</span>
-                    </Button>
-                  </div>
-                ))}
-              </div>
+                <Droppable droppableId="steps-droppable">
+                    {(provided) => (
+                        <div {...provided.droppableProps} ref={provided.innerRef} className="space-y-2 rounded-md border p-4 min-h-[120px]">
+                        {steps.length === 0 && (
+                        <p className="text-center text-sm text-muted-foreground py-4">No hay pasos definidos.</p>
+                        )}
+                        {steps.map((step, index) => (
+                             <Draggable key={step.id} draggableId={step.id} index={index}>
+                             {(provided, snapshot) => (
+                                 <div
+                                 ref={provided.innerRef}
+                                 {...provided.draggableProps}
+                                 {...provided.dragHandleProps}
+                                 className={`group flex items-center gap-2 rounded-md p-3 ${snapshot.isDragging ? 'bg-primary/10' : 'bg-muted'}`}
+                                 >
+                                 <GripVertical className="h-5 w-5 text-muted-foreground cursor-grab" />
+                                 <div className="flex-1 font-medium">{step.name}</div>
+                                 <Button
+                                     variant="ghost"
+                                     size="icon"
+                                     className="h-6 w-6 opacity-0 group-hover:opacity-100"
+                                     onClick={() => handleRemoveStep(step.id)}
+                                 >
+                                     <Trash2 className="h-4 w-4 text-destructive" />
+                                     <span className="sr-only">Eliminar paso</span>
+                                 </Button>
+                                 </div>
+                             )}
+                             </Draggable>
+                        ))}
+                        {provided.placeholder}
+                        </div>
+                    )}
+                </Droppable>
+
               <Dialog open={isStepDialogOpen} onOpenChange={setIsStepDialogOpen}>
                 <DialogTrigger asChild>
                   <Button variant="outline" className="w-full">
@@ -258,6 +351,6 @@ export default function NewTemplatePage() {
         </div>
       </main>
     </div>
+    </DragDropContext>
   );
-
-    
+}
