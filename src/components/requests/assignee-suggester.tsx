@@ -1,0 +1,150 @@
+"use client";
+
+import { useState } from "react";
+import type { User, WorkflowStep } from "@/lib/types";
+import { intelligentTaskAssignment } from "@/ai/flows/intelligent-task-assignment";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogFooter,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import { Bot, Loader2, UserCheck, Sparkles, UserPlus } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Separator } from "../ui/separator";
+
+type Suggestion = {
+  suggestedUserId: string;
+  reason: string;
+};
+
+export function AssigneeSuggester({
+  step,
+  availableUsers,
+}: {
+  step: WorkflowStep;
+  availableUsers: User[];
+}) {
+  const [suggestion, setSuggestion] = useState<Suggestion | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isOpen, setIsOpen] = useState(false);
+  const { toast } = useToast();
+
+  const handleSuggest = async () => {
+    setIsLoading(true);
+    setSuggestion(null);
+    try {
+      const result = await intelligentTaskAssignment({
+        taskDescription: `Assign the task: "${step.name}"`,
+        availableUsers: availableUsers.map((u) => ({
+          userId: u.id,
+          skills: u.skills,
+          currentWorkload: u.currentWorkload,
+          pastPerformance: 5, // Mocked for demonstration
+        })),
+      });
+      setSuggestion(result);
+    } catch (error) {
+      console.error("AI suggestion failed:", error);
+      setIsOpen(false);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to get AI suggestion. Please try again.",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleAssign = () => {
+    setIsOpen(false);
+    toast({
+        title: "Task Assigned!",
+        description: `${suggestedUser?.name} has been assigned to "${step.name}".`,
+    });
+  }
+
+  const suggestedUser = suggestion
+    ? availableUsers.find((u) => u.id === suggestion.suggestedUserId)
+    : null;
+
+  return (
+    <Card className="bg-primary/5 border-primary/20">
+      <CardHeader>
+        <div className="flex items-center gap-3">
+            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
+                <Sparkles className="h-6 w-6 text-primary" />
+            </div>
+            <div>
+                <CardTitle>Intelligent Assignment</CardTitle>
+                <CardDescription>
+                AI can help you find the best person for this task.
+                </CardDescription>
+            </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <Dialog open={isOpen} onOpenChange={setIsOpen}>
+          <DialogTrigger asChild>
+            <Button onClick={handleSuggest} className="w-full">
+              <Bot className="mr-2 h-4 w-4" />
+              Suggest Assignee with AI
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>AI Assignee Suggestion</DialogTitle>
+              <DialogDescription>
+                For task: <span className="font-semibold">{step.name}</span>
+              </DialogDescription>
+            </DialogHeader>
+            {isLoading && (
+              <div className="flex items-center justify-center p-8">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                <p className="ml-4 text-muted-foreground">Analyzing user data...</p>
+              </div>
+            )}
+            {suggestion && suggestedUser && (
+              <div className="space-y-4 py-4">
+                 <div className="flex items-center gap-4 rounded-lg border p-4">
+                    <Avatar className="h-12 w-12">
+                        <AvatarImage src={suggestedUser.avatarUrl} alt={suggestedUser.name} />
+                        <AvatarFallback>{suggestedUser.name.charAt(0)}</AvatarFallback>
+                    </Avatar>
+                    <div>
+                        <div className="font-bold text-lg">{suggestedUser.name}</div>
+                        <div className="text-sm text-muted-foreground">{suggestedUser.email}</div>
+                    </div>
+                </div>
+                <div>
+                    <h4 className="font-semibold mb-2">Reasoning:</h4>
+                    <p className="text-sm text-muted-foreground bg-muted p-3 rounded-md">{suggestion.reason}</p>
+                </div>
+              </div>
+            )}
+            <DialogFooter>
+              <Button variant="ghost" onClick={() => setIsOpen(false)}>Cancel</Button>
+              <Button onClick={handleAssign} disabled={!suggestion || isLoading}>
+                <UserPlus className="mr-2 h-4 w-4" />
+                Assign to {suggestedUser?.name.split(' ')[0]}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </CardContent>
+    </Card>
+  );
+}

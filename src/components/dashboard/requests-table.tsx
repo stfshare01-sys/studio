@@ -1,0 +1,77 @@
+"use client";
+
+import type { Request } from "@/lib/types";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import Link from "next/link";
+import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
+import { formatDistanceToNow } from "date-fns";
+
+export function RequestsTable({ requests }: { requests: Request[] }) {
+  return (
+    <div className="rounded-md border">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Request</TableHead>
+            <TableHead className="hidden sm:table-cell">Submitted By</TableHead>
+            <TableHead className="hidden md:table-cell">Status</TableHead>
+            <TableHead className="text-right">Last Updated</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {requests.map((request) => (
+            <TableRow key={request.id}>
+              <TableCell>
+                <Link
+                  href={`/requests/${request.id}`}
+                  className="font-medium text-primary hover:underline"
+                >
+                  {request.title}
+                </Link>
+                <div className="text-sm text-muted-foreground md:hidden">
+                  {request.status}
+                </div>
+              </TableCell>
+              <TableCell className="hidden sm:table-cell">
+                <div className="flex items-center gap-2">
+                  <Avatar className="h-8 w-8">
+                    <AvatarImage src={request.submittedBy.avatarUrl} alt={request.submittedBy.name} />
+                    <AvatarFallback>{request.submittedBy.name.charAt(0)}</AvatarFallback>
+                  </Avatar>
+                  <span>{request.submittedBy.name}</span>
+                </div>
+              </TableCell>
+              <TableCell className="hidden md:table-cell">
+                <Badge
+                  variant={
+                    request.status === "Completed"
+                      ? "default"
+                      : request.status === "Rejected"
+                      ? "destructive"
+                      : "secondary"
+                  }
+                  className={request.status === 'Completed' ? 'bg-green-600 text-white' : ''}
+                >
+                  {request.status}
+                </Badge>
+              </TableCell>
+              <TableCell className="text-right text-muted-foreground">
+                {formatDistanceToNow(new Date(request.updatedAt), {
+                  addSuffix: true,
+                })}
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
