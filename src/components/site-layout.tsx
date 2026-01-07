@@ -51,15 +51,16 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
           <SidebarMenu>
             {navItems.map((item) => (
               <SidebarMenuItem key={item.href}>
-                <Link href={item.href} legacyBehavior passHref>
-                  <SidebarMenuButton
-                    isActive={pathname === item.href}
-                    className="w-full"
-                  >
+                <SidebarMenuButton
+                  asChild
+                  isActive={pathname === item.href}
+                  className="w-full"
+                >
+                  <Link href={item.href}>
                     <item.icon className="size-4" />
                     <span>{item.label}</span>
-                  </SidebarMenuButton>
-                </Link>
+                  </Link>
+                </SidebarMenuButton>
               </SidebarMenuItem>
             ))}
           </SidebarMenu>
