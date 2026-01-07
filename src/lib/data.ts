@@ -11,56 +11,6 @@ export const users: User[] = [
   { id: 'user-5', name: 'Emma Wilson', avatarUrl: findImage('user-5'), email: 'emma.wilson@example.com', skills: ['Recursos Humanos', 'Reclutamiento', 'Relaciones con Empleados'], currentWorkload: 4 },
 ];
 
-export const templates: Template[] = [
-  {
-    id: 'template-1',
-    name: 'Solicitud de Permiso para Empleados',
-    description: 'Un formulario estándar para que los empleados soliciten tiempo libre.',
-    fields: [
-      { id: 'field-1', label: 'Fecha de Inicio', type: 'date' },
-      { id: 'field-2', label: 'Fecha de Fin', type: 'date' },
-      { id: 'field-3', label: 'Motivo del Permiso', type: 'textarea' },
-    ],
-    steps: [
-      { id: 'step-1', name: 'Aprobación del Gerente' },
-      { id: 'step-2', name: 'Confirmación de RRHH' },
-      { id: 'step-3', name: 'Actualización de Nómina' },
-    ],
-  },
-  {
-    id: 'template-2',
-    name: 'Orden de Compra',
-    description: 'Enviar una solicitud para comprar bienes o servicios.',
-    fields: [
-      { id: 'field-4', label: 'Descripción del Artículo', type: 'text' },
-      { id: 'field-5', label: 'Cantidad', type: 'text' },
-      { id: 'field-6', label: 'Costo Estimado', type: 'text' },
-      { id: 'field-7', label: 'Justificación', type: 'textarea' },
-    ],
-    steps: [
-      { id: 'step-4', name: 'Aprobación del Jefe de Departamento' },
-      { id: 'step-5', name: 'Revisión Financiera' },
-      { id: 'step-6', name: 'Adquisición' },
-    ],
-  },
-  {
-    id: 'template-3',
-    name: 'Ticket de Soporte de TI',
-    description: 'Reportar un problema de TI y seguir su resolución.',
-    fields: [
-      { id: 'field-8', label: 'Categoría del Problema', type: 'text' },
-      { id: 'field-9', label: 'Urgencia', type: 'text' },
-      { id: 'field-10', label: 'Descripción Detallada', type: 'textarea' },
-    ],
-    steps: [
-      { id: 'step-7', name: 'Clasificación' },
-      { id: 'step-8', name: 'Asignar a Técnico' },
-      { id: 'step-9', name: 'Resolución' },
-      { id: 'step-10', name: 'Confirmación del Usuario' },
-    ],
-  },
-];
-
 export const requests: Request[] = [
   {
     id: 'req-001',

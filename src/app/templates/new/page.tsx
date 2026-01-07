@@ -21,6 +21,11 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
+import { useFirestore } from "@/firebase";
+import { addDocumentNonBlocking } from "@/firebase/non-blocking-updates";
+import { collection } from "firebase/firestore";
+import { useRouter } from "next/navigation";
+
 
 type WorkflowStep = {
   id: string;
@@ -44,6 +49,9 @@ const reorder = (list: any[], startIndex: number, endIndex: number) => {
 
 export default function NewTemplatePage() {
   const { toast } = useToast();
+  const firestore = useFirestore();
+  const router = useRouter();
+
   const [templateName, setTemplateName] = useState("");
   const [templateDescription, setTemplateDescription] = useState("");
   
@@ -117,7 +125,7 @@ export default function NewTemplatePage() {
     }
   };
 
-  const handleSaveTemplate = () => {
+  const handleSaveTemplate = async () => {
     if(!templateName) {
         toast({
             variant: "destructive",
@@ -127,20 +135,31 @@ export default function NewTemplatePage() {
         return;
     }
     const newTemplate = {
-        id: `template-${Date.now()}`,
         name: templateName,
         description: templateDescription,
         fields,
         steps: steps.map(s => ({id: s.id, name: s.name})),
     };
 
-    console.log("Plantilla guardada:", newTemplate);
+    try {
+      const templatesCollection = collection(firestore, 'request_templates');
+      await addDocumentNonBlocking(templatesCollection, newTemplate);
 
-    toast({
-        title: "¡Plantilla Guardada!",
-        description: `La plantilla "${templateName}" ha sido guardada con éxito.`,
-    });
-    // Here you would typically redirect or clear the form
+      toast({
+          title: "¡Plantilla Guardada!",
+          description: `La plantilla "${templateName}" ha sido guardada con éxito.`,
+      });
+      
+      router.push('/templates');
+
+    } catch (error) {
+       console.error("Error saving template: ", error);
+       toast({
+        variant: "destructive",
+        title: "Error al guardar",
+        description: "No se pudo guardar la plantilla. Por favor, inténtalo de nuevo.",
+      });
+    }
   }
 
   const fieldTypeLabels: Record<FormField['type'], string> = {

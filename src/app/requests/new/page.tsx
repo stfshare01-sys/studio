@@ -5,7 +5,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { templates } from "@/lib/data";
+import { useCollection, useFirestore, useMemoFirebase } from "@/firebase";
+import { Template } from "@/lib/types";
+import { collection } from "firebase/firestore";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import React from "react";
@@ -15,7 +17,11 @@ export default function NewRequestPage() {
     const templateId = searchParams.get('templateId');
     const [selectedTemplateId, setSelectedTemplateId] = React.useState<string | undefined>(templateId || undefined);
 
-    const selectedTemplate = templates.find(t => t.id === selectedTemplateId);
+    const firestore = useFirestore();
+    const templatesRef = useMemoFirebase(() => collection(firestore, 'request_templates'), [firestore]);
+    const { data: templates } = useCollection<Template>(templatesRef);
+
+    const selectedTemplate = templates?.find(t => t.id === selectedTemplateId);
 
     return (
         <div className="flex flex-1 flex-col">
@@ -45,7 +51,7 @@ export default function NewRequestPage() {
                                     <SelectValue placeholder="Elija una plantilla de flujo de trabajo..." />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    {templates.map(template => (
+                                    {templates?.map(template => (
                                         <SelectItem key={template.id} value={template.id}>
                                             {template.name}
                                         </SelectItem>
