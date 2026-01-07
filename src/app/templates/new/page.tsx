@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { GripVertical, PlusCircle, Trash2, X } from "lucide-react";
+import { GripVertical, PlusCircle, Trash2 } from "lucide-react";
 import Link from "next/link";
 import {
   Dialog,
@@ -18,21 +18,34 @@ import {
   DialogFooter,
   DialogClose,
 } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 type WorkflowStep = {
   id: string;
   name: string;
 };
 
+type FormField = {
+    id: string;
+    label: string;
+    type: 'text' | 'textarea' | 'date';
+}
+
 export default function NewTemplatePage() {
   const [templateName, setTemplateName] = useState("");
   const [templateDescription, setTemplateDescription] = useState("");
-  const [steps, setSteps] = useState<WorkflowStep[]>([
-    { id: 'step-1', name: 'Aprobación del Gerente' },
-    { id: 'step-2', name: 'Confirmación de RRHH' },
-  ]);
+  
+  // State for workflow steps
+  const [steps, setSteps] = useState<WorkflowStep[]>([]);
   const [newStepName, setNewStepName] = useState("");
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isStepDialogOpen, setIsStepDialogOpen] = useState(false);
+
+  // State for form fields
+  const [fields, setFields] = useState<FormField[]>([]);
+  const [newFieldName, setNewFieldName] = useState("");
+  const [newFieldType, setNewFieldType] = useState<'text' | 'textarea' | 'date'>('text');
+  const [isFieldDialogOpen, setIsFieldDialogOpen] = useState(false);
+
 
   const handleAddStep = () => {
     if (newStepName.trim() !== "") {
@@ -42,12 +55,36 @@ export default function NewTemplatePage() {
       };
       setSteps([...steps, newStep]);
       setNewStepName("");
-      setIsDialogOpen(false);
+      setIsStepDialogOpen(false);
     }
   };
 
   const handleRemoveStep = (id: string) => {
     setSteps(steps.filter(step => step.id !== id));
+  };
+
+  const handleAddField = () => {
+    if (newFieldName.trim() !== "") {
+        const newField: FormField = {
+            id: `field-${Date.now()}`,
+            label: newFieldName.trim(),
+            type: newFieldType,
+        };
+        setFields([...fields, newField]);
+        setNewFieldName("");
+        setNewFieldType("text");
+        setIsFieldDialogOpen(false);
+    }
+  };
+
+  const handleRemoveField = (id: string) => {
+    setFields(fields.filter(field => field.id !== id));
+  };
+
+  const fieldTypeLabels: Record<FormField['type'], string> = {
+    text: 'Texto',
+    textarea: 'Área de texto',
+    date: 'Fecha'
   };
   
   return (
@@ -93,21 +130,70 @@ export default function NewTemplatePage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <p className="text-sm text-muted-foreground">
-                Defina los datos que se recopilarán. (Esta es una maqueta estática de una interfaz de arrastrar y soltar).
+                Defina los datos que se recopilarán para esta plantilla.
               </p>
-              <div className="space-y-2 rounded-md border p-4">
-                <div className="flex items-center gap-2 rounded-md bg-muted p-3">
-                  <GripVertical className="h-5 w-5 text-muted-foreground" />
-                  <div className="flex-1 font-medium">Fecha de Inicio (Fecha)</div>
-                </div>
-                <div className="flex items-center gap-2 rounded-md bg-muted p-3">
-                  <GripVertical className="h-5 w-5 text-muted-foreground" />
-                  <div className="flex-1 font-medium">Motivo (Área de Texto)</div>
-                </div>
+              <div className="space-y-2 rounded-md border p-4 min-h-[120px]">
+                 {fields.length === 0 && (
+                  <p className="text-center text-sm text-muted-foreground py-4">No hay campos definidos.</p>
+                )}
+                {fields.map(field => (
+                  <div key={field.id} className="group flex items-center gap-2 rounded-md bg-muted p-3">
+                    <GripVertical className="h-5 w-5 text-muted-foreground cursor-grab" />
+                    <div className="flex-1 font-medium">{field.label} ({fieldTypeLabels[field.type]})</div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 opacity-0 group-hover:opacity-100"
+                      onClick={() => handleRemoveField(field.id)}
+                    >
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                      <span className="sr-only">Eliminar campo</span>
+                    </Button>
+                  </div>
+                ))}
               </div>
-              <Button variant="outline" className="w-full" disabled>
-                <PlusCircle className="mr-2 h-4 w-4" /> Añadir Campo
-              </Button>
+              <Dialog open={isFieldDialogOpen} onOpenChange={setIsFieldDialogOpen}>
+                <DialogTrigger asChild>
+                    <Button variant="outline" className="w-full">
+                        <PlusCircle className="mr-2 h-4 w-4" /> Añadir Campo
+                    </Button>
+                </DialogTrigger>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Añadir Nuevo Campo de Formulario</DialogTitle>
+                    </DialogHeader>
+                    <div className="py-4 space-y-4">
+                        <div className="space-y-2">
+                            <Label htmlFor="field-name">Etiqueta del Campo</Label>
+                            <Input
+                                id="field-name"
+                                value={newFieldName}
+                                onChange={(e) => setNewFieldName(e.target.value)}
+                                placeholder="p.ej., Nombre del Solicitante"
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="field-type">Tipo de Campo</Label>
+                            <Select value={newFieldType} onValueChange={(value) => setNewFieldType(value as FormField['type'])}>
+                                <SelectTrigger id="field-type">
+                                    <SelectValue placeholder="Seleccione un tipo..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="text">Texto</SelectItem>
+                                    <SelectItem value="textarea">Área de texto</SelectItem>
+                                    <SelectItem value="date">Fecha</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <DialogClose asChild>
+                            <Button variant="ghost">Cancelar</Button>
+                        </DialogClose>
+                        <Button onClick={handleAddField}>Añadir Campo</Button>
+                    </DialogFooter>
+                </DialogContent>
+              </Dialog>
             </CardContent>
           </Card>
 
@@ -118,15 +204,15 @@ export default function NewTemplatePage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <p className="text-sm text-muted-foreground">
-                Defina las etapas de aprobación o acción para este flujo de trabajo.
+                Defina las etapas de aprobación para este flujo de trabajo.
               </p>
-              <div className="space-y-2 rounded-md border p-4">
+              <div className="space-y-2 rounded-md border p-4 min-h-[120px]">
                 {steps.length === 0 && (
                   <p className="text-center text-sm text-muted-foreground py-4">No hay pasos definidos.</p>
                 )}
-                {steps.map((step, index) => (
+                {steps.map((step) => (
                   <div key={step.id} className="group flex items-center gap-2 rounded-md bg-muted p-3">
-                    <GripVertical className="h-5 w-5 text-muted-foreground" />
+                    <GripVertical className="h-5 w-5 text-muted-foreground cursor-grab" />
                     <div className="flex-1 font-medium">{step.name}</div>
                     <Button
                       variant="ghost"
@@ -140,7 +226,7 @@ export default function NewTemplatePage() {
                   </div>
                 ))}
               </div>
-              <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+              <Dialog open={isStepDialogOpen} onOpenChange={setIsStepDialogOpen}>
                 <DialogTrigger asChild>
                   <Button variant="outline" className="w-full">
                     <PlusCircle className="mr-2 h-4 w-4" /> Añadir Paso
