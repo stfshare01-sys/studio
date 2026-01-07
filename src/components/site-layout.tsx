@@ -27,9 +27,9 @@ import { Button } from "./ui/button";
 import { users } from "@/lib/data";
 
 const navItems = [
-  { href: "/", icon: LayoutDashboard, label: "Dashboard" },
-  { href: "/templates", icon: FolderKanban, label: "Templates" },
-  { href: "/requests/new", icon: FilePlus, label: "New Request"},
+  { href: "/", icon: LayoutDashboard, label: "Panel" },
+  { href: "/templates", icon: FolderKanban, label: "Plantillas" },
+  { href: "/requests/new", icon: FilePlus, label: "Nueva Solicitud"},
 ];
 
 export default function SiteLayout({ children }: { children: React.ReactNode }) {

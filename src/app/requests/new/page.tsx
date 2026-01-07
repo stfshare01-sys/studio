@@ -20,29 +20,29 @@ export default function NewRequestPage() {
     return (
         <div className="flex flex-1 flex-col">
             <header className="flex items-center justify-between p-4 sm:p-6">
-                <h1 className="text-2xl font-bold tracking-tight">Submit New Request</h1>
+                <h1 className="text-2xl font-bold tracking-tight">Enviar Nueva Solicitud</h1>
                 <div className="flex gap-2">
-                    <Button variant="outline" asChild><Link href="/">Cancel</Link></Button>
-                    <Button>Submit Request</Button>
+                    <Button variant="outline" asChild><Link href="/">Cancelar</Link></Button>
+                    <Button>Enviar Solicitud</Button>
                 </div>
             </header>
             <main className="flex flex-1 flex-col gap-4 p-4 pt-0 sm:gap-8 sm:p-6 sm:pt-0">
                 <Card>
                     <CardHeader>
-                        <CardTitle>Request Details</CardTitle>
+                        <CardTitle>Detalles de la Solicitud</CardTitle>
                         <CardDescription>
-                            {selectedTemplate ? `Fill out the form for a new "${selectedTemplate.name}" request.` : 'First, select a template for your request.'}
+                            {selectedTemplate ? `Rellene el formulario para una nueva solicitud de "${selectedTemplate.name}".` : 'Primero, seleccione una plantilla para su solicitud.'}
                         </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-6">
                         <div className="space-y-2">
-                            <Label htmlFor="template-select">Select a Template</Label>
+                            <Label htmlFor="template-select">Seleccione una Plantilla</Label>
                             <Select
                                 value={selectedTemplateId}
                                 onValueChange={setSelectedTemplateId}
                             >
                                 <SelectTrigger id="template-select">
-                                    <SelectValue placeholder="Choose a workflow template..." />
+                                    <SelectValue placeholder="Elija una plantilla de flujo de trabajo..." />
                                 </SelectTrigger>
                                 <SelectContent>
                                     {templates.map(template => (
@@ -60,9 +60,9 @@ export default function NewRequestPage() {
                                     <div key={field.id} className="space-y-2">
                                         <Label htmlFor={field.id}>{field.label}</Label>
                                         {field.type === 'textarea' ? (
-                                            <Textarea id={field.id} placeholder={`Enter ${field.label.toLowerCase()}`} />
+                                            <Textarea id={field.id} placeholder={`Introduzca ${field.label.toLowerCase()}`} />
                                         ) : (
-                                            <Input id={field.id} type={field.type} placeholder={`Enter ${field.label.toLowerCase()}`} />
+                                            <Input id={field.id} type={field.type} placeholder={`Introduzca ${field.label.toLowerCase()}`} />
                                         )}
                                     </div>
                                 ))}

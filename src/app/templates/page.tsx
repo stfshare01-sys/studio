@@ -8,11 +8,11 @@ export default function TemplatesPage() {
   return (
     <div className="flex flex-1 flex-col">
        <header className="flex items-center justify-between p-4 sm:p-6">
-        <h1 className="text-2xl font-bold tracking-tight">Templates</h1>
+        <h1 className="text-2xl font-bold tracking-tight">Plantillas</h1>
         <Button asChild>
             <Link href="/templates/new">
                 <FilePlus className="mr-2 h-4 w-4" />
-                New Template
+                Nueva Plantilla
             </Link>
         </Button>
       </header>
@@ -33,12 +33,12 @@ export default function TemplatesPage() {
               </CardHeader>
               <CardContent>
                 <div className="text-sm font-medium">
-                  {template.fields.length} fields, {template.steps.length} steps
+                  {template.fields.length} campos, {template.steps.length} pasos
                 </div>
               </CardContent>
               <CardFooter>
                 <Button asChild className="w-full">
-                  <Link href={`/requests/new?templateId=${template.id}`}>Use Template</Link>
+                  <Link href={`/requests/new?templateId=${template.id}`}>Usar Plantilla</Link>
                 </Button>
               </CardFooter>
             </Card>

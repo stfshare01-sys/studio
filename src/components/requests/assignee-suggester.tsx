@@ -62,7 +62,7 @@ export function AssigneeSuggester({
       toast({
         variant: "destructive",
         title: "Error",
-        description: "Failed to get AI suggestion. Please try again.",
+        description: "No se pudo obtener la sugerencia de la IA. Por favor, inténtelo de nuevo.",
       });
     } finally {
       setIsLoading(false);
@@ -72,8 +72,8 @@ export function AssigneeSuggester({
   const handleAssign = () => {
     setIsOpen(false);
     toast({
-        title: "Task Assigned!",
-        description: `${suggestedUser?.name} has been assigned to "${step.name}".`,
+        title: "¡Tarea Asignada!",
+        description: `${suggestedUser?.name} ha sido asignado a "${step.name}".`,
     });
   }
 
@@ -89,9 +89,9 @@ export function AssigneeSuggester({
                 <Sparkles className="h-6 w-6 text-primary" />
             </div>
             <div>
-                <CardTitle>Intelligent Assignment</CardTitle>
+                <CardTitle>Asignación Inteligente</CardTitle>
                 <CardDescription>
-                AI can help you find the best person for this task.
+                La IA puede ayudarte a encontrar a la persona adecuada para esta tarea.
                 </CardDescription>
             </div>
         </div>
@@ -101,20 +101,20 @@ export function AssigneeSuggester({
           <DialogTrigger asChild>
             <Button onClick={handleSuggest} className="w-full">
               <Bot className="mr-2 h-4 w-4" />
-              Suggest Assignee with AI
+              Sugerir Asignado con IA
             </Button>
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>AI Assignee Suggestion</DialogTitle>
+              <DialogTitle>Sugerencia de Asignado por IA</DialogTitle>
               <DialogDescription>
-                For task: <span className="font-semibold">{step.name}</span>
+                Para la tarea: <span className="font-semibold">{step.name}</span>
               </DialogDescription>
             </DialogHeader>
             {isLoading && (
               <div className="flex items-center justify-center p-8">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                <p className="ml-4 text-muted-foreground">Analyzing user data...</p>
+                <p className="ml-4 text-muted-foreground">Analizando datos de usuario...</p>
               </div>
             )}
             {suggestion && suggestedUser && (
@@ -130,16 +130,16 @@ export function AssigneeSuggester({
                     </div>
                 </div>
                 <div>
-                    <h4 className="font-semibold mb-2">Reasoning:</h4>
+                    <h4 className="font-semibold mb-2">Razonamiento:</h4>
                     <p className="text-sm text-muted-foreground bg-muted p-3 rounded-md">{suggestion.reason}</p>
                 </div>
               </div>
             )}
             <DialogFooter>
-              <Button variant="ghost" onClick={() => setIsOpen(false)}>Cancel</Button>
+              <Button variant="ghost" onClick={() => setIsOpen(false)}>Cancelar</Button>
               <Button onClick={handleAssign} disabled={!suggestion || isLoading}>
                 <UserPlus className="mr-2 h-4 w-4" />
-                Assign to {suggestedUser?.name.split(' ')[0]}
+                Asignar a {suggestedUser?.name.split(' ')[0]}
               </Button>
             </DialogFooter>
           </DialogContent>

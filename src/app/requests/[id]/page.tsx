@@ -52,7 +52,7 @@ export default function RequestDetailPage({ params }: { params: { id: string } }
         <div className="md:col-span-2 space-y-8">
             <Card>
                 <CardHeader>
-                    <CardTitle>Workflow Progress</CardTitle>
+                    <CardTitle>Progreso del Flujo de Trabajo</CardTitle>
                 </CardHeader>
                 <CardContent>
                     <WorkflowStepper steps={request.steps} />
@@ -67,12 +67,12 @@ export default function RequestDetailPage({ params }: { params: { id: string } }
         <div className="space-y-8">
             <Card>
                 <CardHeader>
-                    <CardTitle>Request Information</CardTitle>
+                    <CardTitle>Información de la Solicitud</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
                     <div className="flex items-center gap-2">
                         <User className="h-4 w-4 text-muted-foreground" />
-                        <span className="font-medium">Submitted by:</span>
+                        <span className="font-medium">Enviado por:</span>
                         <div className="ml-auto flex items-center gap-2">
                             <Avatar className="h-6 w-6">
                                 <AvatarImage src={request.submittedBy.avatarUrl} alt={request.submittedBy.name} />
@@ -96,7 +96,7 @@ export default function RequestDetailPage({ params }: { params: { id: string } }
             {request.documents.length > 0 && (
                 <Card>
                     <CardHeader>
-                        <CardTitle>Attached Documents</CardTitle>
+                        <CardTitle>Documentos Adjuntos</CardTitle>
                     </CardHeader>
                     <CardContent>
                         <ul className="space-y-2">

@@ -5,6 +5,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { CheckCircle2, Circle, CircleDot, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
+import { es } from "date-fns/locale";
 
 export function WorkflowStepper({ steps }: { steps: WorkflowStep[] }) {
   const getStatusIcon = (status: WorkflowStep['status']) => {
@@ -15,6 +16,37 @@ export function WorkflowStepper({ steps }: { steps: WorkflowStep[] }) {
         return <CircleDot className="h-6 w-6 text-accent-foreground animate-pulse" />;
       case 'Pending':
         return <Circle className="h-6 w-6 text-muted-foreground" />;
+      default:
+        return null;
+    }
+  };
+
+  const getStatusText = (step: WorkflowStep) => {
+    switch (step.status) {
+      case 'Completed':
+        return (
+          <div className="flex items-center gap-2">
+            <Avatar className="h-5 w-5">
+              {step.assignee?.avatarUrl && <AvatarImage src={step.assignee.avatarUrl} alt={step.assignee.name} />}
+              <AvatarFallback>{step.assignee?.name.charAt(0)}</AvatarFallback>
+            </Avatar>
+            <span>Completado por {step.assignee?.name} el {format(new Date(step.completedAt!), "d 'de' MMMM 'de' yyyy", { locale: es })}</span>
+          </div>
+        );
+      case 'Active':
+        return step.assignee ? (
+          <div className="flex items-center gap-2">
+            <Avatar className="h-5 w-5">
+              {step.assignee?.avatarUrl && <AvatarImage src={step.assignee.avatarUrl} alt={step.assignee.name} />}
+              <AvatarFallback>{step.assignee?.name.charAt(0)}</AvatarFallback>
+            </Avatar>
+            <span>Asignado a {step.assignee.name}</span>
+          </div>
+        ) : (
+          <span>Pendiente de asignación</span>
+        );
+      case 'Pending':
+        return <span>No iniciado</span>;
       default:
         return null;
     }
@@ -35,29 +67,7 @@ export function WorkflowStepper({ steps }: { steps: WorkflowStep[] }) {
               {step.name}
             </h4>
             <div className="mt-1 text-sm text-muted-foreground">
-              {step.status === 'Completed' ? (
-                <div className="flex items-center gap-2">
-                  <Avatar className="h-5 w-5">
-                    {step.assignee?.avatarUrl && <AvatarImage src={step.assignee.avatarUrl} alt={step.assignee.name} />}
-                    <AvatarFallback>{step.assignee?.name.charAt(0)}</AvatarFallback>
-                  </Avatar>
-                  <span>Completed by {step.assignee?.name} on {format(new Date(step.completedAt!), "MMM d, yyyy")}</span>
-                </div>
-              ) : step.status === 'Active' ? (
-                step.assignee ? (
-                  <div className="flex items-center gap-2">
-                    <Avatar className="h-5 w-5">
-                        {step.assignee?.avatarUrl && <AvatarImage src={step.assignee.avatarUrl} alt={step.assignee.name} />}
-                        <AvatarFallback>{step.assignee?.name.charAt(0)}</AvatarFallback>
-                    </Avatar>
-                    <span>Assigned to {step.assignee.name}</span>
-                  </div>
-                ) : (
-                  <span>Pending assignment</span>
-                )
-              ) : (
-                <span>Not started</span>
-              )}
+              {getStatusText(step)}
             </div>
           </div>
         </div>

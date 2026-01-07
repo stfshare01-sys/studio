@@ -5,7 +5,7 @@ import SiteLayout from '@/components/site-layout';
 
 export const metadata: Metadata = {
   title: 'FlowMaster',
-  description: 'A custom workflow management system that allows designing request templates with definable fields and steps, submitting and tracking new requests, and visualizing the status and history of each process.',
+  description: 'Un sistema de gestión de flujos de trabajo personalizado que permite diseñar plantillas de solicitud con campos y pasos definibles, enviar y rastrear nuevas solicitudes, y visualizar el estado e historial de cada proceso.',
 };
 
 export default function RootLayout({
@@ -14,7 +14,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="es" suppressHydrationWarning>
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />

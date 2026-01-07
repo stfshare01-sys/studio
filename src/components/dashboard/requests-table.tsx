@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
 import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
 import { formatDistanceToNow } from "date-fns";
+import { es } from "date-fns/locale";
 
 export function RequestsTable({ requests }: { requests: Request[] }) {
   return (
@@ -20,10 +21,10 @@ export function RequestsTable({ requests }: { requests: Request[] }) {
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Request</TableHead>
-            <TableHead className="hidden sm:table-cell">Submitted By</TableHead>
-            <TableHead className="hidden md:table-cell">Status</TableHead>
-            <TableHead className="text-right">Last Updated</TableHead>
+            <TableHead>Solicitud</TableHead>
+            <TableHead className="hidden sm:table-cell">Enviado por</TableHead>
+            <TableHead className="hidden md:table-cell">Estado</TableHead>
+            <TableHead className="text-right">Última Actualización</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -60,12 +61,13 @@ export function RequestsTable({ requests }: { requests: Request[] }) {
                   }
                   className={request.status === 'Completed' ? 'bg-green-600 text-white' : ''}
                 >
-                  {request.status}
+                  {request.status === 'In Progress' ? 'En Progreso' : request.status === 'Completed' ? 'Completado' : 'Rechazado'}
                 </Badge>
               </TableCell>
               <TableCell className="text-right text-muted-foreground">
                 {formatDistanceToNow(new Date(request.updatedAt), {
                   addSuffix: true,
+                  locale: es,
                 })}
               </TableCell>
             </TableRow>
