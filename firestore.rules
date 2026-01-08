@@ -121,11 +121,13 @@ service cloud.firestore {
      * @path /tasks/{taskId}
      */
     match /tasks/{taskId} {
-      // Allow read/list if the user is the assignee of the task.
-      allow get, list: if isSignedIn() && request.auth.uid == resource.data.assigneeId;
-      // Allow create if the user is the one who submitted the original request.
+      // Allow reading a single task if you are the assignee.
+      allow get: if isSignedIn() && request.auth.uid == resource.data.assigneeId;
+      // Allow any signed-in user to list all tasks for analytics purposes on the dashboard.
+      allow list: if isSignedIn();
+      // Allow creating a task if you are the owner of the parent request.
       allow create: if isSignedIn() && request.auth.uid == request.resource.data.requestOwnerId;
-      // Allow update if the user is the assignee.
+      // Allow updating a task if you are the assignee.
       allow update: if isSignedIn() && request.auth.uid == resource.data.assigneeId;
       // Disallow client-side deletes for now to maintain history.
       allow delete: if false;
