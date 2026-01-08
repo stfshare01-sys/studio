@@ -538,7 +538,7 @@ function RuleBuilderDialog({ fields, steps, onAddRule, onClose }: { fields: Form
                     <div className="grid grid-cols-2 gap-4">
                          <div className="space-y-2">
                             <Label>Tipo de Acción</Label>
-                            <Select value="REQUIRE_ADDITIONAL_STEP" disabled>
+                            <Select value="REQUIRE_ADDITIONAL_STEP">
                                 <SelectTrigger>
                                     <SelectValue/>
                                 </SelectTrigger>
