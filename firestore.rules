@@ -107,7 +107,9 @@ service cloud.firestore {
      * @path /users/{userId}/requests/{requestId}
      */
     match /users/{userId}/requests/{requestId} {
-      allow get, list, create, update, delete: if isOwner(userId);
+      // Collection group query for reports page
+      allow list: if isAdmin();
+      allow get, create, update, delete: if isOwner(userId);
 
       /**
        * @description Manages documents attached to a specific request. Access is inherited from the parent request's owner.
@@ -164,5 +166,3 @@ service cloud.firestore {
     }
   }
 }
-
-    

@@ -13,6 +13,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import RequestVolumeChart from "@/components/reports/request-volume-chart";
 import { UserPerformanceTable } from "@/components/reports/user-performance-table";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ShieldAlert } from "lucide-react";
 
 function ReportsSkeleton() {
     return (
@@ -43,8 +44,25 @@ function ReportsSkeleton() {
     )
 }
 
+function AccessDenied() {
+    return (
+        <div className="flex flex-1 items-center justify-center rounded-lg border border-dashed shadow-sm p-8">
+            <div className="flex flex-col items-center gap-2 text-center">
+                <ShieldAlert className="h-12 w-12 text-destructive" />
+                <h3 className="text-2xl font-bold tracking-tight">Acceso Denegado</h3>
+                <p className="text-sm text-muted-foreground max-w-md">
+                    No tienes permisos para ver esta página. Los informes de rendimiento solo están disponibles para los administradores.
+                </p>
+            </div>
+        </div>
+    )
+}
+
+
 export default function ReportsPage() {
     const { user, isUserLoading: isAuthLoading } = useUser();
+    const isAdmin = user?.role === 'Admin';
+
     const [dateRange, setDateRange] = useState<DateRange | undefined>({
         from: addDays(new Date(), -29),
         to: new Date(),
@@ -53,9 +71,10 @@ export default function ReportsPage() {
     const firestore = useFirestore();
 
     const requestsQuery = useMemoFirebase(() => {
-        if (!firestore || !user) return null;
+        // Only run this query if the user is an admin
+        if (!firestore || !isAdmin) return null;
         return query(collectionGroup(firestore, 'requests'));
-    }, [firestore, user]);
+    }, [firestore, isAdmin]);
 
     const tasksQuery = useMemoFirebase(() => {
         if (!firestore || !user) return null;
@@ -102,10 +121,12 @@ export default function ReportsPage() {
                         <h1 className="text-2xl font-bold tracking-tight">Informes de Rendimiento</h1>
                         <p className="text-muted-foreground">Analice las tendencias históricas del rendimiento de los procesos.</p>
                     </div>
-                    <DateRangePicker dateRange={dateRange} onDateChange={setDateRange} />
+                    {isAdmin && <DateRangePicker dateRange={dateRange} onDateChange={setDateRange} />}
                 </header>
                 <main className="flex flex-1 flex-col gap-8 p-4 pt-0 sm:p-6 sm:pt-0">
-                    {isLoading ? <ReportsSkeleton /> : (
+                    {isLoading && <ReportsSkeleton />}
+                    {!isLoading && !isAdmin && <AccessDenied />}
+                    {!isLoading && isAdmin && (
                         <>
                             <Card>
                                 <CardHeader>
