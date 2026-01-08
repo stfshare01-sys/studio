@@ -1,3 +1,5 @@
+export type UserRole = 'Admin' | 'Member';
+
 export type User = {
   id: string;
   fullName: string;
@@ -6,6 +8,7 @@ export type User = {
   department: string;
   skills?: string[];
   currentWorkload?: number;
+  role?: UserRole;
 };
 
 export type WorkflowStepData = {

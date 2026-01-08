@@ -161,6 +161,11 @@
         "currentWorkload": {
             "type": "number",
             "description": "A numeric value representing the user's current workload."
+        },
+        "role": {
+            "type": "string",
+            "description": "The role assigned to the user, controlling their permissions.",
+            "enum": ["Admin", "Member"]
         }
       },
       "required": [

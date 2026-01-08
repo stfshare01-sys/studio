@@ -17,7 +17,7 @@
  *
  * ## Key Security Decisions
  * - **Strict Ownership**: All data under `/users/{userId}` is accessible only to the authenticated user whose UID matches `{userId}`.
- * - **No User Enumeration**: Listing documents in the top-level `/users` collection is explicitly disallowed to protect user privacy.
+ * - **No User Enumeration (for non-admins)**: Listing documents in the top-level `/users` collection is disallowed for regular users to protect privacy. Admins are an exception.
  * - **Public Read-Only Templates**: Request templates are readable by anyone (including unauthenticated users) to allow for a flexible UI, but are not writable by clients to protect their integrity. Administrative writes would need to be handled by a trusted server environment.
  * - **Default Secure**: Any path not explicitly matched is inaccessible. All write operations require authentication and ownership verification.
  *
@@ -49,6 +49,10 @@ service cloud.firestore {
     function isOwner(userId) {
       return isSignedIn() && request.auth.uid == userId;
     }
+    
+    function isOwnerOrAdmin(userId) {
+      return isOwner(userId) || isAdmin();
+    }
 
     /**
      * Verifies ownership for an existing document. Used for update/delete
@@ -57,6 +61,15 @@ service cloud.firestore {
     function isExistingOwner(userId) {
       return isOwner(userId) && resource != null;
     }
+
+    /**
+     * Checks if the requesting user has the 'Admin' role.
+     * This requires a get() call to the user's own profile document.
+     */
+    function isAdmin() {
+      return isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'Admin';
+    }
+
 
     // -------------------------------------------------------------------------
     // Collection Rules
@@ -75,18 +88,20 @@ service cloud.firestore {
     }
 
     /**
-     * @description Manages user profiles. A user can create their own profile, and then read, update, or delete it. User enumeration is disallowed.
+     * @description Manages user profiles. A user can read/update their own profile. Admins can read all profiles and update any profile.
      * @path /users/{userId}
-     * @allow (create) A new user with auth.uid 'user_abc' creates their profile document at /users/user_abc.
-     * @deny (list) Any user attempts to list all documents in the /users collection.
-     * @principle Restricts access to a user's own data tree and prevents data leakage.
+     * @allow (get) An admin can read any user profile. A user can read their own profile.
+     * @allow (list) Only admins can list all users.
+     * @allow (create) A new user can create their own profile.
+     * @allow (update) An admin can update any user profile. A user can update their own profile.
+     * @principle Role-based access control for user data. Prevents data leakage.
      */
     match /users/{userId} {
-      allow get: if isOwner(userId);
-      allow list: if false;
+      allow get: if isOwnerOrAdmin(userId);
+      allow list: if isAdmin();
       allow create: if isOwner(userId) && request.resource.data.id == userId;
-      allow update: if isExistingOwner(userId) && request.resource.data.id == resource.data.id;
-      allow delete: if isExistingOwner(userId);
+      allow update: if isOwnerOrAdmin(userId);
+      allow delete: if isAdmin(); // Only admins can delete users
     }
 
     /**

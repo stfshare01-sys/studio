@@ -21,6 +21,7 @@ import {
   FilePlus,
   LayoutDashboard,
   LogOut,
+  Users,
 } from "lucide-react";
 import { Logo } from "@/components/icons";
 import { Button } from "./ui/button";
@@ -34,6 +35,10 @@ const navItems = [
   { href: "/requests/new", icon: FilePlus, label: "Nueva Solicitud"},
 ];
 
+const adminNavItems = [
+    { href: "/admin/users", icon: Users, label: "Usuarios" },
+];
+
 export default function SiteLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const auth = useAuth();
@@ -41,8 +46,6 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
   const router = useRouter();
 
   useEffect(() => {
-    // Si la autenticación ha terminado de cargar y no hay usuario,
-    // redirigir a la página de login.
     if (!isUserLoading && !user) {
       router.replace('/login');
     }
@@ -52,15 +55,13 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
   const handleSignOut = async () => {
     if (auth) {
         await signOut(auth);
-        // La redirección se maneja en el efecto anterior.
+        router.replace('/login');
     }
   };
+  
+  const displayName = user?.displayName || user?.email || 'Usuario';
+  const displayEmail = user?.email || '';
 
-  const displayName = user?.isAnonymous ? 'Usuario Anónimo' : (user?.displayName || user?.email || 'Usuario');
-  const displayEmail = user?.isAnonymous ? 'Sesión de invitado' : (user?.email || '');
-
-  // No renderizar el layout si estamos en proceso de carga o si no hay usuario
-  // para evitar un parpadeo de la UI protegida.
   if (isUserLoading || !user) {
     return (
       <div className="flex h-screen w-full items-center justify-center">
@@ -95,6 +96,20 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
+            ))}
+            {adminNavItems.map((item) => (
+                <SidebarMenuItem key={item.href}>
+                    <SidebarMenuButton
+                    asChild
+                    isActive={pathname.startsWith(item.href)}
+                    className="w-full"
+                    >
+                    <Link href={item.href}>
+                        <item.icon className="size-4" />
+                        <span>{item.label}</span>
+                    </Link>
+                    </SidebarMenuButton>
+                </SidebarMenuItem>
             ))}
           </SidebarMenu>
         </SidebarContent>
