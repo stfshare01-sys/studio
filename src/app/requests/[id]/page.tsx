@@ -4,9 +4,9 @@
 import SiteLayout from "@/components/site-layout";
 import { notFound, useParams } from "next/navigation";
 import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from "@/firebase";
-import { doc, collection, query } from "firebase/firestore";
-import type { Request as RequestType, EnrichedRequest, User, EnrichedWorkflowStep, Template } from "@/lib/types";
-import { ArrowLeft, User as UserIcon, Paperclip } from "lucide-react";
+import { doc, collection, query, serverTimestamp, orderBy } from "firebase/firestore";
+import type { Request as RequestType, EnrichedRequest, User, EnrichedWorkflowStep, Template, Comment as CommentType, EnrichedComment } from "@/lib/types";
+import { ArrowLeft, User as UserIcon, Paperclip, Send } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,6 +18,10 @@ import { Badge } from "@/components/ui/badge";
 import { useEffect, useState } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ProcessDiscoveryChart } from "@/components/requests/process-discovery-chart";
+import { Textarea } from "@/components/ui/textarea";
+import { addDocumentNonBlocking } from "@/firebase/non-blocking-updates";
+import { formatDistanceToNow } from "date-fns";
+import { es } from "date-fns/locale";
 
 function SubmittedBy({ userId }: { userId: string }) {
     const firestore = useFirestore();
@@ -41,6 +45,39 @@ function SubmittedBy({ userId }: { userId: string }) {
             <span>{user.fullName}</span>
         </div>
     );
+}
+
+function CommentList({ comments, users }: { comments: CommentType[], users: User[] }) {
+    const enrichedComments: EnrichedComment[] = comments.map(comment => ({
+        ...comment,
+        author: users.find(u => u.id === comment.authorId)
+    }));
+
+    if (enrichedComments.length === 0) {
+        return <p className="text-sm text-muted-foreground text-center py-4">No hay comentarios todavía.</p>
+    }
+
+    return (
+        <ul className="space-y-4">
+            {enrichedComments.map(comment => (
+                <li key={comment.id} className="flex items-start gap-3">
+                    <Avatar className="h-8 w-8">
+                        <AvatarImage src={comment.author?.avatarUrl} />
+                        <AvatarFallback>{comment.author?.fullName.charAt(0) || '?'}</AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1">
+                        <div className="flex items-baseline gap-2">
+                            <span className="font-semibold text-sm">{comment.author?.fullName || 'Usuario Desconocido'}</span>
+                            <span className="text-xs text-muted-foreground">
+                                {formatDistanceToNow(new Date(comment.createdAt), { addSuffix: true, locale: es })}
+                            </span>
+                        </div>
+                        <p className="text-sm text-foreground">{comment.text}</p>
+                    </div>
+                </li>
+            ))}
+        </ul>
+    )
 }
 
 function RequestDetailSkeleton() {
@@ -92,15 +129,21 @@ export default function RequestDetailPage() {
   const { user, isUserLoading } = useUser();
   const firestore = useFirestore();
 
-  // A request can be found via its owner's subcollection.
-  // This hook assumes the current user is the owner.
-  // For assigned users to view, we'd need a different path or query.
+  const [newComment, setNewComment] = useState("");
+
   const requestRef = useMemoFirebase(() => {
     if (!firestore || !user?.uid) return null;
     return doc(firestore, 'users', user.uid, 'requests', id);
   }, [firestore, user?.uid, id]);
 
   const { data: request, isLoading: isRequestLoading } = useDoc<RequestType>(requestRef);
+
+  const commentsQuery = useMemoFirebase(() => {
+    if (!requestRef) return null;
+    return query(collection(requestRef, 'comments'), orderBy('createdAt', 'desc'));
+  }, [requestRef]);
+
+  const { data: comments, isLoading: areCommentsLoading } = useCollection<CommentType>(commentsQuery);
 
   const templateRef = useMemoFirebase(() => {
       if (!firestore || !request?.templateId) return null;
@@ -111,8 +154,6 @@ export default function RequestDetailPage() {
 
   const usersQuery = useMemoFirebase(() => {
       if(!firestore) return null;
-      // This is not ideal, but for now we fetch all users to enrich the data.
-      // In a real app with many users, this should be optimized.
       return query(collection(firestore, 'users'));
   }, [firestore]);
 
@@ -135,6 +176,19 @@ export default function RequestDetailPage() {
         setEnrichedRequest({ ...request, template, submittedBy: submittedByUser, steps: enrichedSteps });
     }
   }, [request, users, template]);
+
+  const handleAddComment = () => {
+    if (!newComment.trim() || !user || !requestRef) return;
+    const commentsCollection = collection(requestRef, 'comments');
+    const commentData = {
+        requestId: requestRef.id,
+        authorId: user.uid,
+        text: newComment.trim(),
+        createdAt: new Date().toISOString(),
+    };
+    addDocumentNonBlocking(commentsCollection, commentData);
+    setNewComment("");
+  };
 
 
   if (isUserLoading || isRequestLoading || areUsersLoading || isTemplateLoading) {
@@ -205,6 +259,34 @@ export default function RequestDetailPage() {
                         <ProcessDiscoveryChart request={enrichedRequest} />
                     </CardContent>
                 </Card>
+
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Comentarios</CardTitle>
+                        <CardDescription>Discuta la solicitud con otros miembros del equipo.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                       {areCommentsLoading ? <Skeleton className="h-20 w-full" /> : <CommentList comments={comments || []} users={users || []} />}
+                        <div className="flex items-start gap-3 pt-4 border-t">
+                             <Avatar className="h-8 w-8">
+                                <AvatarImage src={user?.avatarUrl} />
+                                <AvatarFallback>{user?.fullName?.charAt(0) || 'U'}</AvatarFallback>
+                            </Avatar>
+                            <div className="flex-1 space-y-2">
+                                <Textarea 
+                                    placeholder="Escribe un comentario..." 
+                                    value={newComment}
+                                    onChange={(e) => setNewComment(e.target.value)}
+                                    rows={2}
+                                />
+                                <Button onClick={handleAddComment} size="sm" disabled={!newComment.trim()}>
+                                    <Send className="mr-2 h-4 w-4" />
+                                    Enviar
+                                </Button>
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
             </div>
             
             <div className="space-y-8">
@@ -258,3 +340,5 @@ export default function RequestDetailPage() {
     </SiteLayout>
   );
 }
+
+    

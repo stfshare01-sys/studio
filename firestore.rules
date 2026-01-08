@@ -115,6 +115,16 @@ service cloud.firestore {
         allow update: if isExistingOwner(userId) && request.resource.data.requestId == resource.data.requestId;
         allow delete: if isExistingOwner(userId);
       }
+
+      /**
+       * @description Manages comments on a specific request. Access is inherited from the parent request's owner.
+       * @path /users/{userId}/requests/{requestId}/comments/{commentId}
+       */
+      match /comments/{commentId} {
+        allow get, list: if isOwner(userId);
+        allow create: if isOwner(userId) && request.resource.data.authorId == userId;
+        allow update, delete: if isOwner(userId) && request.resource.data.authorId == resource.data.authorId;
+      }
     }
 
     /**
@@ -140,3 +150,5 @@ service cloud.firestore {
     }
   }
 }
+
+    

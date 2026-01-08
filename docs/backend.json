@@ -223,6 +223,36 @@
         "size",
         "uploadDate"
       ]
+    },
+    "Comment": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "title": "Comment",
+        "type": "object",
+        "description": "Represents a comment made on a request.",
+        "properties": {
+            "id": {
+                "type": "string",
+                "description": "Unique identifier for the Comment."
+            },
+            "requestId": {
+                "type": "string",
+                "description": "Reference to the Request this comment belongs to."
+            },
+            "authorId": {
+                "type": "string",
+                "description": "The ID of the user who wrote the comment."
+            },
+            "text": {
+                "type": "string",
+                "description": "The content of the comment."
+            },
+            "createdAt": {
+                "type": "string",
+                "description": "Timestamp when the comment was posted.",
+                "format": "date-time"
+            }
+        },
+        "required": ["id", "requestId", "authorId", "text", "createdAt"]
     }
   },
   "auth": {
@@ -318,8 +348,23 @@
             }
           ]
         }
+      },
+      {
+          "path": "/users/{userId}/requests/{requestId}/comments/{commentId}",
+          "definition": {
+              "entityName": "Comment",
+              "schema": { "$ref": "#/backend/entities/Comment" },
+              "description": "Stores comments for a specific request. Access is inherited from the parent request.",
+              "params": [
+                  { "name": "userId", "description": "The owner of the request." },
+                  { "name": "requestId", "description": "The ID of the request being commented on." },
+                  { "name": "commentId", "description": "The unique ID of the comment." }
+              ]
+          }
       }
     ],
     "reasoning": "The Firestore structure is designed to manage request workflows, templates, requests, steps, users, and documents, focusing on security, scalability, and debuggability. A key change is the introduction of a top-level `/tasks` collection. This denormalizes workflow steps into a centralized, flat list of actionable tasks, which is critical for efficient querying. For example, fetching all tasks assigned to a specific user (`where('assigneeId', '==', userId)`) is now a simple, scalable query on a single collection. This avoids costly and complex collection group queries. Each task document contains denormalized data from its parent request (like `requestTitle` and `requestOwnerId`) to provide sufficient context for display in a user's task list without requiring additional lookups. The original request documents under `/users/{userId}/requests/{requestId}` still maintain a record of their steps, but now include a `taskId` to link back to the primary task document in the `/tasks` collection. This hybrid approach provides both a query-efficient task management system and a clear, hierarchical record of the entire request process."
   }
 }
+
+    

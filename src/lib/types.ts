@@ -97,6 +97,14 @@ export type Document = {
     url: string;
 };
 
+export type Comment = {
+    id: string;
+    requestId: string;
+    authorId: string;
+    text: string;
+    createdAt: string;
+};
+
 
 // Enriched types for UI
 export type EnrichedWorkflowStep = Omit<Request['steps'][0], 'assigneeId'> & {
@@ -108,8 +116,14 @@ export type EnrichedRequest = Omit<Request, 'submittedBy' | 'steps'> & {
   steps: EnrichedWorkflowStep[];
 };
 
+export type EnrichedComment = Omit<Comment, 'authorId'> & {
+    author?: User;
+};
+
 // Analytics types
 export type TaskDuration = {
   name: string;
   duration: number;
 };
+
+    
