@@ -71,20 +71,20 @@ export default function ReportsPage() {
     const firestore = useFirestore();
 
     const requestsQuery = useMemoFirebase(() => {
-        // Only run this query if the user is an admin
-        if (!firestore || !isAdmin) return null;
+        // This is the critical guard. Do not construct the query until auth is loaded and we know the user is an admin.
+        if (isAuthLoading || !isAdmin || !firestore) return null;
         return query(collectionGroup(firestore, 'requests'));
-    }, [firestore, isAdmin]);
+    }, [firestore, isAdmin, isAuthLoading]);
 
     const tasksQuery = useMemoFirebase(() => {
-        if (!firestore || !user) return null;
+        if (!firestore) return null;
         return query(collection(firestore, 'tasks'));
-    }, [firestore, user]);
+    }, [firestore]);
 
     const usersQuery = useMemoFirebase(() => {
-        if (!firestore || !user) return null;
+        if (!firestore) return null;
         return query(collection(firestore, 'users'));
-    }, [firestore, user]);
+    }, [firestore]);
 
     const { data: requests, isLoading: isLoadingRequests } = useCollection<RequestType>(requestsQuery);
     const { data: tasks, isLoading: isLoadingTasks } = useCollection<Task>(tasksQuery);
