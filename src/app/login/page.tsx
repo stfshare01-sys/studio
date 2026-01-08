@@ -67,7 +67,9 @@ export default function LoginPage() {
         };
         
         const userDocRef = doc(firestore, 'users', newUser.uid);
-        // This is now a BLOCKING call to prevent race conditions.
+        // Wait for the user profile to be created before proceeding
+        // This prevents race conditions where the app tries to check permissions
+        // before the user document exists in Firestore
         await setDoc(userDocRef, userProfile, { merge: true });
 
         // onAuthStateChanged will handle redirection after profile creation is confirmed.
