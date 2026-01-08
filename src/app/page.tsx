@@ -65,9 +65,9 @@ export default function DashboardPage() {
   const { data: tasks, isLoading: isLoadingTasks } = useCollection<Task>(tasksQuery);
   const { data: allTasks, isLoading: isLoadingAllTasks } = useCollection<Task>(
     useMemoFirebase(() => {
-        if (!firestore) return null;
+        if (!firestore || !user) return null; // Added !user check for robustness
         return query(collection(firestore, 'tasks'));
-    }, [firestore])
+    }, [firestore, user])
   );
 
 
@@ -75,7 +75,12 @@ export default function DashboardPage() {
     if (!myRequests) return { inProgress: 0, avgCycleTime: 0 };
     const completedRequests = myRequests.filter(r => r.status === 'Completed' && r.completedAt && r.createdAt);
     const totalCycleTime = completedRequests.reduce((acc, curr) => {
-        return acc + differenceInHours(new Date(curr.completedAt!), new Date(curr.createdAt));
+        const completedAt = curr.completedAt ? new Date(curr.completedAt) : null;
+        const createdAt = new Date(curr.createdAt);
+        if (completedAt) {
+            return acc + differenceInHours(completedAt, createdAt);
+        }
+        return acc;
     }, 0);
 
     return {
