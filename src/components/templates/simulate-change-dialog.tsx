@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState } from 'react';
@@ -82,7 +83,7 @@ export function SimulateChangeDialog({ template, isOpen, onOpenChange }: Simulat
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-[650px]">
+      <DialogContent className="sm:max-w-lg md:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Simulación de Procesos "What-If"</DialogTitle>
           <DialogDescription>
@@ -113,21 +114,21 @@ export function SimulateChangeDialog({ template, isOpen, onOpenChange }: Simulat
         )}
 
         {simulationResult && (
-            <div className="py-4 space-y-6">
+            <div className="py-4 grid gap-4 md:gap-6">
                 <Card>
                     <CardHeader>
                         <CardTitle className="text-lg">Resumen del Análisis de Impacto</CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-4">
                          <div className="flex items-start gap-4">
-                            <TrendingUp className="h-5 w-5 mt-1 text-primary" />
+                            <TrendingUp className="h-5 w-5 mt-1 text-primary flex-shrink-0" />
                             <div>
                                 <h4 className="font-semibold">Tiempo de Ciclo</h4>
                                 <p className="text-muted-foreground">{simulationResult.predictedImpact.cycleTimeChange}</p>
                             </div>
                          </div>
                          <div className="flex items-start gap-4">
-                            <AlertTriangle className="h-5 w-5 mt-1 text-amber-500" />
+                            <AlertTriangle className="h-5 w-5 mt-1 text-amber-500 flex-shrink-0" />
                             <div>
                                 <h4 className="font-semibold">Análisis de Cuellos de Botella</h4>
                                 <p className="text-muted-foreground">{simulationResult.predictedImpact.bottleneckAnalysis}</p>
@@ -150,16 +151,16 @@ export function SimulateChangeDialog({ template, isOpen, onOpenChange }: Simulat
         )}
 
 
-        <DialogFooter>
-          <Button variant="ghost" onClick={handleClose}>Cerrar</Button>
+        <DialogFooter className="flex-col-reverse sm:flex-row gap-2 sm:gap-0">
+          <Button variant="ghost" onClick={handleClose} className="w-full sm:w-auto">Cerrar</Button>
           {!simulationResult && (
-            <Button onClick={handleSimulate} disabled={isLoading || !proposedChange}>
+            <Button onClick={handleSimulate} disabled={isLoading || !proposedChange} className="w-full sm:w-auto">
                 {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
                 Ejecutar Simulación
             </Button>
           )}
            {simulationResult && (
-            <Button onClick={() => setSimulationResult(null)}>
+            <Button onClick={() => setSimulationResult(null)} className="w-full sm:w-auto">
                 Nueva Simulación
             </Button>
            )}

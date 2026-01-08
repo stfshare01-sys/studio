@@ -22,7 +22,7 @@ export function TasksTable({ tasks }: { tasks: Task[] }) {
           <TableRow>
             <TableHead>Tarea</TableHead>
             <TableHead className="hidden sm:table-cell">Solicitud Relacionada</TableHead>
-            <TableHead className="text-right">Creado</TableHead>
+            <TableHead className="hidden text-right sm:table-cell">Creado</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -35,14 +35,14 @@ export function TasksTable({ tasks }: { tasks: Task[] }) {
                 >
                   {task.name}
                 </Link>
-                <div className="text-sm text-muted-foreground md:hidden">
+                <div className="text-sm text-muted-foreground md:hidden mt-1">
                    {task.requestTitle}
                 </div>
               </TableCell>
               <TableCell className="hidden sm:table-cell">
                 {task.requestTitle}
               </TableCell>
-              <TableCell className="text-right text-muted-foreground">
+              <TableCell className="hidden text-right text-muted-foreground sm:table-cell">
                 {formatDistanceToNow(new Date(task.createdAt), {
                   addSuffix: true,
                   locale: es,

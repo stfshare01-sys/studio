@@ -59,7 +59,7 @@ export function RequestsTable({ requests }: { requests: Request[] }) {
             <TableHead>Solicitud</TableHead>
             <TableHead className="hidden sm:table-cell">Enviado por</TableHead>
             <TableHead className="hidden md:table-cell">Estado</TableHead>
-            <TableHead className="text-right">Última Actualización</TableHead>
+            <TableHead className="hidden text-right sm:table-cell">Última Actualización</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -72,8 +72,19 @@ export function RequestsTable({ requests }: { requests: Request[] }) {
                 >
                   {request.title}
                 </Link>
-                <div className="text-sm text-muted-foreground md:hidden">
-                   {request.status === 'In Progress' ? 'En Progreso' : request.status === 'Completed' ? 'Completado' : 'Rechazado'}
+                <div className="text-sm text-muted-foreground md:hidden mt-1">
+                   <Badge
+                    variant={
+                        request.status === "Completed"
+                        ? "default"
+                        : request.status === "Rejected"
+                        ? "destructive"
+                        : "secondary"
+                    }
+                    className={request.status === 'Completed' ? 'bg-green-600 text-white' : ''}
+                    >
+                    {request.status === 'In Progress' ? 'En Progreso' : request.status === 'Completed' ? 'Completado' : 'Rechazado'}
+                    </Badge>
                 </div>
               </TableCell>
               <TableCell className="hidden sm:table-cell">
@@ -93,7 +104,7 @@ export function RequestsTable({ requests }: { requests: Request[] }) {
                   {request.status === 'In Progress' ? 'En Progreso' : request.status === 'Completed' ? 'Completado' : 'Rechazado'}
                 </Badge>
               </TableCell>
-              <TableCell className="text-right text-muted-foreground">
+              <TableCell className="hidden text-right text-muted-foreground sm:table-cell">
                 {formatDistanceToNow(new Date(request.updatedAt), {
                   addSuffix: true,
                   locale: es,
