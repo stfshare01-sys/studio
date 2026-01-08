@@ -87,6 +87,16 @@ export type Template = {
   rules: Rule[];
 };
 
+export type Document = {
+    id: string;
+    requestId: string;
+    filename: string;
+    contentType: string;
+    size: number;
+    uploadDate: string;
+    url: string;
+};
+
 
 // Enriched types for UI
 export type EnrichedWorkflowStep = Omit<Request['steps'][0], 'assigneeId'> & {
