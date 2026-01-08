@@ -122,7 +122,7 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
         <SidebarFooter className="p-4 border-t space-y-2">
           <div className="flex items-center gap-3">
             <Avatar className="h-9 w-9">
-              {user?.photoURL && <AvatarImage src={user.photoURL} alt={displayName} />}
+              {user?.avatarUrl && <AvatarImage src={user.avatarUrl} alt={displayName} />}
               <AvatarFallback>{displayName.charAt(0)}</AvatarFallback>
             </Avatar>
             <div className="flex flex-col text-sm truncate">
