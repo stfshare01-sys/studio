@@ -5,12 +5,14 @@
 import SiteLayout from "@/components/site-layout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { FilePlus, FolderKanban } from "lucide-react";
+import { FilePlus, FolderKanban, WandSparkles } from "lucide-react";
 import Link from "next/link";
 import { useCollection, useFirestore, useMemoFirebase } from "@/firebase";
 import { collection } from "firebase/firestore";
 import type { Template } from "@/lib/types";
 import { Skeleton } from "@/components/ui/skeleton";
+import { SimulateChangeDialog } from "@/components/templates/simulate-change-dialog";
+import React from "react";
 
 function TemplateSkeleton() {
   return (
@@ -42,11 +44,16 @@ export default function TemplatesPage() {
   }, [firestore]);
   const { data: templates, isLoading } = useCollection<Template>(templatesRef);
 
+  const [simulationTemplate, setSimulationTemplate] = React.useState<Template | null>(null);
+
   return (
     <SiteLayout>
         <div className="flex flex-1 flex-col">
         <header className="flex items-center justify-between p-4 sm:p-6">
-            <h1 className="text-2xl font-bold tracking-tight">Plantillas</h1>
+            <div>
+                <h1 className="text-2xl font-bold tracking-tight">Plantillas de Flujo de Trabajo</h1>
+                <p className="text-muted-foreground">Construya, gestione y simule los planos de sus procesos.</p>
+            </div>
             <Button asChild>
                 <Link href="/templates/new">
                     <FilePlus className="mr-2 h-4 w-4" />
@@ -58,7 +65,7 @@ export default function TemplatesPage() {
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {isLoading && Array.from({ length: 3 }).map((_, i) => <TemplateSkeleton key={i} />)}
             {templates?.map((template) => (
-                <Card key={template.id}>
+                <Card key={template.id} className="flex flex-col">
                 <CardHeader>
                     <div className="flex items-start gap-4">
                     <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
@@ -70,14 +77,18 @@ export default function TemplatesPage() {
                     </div>
                     </div>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="flex-grow">
                     <div className="text-sm font-medium">
                     {template.fields.length} campos, {template.steps.length} pasos
                     </div>
                 </CardContent>
-                <CardFooter>
+                <CardFooter className="flex flex-col sm:flex-row gap-2">
                     <Button asChild className="w-full">
-                    <Link href={`/requests/new?templateId=${template.id}`}>Usar Plantilla</Link>
+                        <Link href={`/requests/new?templateId=${template.id}`}>Usar Plantilla</Link>
+                    </Button>
+                    <Button variant="outline" className="w-full" onClick={() => setSimulationTemplate(template)}>
+                        <WandSparkles className="mr-2 h-4 w-4" />
+                        Simular
                     </Button>
                 </CardFooter>
                 </Card>
@@ -99,6 +110,18 @@ export default function TemplatesPage() {
             )}
         </main>
         </div>
+
+        {simulationTemplate && (
+            <SimulateChangeDialog
+                template={simulationTemplate}
+                isOpen={!!simulationTemplate}
+                onOpenChange={(open) => {
+                    if (!open) {
+                        setSimulationTemplate(null);
+                    }
+                }}
+            />
+        )}
     </SiteLayout>
   );
 }
