@@ -125,5 +125,3 @@ export type TaskDuration = {
   name: string;
   duration: number;
 };
-
-    

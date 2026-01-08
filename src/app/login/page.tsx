@@ -63,7 +63,7 @@ export default function LoginPage() {
           fullName,
           email,
           department,
-          role: 'Member', // Default role
+          role: 'Member', // Default role for new users
         };
         
         const userDocRef = doc(firestore, 'users', newUser.uid);

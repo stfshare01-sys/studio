@@ -65,6 +65,7 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
   
   const displayName = user?.fullName || user?.email || 'Usuario';
   const displayEmail = user?.email || '';
+  const isAdmin = user?.role === 'Admin';
 
   if (isUserLoading || !user) {
     return (
@@ -101,7 +102,7 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
                 </SidebarMenuButton>
               </SidebarMenuItem>
             ))}
-            {adminNavItems.map((item) => (
+            {isAdmin && adminNavItems.map((item) => (
                 <SidebarMenuItem key={item.href}>
                     <SidebarMenuButton
                     asChild

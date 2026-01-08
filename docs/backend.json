@@ -180,7 +180,8 @@
         "id",
         "email",
         "fullName",
-        "department"
+        "department",
+        "role"
       ]
     },
     "Document": {
@@ -366,5 +367,3 @@
     "reasoning": "The Firestore structure is designed to manage request workflows, templates, requests, steps, users, and documents, focusing on security, scalability, and debuggability. A key change is the introduction of a top-level `/tasks` collection. This denormalizes workflow steps into a centralized, flat list of actionable tasks, which is critical for efficient querying. For example, fetching all tasks assigned to a specific user (`where('assigneeId', '==', userId)`) is now a simple, scalable query on a single collection. This avoids costly and complex collection group queries. Each task document contains denormalized data from its parent request (like `requestTitle` and `requestOwnerId`) to provide sufficient context for display in a user's task list without requiring additional lookups. The original request documents under `/users/{userId}/requests/{requestId}` still maintain a record of their steps, but now include a `taskId` to link back to the primary task document in the `/tasks` collection. This hybrid approach provides both a query-efficient task management system and a clear, hierarchical record of the entire request process."
   }
 }
-
-    

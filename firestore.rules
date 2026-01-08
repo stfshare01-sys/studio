@@ -69,6 +69,9 @@ service cloud.firestore {
      * This requires a get() call to the user's own profile document.
      */
     function isAdmin() {
+      // Check if the user is signed in and their role in the /users collection is 'Admin'.
+      // This is a potentially expensive operation as it performs a document read.
+      // Use this function judiciously in your rules.
       return isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'Admin';
     }
 
@@ -83,7 +86,8 @@ service cloud.firestore {
      */
     match /request_templates/{requestTemplateId} {
       allow get, list: if true;
-      allow write: if isSignedIn();
+      // Admins should be able to create/update templates in the future
+      allow write: if isAdmin();
     }
 
     /**
@@ -99,7 +103,7 @@ service cloud.firestore {
     }
 
      /**
-     * @description Manages user-submitted requests. Only the owner can perform any action on their requests.
+     * @description Manages user-submitted requests. Only the owner can perform any action on their requests. Admins can view all requests.
      * @path /users/{userId}/requests/{requestId}
      */
     match /users/{userId}/requests/{requestId} {
@@ -121,7 +125,9 @@ service cloud.firestore {
        * @path /users/{userId}/requests/{requestId}/comments/{commentId}
        */
       match /comments/{commentId} {
-        allow get, list: if isOwner(userId);
+        // Any user involved in the request should be able to read/write comments.
+        // For simplicity, we'll stick to owner-only for now.
+        allow get, list: if isOwner(userId) || isAdmin();
         allow create: if isOwner(userId) && request.resource.data.authorId == userId;
         allow update, delete: if isOwner(userId) && request.resource.data.authorId == resource.data.authorId;
       }
@@ -132,23 +138,16 @@ service cloud.firestore {
      * @path /tasks/{taskId}
      */
     match /tasks/{taskId} {
-      // Allow reading a single task if you are the assignee.
-      allow get: if isSignedIn() && request.auth.uid == resource.data.assigneeId;
+      // Allow reading a single task if you are the assignee. Admins can read any task.
+      allow get: if isSignedIn() && (request.auth.uid == resource.data.assigneeId || isAdmin());
       // Allow any signed-in user to list all tasks for analytics purposes on the dashboard.
       allow list: if isSignedIn();
       // Allow creating a task if you are the owner of the parent request.
       allow create: if isSignedIn() && request.auth.uid == request.resource.data.requestOwnerId;
       // Allow updating a task if you are the assignee.
-      allow update: if isSignedIn() && request.auth.uid == resource.data.assigneeId;
-      // Disallow client-side deletes for now to maintain history.
-      allow delete: if false;
-    }
-
-    // Rules for Collection Group Queries
-    match /{path=**}/requests/{requestId} {
-      allow list: if isAdmin();
+      allow update: if isSignedIn() && (request.auth.uid == resource.data.assigneeId || isAdmin());
+      // Disallow client-side deletes for now to maintain history. Admins are an exception.
+      allow delete: if isAdmin();
     }
   }
 }
-
-    
