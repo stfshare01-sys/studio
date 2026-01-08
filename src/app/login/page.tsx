@@ -72,7 +72,7 @@ export default function LoginPage() {
         // before the user document exists in Firestore
         await setDoc(userDocRef, userProfile, { merge: true });
 
-        // onAuthStateChanged will handle redirection
+        // onAuthStateChanged will handle redirection after profile creation is confirmed.
       }
     } catch (error) {
       if (error instanceof FirebaseError) {
