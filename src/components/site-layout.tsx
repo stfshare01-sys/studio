@@ -23,6 +23,7 @@ import {
   LogOut,
   Users,
   BarChart3,
+  Plug,
 } from "lucide-react";
 import { Logo } from "@/components/icons";
 import { Button } from "./ui/button";
@@ -35,6 +36,7 @@ const navItems = [
   { href: "/reports", icon: BarChart3, label: "Informes" },
   { href: "/templates", icon: FolderKanban, label: "Plantillas" },
   { href: "/requests/new", icon: FilePlus, label: "Nueva Solicitud"},
+  { href: "/integrations", icon: Plug, label: "Integraciones" },
 ];
 
 const adminNavItems = [
