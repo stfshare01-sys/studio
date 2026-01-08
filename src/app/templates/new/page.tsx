@@ -100,16 +100,16 @@ export default function NewTemplatePage() {
       return;
     }
 
-    const { source, destination } = result;
+    const { source, destination, droppableId } = result;
 
-    if (source.droppableId === 'fields-droppable') {
+    if (droppableId === 'fields-droppable') {
         const items = reorder(
             fields,
             source.index,
             destination.index
         );
         setFields(items as FormField[]);
-    } else if (source.droppableId === 'steps-droppable') {
+    } else if (droppableId === 'steps-droppable') {
         const items = reorder(
             steps,
             source.index,
@@ -224,16 +224,16 @@ export default function NewTemplatePage() {
             <Card>
                 <CardHeader>
                 <CardTitle>Campos del Formulario</CardTitle>
+                <CardDescription>
+                    Defina y ordene los datos que se recopilarán para esta plantilla.
+                </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                <p className="text-sm text-muted-foreground">
-                    Defina los datos que se recopilarán para esta plantilla.
-                </p>
                 <Droppable droppableId="fields-droppable">
                     {(provided) => (
                         <div {...provided.droppableProps} ref={provided.innerRef} className="space-y-2 rounded-md border p-4 min-h-[120px]">
                         {fields.length === 0 && (
-                            <p className="text-center text-sm text-muted-foreground py-4">No hay campos definidos.</p>
+                            <p className="text-center text-sm text-muted-foreground py-4">Arrastra y suelta los campos aquí.</p>
                         )}
                         {fields.map((field, index) => (
                             <Draggable key={field.id} draggableId={field.id} index={index}>
@@ -314,16 +314,16 @@ export default function NewTemplatePage() {
             <Card>
                 <CardHeader>
                 <CardTitle>Pasos del Flujo de Trabajo</CardTitle>
+                <CardDescription>
+                    Defina y ordene las etapas de aprobación para este flujo de trabajo.
+                </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                <p className="text-sm text-muted-foreground">
-                    Defina las etapas de aprobación para este flujo de trabajo.
-                </p>
                     <Droppable droppableId="steps-droppable">
                         {(provided) => (
                             <div {...provided.droppableProps} ref={provided.innerRef} className="space-y-2 rounded-md border p-4 min-h-[120px]">
                             {steps.length === 0 && (
-                            <p className="text-center text-sm text-muted-foreground py-4">No hay pasos definidos.</p>
+                            <p className="text-center text-sm text-muted-foreground py-4">Arrastra y suelta los pasos aquí.</p>
                             )}
                             {steps.map((step, index) => (
                                 <Draggable key={step.id} draggableId={step.id} index={index}>
@@ -538,7 +538,7 @@ function RuleBuilderDialog({ fields, steps, onAddRule, onClose }: { fields: Form
                     <div className="grid grid-cols-2 gap-4">
                          <div className="space-y-2">
                             <Label>Tipo de Acción</Label>
-                            <Select value="REQUIRE_ADDITIONAL_STEP">
+                            <Select value="REQUIRE_ADDITIONAL_STEP" >
                                 <SelectTrigger>
                                     <SelectValue/>
                                 </SelectTrigger>
@@ -572,3 +572,5 @@ function RuleBuilderDialog({ fields, steps, onAddRule, onClose }: { fields: Form
         </DialogContent>
     )
 }
+
+    
