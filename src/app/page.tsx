@@ -1,3 +1,4 @@
+
 'use client';
 
 import SiteLayout from "@/components/site-layout";
@@ -44,11 +45,17 @@ export default function DashboardPage() {
   const { user } = useUser();
   const firestore = useFirestore();
 
-  // Query for ALL requests submitted by the user to calculate stats
+  // Query for ALL requests to calculate stats
+  // NOTE: In a real multi-tenant app, this would need to be secured.
+  // For this prototype, we assume we can read all requests for global stats.
+  // A better approach would be a separate 'metrics' collection updated by cloud functions.
   const allRequestsQuery = useMemoFirebase(() => {
-    if (!firestore || !user) return null;
-    return query(collection(firestore, 'users', user.uid, 'requests'));
-  }, [firestore, user]);
+    if (!firestore) return null;
+    // This is a placeholder. A real implementation would query a global collection
+    // or use CollectionGroup, which requires index configuration.
+    // For now, we are limited to the user's own requests.
+    return query(collection(firestore, 'users', user?.uid || '---', 'requests'));
+  }, [firestore, user?.uid]);
 
   // Query for tasks assigned TO the current user that are active
   const tasksQuery = useMemoFirebase(() => {
@@ -72,7 +79,7 @@ export default function DashboardPage() {
 
   const stats = React.useMemo(() => {
     if (!allRequests) return { inProgress: 0, avgCycleTime: 0 };
-    const completedRequests = allRequests.filter(r => r.status === 'Completed' && r.completedAt);
+    const completedRequests = allRequests.filter(r => r.status === 'Completed' && r.completedAt && r.createdAt);
     const totalCycleTime = completedRequests.reduce((acc, curr) => {
         return acc + differenceInHours(new Date(curr.completedAt!), new Date(curr.createdAt));
     }, 0);

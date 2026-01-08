@@ -22,6 +22,7 @@ import {
   LayoutDashboard,
   LogOut,
   Users,
+  BarChart3,
 } from "lucide-react";
 import { Logo } from "@/components/icons";
 import { Button } from "./ui/button";
@@ -31,6 +32,7 @@ import { useEffect } from "react";
 
 const navItems = [
   { href: "/", icon: LayoutDashboard, label: "Panel" },
+  { href: "/reports", icon: BarChart3, label: "Informes" },
   { href: "/templates", icon: FolderKanban, label: "Plantillas" },
   { href: "/requests/new", icon: FilePlus, label: "Nueva Solicitud"},
 ];
@@ -59,7 +61,7 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
     }
   };
   
-  const displayName = user?.displayName || user?.email || 'Usuario';
+  const displayName = user?.fullName || user?.email || 'Usuario';
   const displayEmail = user?.email || '';
 
   if (isUserLoading || !user) {

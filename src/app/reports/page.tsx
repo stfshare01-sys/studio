@@ -1,0 +1,134 @@
+
+"use client";
+
+import SiteLayout from "@/components/site-layout";
+import { useCollection, useFirestore, useMemoFirebase } from "@/firebase";
+import { collection, query } from "firebase/firestore";
+import type { Request as RequestType, Task, User } from '@/lib/types';
+import React, { useMemo, useState } from "react";
+import { DateRange } from "react-day-picker";
+import { addDays, format, startOfDay } from 'date-fns';
+import { DateRangePicker } from "@/components/reports/date-range-picker";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import RequestVolumeChart from "@/components/reports/request-volume-chart";
+import { UserPerformanceTable } from "@/components/reports/user-performance-table";
+import { Skeleton } from "@/components/ui/skeleton";
+
+function ReportsSkeleton() {
+    return (
+        <div className="space-y-8">
+            <Card>
+                <CardHeader>
+                    <Skeleton className="h-6 w-1/2" />
+                    <Skeleton className="h-4 w-3/4" />
+                </CardHeader>
+                <CardContent>
+                    <Skeleton className="h-[350px] w-full" />
+                </CardContent>
+            </Card>
+            <Card>
+                <CardHeader>
+                    <Skeleton className="h-6 w-1/3" />
+                    <Skeleton className="h-4 w-1/2" />
+                </CardHeader>
+                <CardContent>
+                    <div className="space-y-4">
+                        <Skeleton className="h-12 w-full" />
+                        <Skeleton className="h-12 w-full" />
+                        <Skeleton className="h-12 w-full" />
+                    </div>
+                </CardContent>
+            </Card>
+        </div>
+    )
+}
+
+export default function ReportsPage() {
+    const [dateRange, setDateRange] = useState<DateRange | undefined>({
+        from: addDays(new Date(), -29),
+        to: new Date(),
+    });
+    
+    const firestore = useFirestore();
+
+    const requestsQuery = useMemoFirebase(() => {
+        if (!firestore) return null;
+        return query(collection(firestore, 'users/user-1/requests')); // Placeholder until global requests are available
+    }, [firestore]);
+
+    const tasksQuery = useMemoFirebase(() => {
+        if (!firestore) return null;
+        return query(collection(firestore, 'tasks'));
+    }, [firestore]);
+
+    const usersQuery = useMemoFirebase(() => {
+        if (!firestore) return null;
+        return query(collection(firestore, 'users'));
+    }, [firestore]);
+
+    const { data: requests, isLoading: isLoadingRequests } = useCollection<RequestType>(requestsQuery);
+    const { data: tasks, isLoading: isLoadingTasks } = useCollection<Task>(tasksQuery);
+    const { data: users, isLoading: isLoadingUsers } = useCollection<User>(usersQuery);
+
+    const filteredData = useMemo(() => {
+        if (!dateRange?.from || !dateRange?.to) {
+            return { requests: [], tasks: [] };
+        }
+        const from = startOfDay(dateRange.from).getTime();
+        const to = startOfDay(addDays(dateRange.to, 1)).getTime();
+
+        const filteredRequests = requests?.filter(r => {
+            const createdAt = new Date(r.createdAt).getTime();
+            return createdAt >= from && createdAt < to;
+        }) ?? [];
+
+        const filteredTasks = tasks?.filter(t => {
+            const createdAt = new Date(t.createdAt).getTime();
+            return createdAt >= from && createdAt < to;
+        }) ?? [];
+
+        return { requests: filteredRequests, tasks: filteredTasks };
+    }, [requests, tasks, dateRange]);
+
+
+    const isLoading = isLoadingRequests || isLoadingTasks || isLoadingUsers;
+
+    return (
+        <SiteLayout>
+            <div className="flex flex-1 flex-col">
+                <header className="flex flex-col gap-4 p-4 sm:p-6 md:flex-row md:items-center md:justify-between">
+                    <div>
+                        <h1 className="text-2xl font-bold tracking-tight">Informes de Rendimiento</h1>
+                        <p className="text-muted-foreground">Analice las tendencias históricas del rendimiento de los procesos.</p>
+                    </div>
+                    <DateRangePicker dateRange={dateRange} onDateChange={setDateRange} />
+                </header>
+                <main className="flex flex-1 flex-col gap-8 p-4 pt-0 sm:p-6 sm:pt-0">
+                    {isLoading ? <ReportsSkeleton /> : (
+                        <>
+                            <Card>
+                                <CardHeader>
+                                    <CardTitle>Volumen de Solicitudes</CardTitle>
+                                    <CardDescription>Número de solicitudes creadas y completadas a lo largo del tiempo.</CardDescription>
+                                </CardHeader>
+                                <CardContent>
+                                    <RequestVolumeChart requests={filteredData.requests} dateRange={dateRange} />
+                                </CardContent>
+                            </Card>
+
+                            <Card>
+                                <CardHeader>
+                                    <CardTitle>Rendimiento por Usuario</CardTitle>
+                                    <CardDescription>Métricas de finalización de tareas para cada usuario.</CardCardDescription>
+                                </CardHeader>
+                                <CardContent>
+                                    <UserPerformanceTable users={users ?? []} tasks={filteredData.tasks} />
+                                </CardContent>
+                            </Card>
+                        </>
+                    )}
+                </main>
+            </div>
+        </SiteLayout>
+    );
+}
