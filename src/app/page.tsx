@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { RequestsTable } from "@/components/dashboard/requests-table";
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase";
-import { collection, query, where } from "firebase/firestore";
+import { collection, query, where, collectionGroup } from "firebase/firestore";
 import type { Request as RequestType, Task } from '@/lib/types';
 import { FilePlus, Hourglass, CheckCircle, Timer } from "lucide-react";
 import Link from "next/link";
@@ -45,16 +45,10 @@ export default function DashboardPage() {
   const { user } = useUser();
   const firestore = useFirestore();
 
-  // Query for ALL requests to calculate stats
-  // NOTE: In a real multi-tenant app, this would need to be secured.
-  // For this prototype, we assume we can read all requests for global stats.
-  // A better approach would be a separate 'metrics' collection updated by cloud functions.
-  const allRequestsQuery = useMemoFirebase(() => {
-    if (!firestore) return null;
-    // This is a placeholder. A real implementation would query a global collection
-    // or use CollectionGroup, which requires index configuration.
-    // For now, we are limited to the user's own requests.
-    return query(collection(firestore, 'users', user?.uid || '---', 'requests'));
+  // Query for the current user's requests
+  const myRequestsQuery = useMemoFirebase(() => {
+    if (!firestore || !user?.uid) return null;
+    return query(collection(firestore, 'users', user.uid, 'requests'));
   }, [firestore, user?.uid]);
 
   // Query for tasks assigned TO the current user that are active
@@ -67,7 +61,7 @@ export default function DashboardPage() {
     );
   }, [firestore, user]);
 
-  const { data: allRequests, isLoading: isLoadingRequests } = useCollection<RequestType>(allRequestsQuery);
+  const { data: myRequests, isLoading: isLoadingMyRequests } = useCollection<RequestType>(myRequestsQuery);
   const { data: tasks, isLoading: isLoadingTasks } = useCollection<Task>(tasksQuery);
   const { data: allTasks, isLoading: isLoadingAllTasks } = useCollection<Task>(
     useMemoFirebase(() => {
@@ -78,17 +72,17 @@ export default function DashboardPage() {
 
 
   const stats = React.useMemo(() => {
-    if (!allRequests) return { inProgress: 0, avgCycleTime: 0 };
-    const completedRequests = allRequests.filter(r => r.status === 'Completed' && r.completedAt && r.createdAt);
+    if (!myRequests) return { inProgress: 0, avgCycleTime: 0 };
+    const completedRequests = myRequests.filter(r => r.status === 'Completed' && r.completedAt && r.createdAt);
     const totalCycleTime = completedRequests.reduce((acc, curr) => {
         return acc + differenceInHours(new Date(curr.completedAt!), new Date(curr.createdAt));
     }, 0);
 
     return {
-        inProgress: allRequests.filter(r => r.status === 'In Progress').length,
+        inProgress: myRequests.filter(r => r.status === 'In Progress').length,
         avgCycleTime: completedRequests.length > 0 ? (totalCycleTime / completedRequests.length).toFixed(1) : 0,
     }
-  }, [allRequests]);
+  }, [myRequests]);
 
   const completedTasksCount = React.useMemo(() => {
     if (!allTasks) return 0;
@@ -117,7 +111,7 @@ export default function DashboardPage() {
                 value={stats.inProgress}
                 icon={Hourglass}
                 description="Procesos activos que requieren acción."
-                isLoading={isLoadingRequests}
+                isLoading={isLoadingMyRequests}
               />
               <StatCard
                 title="Tareas Completadas"
@@ -131,7 +125,7 @@ export default function DashboardPage() {
                 value={stats.avgCycleTime}
                 icon={Timer}
                 description="Tiempo medio para completar una solicitud."
-                isLoading={isLoadingRequests}
+                isLoading={isLoadingMyRequests}
               />
           </div>
 
@@ -172,9 +166,9 @@ export default function DashboardPage() {
               <CardDescription>Rastree el estado de todas las solicitudes que ha enviado.</CardDescription>
             </CardHeader>
             <CardContent>
-              {isLoadingRequests && <DataTableSkeleton />}
-              {!isLoadingRequests && allRequests && <RequestsTable requests={allRequests} />}
-              {!isLoadingRequests && !allRequests?.length && (
+              {isLoadingMyRequests && <DataTableSkeleton />}
+              {!isLoadingMyRequests && myRequests && <RequestsTable requests={myRequests} />}
+              {!isLoadingMyRequests && !myRequests?.length && (
                  <div className="flex flex-1 items-center justify-center rounded-lg border border-dashed shadow-sm p-8">
                     <div className="flex flex-col items-center gap-1 text-center">
                         <h3 className="text-2xl font-bold tracking-tight">No tiene solicitudes</h3>

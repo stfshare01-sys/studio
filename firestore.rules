@@ -1,3 +1,4 @@
+
 /**
  * # Firestore Security Rules: FlowMaster Prototyping
  *
@@ -131,6 +132,11 @@ service cloud.firestore {
       allow update: if isSignedIn() && request.auth.uid == resource.data.assigneeId;
       // Disallow client-side deletes for now to maintain history.
       allow delete: if false;
+    }
+
+    // Rules for Collection Group Queries
+    match /{path=**}/requests/{requestId} {
+      allow list: if isAdmin();
     }
   }
 }

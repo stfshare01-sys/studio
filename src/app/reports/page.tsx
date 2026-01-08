@@ -3,7 +3,7 @@
 
 import SiteLayout from "@/components/site-layout";
 import { useCollection, useFirestore, useMemoFirebase } from "@/firebase";
-import { collection, query } from "firebase/firestore";
+import { collection, query, collectionGroup } from "firebase/firestore";
 import type { Request as RequestType, Task, User } from '@/lib/types';
 import React, { useMemo, useState } from "react";
 import { DateRange } from "react-day-picker";
@@ -51,9 +51,11 @@ export default function ReportsPage() {
     
     const firestore = useFirestore();
 
+    // Use a collection group query to get all requests from all users.
+    // This requires an index in Firestore.
     const requestsQuery = useMemoFirebase(() => {
         if (!firestore) return null;
-        return query(collection(firestore, 'users/user-1/requests')); // Placeholder until global requests are available
+        return query(collectionGroup(firestore, 'requests'));
     }, [firestore]);
 
     const tasksQuery = useMemoFirebase(() => {
