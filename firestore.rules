@@ -67,12 +67,14 @@ service cloud.firestore {
     /**
      * Checks if the requesting user has the 'Admin' role.
      * This requires a get() call to the user's own profile document.
+     * IMPORTANT: Safely handles the case where the user document doesn't exist yet.
      */
     function isAdmin() {
       // Check if the user is signed in and their role in the /users collection is 'Admin'.
       // This is a potentially expensive operation as it performs a document read.
       // Use this function judiciously in your rules.
-      return isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'Admin';
+      let userDoc = get(/databases/$(database)/documents/users/$(request.auth.uid));
+      return isSignedIn() && userDoc != null && userDoc.data != null && userDoc.data.role == 'Admin';
     }
 
 
