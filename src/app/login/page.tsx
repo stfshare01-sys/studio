@@ -13,12 +13,12 @@ import {
 } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { useAuth, useUser, setDocumentNonBlocking } from '@/firebase';
+import { useAuth, useUser } from '@/firebase';
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
 } from 'firebase/auth';
-import { doc } from 'firebase/firestore';
+import { doc, setDoc } from 'firebase/firestore';
 import { useFirestore } from '@/firebase';
 import { useRouter } from 'next/navigation';
 import { Logo } from '@/components/icons';
@@ -67,10 +67,10 @@ export default function LoginPage() {
         };
         
         const userDocRef = doc(firestore, 'users', newUser.uid);
-        // This is a non-blocking call. We don't wait for it to complete.
-        setDocumentNonBlocking(userDocRef, userProfile, { merge: true });
+        // This is now a BLOCKING call to prevent race conditions.
+        await setDoc(userDocRef, userProfile, { merge: true });
 
-        // onAuthStateChanged will handle redirection
+        // onAuthStateChanged will handle redirection after profile creation is confirmed.
       }
     } catch (error) {
       if (error instanceof FirebaseError) {
