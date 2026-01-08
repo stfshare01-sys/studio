@@ -11,11 +11,11 @@
 import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
 
-export const GenerateProcessInputSchema = z.string().describe('A natural language description of a business process.');
+const GenerateProcessInputSchema = z.string().describe('A natural language description of a business process.');
 export type GenerateProcessInput = z.infer<typeof GenerateProcessInputSchema>;
 
 
-export const GenerateProcessOutputSchema = z.object({
+const GenerateProcessOutputSchema = z.object({
   name: z.string().describe('A short, descriptive name for the process template.'),
   description: z.string().describe('A brief description of what this process is for.'),
   fields: z.array(
