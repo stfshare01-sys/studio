@@ -22,15 +22,53 @@
           "type": "array",
           "description": "Defines the data input fields for the request template.",
           "items": {
-            "type": "string"
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "label": { "type": "string" },
+              "type": { "type": "string", "enum": ["text", "textarea", "date", "number"] }
+            },
+            "required": ["id", "label", "type"]
           }
         },
         "steps": {
           "type": "array",
           "description": "Defines the workflow steps for the request template.",
           "items": {
-            "type": "string"
+             "type": "object",
+             "properties": {
+                "id": { "type": "string" },
+                "name": { "type": "string" }
+             },
+             "required": ["id", "name"]
           }
+        },
+        "rules": {
+            "type": "array",
+            "description": "Defines the business logic rules for the workflow.",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "condition": {
+                        "type": "object",
+                        "properties": {
+                            "fieldId": { "type": "string" },
+                            "operator": { "type": "string", "enum": [">", "<", "==", "!=", ">=", "<="] },
+                            "value": { "type": "string" }
+                        },
+                        "required": ["fieldId", "operator", "value"]
+                    },
+                    "action": {
+                        "type": "object",
+                        "properties": {
+                            "type": { "type": "string", "enum": ["REQUIRE_ADDITIONAL_STEP"] },
+                            "stepId": { "type": "string" }
+                        },
+                        "required": ["type", "stepId"]
+                    }
+                },
+                "required": ["condition", "action"]
+            }
         }
       },
       "required": [

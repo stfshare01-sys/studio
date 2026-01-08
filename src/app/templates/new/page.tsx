@@ -5,11 +5,11 @@
 import { useState } from "react";
 import SiteLayout from "@/components/site-layout";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { GripVertical, PlusCircle, Trash2 } from "lucide-react";
+import { GripVertical, PlusCircle, Trash2, GitBranch, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import {
   Dialog,
@@ -27,18 +27,9 @@ import { useFirestore } from "@/firebase";
 import { addDocumentNonBlocking } from "@/firebase/non-blocking-updates";
 import { collection } from "firebase/firestore";
 import { useRouter } from "next/navigation";
+import type { FormField, WorkflowStep, Rule, RuleCondition, RuleAction } from "@/lib/types";
+import { Separator } from "@/components/ui/separator";
 
-
-type WorkflowStep = {
-  id: string;
-  name: string;
-};
-
-type FormField = {
-    id: string;
-    label: string;
-    type: 'text' | 'textarea' | 'date';
-}
 
 const reorder = (list: any[], startIndex: number, endIndex: number) => {
   const result = Array.from(list);
@@ -57,17 +48,17 @@ export default function NewTemplatePage() {
   const [templateName, setTemplateName] = useState("");
   const [templateDescription, setTemplateDescription] = useState("");
   
-  // State for workflow steps
   const [steps, setSteps] = useState<WorkflowStep[]>([]);
   const [newStepName, setNewStepName] = useState("");
   const [isStepDialogOpen, setIsStepDialogOpen] = useState(false);
 
-  // State for form fields
   const [fields, setFields] = useState<FormField[]>([]);
   const [newFieldName, setNewFieldName] = useState("");
-  const [newFieldType, setNewFieldType] = useState<'text' | 'textarea' | 'date'>('text');
+  const [newFieldType, setNewFieldType] = useState<FormField['type']>('text');
   const [isFieldDialogOpen, setIsFieldDialogOpen] = useState(false);
-
+  
+  const [rules, setRules] = useState<Rule[]>([]);
+  const [isRuleDialogOpen, setIsRuleDialogOpen] = useState(false);
 
   const handleAddStep = () => {
     if (newStepName.trim() !== "") {
@@ -149,6 +140,7 @@ export default function NewTemplatePage() {
         description: templateDescription,
         fields,
         steps: steps.map(s => ({id: s.id, name: s.name})),
+        rules,
     };
 
     try {
@@ -176,8 +168,18 @@ export default function NewTemplatePage() {
   const fieldTypeLabels: Record<FormField['type'], string> = {
     text: 'Texto',
     textarea: 'Área de texto',
-    date: 'Fecha'
+    date: 'Fecha',
+    number: 'Número',
   };
+
+  const handleAddRule = (rule: Rule) => {
+    setRules([...rules, rule]);
+    setIsRuleDialogOpen(false);
+  }
+
+  const handleRemoveRule = (index: number) => {
+    setRules(rules.filter((_, i) => i !== index));
+  }
   
   return (
     <SiteLayout>
@@ -291,6 +293,7 @@ export default function NewTemplatePage() {
                                         <SelectItem value="text">Texto</SelectItem>
                                         <SelectItem value="textarea">Área de texto</SelectItem>
                                         <SelectItem value="date">Fecha</SelectItem>
+                                        <SelectItem value="number">Número</SelectItem>
                                     </SelectContent>
                                 </Select>
                             </div>
@@ -380,9 +383,191 @@ export default function NewTemplatePage() {
                 </CardContent>
             </Card>
             </div>
+
+            <Card>
+                <CardHeader>
+                    <CardTitle>Motor de Reglas de Negocio (DMN)</CardTitle>
+                    <CardDescription>Defina la lógica condicional para automatizar las decisiones en su flujo de trabajo.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    <div className="space-y-2 rounded-md border p-4">
+                        {rules.length === 0 && (
+                            <p className="text-center text-sm text-muted-foreground py-4">No hay reglas definidas.</p>
+                        )}
+                        {rules.map((rule, index) => {
+                            const field = fields.find(f => f.id === rule.condition.fieldId);
+                            const actionStep = steps.find(s => s.id === rule.action.stepId);
+                            return (
+                                <div key={index} className="group relative flex items-center gap-4 rounded-md bg-muted p-4">
+                                     <div className="absolute left-[-9px] top-[calc(50%-8px)] h-4 w-4 rounded-full bg-primary/20 flex items-center justify-center">
+                                        <GitBranch className="h-3 w-3 text-primary" />
+                                    </div>
+                                    <div className="flex flex-col">
+                                        <span className="text-sm font-bold">SI</span>
+                                        <span className="font-mono text-sm bg-background p-1 rounded-sm">
+                                            {field?.label || '??'} {rule.condition.operator} {rule.condition.value}
+                                        </span>
+                                    </div>
+                                    <div className="flex flex-col">
+                                        <span className="text-sm font-bold">ENTONCES</span>
+                                        <span className="font-mono text-sm bg-background p-1 rounded-sm">
+                                            Añadir paso: {actionStep?.name || '??'}
+                                        </span>
+                                    </div>
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="absolute right-2 top-2 h-6 w-6 opacity-0 group-hover:opacity-100"
+                                        onClick={() => handleRemoveRule(index)}
+                                    >
+                                        <Trash2 className="h-4 w-4 text-destructive" />
+                                        <span className="sr-only">Eliminar regla</span>
+                                    </Button>
+                                </div>
+                            )
+                        })}
+                    </div>
+                    <Dialog open={isRuleDialogOpen} onOpenChange={setIsRuleDialogOpen}>
+                        <DialogTrigger asChild>
+                            <Button variant="outline" className="w-full">
+                                <PlusCircle className="mr-2 h-4 w-4" /> Añadir Regla
+                            </Button>
+                        </DialogTrigger>
+                        <RuleBuilderDialog 
+                            fields={fields} 
+                            steps={steps} 
+                            onAddRule={handleAddRule} 
+                            onClose={() => setIsRuleDialogOpen(false)} 
+                        />
+                    </Dialog>
+                </CardContent>
+            </Card>
         </main>
         </div>
         </DragDropContext>
     </SiteLayout>
   );
+}
+
+
+function RuleBuilderDialog({ fields, steps, onAddRule, onClose }: { fields: FormField[], steps: WorkflowStep[], onAddRule: (rule: Rule) => void, onClose: () => void }) {
+    const [conditionField, setConditionField] = useState<string>('');
+    const [conditionOperator, setConditionOperator] = useState<RuleCondition['operator'] | ''>('');
+    const [conditionValue, setConditionValue] = useState<string>('');
+    const [actionStep, setActionStep] = useState<string>('');
+    
+    const numericFields = fields.filter(f => f.type === 'number');
+
+    const handleSubmit = () => {
+        if (!conditionField || !conditionOperator || !conditionValue || !actionStep) {
+            alert("Por favor, rellene todos los campos de la regla.");
+            return;
+        }
+
+        const newRule: Rule = {
+            condition: {
+                fieldId: conditionField,
+                operator: conditionOperator as RuleCondition['operator'],
+                value: conditionValue,
+            },
+            action: {
+                type: 'REQUIRE_ADDITIONAL_STEP',
+                stepId: actionStep,
+            }
+        };
+        onAddRule(newRule);
+        onClose();
+    };
+
+    return (
+        <DialogContent className="sm:max-w-[625px]">
+            <DialogHeader>
+                <DialogTitle>Constructor de Reglas de Negocio</DialogTitle>
+                <DialogDescription>
+                    Cree una regla "SI-ENTONCES" para su flujo de trabajo.
+                </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-6 py-4">
+                <div className="p-4 rounded-md border">
+                    <h3 className="mb-4 text-lg font-medium flex items-center"><ShieldCheck className="mr-2 h-5 w-5 text-primary"/> Condición (SI)</h3>
+                    <div className="grid grid-cols-3 gap-4">
+                        <div className="space-y-2">
+                            <Label>Campo</Label>
+                            <Select value={conditionField} onValueChange={setConditionField}>
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Seleccione un campo..."/>
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {numericFields.map(field => (
+                                        <SelectItem key={field.id} value={field.id}>{field.label}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Operador</Label>
+                             <Select value={conditionOperator} onValueChange={(v) => setConditionOperator(v as RuleCondition['operator'])}>
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Seleccione..."/>
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value=">">{'>'} (Mayor que)</SelectItem>
+                                    <SelectItem value="<">{'<'} (Menor que)</SelectItem>
+                                    <SelectItem value="==">{'=='} (Igual a)</SelectItem>
+                                    <SelectItem value="!=">{'!='} (No es igual a)</SelectItem>
+                                    <SelectItem value=">=">{'>='} (Mayor o igual que)</SelectItem>
+                                    <SelectItem value="<=">{'<='} (Menor o igual que)</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Valor</Label>
+                            <Input 
+                                type="number" 
+                                placeholder="p.ej., 5000"
+                                value={conditionValue}
+                                onChange={(e) => setConditionValue(e.target.value)}
+                            />
+                        </div>
+                    </div>
+                </div>
+
+                <div className="p-4 rounded-md border">
+                    <h3 className="mb-4 text-lg font-medium flex items-center"><GitBranch className="mr-2 h-5 w-5 text-primary"/> Acción (ENTONCES)</h3>
+                    <div className="grid grid-cols-2 gap-4">
+                         <div className="space-y-2">
+                            <Label>Tipo de Acción</Label>
+                            <Select value="REQUIRE_ADDITIONAL_STEP" disabled>
+                                <SelectTrigger>
+                                    <SelectValue/>
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="REQUIRE_ADDITIONAL_STEP">Requerir un paso adicional</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Paso de Aprobación</Label>
+                            <Select value={actionStep} onValueChange={setActionStep}>
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Seleccione un paso..."/>
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {steps.map(step => (
+                                        <SelectItem key={step.id} value={step.id}>{step.name}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <DialogFooter>
+                <DialogClose asChild>
+                    <Button variant="ghost">Cancelar</Button>
+                </DialogClose>
+                <Button onClick={handleSubmit}>Añadir Regla</Button>
+            </DialogFooter>
+        </DialogContent>
+    )
 }

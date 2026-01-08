@@ -33,12 +33,40 @@ export type Request = {
   template?: Template; // Denormalized template data
 };
 
+export type FormField = {
+  id: string;
+  label: string;
+  type: 'text' | 'textarea' | 'date' | 'number';
+};
+
+export type WorkflowStep = {
+  id: string;
+  name: string;
+};
+
+export type RuleCondition = {
+  fieldId: string;
+  operator: '>' | '<' | '==' | '!=' | '>=' | '<=';
+  value: any;
+};
+
+export type RuleAction = {
+  type: 'REQUIRE_ADDITIONAL_STEP';
+  stepId: string;
+};
+
+export type Rule = {
+  condition: RuleCondition;
+  action: RuleAction;
+};
+
 export type Template = {
   id: string;
   name: string;
   description: string;
-  fields: { id: string; label: string; type: 'text' | 'textarea' | 'date' }[];
-  steps: { id: string; name: string }[];
+  fields: FormField[];
+  steps: WorkflowStep[];
+  rules: Rule[];
 };
 
 
