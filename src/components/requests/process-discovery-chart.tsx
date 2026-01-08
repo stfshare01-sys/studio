@@ -2,9 +2,9 @@
 "use client";
 
 import { useMemo } from 'react';
-import type { EnrichedRequest, EnrichedWorkflowStep } from '@/lib/types';
-import { GitBranch, Clock } from 'lucide-react';
+import type { EnrichedRequest } from '@/lib/types';
 import { differenceInHours, parseISO } from 'date-fns';
+import { cn } from '@/lib/utils';
 
 interface ProcessNode {
   id: string;
@@ -149,8 +149,7 @@ export function ProcessDiscoveryChart({ request }: { request: EnrichedRequest })
                             textAnchor="start"
                             className="fill-muted-foreground text-xs font-medium"
                         >
-                            <Clock className="inline-block h-3 w-3 mr-1" />
-                            {edge.duration}h
+                            ⏱ {edge.duration}h
                         </text>
                     </g>
                 );
@@ -173,8 +172,7 @@ export function ProcessDiscoveryChart({ request }: { request: EnrichedRequest })
                         textAnchor="middle"
                         className={cn("font-semibold text-sm", node.isDeviation ? "fill-destructive" : "fill-foreground")}
                     >
-                        {node.isDeviation && <GitBranch className="inline-block h-4 w-4 mr-2" />}
-                        {node.name}
+                        {node.isDeviation ? `⚠ ${node.name}` : node.name}
                     </text>
                 </g>
             ))}
