@@ -4,12 +4,15 @@
 import SiteLayout from "@/components/site-layout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { useCollection, useFirestore, useMemoFirebase } from "@/firebase";
+import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase";
 import { collection, query } from "firebase/firestore";
 import type { User } from "@/lib/types";
 import { Skeleton } from "@/components/ui/skeleton";
 import { UsersTable } from "@/components/admin/users-table";
-import { PlusCircle } from "lucide-react";
+import { PlusCircle, ShieldAlert } from "lucide-react";
+import { updateDocumentNonBlocking } from "@/firebase/non-blocking-updates";
+import { doc } from "firebase/firestore";
+import { useToast } from "@/hooks/use-toast";
 
 function UsersTableSkeleton() {
   return (
@@ -34,15 +37,52 @@ function UsersTableSkeleton() {
   );
 }
 
+function AssignAdminButton() {
+    const { user } = useUser();
+    const firestore = useFirestore();
+    const { toast } = useToast();
+
+    const handleAssignAdmin = () => {
+        if (!firestore || !user) return;
+        const userRef = doc(firestore, 'users', user.uid);
+        updateDocumentNonBlocking(userRef, { role: 'Admin' });
+        toast({
+            title: "¡Rol de Administrador Asignado!",
+            description: "Has sido asignado como el primer administrador. La página se actualizará.",
+        });
+        // The data will refetch automatically due to the change, showing the table.
+    }
+
+    return (
+        <div className="flex flex-1 items-center justify-center rounded-lg border border-dashed shadow-sm p-8">
+            <div className="flex flex-col items-center gap-2 text-center">
+                <ShieldAlert className="h-12 w-12 text-destructive" />
+                <h3 className="text-2xl font-bold tracking-tight">Acceso Denegado</h3>
+                <p className="text-sm text-muted-foreground max-w-md">
+                    No tienes permisos para ver esta página. Sin embargo, parece que no hay administradores en el sistema.
+                    Puedes asignarte a ti mismo como el primer administrador.
+                </p>
+                <Button className="mt-4" onClick={handleAssignAdmin}>
+                    Convertirme en Administrador
+                </Button>
+            </div>
+        </div>
+    )
+}
+
 export default function UsersPage() {
     const firestore = useFirestore();
+    const { user: currentUser } = useUser();
 
     const usersQuery = useMemoFirebase(() => {
         if (!firestore) return null;
         return query(collection(firestore, 'users'));
     }, [firestore]);
 
-    const { data: users, isLoading } = useCollection<User>(usersQuery);
+    const { data: users, isLoading, error } = useCollection<User>(usersQuery);
+
+    const hasAdminRole = currentUser?.role === 'Admin';
+    const noAdminsExist = !isLoading && users && !users.some(u => u.role === 'Admin');
 
   return (
     <SiteLayout>
@@ -61,8 +101,12 @@ export default function UsersPage() {
             </CardHeader>
             <CardContent>
               {isLoading && <UsersTableSkeleton />}
-              {!isLoading && users && <UsersTable users={users} />}
-              {!isLoading && !users?.length && (
+              
+              {!isLoading && hasAdminRole && users && <UsersTable users={users} />}
+
+              {error && !hasAdminRole && <AssignAdminButton />}
+              
+              {!isLoading && hasAdminRole && !users?.length && (
                  <div className="flex flex-1 items-center justify-center rounded-lg border border-dashed shadow-sm p-8">
                     <div className="flex flex-col items-center gap-1 text-center">
                         <h3 className="text-2xl font-bold tracking-tight">No se encontraron usuarios</h3>

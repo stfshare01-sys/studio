@@ -8,7 +8,7 @@ export type User = {
   department: string;
   skills?: string[];
   currentWorkload?: number;
-  role?: UserRole;
+  role: UserRole;
 };
 
 export type WorkflowStepData = {
