@@ -63,10 +63,6 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
     }
   };
   
-  const displayName = user?.fullName || user?.email || 'Usuario';
-  const displayEmail = user?.email || '';
-  const isAdmin = user?.role === 'Admin';
-
   if (isUserLoading || !user) {
     return (
       <div className="flex h-screen w-full items-center justify-center">
@@ -74,6 +70,11 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
       </div>
     );
   }
+
+  const displayName = user?.fullName || user?.email || 'Usuario';
+  const displayEmail = user?.email || '';
+  const isAdmin = user?.role === 'Admin';
+
 
   return (
     <SidebarProvider>
