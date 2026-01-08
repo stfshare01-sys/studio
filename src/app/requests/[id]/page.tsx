@@ -5,8 +5,8 @@ import SiteLayout from "@/components/site-layout";
 import { notFound, useParams } from "next/navigation";
 import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from "@/firebase";
 import { doc, collection, query } from "firebase/firestore";
-import type { Request as RequestType, EnrichedRequest, User, EnrichedWorkflowStep } from "@/lib/types";
-import { ArrowLeft, User as UserIcon, Paperclip, Loader2 } from "lucide-react";
+import type { Request as RequestType, EnrichedRequest, User, EnrichedWorkflowStep, Template } from "@/lib/types";
+import { ArrowLeft, User as UserIcon, Paperclip } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -17,6 +17,7 @@ import { AssigneeSuggester } from "@/components/requests/assignee-suggester";
 import { Badge } from "@/components/ui/badge";
 import { useEffect, useState } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ProcessDiscoveryChart } from "@/components/requests/process-discovery-chart";
 
 function SubmittedBy({ userId }: { userId: string }) {
     const firestore = useFirestore();
@@ -35,7 +36,7 @@ function SubmittedBy({ userId }: { userId: string }) {
         <div className="ml-auto flex items-center gap-2">
             <Avatar className="h-6 w-6">
                 <AvatarImage src={user.avatarUrl} alt={user.fullName} />
-                <AvatarFallback>{user.fullName.charAt(0)}</AvatarFallback>
+                <AvatarFallback>{user.fullName.charAt(0) || 'U'}</AvatarFallback>
             </Avatar>
             <span>{user.fullName}</span>
         </div>
@@ -60,6 +61,12 @@ function RequestDetailSkeleton() {
                             <Skeleton className="h-12 w-full" />
                             <Skeleton className="h-12 w-full" />
                             <Skeleton className="h-12 w-full" />
+                        </CardContent>
+                    </Card>
+                     <Card>
+                        <CardHeader><Skeleton className="h-6 w-48" /></CardHeader>
+                        <CardContent>
+                            <Skeleton className="h-56 w-full" />
                         </CardContent>
                     </Card>
                 </div>
@@ -95,6 +102,13 @@ export default function RequestDetailPage() {
 
   const { data: request, isLoading: isRequestLoading } = useDoc<RequestType>(requestRef);
 
+  const templateRef = useMemoFirebase(() => {
+      if (!firestore || !request?.templateId) return null;
+      return doc(firestore, 'request_templates', request.templateId);
+  }, [firestore, request?.templateId]);
+
+  const { data: template, isLoading: isTemplateLoading } = useDoc<Template>(templateRef);
+
   const usersQuery = useMemoFirebase(() => {
       if(!firestore) return null;
       // This is not ideal, but for now we fetch all users to enrich the data.
@@ -107,7 +121,7 @@ export default function RequestDetailPage() {
   const [enrichedRequest, setEnrichedRequest] = useState<EnrichedRequest | null>(null);
 
   useEffect(() => {
-    if (request && users) {
+    if (request && users && template) {
         const submittedByUser = users.find(u => u.id === request.submittedBy);
         if (!submittedByUser) {
             return;
@@ -117,12 +131,13 @@ export default function RequestDetailPage() {
             ...s,
             assignee: users.find(u => u.id === s.assigneeId) ?? null,
         }));
-        setEnrichedRequest({ ...request, submittedBy: submittedByUser, steps: enrichedSteps });
+        
+        setEnrichedRequest({ ...request, template, submittedBy: submittedByUser, steps: enrichedSteps });
     }
-  }, [request, users]);
+  }, [request, users, template]);
 
 
-  if (isUserLoading || isRequestLoading || areUsersLoading) {
+  if (isUserLoading || isRequestLoading || areUsersLoading || isTemplateLoading) {
     return <SiteLayout><RequestDetailSkeleton /></SiteLayout>;
   }
 
@@ -169,7 +184,8 @@ export default function RequestDetailPage() {
             <div className="md:col-span-2 space-y-8">
                 <Card>
                     <CardHeader>
-                        <CardTitle>Progreso del Flujo de Trabajo</CardTitle>
+                        <CardTitle>Progreso del Flujo de Trabajo (To-Be)</CardTitle>
+                        <CardDescription>El flujo de trabajo diseñado para esta solicitud.</CardDescription>
                     </CardHeader>
                     <CardContent>
                         <WorkflowStepper steps={enrichedRequest.steps} />
@@ -179,6 +195,16 @@ export default function RequestDetailPage() {
                 {activeStep && !activeStep.assignee && users && (
                     <AssigneeSuggester step={activeStep} request={request} availableUsers={users} />
                 )}
+
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Descubrimiento de Procesos (As-Is)</CardTitle>
+                        <CardDescription>Análisis del flujo de trabajo real, destacando cuellos de botella y desviaciones.</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <ProcessDiscoveryChart request={enrichedRequest} />
+                    </CardContent>
+                </Card>
             </div>
             
             <div className="space-y-8">
