@@ -41,7 +41,7 @@ function SubmittedBy({ userId }: { userId: string }) {
         <div className="ml-auto flex items-center gap-2">
             <Avatar className="h-6 w-6">
                 <AvatarImage src={user.avatarUrl} alt={user.fullName} />
-                <AvatarFallback>{user.fullName.charAt(0) || 'U'}</AvatarFallback>
+                <AvatarFallback>{user.fullName?.charAt(0) || 'U'}</AvatarFallback>
             </Avatar>
             <span>{user.fullName}</span>
         </div>
@@ -64,7 +64,7 @@ function CommentList({ comments, users }: { comments: CommentType[], users: User
                 <li key={comment.id} className="flex items-start gap-3">
                     <Avatar className="h-8 w-8">
                         <AvatarImage src={comment.author?.avatarUrl} />
-                        <AvatarFallback>{comment.author?.fullName.charAt(0) || '?'}</AvatarFallback>
+                        <AvatarFallback>{comment.author?.fullName?.charAt(0) || '?'}</AvatarFallback>
                     </Avatar>
                     <div className="flex-1">
                         <div className="flex items-baseline gap-2">
@@ -161,11 +161,11 @@ export default function RequestDetailPage() {
   const { data: template, isLoading: isTemplateLoading } = useDoc<Template>(templateRef);
 
   const usersQuery = useMemoFirebase(() => {
-      if(!firestore || !user) return null;
+      if(!firestore || !user || !isAdmin) return null;
       // Admins can fetch all users. Regular users cannot, which is enforced by security rules.
       // The component will still function for regular users, showing 'Unknown User' where needed.
       return query(collection(firestore, 'users'));
-  }, [firestore, user]);
+  }, [firestore, user, isAdmin]);
 
   const { data: users, isLoading: areUsersLoading } = useCollection<User>(usersQuery);
   

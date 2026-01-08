@@ -1,3 +1,4 @@
+
 "use client";
 
 import type { EnrichedWorkflowStep } from "@/lib/types";
@@ -27,20 +28,20 @@ export function WorkflowStepper({ steps }: { steps: EnrichedWorkflowStep[] }) {
         return (
           <div className="flex items-center gap-2">
             <Avatar className="h-5 w-5">
-              {step.assignee?.avatarUrl && <AvatarImage src={step.assignee.avatarUrl} alt={step.assignee.name} />}
-              <AvatarFallback>{step.assignee?.name.charAt(0)}</AvatarFallback>
+              {step.assignee?.avatarUrl && <AvatarImage src={step.assignee.avatarUrl} alt={step.assignee.fullName} />}
+              <AvatarFallback>{step.assignee?.fullName.charAt(0)}</AvatarFallback>
             </Avatar>
-            <span>Completado por {step.assignee?.name} el {format(new Date(step.completedAt!), "d 'de' MMMM 'de' yyyy", { locale: es })}</span>
+            <span>Completado por {step.assignee?.fullName} el {format(new Date(step.completedAt!), "d 'de' MMMM 'de' yyyy", { locale: es })}</span>
           </div>
         );
       case 'Active':
         return step.assignee ? (
           <div className="flex items-center gap-2">
             <Avatar className="h-5 w-5">
-              {step.assignee?.avatarUrl && <AvatarImage src={step.assignee.avatarUrl} alt={step.assignee.name} />}
-              <AvatarFallback>{step.assignee?.name.charAt(0)}</AvatarFallback>
+              {step.assignee?.avatarUrl && <AvatarImage src={step.assignee.avatarUrl} alt={step.assignee.fullName} />}
+              <AvatarFallback>{step.assignee?.fullName.charAt(0)}</AvatarFallback>
             </Avatar>
-            <span>Asignado a {step.assignee.name}</span>
+            <span>Asignado a {step.assignee.fullName}</span>
           </div>
         ) : (
           <span>Pendiente de asignación</span>
