@@ -70,19 +70,32 @@ function AssignAdminButton() {
     )
 }
 
-export default function UsersPage() {
+function AdminView() {
     const firestore = useFirestore();
-    const { user: currentUser } = useUser();
-
     const usersQuery = useMemoFirebase(() => {
         if (!firestore) return null;
         return query(collection(firestore, 'users'));
     }, [firestore]);
 
-    const { data: users, isLoading, error } = useCollection<User>(usersQuery);
+    const { data: users, isLoading } = useCollection<User>(usersQuery);
 
+    if (isLoading) return <UsersTableSkeleton />;
+
+    if (users) return <UsersTable users={users} />;
+
+    return (
+        <div className="flex flex-1 items-center justify-center rounded-lg border border-dashed shadow-sm p-8">
+            <div className="flex flex-col items-center gap-1 text-center">
+                <h3 className="text-2xl font-bold tracking-tight">No se encontraron usuarios</h3>
+                <p className="text-sm text-muted-foreground">No hay usuarios registrados en el sistema.</p>
+            </div>
+        </div>
+    );
+}
+
+export default function UsersPage() {
+    const { user: currentUser, isUserLoading } = useUser();
     const hasAdminRole = currentUser?.role === 'Admin';
-    const noAdminsExist = !isLoading && users && !users.some(u => u.role === 'Admin');
 
   return (
     <SiteLayout>
@@ -100,20 +113,9 @@ export default function UsersPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              {isLoading && <UsersTableSkeleton />}
-              
-              {!isLoading && hasAdminRole && users && <UsersTable users={users} />}
-
-              {error && !hasAdminRole && <AssignAdminButton />}
-              
-              {!isLoading && hasAdminRole && !users?.length && (
-                 <div className="flex flex-1 items-center justify-center rounded-lg border border-dashed shadow-sm p-8">
-                    <div className="flex flex-col items-center gap-1 text-center">
-                        <h3 className="text-2xl font-bold tracking-tight">No se encontraron usuarios</h3>
-                        <p className="text-sm text-muted-foreground">No hay usuarios registrados en el sistema.</p>
-                    </div>
-                </div>
-              )}
+              {isUserLoading && <UsersTableSkeleton />}
+              {!isUserLoading && hasAdminRole && <AdminView />}
+              {!isUserLoading && !hasAdminRole && <AssignAdminButton />}
             </CardContent>
           </Card>
         </main>
