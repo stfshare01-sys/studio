@@ -7,10 +7,15 @@ import { RequestsTable } from "@/components/dashboard/requests-table";
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase";
 import { collection, query, where } from "firebase/firestore";
 import type { Request as RequestType, Task } from '@/lib/types';
-import { FilePlus } from "lucide-react";
+import { FilePlus, Hourglass, CheckCircle, Timer } from "lucide-react";
 import Link from "next/link";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TasksTable } from "@/components/dashboard/tasks-table";
+import React from "react";
+import { differenceInHours } from 'date-fns';
+import { BottleneckChart } from "@/components/dashboard/bottleneck-chart";
+import { StatCard } from "@/components/dashboard/stat-card";
+
 
 function DataTableSkeleton() {
     return (
@@ -39,15 +44,11 @@ export default function DashboardPage() {
   const { user } = useUser();
   const firestore = useFirestore();
 
-  // Query for requests submitted BY the current user
-  const requestsQuery = useMemoFirebase(() => {
+  // Query for ALL requests submitted by the user to calculate stats
+  const allRequestsQuery = useMemoFirebase(() => {
     if (!firestore || !user) return null;
-    return query(
-      collection(firestore, 'users', user.uid, 'requests')
-    );
+    return query(collection(firestore, 'users', user.uid, 'requests'));
   }, [firestore, user]);
-
-  const { data: requests, isLoading: isLoadingRequests } = useCollection<RequestType>(requestsQuery);
 
   // Query for tasks assigned TO the current user that are active
   const tasksQuery = useMemoFirebase(() => {
@@ -59,7 +60,33 @@ export default function DashboardPage() {
     );
   }, [firestore, user]);
 
+  const { data: allRequests, isLoading: isLoadingRequests } = useCollection<RequestType>(allRequestsQuery);
   const { data: tasks, isLoading: isLoadingTasks } = useCollection<Task>(tasksQuery);
+  const { data: allTasks, isLoading: isLoadingAllTasks } = useCollection<Task>(
+    useMemoFirebase(() => {
+        if (!firestore) return null;
+        return query(collection(firestore, 'tasks'));
+    }, [firestore])
+  );
+
+
+  const stats = React.useMemo(() => {
+    if (!allRequests) return { inProgress: 0, avgCycleTime: 0 };
+    const completedRequests = allRequests.filter(r => r.status === 'Completed' && r.completedAt);
+    const totalCycleTime = completedRequests.reduce((acc, curr) => {
+        return acc + differenceInHours(new Date(curr.completedAt!), new Date(curr.createdAt));
+    }, 0);
+
+    return {
+        inProgress: allRequests.filter(r => r.status === 'In Progress').length,
+        avgCycleTime: completedRequests.length > 0 ? (totalCycleTime / completedRequests.length).toFixed(1) : 0,
+    }
+  }, [allRequests]);
+
+  const completedTasksCount = React.useMemo(() => {
+    if (!allTasks) return 0;
+    return allTasks.filter(t => t.status === 'Completed').length;
+  }, [allTasks]);
 
 
   return (
@@ -75,6 +102,44 @@ export default function DashboardPage() {
           </Button>
         </header>
         <main className="flex flex-1 flex-col gap-8 p-4 pt-0 sm:p-6 sm:pt-0">
+          
+          {/* STATS CARDS */}
+          <div className="grid gap-4 md:grid-cols-3">
+              <StatCard
+                title="Solicitudes en Progreso"
+                value={stats.inProgress}
+                icon={Hourglass}
+                description="Procesos activos que requieren acción."
+                isLoading={isLoadingRequests}
+              />
+              <StatCard
+                title="Tareas Completadas"
+                value={completedTasksCount}
+                icon={CheckCircle}
+                description="Total de tareas completadas en todos los flujos."
+                isLoading={isLoadingAllTasks}
+              />
+              <StatCard
+                title="Tiempo Promedio de Ciclo (Horas)"
+                value={stats.avgCycleTime}
+                icon={Timer}
+                description="Tiempo medio para completar una solicitud."
+                isLoading={isLoadingRequests}
+              />
+          </div>
+
+          {/* BOTTLENECK CHART */}
+          <Card>
+              <CardHeader>
+                  <CardTitle>Análisis de Cuellos de Botella</CardTitle>
+                  <CardDescription>Tiempo promedio de finalización por tipo de tarea para identificar retrasos.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                  <BottleneckChart tasks={allTasks} isLoading={isLoadingAllTasks} />
+              </CardContent>
+          </Card>
+
+
           <Card>
             <CardHeader>
               <CardTitle>Mis Tareas Pendientes</CardTitle>
@@ -101,8 +166,8 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent>
               {isLoadingRequests && <DataTableSkeleton />}
-              {!isLoadingRequests && requests && <RequestsTable requests={requests} />}
-              {!isLoadingRequests && !requests?.length && (
+              {!isLoadingRequests && allRequests && <RequestsTable requests={allRequests} />}
+              {!isLoadingRequests && !allRequests?.length && (
                  <div className="flex flex-1 items-center justify-center rounded-lg border border-dashed shadow-sm p-8">
                     <div className="flex flex-col items-center gap-1 text-center">
                         <h3 className="text-2xl font-bold tracking-tight">No tiene solicitudes</h3>

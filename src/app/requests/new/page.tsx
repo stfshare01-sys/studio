@@ -55,8 +55,36 @@ export default function NewRequestPage() {
         const newRequestId = newRequestRef.id;
         const now = new Date().toISOString();
 
+        // Evaluate rules to see if any additional steps are needed
+        const additionalSteps = selectedTemplate.rules?.reduce((acc, rule) => {
+            const fieldValue = formData[rule.condition.fieldId];
+            let conditionMet = false;
+            if (fieldValue !== undefined) {
+                const val = parseFloat(fieldValue);
+                const ruleVal = parseFloat(rule.condition.value);
+                switch (rule.condition.operator) {
+                    case '>': if (val > ruleVal) conditionMet = true; break;
+                    case '<': if (val < ruleVal) conditionMet = true; break;
+                    case '==': if (val == ruleVal) conditionMet = true; break;
+                    case '!=': if (val != ruleVal) conditionMet = true; break;
+                    case '>=': if (val >= ruleVal) conditionMet = true; break;
+                    case '<=': if (val <= ruleVal) conditionMet = true; break;
+                }
+            }
+
+            if (conditionMet && rule.action.type === 'REQUIRE_ADDITIONAL_STEP') {
+                const stepToAdd = selectedTemplate.steps.find(s => s.id === rule.action.stepId);
+                if (stepToAdd && !acc.some(s => s.id === stepToAdd.id)) {
+                    acc.push(stepToAdd);
+                }
+            }
+            return acc;
+        }, [] as typeof selectedTemplate.steps) || [];
+
+        const finalSteps = [...selectedTemplate.steps, ...additionalSteps];
+
         // Create task documents in parallel
-        const taskPromises = selectedTemplate.steps.map(async (step, index) => {
+        const taskPromises = finalSteps.map(async (step, index) => {
             const tasksCollection = collection(firestore, 'tasks');
             const newTaskRef = doc(tasksCollection);
             const taskData = {
@@ -87,8 +115,9 @@ export default function NewRequestPage() {
             createdAt: now,
             updatedAt: now,
             status: 'In Progress',
+            completedAt: null,
             formData,
-            steps: selectedTemplate.steps.map((step, index) => ({
+            steps: finalSteps.map((step, index) => ({
                 id: step.id,
                 name: step.name,
                 status: index === 0 ? 'Active' : 'Pending',

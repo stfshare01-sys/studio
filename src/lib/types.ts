@@ -40,6 +40,7 @@ export type Request = {
   status: 'In Progress' | 'Completed' | 'Rejected';
   createdAt: string;
   updatedAt: string;
+  completedAt?: string | null; // Added for cycle time calculation
   submittedBy: string; // User ID
   // Steps are now mainly for historical/display purposes within the request context
   steps: {
@@ -95,4 +96,10 @@ export type EnrichedWorkflowStep = Omit<Request['steps'][0], 'assigneeId'> & {
 export type EnrichedRequest = Omit<Request, 'submittedBy' | 'steps'> & {
   submittedBy: User;
   steps: EnrichedWorkflowStep[];
+};
+
+// Analytics types
+export type TaskDuration = {
+  name: string;
+  duration: number;
 };
