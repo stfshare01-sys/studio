@@ -2,7 +2,7 @@
 "use client";
 
 import SiteLayout from "@/components/site-layout";
-import { useCollection, useFirestore, useMemoFirebase } from "@/firebase";
+import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase";
 import { collection, query, collectionGroup } from "firebase/firestore";
 import type { Request as RequestType, Task, User } from '@/lib/types';
 import React, { useMemo, useState } from "react";
@@ -44,6 +44,7 @@ function ReportsSkeleton() {
 }
 
 export default function ReportsPage() {
+    const { user, isUserLoading: isAuthLoading } = useUser();
     const [dateRange, setDateRange] = useState<DateRange | undefined>({
         from: addDays(new Date(), -29),
         to: new Date(),
@@ -52,19 +53,19 @@ export default function ReportsPage() {
     const firestore = useFirestore();
 
     const requestsQuery = useMemoFirebase(() => {
-        if (!firestore) return null;
+        if (!firestore || !user) return null;
         return query(collectionGroup(firestore, 'requests'));
-    }, [firestore]);
+    }, [firestore, user]);
 
     const tasksQuery = useMemoFirebase(() => {
-        if (!firestore) return null;
+        if (!firestore || !user) return null;
         return query(collection(firestore, 'tasks'));
-    }, [firestore]);
+    }, [firestore, user]);
 
     const usersQuery = useMemoFirebase(() => {
-        if (!firestore) return null;
+        if (!firestore || !user) return null;
         return query(collection(firestore, 'users'));
-    }, [firestore]);
+    }, [firestore, user]);
 
     const { data: requests, isLoading: isLoadingRequests } = useCollection<RequestType>(requestsQuery);
     const { data: tasks, isLoading: isLoadingTasks } = useCollection<Task>(tasksQuery);
@@ -91,7 +92,7 @@ export default function ReportsPage() {
     }, [requests, tasks, dateRange]);
 
 
-    const isLoading = isLoadingRequests || isLoadingTasks || isLoadingUsers;
+    const isLoading = isAuthLoading || isLoadingRequests || isLoadingTasks || isLoadingUsers;
 
     return (
         <SiteLayout>
