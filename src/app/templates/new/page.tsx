@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { GripVertical, PlusCircle, Trash2, GitBranch, ShieldCheck, CheckCircle, GitMerge, GitFork } from "lucide-react";
+import { GripVertical, PlusCircle, Trash2, GitBranch, ShieldCheck, CheckCircle, GitMerge, GitFork, Library } from "lucide-react";
 import Link from "next/link";
 import {
   Dialog,
@@ -41,13 +41,13 @@ import type { FormField, WorkflowStepDefinition, Rule, RuleCondition, RuleAction
 import { cn } from "@/lib/utils";
 
 
-const reorder = (list: any[], startIndex: number, endIndex: number) => {
+const reorder = <T,>(list: T[], startIndex: number, endIndex: number): T[] => {
   const result = Array.from(list);
   const [removed] = result.splice(startIndex, 1);
   result.splice(endIndex, 0, removed);
-
   return result;
 };
+
 
 const BpmnIcon = ({ type, className }: { type: WorkflowStepType, className?: string }) => {
     switch (type) {
@@ -60,6 +60,18 @@ const BpmnIcon = ({ type, className }: { type: WorkflowStepType, className?: str
         default:
             return null;
     }
+};
+
+type Lane = {
+    id: string;
+    name: string;
+    steps: WorkflowStepDefinition[];
+};
+
+type Pool = {
+    id: string;
+    name: string;
+    lanes: Lane[];
 };
 
 
@@ -85,6 +97,10 @@ export default function NewTemplatePage() {
   const [rules, setRules] = useState<Rule[]>([]);
   const [isRuleDialogOpen, setIsRuleDialogOpen] = useState(false);
 
+  // New state for pools and lanes
+  const [pools, setPools] = useState<Pool[]>([]);
+
+
   const handleAddStep = () => {
     if (newStepName.trim() !== "") {
       const newStep: WorkflowStepDefinition = {
@@ -92,10 +108,13 @@ export default function NewTemplatePage() {
         name: newStepName.trim(),
         type: currentStepType,
       };
-      setSteps([...steps, newStep]);
+      // Instead of adding to a flat list, we need a target lane. For simplicity, let's not use this directly.
+      // This function will be called from within a lane context.
       setNewStepName("");
       setIsStepDialogOpen(false);
+      return newStep;
     }
+    return null;
   };
 
   const openStepDialog = (type: WorkflowStepType) => {
@@ -103,9 +122,33 @@ export default function NewTemplatePage() {
     setIsStepDialogOpen(true);
   }
 
-  const handleRemoveStep = (id: string) => {
-    setSteps(steps.filter(step => step.id !== id));
-  };
+  const handleAddStepToLane = (poolId: string, laneId: string, stepName: string, stepType: WorkflowStepType) => {
+    if (stepName.trim() === "") return;
+    
+    const newStep: WorkflowStepDefinition = {
+        id: `step-${Date.now()}`,
+        name: stepName.trim(),
+        type: stepType,
+    };
+
+    setPools(prevPools => prevPools.map(pool => {
+        if (pool.id === poolId) {
+            return {
+                ...pool,
+                lanes: pool.lanes.map(lane => {
+                    if (lane.id === laneId) {
+                        return { ...lane, steps: [...lane.steps, newStep] };
+                    }
+                    return lane;
+                })
+            };
+        }
+        return pool;
+    }));
+    setSteps(prev => [...prev, newStep]); // Keep flat list in sync
+    setNewStepName("");
+    setIsStepDialogOpen(false);
+  }
 
   const handleAddField = () => {
     if (newFieldName.trim() !== "") {
@@ -124,29 +167,86 @@ export default function NewTemplatePage() {
   const handleRemoveField = (id: string) => {
     setFields(fields.filter(field => field.id !== id));
   };
+  
+  const handleAddPool = () => {
+      const newPool: Pool = {
+          id: `pool-${Date.now()}`,
+          name: `Nueva Piscina ${pools.length + 1}`,
+          lanes: []
+      };
+      setPools([...pools, newPool]);
+  }
+
+  const handleAddLaneToPool = (poolId: string) => {
+      const newLane: Lane = {
+          id: `lane-${Date.now()}`,
+          name: 'Nuevo Carril',
+          steps: [],
+      };
+      setPools(pools.map(pool => pool.id === poolId ? { ...pool, lanes: [...pool.lanes, newLane] } : pool));
+  }
 
   const onDragEnd = (result: DropResult) => {
-    if (!result.destination) {
-      return;
+    const { source, destination, type } = result;
+    if (!destination) return;
+    
+    if (type === 'pool') {
+        setPools(reorder(pools, source.index, destination.index));
+        return;
+    }
+    
+    if (type === 'lane') {
+        const sourcePoolId = source.droppableId;
+        const destPoolId = destination.droppableId;
+        
+        const sourcePool = pools.find(p => p.id === sourcePoolId);
+        const destPool = pools.find(p => p.id === destPoolId);
+
+        if (!sourcePool || !destPool) return;
+
+        if (sourcePoolId === destPoolId) {
+            const reorderedLanes = reorder(sourcePool.lanes, source.index, destination.index);
+            setPools(pools.map(p => p.id === sourcePoolId ? { ...p, lanes: reorderedLanes } : p));
+        } else {
+            const [removed] = sourcePool.lanes.splice(source.index, 1);
+            destPool.lanes.splice(destination.index, 0, removed);
+            setPools([...pools]);
+        }
+        return;
     }
 
-    const { source, destination, droppableId } = result;
+    if (type === 'step') {
+        const sourceLaneId = source.droppableId;
+        const destLaneId = destination.droppableId;
+        
+        let sourceLane: Lane | undefined;
+        let sourcePoolId: string | undefined;
+        let destLane: Lane | undefined;
 
-    if (droppableId === 'fields-droppable') {
-        const items = reorder(
-            fields,
-            source.index,
-            destination.index
-        );
-        setFields(items as FormField[]);
-    } else if (droppableId === 'steps-droppable') {
-        const items = reorder(
-            steps,
-            source.index,
-            destination.index
-        );
-        setSteps(items as WorkflowStepDefinition[]);
+        pools.forEach(pool => {
+            const lane = pool.lanes.find(l => l.id === sourceLaneId);
+            if (lane) {
+                sourceLane = lane;
+                sourcePoolId = pool.id;
+            }
+            const dLane = pool.lanes.find(l => l.id === destLaneId);
+            if (dLane) {
+                destLane = dLane;
+            }
+        });
+
+        if (!sourceLane || !destLane) return;
+
+        if (sourceLaneId === destLaneId) {
+            const reorderedSteps = reorder(sourceLane.steps, source.index, destination.index);
+            sourceLane.steps = reorderedSteps;
+        } else {
+            const [removed] = sourceLane.steps.splice(source.index, 1);
+            destLane.steps.splice(destination.index, 0, removed);
+        }
+        setPools([...pools]);
     }
+
   };
 
   const handleSaveTemplate = async () => {
@@ -166,11 +266,15 @@ export default function NewTemplatePage() {
         });
         return;
     }
+    
+    // Flatten steps from pools and lanes for saving
+    const allSteps = pools.flatMap(pool => pool.lanes.flatMap(lane => lane.steps));
+
     const newTemplate = {
         name: templateName,
         description: templateDescription,
         fields,
-        steps: steps.map(s => ({id: s.id, name: s.name, type: s.type})),
+        steps: allSteps.map(s => ({id: s.id, name: s.name, type: s.type})),
         rules,
     };
 
@@ -223,163 +327,67 @@ export default function NewTemplatePage() {
                 <Button onClick={handleSaveTemplate}>Guardar Plantilla</Button>
             </div>
         </header>
-        <main className="flex flex-1 flex-col gap-4 p-4 pt-0 sm:gap-8 sm:p-6 sm:pt-0">
-            <Card>
-            <CardContent className="p-6">
-                <div className="space-y-4">
-                <div>
-                    <Label htmlFor="template-name">Nombre de la Plantilla</Label>
-                    <Input 
-                    id="template-name" 
-                    placeholder="p.ej., Orden de Compra"
-                    value={templateName}
-                    onChange={(e) => setTemplateName(e.target.value)}
-                    />
-                </div>
-                <div>
-                    <Label htmlFor="template-description">Descripción</Label>
-                    <Textarea 
-                    id="template-description" 
-                    placeholder="Una breve descripción de para qué sirve este flujo de trabajo."
-                    value={templateDescription}
-                    onChange={(e) => setTemplateDescription(e.target.value)}
-                    />
-                </div>
-                </div>
-            </CardContent>
-            </Card>
-
-            <div className="grid gap-8 md:grid-cols-2">
-            {/* Fields Designer */}
-            <Card>
-                <CardHeader>
-                <CardTitle>Campos del Formulario</CardTitle>
-                <CardDescription>
-                    Defina los datos que se recopilarán para esta plantilla.
-                </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                <Droppable droppableId="fields-droppable">
-                    {(provided) => (
-                        <div {...provided.droppableProps} ref={provided.innerRef} className="space-y-2 rounded-md border p-4 min-h-[120px]">
-                        {fields.length === 0 && (
-                            <p className="text-center text-sm text-muted-foreground py-4">Añada campos a su formulario.</p>
-                        )}
-                        {fields.map((field, index) => (
-                            <Draggable key={field.id} draggableId={field.id} index={index}>
-                            {(provided, snapshot) => (
-                                <div
-                                ref={provided.innerRef}
-                                {...provided.draggableProps}
-                                {...provided.dragHandleProps}
-                                className={`group flex items-center gap-2 rounded-md p-3 ${snapshot.isDragging ? 'bg-primary/10' : 'bg-muted'}`}
-                                >
-                                <GripVertical className="h-5 w-5 text-muted-foreground cursor-grab" />
-                                <div className="flex-1 font-medium">{field.label}</div>
-                                <div className="text-sm text-muted-foreground">({fieldTypeLabels[field.type]})</div>
-
-                                <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-6 w-6 opacity-0 group-hover:opacity-100"
-                                    onClick={() => handleRemoveField(field.id)}
-                                >
-                                    <Trash2 className="h-4 w-4 text-destructive" />
-                                    <span className="sr-only">Eliminar campo</span>
-                                </Button>
-                                </div>
-                            )}
-                            </Draggable>
-                        ))}
-                        {provided.placeholder}
+        <main className="grid flex-1 items-start gap-4 p-4 pt-0 sm:gap-8 sm:p-6 sm:pt-0 md:grid-cols-[1fr_2fr]">
+            <div className="grid auto-rows-max items-start gap-4 lg:gap-8">
+                <Card>
+                    <CardContent className="p-6">
+                        <div className="space-y-4">
+                        <div>
+                            <Label htmlFor="template-name">Nombre de la Plantilla</Label>
+                            <Input 
+                            id="template-name" 
+                            placeholder="p.ej., Orden de Compra"
+                            value={templateName}
+                            onChange={(e) => setTemplateName(e.target.value)}
+                            />
                         </div>
-                    )}
-                    </Droppable>
-
-                <Dialog open={isFieldDialogOpen} onOpenChange={setIsFieldDialogOpen}>
-                    <DialogTrigger asChild>
-                        <Button variant="outline" className="w-full">
-                            <PlusCircle className="mr-2 h-4 w-4" /> Añadir Campo
-                        </Button>
-                    </DialogTrigger>
-                    <DialogContent>
-                        <DialogHeader>
-                            <DialogTitle>Añadir Nuevo Campo de Formulario</DialogTitle>
-                        </DialogHeader>
-                        <div className="py-4 space-y-4">
-                            <div className="space-y-2">
-                                <Label htmlFor="field-name">Etiqueta del Campo</Label>
-                                <Input
-                                    id="field-name"
-                                    value={newFieldName}
-                                    onChange={(e) => setNewFieldName(e.target.value)}
-                                    placeholder="p.ej., Nombre del Solicitante"
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="field-type">Tipo de Campo</Label>
-                                <Select value={newFieldType} onValueChange={(value) => setNewFieldType(value as FormField['type'])}>
-                                    <SelectTrigger id="field-type">
-                                        <SelectValue placeholder="Seleccione un tipo..." />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="text">Texto</SelectItem>
-                                        <SelectItem value="textarea">Área de texto</SelectItem>
-                                        <SelectItem value="date">Fecha</SelectItem>
-                                        <SelectItem value="number">Número</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </div>
+                        <div>
+                            <Label htmlFor="template-description">Descripción</Label>
+                            <Textarea 
+                            id="template-description" 
+                            placeholder="Una breve descripción de para qué sirve este flujo de trabajo."
+                            value={templateDescription}
+                            onChange={(e) => setTemplateDescription(e.target.value)}
+                            />
                         </div>
-                        <DialogFooter>
-                            <DialogClose asChild>
-                                <Button variant="ghost">Cancelar</Button>
-                            </DialogClose>
-                            <Button onClick={handleAddField}>Añadir Campo</Button>
-                        </DialogFooter>
-                    </DialogContent>
-                </Dialog>
-                </CardContent>
-            </Card>
-
-            {/* Steps Designer */}
-            <Card>
-                <CardHeader>
-                <CardTitle>Lienzo del Flujo de Trabajo (BPMN)</CardTitle>
-                <CardDescription>
-                    Diseñe las etapas de su proceso usando elementos BPMN 2.0.
-                </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                    <Droppable droppableId="steps-droppable">
+                        </div>
+                    </CardContent>
+                </Card>
+                <Card>
+                    <CardHeader>
+                    <CardTitle>Campos del Formulario</CardTitle>
+                    <CardDescription>
+                        Defina los datos que se recopilarán para esta plantilla.
+                    </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                    <Droppable droppableId="fields-droppable">
                         {(provided) => (
                             <div {...provided.droppableProps} ref={provided.innerRef} className="space-y-2 rounded-md border p-4 min-h-[120px]">
-                            {steps.length === 0 && (
-                            <p className="text-center text-sm text-muted-foreground py-4">Arrastre y suelte los pasos aquí.</p>
+                            {fields.length === 0 && (
+                                <p className="text-center text-sm text-muted-foreground py-4">Añada campos a su formulario.</p>
                             )}
-                            {steps.map((step, index) => (
-                                <Draggable key={step.id} draggableId={step.id} index={index}>
+                            {fields.map((field, index) => (
+                                <Draggable key={field.id} draggableId={field.id} index={index}>
                                 {(provided, snapshot) => (
                                     <div
                                     ref={provided.innerRef}
                                     {...provided.draggableProps}
                                     {...provided.dragHandleProps}
-                                    className={cn(
-                                        "group flex items-center gap-3 rounded-md p-3 border",
-                                        snapshot.isDragging ? 'bg-primary/10 border-primary' : 'bg-muted border-muted'
-                                    )}
+                                    className={`group flex items-center gap-2 rounded-md p-3 ${snapshot.isDragging ? 'bg-primary/10' : 'bg-muted'}`}
                                     >
                                     <GripVertical className="h-5 w-5 text-muted-foreground cursor-grab" />
-                                    <BpmnIcon type={step.type} />
-                                    <div className="flex-1 font-medium">{step.name}</div>
+                                    <div className="flex-1 font-medium">{field.label}</div>
+                                    <div className="text-sm text-muted-foreground">({fieldTypeLabels[field.type]})</div>
+
                                     <Button
                                         variant="ghost"
                                         size="icon"
                                         className="h-6 w-6 opacity-0 group-hover:opacity-100"
-                                        onClick={() => handleRemoveStep(step.id)}
+                                        onClick={() => handleRemoveField(field.id)}
                                     >
                                         <Trash2 className="h-4 w-4 text-destructive" />
-                                        <span className="sr-only">Eliminar paso</span>
+                                        <span className="sr-only">Eliminar campo</span>
                                     </Button>
                                     </div>
                                 )}
@@ -388,59 +396,57 @@ export default function NewTemplatePage() {
                             {provided.placeholder}
                             </div>
                         )}
-                    </Droppable>
+                        </Droppable>
 
-                <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                         <Button variant="outline" className="w-full">
-                            <PlusCircle className="mr-2 h-4 w-4" /> Añadir Elemento de Flujo
-                        </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent className="w-56">
-                        <DropdownMenuLabel>Elementos de BPMN</DropdownMenuLabel>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem onSelect={() => openStepDialog('task')}>
-                            <BpmnIcon type="task" className="mr-2"/> Tarea
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onSelect={() => openStepDialog('gateway-exclusive')}>
-                            <BpmnIcon type="gateway-exclusive" className="mr-2"/> Gateway Exclusivo
-                        </DropdownMenuItem>
-                         <DropdownMenuItem onSelect={() => openStepDialog('gateway-parallel')}>
-                            <BpmnIcon type="gateway-parallel" className="mr-2"/> Gateway Paralelo
-                        </DropdownMenuItem>
-                    </DropdownMenuContent>
-                </DropdownMenu>
-
-                <Dialog open={isStepDialogOpen} onOpenChange={setIsStepDialogOpen}>
-                    <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>Añadir Nuevo Elemento de Flujo</DialogTitle>
-                    </DialogHeader>
-                    <div className="py-4">
-                        <Label htmlFor="step-name">Nombre del Elemento</Label>
-                        <Input
-                        id="step-name"
-                        value={newStepName}
-                        onChange={(e) => setNewStepName(e.target.value)}
-                        placeholder="p.ej., Revisión Legal"
-                        />
-                    </div>
-                    <DialogFooter>
-                        <DialogClose asChild>
-                        <Button variant="ghost">Cancelar</Button>
-                        </DialogClose>
-                        <Button onClick={handleAddStep}>Añadir Elemento</Button>
-                    </DialogFooter>
-                    </DialogContent>
-                </Dialog>
-                </CardContent>
-            </Card>
-            </div>
-
-            <Card>
+                    <Dialog open={isFieldDialogOpen} onOpenChange={setIsFieldDialogOpen}>
+                        <DialogTrigger asChild>
+                            <Button variant="outline" className="w-full">
+                                <PlusCircle className="mr-2 h-4 w-4" /> Añadir Campo
+                            </Button>
+                        </DialogTrigger>
+                        <DialogContent>
+                            <DialogHeader>
+                                <DialogTitle>Añadir Nuevo Campo de Formulario</DialogTitle>
+                            </DialogHeader>
+                            <div className="py-4 space-y-4">
+                                <div className="space-y-2">
+                                    <Label htmlFor="field-name">Etiqueta del Campo</Label>
+                                    <Input
+                                        id="field-name"
+                                        value={newFieldName}
+                                        onChange={(e) => setNewFieldName(e.target.value)}
+                                        placeholder="p.ej., Nombre del Solicitante"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="field-type">Tipo de Campo</Label>
+                                    <Select value={newFieldType} onValueChange={(value) => setNewFieldType(value as FormField['type'])}>
+                                        <SelectTrigger id="field-type">
+                                            <SelectValue placeholder="Seleccione un tipo..." />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="text">Texto</SelectItem>
+                                            <SelectItem value="textarea">Área de texto</SelectItem>
+                                            <SelectItem value="date">Fecha</SelectItem>
+                                            <SelectItem value="number">Número</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            </div>
+                            <DialogFooter>
+                                <DialogClose asChild>
+                                    <Button variant="ghost">Cancelar</Button>
+                                </DialogClose>
+                                <Button onClick={handleAddField}>Añadir Campo</Button>
+                            </DialogFooter>
+                        </DialogContent>
+                    </Dialog>
+                    </CardContent>
+                </Card>
+                <Card>
                 <CardHeader>
                     <CardTitle>Motor de Reglas de Negocio</CardTitle>
-                    <CardDescription>Defina la lógica condicional para automatizar las decisiones en su flujo de trabajo.</CardDescription>
+                    <CardDescription>Defina la lógica condicional para automatizar las decisiones.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                     <div className="space-y-2 rounded-md border p-4">
@@ -449,7 +455,8 @@ export default function NewTemplatePage() {
                         )}
                         {rules.map((rule, index) => {
                             const field = fields.find(f => f.id === rule.condition.fieldId);
-                            const actionStep = steps.find(s => s.id === rule.action.stepId);
+                            const allSteps = pools.flatMap(p => p.lanes.flatMap(l => l.steps));
+                            const actionStep = allSteps.find(s => s.id === rule.action.stepId);
                             return (
                                 <div key={index} className="group relative flex items-center gap-4 rounded-md bg-muted p-4">
                                      <div className="absolute left-[-9px] top-[calc(50%-8px)] h-4 w-4 rounded-full bg-primary/20 flex items-center justify-center">
@@ -488,11 +495,101 @@ export default function NewTemplatePage() {
                         </DialogTrigger>
                         <RuleBuilderDialog 
                             fields={fields} 
-                            steps={steps} 
+                            steps={pools.flatMap(p => p.lanes.flatMap(l => l.steps))} 
                             onAddRule={handleAddRule} 
                             onClose={() => setIsRuleDialogOpen(false)} 
                         />
                     </Dialog>
+                </CardContent>
+            </Card>
+            </div>
+            <Card>
+                <CardHeader>
+                    <CardTitle>Lienzo del Flujo de Trabajo (BPMN)</CardTitle>
+                    <CardDescription>
+                        Diseñe las etapas de su proceso usando Piscinas (Pools) y Carriles (Lanes).
+                    </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                     <Droppable droppableId="board" type="pool">
+                        {(provided) => (
+                            <div {...provided.droppableProps} ref={provided.innerRef} className="space-y-4 rounded-md bg-muted/50 p-4 min-h-[300px]">
+                                {pools.map((pool, index) => (
+                                    <Draggable key={pool.id} draggableId={pool.id} index={index}>
+                                        {(provided) => (
+                                            <div ref={provided.innerRef} {...provided.draggableProps} className="rounded-lg border bg-card p-4 space-y-4">
+                                                <div className="flex items-center" {...provided.dragHandleProps}>
+                                                    <GripVertical className="h-5 w-5 text-muted-foreground cursor-grab" />
+                                                    <h3 className="font-semibold flex-1">{pool.name}</h3>
+                                                    <Button variant="ghost" size="sm" onClick={() => handleAddLaneToPool(pool.id)}>
+                                                        <PlusCircle className="mr-2 h-4 w-4" /> Añadir Carril
+                                                    </Button>
+                                                </div>
+                                                <Droppable droppableId={pool.id} type="lane">
+                                                    {(provided) => (
+                                                        <div ref={provided.innerRef} {...provided.droppableProps} className="space-y-2 pl-6">
+                                                            {pool.lanes.map((lane, index) => (
+                                                                 <Draggable key={lane.id} draggableId={lane.id} index={index}>
+                                                                    {(provided) => (
+                                                                        <div ref={provided.innerRef} {...provided.draggableProps} className="rounded-md border bg-background">
+                                                                             <div className="flex items-center p-2 border-b" {...provided.dragHandleProps}>
+                                                                                <GripVertical className="h-5 w-5 text-muted-foreground cursor-grab" />
+                                                                                <h4 className="text-sm font-medium flex-1">{lane.name}</h4>
+                                                                                
+                                                                                 <DropdownMenu>
+                                                                                    <DropdownMenuTrigger asChild>
+                                                                                        <Button variant="ghost" size="sm"><PlusCircle className="mr-2 h-4 w-4" />Añadir</Button>
+                                                                                    </DropdownMenuTrigger>
+                                                                                    <DropdownMenuContent>
+                                                                                        <DropdownMenuLabel>Elementos de BPMN</DropdownMenuLabel>
+                                                                                        <DropdownMenuItem onSelect={() => handleAddStepToLane(pool.id, lane.id, "Nueva Tarea", 'task')}>
+                                                                                            <BpmnIcon type="task" className="mr-2"/> Tarea
+                                                                                        </DropdownMenuItem>
+                                                                                         <DropdownMenuItem onSelect={() => handleAddStepToLane(pool.id, lane.id, "Nuevo Gateway", 'gateway-exclusive')}>
+                                                                                            <BpmnIcon type="gateway-exclusive" className="mr-2"/> Gateway Exclusivo
+                                                                                        </DropdownMenuItem>
+                                                                                    </DropdownMenuContent>
+                                                                                </DropdownMenu>
+
+                                                                            </div>
+                                                                            <Droppable droppableId={lane.id} type="step">
+                                                                                {(provided) => (
+                                                                                    <div ref={provided.innerRef} {...provided.droppableProps} className="p-2 min-h-[50px] space-y-2">
+                                                                                        {lane.steps.map((step, index) => (
+                                                                                            <Draggable key={step.id} draggableId={step.id} index={index}>
+                                                                                                {(provided, snapshot) => (
+                                                                                                    <div ref={provided.innerRef} {...provided.draggableProps} {...provided.dragHandleProps}
+                                                                                                        className={cn("group flex items-center gap-3 rounded-md p-2 border text-sm", snapshot.isDragging ? 'bg-primary/10 border-primary' : 'bg-muted border-muted')}>
+                                                                                                        <GripVertical className="h-4 w-4 text-muted-foreground cursor-grab" />
+                                                                                                        <BpmnIcon type={step.type} className="h-4 w-4" />
+                                                                                                        <div className="flex-1">{step.name}</div>
+                                                                                                    </div>
+                                                                                                )}
+                                                                                            </Draggable>
+                                                                                        ))}
+                                                                                        {provided.placeholder}
+                                                                                    </div>
+                                                                                )}
+                                                                            </Droppable>
+                                                                        </div>
+                                                                    )}
+                                                                 </Draggable>
+                                                            ))}
+                                                            {provided.placeholder}
+                                                        </div>
+                                                    )}
+                                                </Droppable>
+                                            </div>
+                                        )}
+                                    </Draggable>
+                                ))}
+                                {provided.placeholder}
+                            </div>
+                        )}
+                    </Droppable>
+                    <Button variant="outline" className="w-full mt-4" onClick={handleAddPool}>
+                        <Library className="mr-2 h-4 w-4" /> Añadir Piscina
+                    </Button>
                 </CardContent>
             </Card>
         </main>
@@ -624,3 +721,5 @@ function RuleBuilderDialog({ fields, steps, onAddRule, onClose }: { fields: Form
         </DialogContent>
     )
 }
+
+    
