@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { GripVertical, PlusCircle, Trash2, GitBranch, ShieldCheck } from "lucide-react";
+import { GripVertical, PlusCircle, Trash2, GitBranch, ShieldCheck, CheckCircle, GitMerge, GitFork } from "lucide-react";
 import Link from "next/link";
 import {
   Dialog,
@@ -21,6 +21,15 @@ import {
   DialogClose,
   DialogDescription,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
@@ -28,8 +37,8 @@ import { useFirestore } from "@/firebase";
 import { addDocumentNonBlocking } from "@/firebase/non-blocking-updates";
 import { collection } from "firebase/firestore";
 import { useRouter } from "next/navigation";
-import type { FormField, WorkflowStep, Rule, RuleCondition, RuleAction } from "@/lib/types";
-import { Separator } from "@/components/ui/separator";
+import type { FormField, WorkflowStepDefinition, Rule, RuleCondition, RuleAction, WorkflowStepType } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 
 const reorder = (list: any[], startIndex: number, endIndex: number) => {
@@ -38,6 +47,19 @@ const reorder = (list: any[], startIndex: number, endIndex: number) => {
   result.splice(endIndex, 0, removed);
 
   return result;
+};
+
+const BpmnIcon = ({ type, className }: { type: WorkflowStepType, className?: string }) => {
+    switch (type) {
+        case 'task':
+            return <CheckCircle className={cn("h-5 w-5 text-sky-500", className)} />;
+        case 'gateway-exclusive':
+            return <GitMerge className={cn("h-5 w-5 text-amber-500", className)} />;
+        case 'gateway-parallel':
+            return <GitFork className={cn("h-5 w-5 text-purple-500", className)} />;
+        default:
+            return null;
+    }
 };
 
 
@@ -49,9 +71,11 @@ export default function NewTemplatePage() {
   const [templateName, setTemplateName] = useState("");
   const [templateDescription, setTemplateDescription] = useState("");
   
-  const [steps, setSteps] = useState<WorkflowStep[]>([]);
+  const [steps, setSteps] = useState<WorkflowStepDefinition[]>([]);
   const [newStepName, setNewStepName] = useState("");
   const [isStepDialogOpen, setIsStepDialogOpen] = useState(false);
+  const [currentStepType, setCurrentStepType] = useState<WorkflowStepType>('task');
+
 
   const [fields, setFields] = useState<FormField[]>([]);
   const [newFieldName, setNewFieldName] = useState("");
@@ -63,15 +87,21 @@ export default function NewTemplatePage() {
 
   const handleAddStep = () => {
     if (newStepName.trim() !== "") {
-      const newStep: WorkflowStep = {
+      const newStep: WorkflowStepDefinition = {
         id: `step-${Date.now()}`,
         name: newStepName.trim(),
+        type: currentStepType,
       };
       setSteps([...steps, newStep]);
       setNewStepName("");
       setIsStepDialogOpen(false);
     }
   };
+
+  const openStepDialog = (type: WorkflowStepType) => {
+    setCurrentStepType(type);
+    setIsStepDialogOpen(true);
+  }
 
   const handleRemoveStep = (id: string) => {
     setSteps(steps.filter(step => step.id !== id));
@@ -115,7 +145,7 @@ export default function NewTemplatePage() {
             source.index,
             destination.index
         );
-        setSteps(items as WorkflowStep[]);
+        setSteps(items as WorkflowStepDefinition[]);
     }
   };
 
@@ -140,7 +170,7 @@ export default function NewTemplatePage() {
         name: templateName,
         description: templateDescription,
         fields,
-        steps: steps.map(s => ({id: s.id, name: s.name})),
+        steps: steps.map(s => ({id: s.id, name: s.name, type: s.type})),
         rules,
     };
 
@@ -225,7 +255,7 @@ export default function NewTemplatePage() {
                 <CardHeader>
                 <CardTitle>Campos del Formulario</CardTitle>
                 <CardDescription>
-                    Defina y ordene los datos que se recopilarán para esta plantilla.
+                    Defina los datos que se recopilarán para esta plantilla.
                 </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -233,7 +263,7 @@ export default function NewTemplatePage() {
                     {(provided) => (
                         <div {...provided.droppableProps} ref={provided.innerRef} className="space-y-2 rounded-md border p-4 min-h-[120px]">
                         {fields.length === 0 && (
-                            <p className="text-center text-sm text-muted-foreground py-4">Arrastra y suelta los campos aquí.</p>
+                            <p className="text-center text-sm text-muted-foreground py-4">Añada campos a su formulario.</p>
                         )}
                         {fields.map((field, index) => (
                             <Draggable key={field.id} draggableId={field.id} index={index}>
@@ -245,7 +275,9 @@ export default function NewTemplatePage() {
                                 className={`group flex items-center gap-2 rounded-md p-3 ${snapshot.isDragging ? 'bg-primary/10' : 'bg-muted'}`}
                                 >
                                 <GripVertical className="h-5 w-5 text-muted-foreground cursor-grab" />
-                                <div className="flex-1 font-medium">{field.label} ({fieldTypeLabels[field.type]})</div>
+                                <div className="flex-1 font-medium">{field.label}</div>
+                                <div className="text-sm text-muted-foreground">({fieldTypeLabels[field.type]})</div>
+
                                 <Button
                                     variant="ghost"
                                     size="icon"
@@ -313,9 +345,9 @@ export default function NewTemplatePage() {
             {/* Steps Designer */}
             <Card>
                 <CardHeader>
-                <CardTitle>Pasos del Flujo de Trabajo</CardTitle>
+                <CardTitle>Lienzo del Flujo de Trabajo (BPMN)</CardTitle>
                 <CardDescription>
-                    Defina y ordene las etapas de aprobación para este flujo de trabajo.
+                    Diseñe las etapas de su proceso usando elementos BPMN 2.0.
                 </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -323,7 +355,7 @@ export default function NewTemplatePage() {
                         {(provided) => (
                             <div {...provided.droppableProps} ref={provided.innerRef} className="space-y-2 rounded-md border p-4 min-h-[120px]">
                             {steps.length === 0 && (
-                            <p className="text-center text-sm text-muted-foreground py-4">Arrastra y suelta los pasos aquí.</p>
+                            <p className="text-center text-sm text-muted-foreground py-4">Arrastre y suelte los pasos aquí.</p>
                             )}
                             {steps.map((step, index) => (
                                 <Draggable key={step.id} draggableId={step.id} index={index}>
@@ -332,9 +364,13 @@ export default function NewTemplatePage() {
                                     ref={provided.innerRef}
                                     {...provided.draggableProps}
                                     {...provided.dragHandleProps}
-                                    className={`group flex items-center gap-2 rounded-md p-3 ${snapshot.isDragging ? 'bg-primary/10' : 'bg-muted'}`}
+                                    className={cn(
+                                        "group flex items-center gap-3 rounded-md p-3 border",
+                                        snapshot.isDragging ? 'bg-primary/10 border-primary' : 'bg-muted border-muted'
+                                    )}
                                     >
                                     <GripVertical className="h-5 w-5 text-muted-foreground cursor-grab" />
+                                    <BpmnIcon type={step.type} />
                                     <div className="flex-1 font-medium">{step.name}</div>
                                     <Button
                                         variant="ghost"
@@ -354,18 +390,34 @@ export default function NewTemplatePage() {
                         )}
                     </Droppable>
 
+                <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                         <Button variant="outline" className="w-full">
+                            <PlusCircle className="mr-2 h-4 w-4" /> Añadir Elemento de Flujo
+                        </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent className="w-56">
+                        <DropdownMenuLabel>Elementos de BPMN</DropdownMenuLabel>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onSelect={() => openStepDialog('task')}>
+                            <BpmnIcon type="task" className="mr-2"/> Tarea
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onSelect={() => openStepDialog('gateway-exclusive')}>
+                            <BpmnIcon type="gateway-exclusive" className="mr-2"/> Gateway Exclusivo
+                        </DropdownMenuItem>
+                         <DropdownMenuItem onSelect={() => openStepDialog('gateway-parallel')}>
+                            <BpmnIcon type="gateway-parallel" className="mr-2"/> Gateway Paralelo
+                        </DropdownMenuItem>
+                    </DropdownMenuContent>
+                </DropdownMenu>
+
                 <Dialog open={isStepDialogOpen} onOpenChange={setIsStepDialogOpen}>
-                    <DialogTrigger asChild>
-                    <Button variant="outline" className="w-full">
-                        <PlusCircle className="mr-2 h-4 w-4" /> Añadir Paso
-                    </Button>
-                    </DialogTrigger>
                     <DialogContent>
                     <DialogHeader>
-                        <DialogTitle>Añadir Nuevo Paso</DialogTitle>
+                        <DialogTitle>Añadir Nuevo Elemento de Flujo</DialogTitle>
                     </DialogHeader>
                     <div className="py-4">
-                        <Label htmlFor="step-name">Nombre del Paso</Label>
+                        <Label htmlFor="step-name">Nombre del Elemento</Label>
                         <Input
                         id="step-name"
                         value={newStepName}
@@ -377,7 +429,7 @@ export default function NewTemplatePage() {
                         <DialogClose asChild>
                         <Button variant="ghost">Cancelar</Button>
                         </DialogClose>
-                        <Button onClick={handleAddStep}>Añadir Paso</Button>
+                        <Button onClick={handleAddStep}>Añadir Elemento</Button>
                     </DialogFooter>
                     </DialogContent>
                 </Dialog>
@@ -387,7 +439,7 @@ export default function NewTemplatePage() {
 
             <Card>
                 <CardHeader>
-                    <CardTitle>Motor de Reglas de Negocio (DMN)</CardTitle>
+                    <CardTitle>Motor de Reglas de Negocio</CardTitle>
                     <CardDescription>Defina la lógica condicional para automatizar las decisiones en su flujo de trabajo.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -451,7 +503,7 @@ export default function NewTemplatePage() {
 }
 
 
-function RuleBuilderDialog({ fields, steps, onAddRule, onClose }: { fields: FormField[], steps: WorkflowStep[], onAddRule: (rule: Rule) => void, onClose: () => void }) {
+function RuleBuilderDialog({ fields, steps, onAddRule, onClose }: { fields: FormField[], steps: WorkflowStepDefinition[], onAddRule: (rule: Rule) => void, onClose: () => void }) {
     const [conditionField, setConditionField] = useState<string>('');
     const [conditionOperator, setConditionOperator] = useState<RuleCondition['operator'] | ''>('');
     const [conditionValue, setConditionValue] = useState<string>('');
@@ -572,5 +624,3 @@ function RuleBuilderDialog({ fields, steps, onAddRule, onClose }: { fields: Form
         </DialogContent>
     )
 }
-
-    

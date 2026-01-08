@@ -12,9 +12,12 @@ export type User = {
 };
 
 // Represents a step within a template, before it becomes a live task
+export type WorkflowStepType = 'task' | 'gateway-exclusive' | 'gateway-parallel';
+
 export type WorkflowStepDefinition = {
   id: string;
   name: string;
+  type: WorkflowStepType;
 };
 
 export type TaskStatus = 'Completed' | 'Pending' | 'Active';
@@ -138,5 +141,3 @@ export type TaskDuration = {
   name: string;
   duration: number;
 };
-
-    
