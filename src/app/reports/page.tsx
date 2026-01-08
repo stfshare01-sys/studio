@@ -123,29 +123,34 @@ export default function ReportsPage() {
                     {isAdmin && <DateRangePicker dateRange={dateRange} onDateChange={setDateRange} />}
                 </header>
                 <main className="flex flex-1 flex-col gap-8 p-4 pt-0 sm:p-6 sm:pt-0">
-                    {isLoading && <ReportsSkeleton />}
-                    {!isLoading && !isAdmin && <AccessDenied />}
-                    {!isLoading && isAdmin && (
+                    {isAuthLoading && <ReportsSkeleton />}
+                    {!isAuthLoading && !isAdmin && <AccessDenied />}
+                    {!isAuthLoading && isAdmin && (
                         <>
-                            <Card>
-                                <CardHeader>
-                                    <CardTitle>Volumen de Solicitudes</CardTitle>
-                                    <CardDescription>Número de solicitudes creadas y completadas a lo largo del tiempo.</CardDescription>
-                                </CardHeader>
-                                <CardContent>
-                                    <RequestVolumeChart requests={filteredData.requests} dateRange={dateRange} />
-                                </CardContent>
-                            </Card>
+                         {isLoading && <ReportsSkeleton />}
+                         {!isLoading && (
+                            <>
+                                <Card>
+                                    <CardHeader>
+                                        <CardTitle>Volumen de Solicitudes</CardTitle>
+                                        <CardDescription>Número de solicitudes creadas y completadas a lo largo del tiempo.</CardDescription>
+                                    </CardHeader>
+                                    <CardContent>
+                                        <RequestVolumeChart requests={filteredData.requests} dateRange={dateRange} />
+                                    </CardContent>
+                                </Card>
 
-                            <Card>
-                                <CardHeader>
-                                    <CardTitle>Rendimiento por Usuario</CardTitle>
-                                    <CardDescription>Métricas de finalización de tareas para cada usuario.</CardDescription>
-                                </CardHeader>
-                                <CardContent>
-                                    <UserPerformanceTable users={users ?? []} tasks={filteredData.tasks} />
-                                </CardContent>
-                            </Card>
+                                <Card>
+                                    <CardHeader>
+                                        <CardTitle>Rendimiento por Usuario</CardTitle>
+                                        <CardDescription>Métricas de finalización de tareas para cada usuario.</CardDescription>
+                                    </CardHeader>
+                                    <CardContent>
+                                        <UserPerformanceTable users={users ?? []} tasks={filteredData.tasks} />
+                                    </CardContent>
+                                </Card>
+                            </>
+                         )}
                         </>
                     )}
                 </main>

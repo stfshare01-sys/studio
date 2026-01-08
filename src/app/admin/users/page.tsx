@@ -71,11 +71,12 @@ function AssignAdminButton() {
 }
 
 function AdminView() {
+    const { isUserLoading } = useUser();
     const firestore = useFirestore();
     const usersQuery = useMemoFirebase(() => {
-        if (!firestore) return null;
+        if (isUserLoading || !firestore) return null;
         return query(collection(firestore, 'users'));
-    }, [firestore]);
+    }, [firestore, isUserLoading]);
 
     const { data: users, isLoading } = useCollection<User>(usersQuery);
 
