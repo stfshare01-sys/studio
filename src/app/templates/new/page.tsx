@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { GripVertical, PlusCircle, Trash2, GitBranch, ShieldCheck, CheckCircle, GitMerge, GitFork, Library } from "lucide-react";
+import { GripVertical, PlusCircle, Trash2, GitBranch, ShieldCheck, CheckCircle, GitMerge, GitFork, Library, WandSparkles, Loader2 } from "lucide-react";
 import Link from "next/link";
 import {
   Dialog,
@@ -39,6 +39,7 @@ import { collection } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 import type { FormField, WorkflowStepDefinition, Rule, RuleCondition, RuleAction, WorkflowStepType } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { generateProcessFromDescription, GenerateProcessOutput } from "@/ai/flows/process-generation";
 
 
 const reorder = <T,>(list: T[], startIndex: number, endIndex: number): T[] => {
@@ -73,6 +74,69 @@ type Pool = {
     name: string;
     lanes: Lane[];
 };
+
+
+function CopilotDialog({ onApply }: { onApply: (data: GenerateProcessOutput) => void }) {
+    const [description, setDescription] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
+    const [isOpen, setIsOpen] = useState(false);
+    const { toast } = useToast();
+
+    const handleGenerate = async () => {
+        if (!description.trim()) {
+            toast({ variant: 'destructive', title: 'Descripción vacía', description: 'Por favor, describe el proceso que quieres generar.' });
+            return;
+        }
+        setIsLoading(true);
+        try {
+            const result = await generateProcessFromDescription(description);
+            onApply(result);
+            setIsOpen(false);
+            toast({ title: '¡Borrador Generado!', description: 'El lienzo ha sido actualizado con el borrador de la IA.' });
+        } catch (error) {
+            console.error("AI process generation failed:", error);
+            toast({ variant: 'destructive', title: 'Error de la IA', description: 'No se pudo generar el proceso. Por favor, inténtelo de nuevo.' });
+        } finally {
+            setIsLoading(false);
+        }
+    };
+    
+    return (
+        <Dialog open={isOpen} onOpenChange={setIsOpen}>
+            <DialogTrigger asChild>
+                <Button variant="outline"><WandSparkles className="mr-2 h-4 w-4" /> Generar con IA</Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-xl">
+                <DialogHeader>
+                    <DialogTitle>Asistente de Procesos (Copilot)</DialogTitle>
+                    <DialogDescription>
+                        Describe el proceso que quieres modelar en lenguaje natural. La IA generará un borrador del diagrama, campos y reglas por ti.
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="py-4 space-y-4">
+                    <Label htmlFor="process-description" className="sr-only">Descripción del Proceso</Label>
+                    <Textarea 
+                        id="process-description"
+                        placeholder='Ej: "Crear un flujo para aprobar facturas. Si la factura supera los $5,000, necesita aprobación del gerente en el departamento de Finanzas. De lo contrario, solo requiere la aprobación del analista financiero. El proceso lo inicia cualquiera."'
+                        rows={6}
+                        value={description}
+                        onChange={(e) => setDescription(e.target.value)}
+                        disabled={isLoading}
+                    />
+                </div>
+                <DialogFooter>
+                    <DialogClose asChild>
+                        <Button variant="ghost" disabled={isLoading}>Cancelar</Button>
+                    </DialogClose>
+                    <Button onClick={handleGenerate} disabled={isLoading}>
+                        {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <WandSparkles className="mr-2 h-4 w-4" />}
+                        Generar Borrador
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    )
+}
 
 
 export default function NewTemplatePage() {
@@ -316,12 +380,27 @@ export default function NewTemplatePage() {
     setRules(rules.filter((_, i) => i !== index));
   }
   
+  const applyCopilotDraft = (data: GenerateProcessOutput) => {
+      setTemplateName(data.name);
+      setTemplateDescription(data.description);
+      setFields(data.fields);
+      setPools(data.pools);
+      setRules(data.rules);
+
+      // Keep the flat `steps` list in sync for the rule builder
+      const allSteps = data.pools.flatMap(pool => pool.lanes.flatMap(lane => lane.steps));
+      setSteps(allSteps);
+  };
+  
   return (
     <SiteLayout>
         <DragDropContext onDragEnd={onDragEnd}>
         <div className="flex flex-1 flex-col">
         <header className="flex items-center justify-between p-4 sm:p-6">
-            <h1 className="text-2xl font-bold tracking-tight">Crear Nueva Plantilla</h1>
+            <div className="flex items-center gap-4">
+                <h1 className="text-2xl font-bold tracking-tight">Crear Nueva Plantilla</h1>
+                <CopilotDialog onApply={applyCopilotDraft} />
+            </div>
             <div className="flex gap-2">
                 <Button variant="outline" asChild><Link href="/templates">Cancelar</Link></Button>
                 <Button onClick={handleSaveTemplate}>Guardar Plantilla</Button>
@@ -721,5 +800,3 @@ function RuleBuilderDialog({ fields, steps, onAddRule, onClose }: { fields: Form
         </DialogContent>
     )
 }
-
-    
