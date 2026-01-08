@@ -5,7 +5,7 @@ import SiteLayout from "@/components/site-layout";
 import { notFound, useParams } from "next/navigation";
 import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from "@/firebase";
 import { doc, collection, query, serverTimestamp, orderBy } from "firebase/firestore";
-import type { Request as RequestType, EnrichedRequest, User, EnrichedWorkflowStep, Template, Comment as CommentType, EnrichedComment, AuditLog } from "@/lib/types";
+import type { Request as RequestType, EnrichedRequest, User, EnrichedWorkflowStep, Template, Comment as CommentType, EnrichedComment, AuditLog, FormField } from "@/lib/types";
 import { ArrowLeft, User as UserIcon, Paperclip, Send } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -333,7 +333,7 @@ export default function RequestDetailPage() {
                         <Separator />
                         <dl className="grid gap-2">
                             {Object.entries(enrichedRequest.formData).map(([key, value]) => {
-                               const fieldLabel = request.template?.fields.find((f: any) => f.id === key)?.label || key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
+                               const fieldLabel = request.template?.fields.find((f: FormField) => f.id === key)?.label || key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
                                return (
                                 <div key={key} className="flex justify-between">
                                     <dt className="text-muted-foreground">{fieldLabel}</dt>

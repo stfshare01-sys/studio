@@ -174,9 +174,9 @@ export function AssigneeSuggester({
             )}
             <DialogFooter>
               <Button variant="ghost" onClick={() => setIsOpen(false)}>Cancelar</Button>
-              <Button onClick={handleAssign} disabled={!suggestion || isLoading}>
+              <Button onClick={handleAssign} disabled={!suggestion || !suggestedUser || isLoading}>
                 <UserPlus className="mr-2 h-4 w-4" />
-                Asignar a {suggestedUser?.fullName.split(' ')[0]}
+                Asignar a {suggestedUser?.fullName?.split(' ')[0] ?? 'Usuario'}
               </Button>
             </DialogFooter>
           </DialogContent>
