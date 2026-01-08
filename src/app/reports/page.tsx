@@ -7,7 +7,7 @@ import { collection, query, collectionGroup } from "firebase/firestore";
 import type { Request as RequestType, Task, User } from '@/lib/types';
 import React, { useMemo, useState } from "react";
 import { DateRange } from "react-day-picker";
-import { addDays, format, startOfDay } from 'date-fns';
+import { addDays, format, startOfDay, isValid } from 'date-fns';
 import { DateRangePicker } from "@/components/reports/date-range-picker";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import RequestVolumeChart from "@/components/reports/request-volume-chart";
@@ -51,8 +51,6 @@ export default function ReportsPage() {
     
     const firestore = useFirestore();
 
-    // Use a collection group query to get all requests from all users.
-    // This requires an index in Firestore.
     const requestsQuery = useMemoFirebase(() => {
         if (!firestore) return null;
         return query(collectionGroup(firestore, 'requests'));
@@ -73,7 +71,7 @@ export default function ReportsPage() {
     const { data: users, isLoading: isLoadingUsers } = useCollection<User>(usersQuery);
 
     const filteredData = useMemo(() => {
-        if (!dateRange?.from || !dateRange?.to) {
+        if (!dateRange?.from || !dateRange?.to || !isValid(dateRange.from) || !isValid(dateRange.to)) {
             return { requests: [], tasks: [] };
         }
         const from = startOfDay(dateRange.from).getTime();
@@ -121,7 +119,7 @@ export default function ReportsPage() {
                             <Card>
                                 <CardHeader>
                                     <CardTitle>Rendimiento por Usuario</CardTitle>
-                                    <CardDescription>Métricas de finalización de tareas para cada usuario.</CardCardDescription>
+                                    <CardDescription>Métricas de finalización de tareas para cada usuario.</CardDescription>
                                 </CardHeader>
                                 <CardContent>
                                     <UserPerformanceTable users={users ?? []} tasks={filteredData.tasks} />
