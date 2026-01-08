@@ -134,9 +134,9 @@ export default function RequestDetailPage() {
   const [newComment, setNewComment] = useState("");
 
   const requestRef = useMemoFirebase(() => {
-    if (!firestore || !user?.uid) return null;
+    if (isUserLoading || !firestore || !user?.uid) return null;
     return doc(firestore, 'users', user.uid, 'requests', id);
-  }, [firestore, user?.uid, id]);
+  }, [firestore, user?.uid, id, isUserLoading]);
 
   const { data: request, isLoading: isRequestLoading } = useDoc<RequestType>(requestRef);
 
@@ -161,41 +161,35 @@ export default function RequestDetailPage() {
   const { data: template, isLoading: isTemplateLoading } = useDoc<Template>(templateRef);
 
   const usersQuery = useMemoFirebase(() => {
-      if(!firestore || !user || !isAdmin) return null;
-      // Admins can fetch all users. Regular users cannot, which is enforced by security rules.
-      // The component will still function for regular users, showing 'Unknown User' where needed.
-      return query(collection(firestore, 'users'));
-  }, [firestore, user, isAdmin]);
+    if (isUserLoading || !firestore || !isAdmin) return null;
+    // Admins can fetch all users. Regular users cannot, which is enforced by security rules.
+    return query(collection(firestore, 'users'));
+  }, [firestore, isAdmin, isUserLoading]);
 
   const { data: users, isLoading: areUsersLoading } = useCollection<User>(usersQuery);
   
   const [enrichedRequest, setEnrichedRequest] = useState<EnrichedRequest | null>(null);
 
   useEffect(() => {
-    if (request && users && template && user) {
-        const submittedByUser = users.find(u => u.id === request.submittedBy) ?? { id: request.submittedBy, fullName: "Usuario Desconocido", email: "", department: "", role: "Member" };
+    if (request && template && user) {
+        // If we are admin and users have loaded, or if we are not admin
+        if ((isAdmin && users) || !isAdmin) {
+            const userList = users || [user]; // Use all users if admin, otherwise just the current user
 
-        const enrichedSteps: EnrichedWorkflowStep[] = request.steps.map(s => {
-            const assignee = users.find(u => u.id === s.assigneeId);
-            return {
-                ...s,
-                assignee: assignee ?? (s.assigneeId ? { id: s.assigneeId, fullName: "Usuario Asignado", email: "", department: "", role: "Member" } : null),
-            }
-        });
-        
-        setEnrichedRequest({ ...request, template, submittedBy: submittedByUser, steps: enrichedSteps });
-    } else if (request && !areUsersLoading && template && user) {
-        // Fallback for non-admins who can't load all users
-        const submittedByUser = user.uid === request.submittedBy ? { id: user.uid, fullName: user.fullName || "Tú", email: user.email || "", department: user.department || "", role: user.role || "Member" } : { id: request.submittedBy, fullName: "Otro Usuario", email: "", department: "", role: "Member"};
-        
-        const enrichedSteps: EnrichedWorkflowStep[] = request.steps.map(s => ({
-            ...s,
-            assignee: s.assigneeId ? { id: s.assigneeId, fullName: "Usuario Asignado", email: "", department: "", role: "Member" } : null,
-        }));
+            const submittedByUser = userList.find(u => u.id === request.submittedBy) ?? { id: request.submittedBy, fullName: "Usuario Desconocido", email: "", department: "", role: "Member" };
 
-        setEnrichedRequest({ ...request, template, submittedBy: submittedByUser, steps: enrichedSteps });
+            const enrichedSteps: EnrichedWorkflowStep[] = request.steps.map(s => {
+                const assignee = userList.find(u => u.id === s.assigneeId);
+                return {
+                    ...s,
+                    assignee: assignee ?? (s.assigneeId ? { id: s.assigneeId, fullName: "Usuario Asignado", email: "", department: "", role: "Member" } : null),
+                }
+            });
+            
+            setEnrichedRequest({ ...request, template, submittedBy: submittedByUser, steps: enrichedSteps });
+        }
     }
-  }, [request, users, template, areUsersLoading, user]);
+  }, [request, users, template, user, isAdmin]);
 
   const handleAddComment = () => {
     if (!newComment.trim() || !user || !requestRef) return;
@@ -224,13 +218,16 @@ export default function RequestDetailPage() {
   };
 
 
-  if (isUserLoading || isRequestLoading || (areUsersLoading && isAdmin) || isTemplateLoading || areAuditLogsLoading) {
+  const isLoading = isUserLoading || isRequestLoading || (isAdmin && areUsersLoading) || isTemplateLoading || areAuditLogsLoading;
+
+  if (isLoading) {
     return <SiteLayout><RequestDetailSkeleton /></SiteLayout>;
   }
 
   if (!request || !enrichedRequest) {
-    if(!isRequestLoading){
-        notFound();
+    // This check prevents a flash of the "Not Found" page while data is still loading
+    if (!isRequestLoading && !request) {
+      notFound();
     }
     return <SiteLayout><RequestDetailSkeleton /></SiteLayout>;
   }

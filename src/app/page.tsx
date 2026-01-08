@@ -42,33 +42,35 @@ function DataTableSkeleton() {
   }
 
 export default function DashboardPage() {
-  const { user } = useUser();
+  const { user, isUserLoading } = useUser();
   const firestore = useFirestore();
 
   // Query for the current user's requests
   const myRequestsQuery = useMemoFirebase(() => {
-    if (!firestore || !user?.uid) return null;
+    if (isUserLoading || !firestore || !user?.uid) return null;
     return query(collection(firestore, 'users', user.uid, 'requests'));
-  }, [firestore, user?.uid]);
+  }, [firestore, user?.uid, isUserLoading]);
 
   // Query for tasks assigned TO the current user that are active
   const tasksQuery = useMemoFirebase(() => {
-    if (!firestore || !user) return null;
+    if (isUserLoading || !firestore || !user) return null;
     return query(
         collection(firestore, 'tasks'),
         where('assigneeId', '==', user.uid),
         where('status', '==', 'Active')
     );
-  }, [firestore, user]);
+  }, [firestore, user, isUserLoading]);
 
   const { data: myRequests, isLoading: isLoadingMyRequests } = useCollection<RequestType>(myRequestsQuery);
   const { data: tasks, isLoading: isLoadingTasks } = useCollection<Task>(tasksQuery);
-  const { data: allTasks, isLoading: isLoadingAllTasks } = useCollection<Task>(
-    useMemoFirebase(() => {
-        if (!firestore || !user) return null; // Added !user check for robustness
-        return query(collection(firestore, 'tasks'));
-    }, [firestore, user])
-  );
+  
+  const allTasksQuery = useMemoFirebase(() => {
+    // This query MUST wait for user loading to finish to ensure firestore is ready
+    if (isUserLoading || !firestore) return null;
+    return query(collection(firestore, 'tasks'));
+  }, [firestore, isUserLoading]);
+  
+  const { data: allTasks, isLoading: isLoadingAllTasks } = useCollection<Task>(allTasksQuery);
 
 
   const stats = React.useMemo(() => {

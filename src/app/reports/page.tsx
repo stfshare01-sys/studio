@@ -71,17 +71,17 @@ export default function ReportsPage() {
     const firestore = useFirestore();
 
     const requestsQuery = useMemoFirebase(() => {
-        if (isAuthLoading || !isAdmin || !firestore) return null;
+        if (isAuthLoading || !firestore || !isAdmin) return null;
         return query(collectionGroup(firestore, 'requests'));
     }, [firestore, isAdmin, isAuthLoading]);
 
     const tasksQuery = useMemoFirebase(() => {
-        if (isAuthLoading || !isAdmin || !firestore) return null;
+        if (isAuthLoading || !firestore || !isAdmin) return null;
         return query(collection(firestore, 'tasks'));
     }, [firestore, isAdmin, isAuthLoading]);
 
     const usersQuery = useMemoFirebase(() => {
-        if (isAuthLoading || !isAdmin || !firestore) return null;
+        if (isAuthLoading || !firestore || !isAdmin) return null;
         return query(collection(firestore, 'users'));
     }, [firestore, isAdmin, isAuthLoading]);
 
