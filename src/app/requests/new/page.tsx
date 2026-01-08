@@ -132,6 +132,19 @@ export default function NewRequestPage() {
             // Set the main request document
             setDocumentNonBlocking(newRequestRef, newRequest, {});
 
+            // Create initial audit log
+            const auditLogCollection = collection(newRequestRef, 'audit_logs');
+            const auditLogData = {
+                requestId: newRequestId,
+                userId: user.uid,
+                userFullName: user.fullName || user.email,
+                userAvatarUrl: user.avatarUrl,
+                timestamp: now,
+                action: 'REQUEST_SUBMITTED',
+                details: { title: newRequest.title }
+            };
+            addDocumentNonBlocking(auditLogCollection, auditLogData);
+
             toast({
                 title: '¡Solicitud Enviada!',
                 description: 'Su solicitud ha sido enviada con éxito.',
@@ -224,3 +237,5 @@ export default function NewRequestPage() {
         </SiteLayout>
     );
 }
+
+    

@@ -105,6 +105,19 @@ export type Comment = {
     createdAt: string;
 };
 
+export type AuditLogAction = 'REQUEST_SUBMITTED' | 'STEP_ASSIGNEE_CHANGED' | 'COMMENT_ADDED' | 'STEP_COMPLETED';
+
+export type AuditLog = {
+    id: string;
+    requestId: string;
+    userId: string;
+    userFullName: string; // Denormalized for display
+    userAvatarUrl?: string; // Denormalized for display
+    timestamp: string;
+    action: AuditLogAction;
+    details: Record<string, any>;
+};
+
 
 // Enriched types for UI
 export type EnrichedWorkflowStep = Omit<Request['steps'][0], 'assigneeId'> & {
@@ -125,3 +138,5 @@ export type TaskDuration = {
   name: string;
   duration: number;
 };
+
+    

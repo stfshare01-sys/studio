@@ -5,7 +5,7 @@ import SiteLayout from "@/components/site-layout";
 import { notFound, useParams } from "next/navigation";
 import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from "@/firebase";
 import { doc, collection, query, serverTimestamp, orderBy } from "firebase/firestore";
-import type { Request as RequestType, EnrichedRequest, User, EnrichedWorkflowStep, Template, Comment as CommentType, EnrichedComment } from "@/lib/types";
+import type { Request as RequestType, EnrichedRequest, User, EnrichedWorkflowStep, Template, Comment as CommentType, EnrichedComment, AuditLog } from "@/lib/types";
 import { ArrowLeft, User as UserIcon, Paperclip, Send } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -22,6 +22,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { addDocumentNonBlocking } from "@/firebase/non-blocking-updates";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
+import { ActivityLog } from "@/components/requests/activity-log";
 
 function SubmittedBy({ userId }: { userId: string }) {
     const firestore = useFirestore();
@@ -143,7 +144,13 @@ export default function RequestDetailPage() {
     return query(collection(requestRef, 'comments'), orderBy('createdAt', 'desc'));
   }, [requestRef]);
 
+  const auditLogsQuery = useMemoFirebase(() => {
+    if (!requestRef) return null;
+    return query(collection(requestRef, 'audit_logs'), orderBy('timestamp', 'desc'));
+  }, [requestRef]);
+
   const { data: comments, isLoading: areCommentsLoading } = useCollection<CommentType>(commentsQuery);
+  const { data: auditLogs, isLoading: areAuditLogsLoading } = useCollection<AuditLog>(auditLogsQuery);
 
   const templateRef = useMemoFirebase(() => {
       if (!firestore || !request?.templateId) return null;
@@ -187,11 +194,24 @@ export default function RequestDetailPage() {
         createdAt: new Date().toISOString(),
     };
     addDocumentNonBlocking(commentsCollection, commentData);
+
+    const auditLogCollection = collection(requestRef, 'audit_logs');
+    const auditLogData = {
+        requestId: requestRef.id,
+        userId: user.uid,
+        userFullName: user.fullName || user.email,
+        userAvatarUrl: user.avatarUrl,
+        timestamp: new Date().toISOString(),
+        action: 'COMMENT_ADDED',
+        details: { text: newComment.trim() }
+    };
+    addDocumentNonBlocking(auditLogCollection, auditLogData);
+
     setNewComment("");
   };
 
 
-  if (isUserLoading || isRequestLoading || areUsersLoading || isTemplateLoading) {
+  if (isUserLoading || isRequestLoading || areUsersLoading || isTemplateLoading || areAuditLogsLoading) {
     return <SiteLayout><RequestDetailSkeleton /></SiteLayout>;
   }
 
@@ -314,6 +334,15 @@ export default function RequestDetailPage() {
                         </dl>
                     </CardContent>
                 </Card>
+
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Historial de Actividad</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <ActivityLog logs={auditLogs || []} />
+                    </CardContent>
+                </Card>
                 
                 {enrichedRequest.documents.length > 0 && (
                     <Card>
@@ -340,5 +369,7 @@ export default function RequestDetailPage() {
     </SiteLayout>
   );
 }
+
+    
 
     

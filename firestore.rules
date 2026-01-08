@@ -131,6 +131,19 @@ service cloud.firestore {
         allow create: if isOwner(userId) && request.resource.data.authorId == userId;
         allow update, delete: if isOwner(userId) && request.resource.data.authorId == resource.data.authorId;
       }
+
+      /**
+       * @description Manages the immutable audit trail for a request.
+       * @path /users/{userId}/requests/{requestId}/audit_logs/{auditLogId}
+       */
+      match /audit_logs/{auditLogId} {
+        // Owner and admins can read the history.
+        allow get, list: if isOwner(userId) || isAdmin();
+        // Only the system (via user's credentials) can create new logs.
+        allow create: if isOwner(userId) && request.resource.data.userId == userId;
+        // NO ONE can update or delete audit logs. This ensures immutability.
+        allow update, delete: if false;
+      }
     }
 
     /**
@@ -151,3 +164,5 @@ service cloud.firestore {
     }
   }
 }
+
+    

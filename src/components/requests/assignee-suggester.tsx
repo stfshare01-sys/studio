@@ -23,9 +23,9 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { useFirestore } from "@/firebase";
-import { doc } from "firebase/firestore";
-import { updateDocumentNonBlocking } from "@/firebase/non-blocking-updates";
+import { useFirestore, useUser } from "@/firebase";
+import { doc, collection } from "firebase/firestore";
+import { updateDocumentNonBlocking, addDocumentNonBlocking } from "@/firebase/non-blocking-updates";
 
 type Suggestion = {
   suggestedUserId: string;
@@ -46,6 +46,7 @@ export function AssigneeSuggester({
   const [isOpen, setIsOpen] = useState(false);
   const { toast } = useToast();
   const firestore = useFirestore();
+  const { user: currentUser } = useUser();
 
   const handleSuggest = async () => {
     setIsLoading(true);
@@ -75,7 +76,7 @@ export function AssigneeSuggester({
   };
 
   const handleAssign = () => {
-    if (!suggestion || !suggestedUser || !firestore || !step.taskId) {
+    if (!suggestion || !suggestedUser || !firestore || !step.taskId || !currentUser) {
         toast({ variant: 'destructive', title: 'Error', description: 'No se puede asignar la tarea.' });
         return;
     }
@@ -83,12 +84,28 @@ export function AssigneeSuggester({
     const taskRef = doc(firestore, 'tasks', step.taskId);
     updateDocumentNonBlocking(taskRef, { assigneeId: suggestedUser.id });
 
-    // Also update the step in the request subcollection for consistency
-    const requestStepRef = doc(firestore, 'users', request.submittedBy, 'requests', request.id);
+    const requestRef = doc(firestore, 'users', request.submittedBy, 'requests', request.id);
     const updatedSteps = request.steps.map(s => 
         s.id === step.id ? { ...s, assigneeId: suggestedUser.id } : s
     );
-    updateDocumentNonBlocking(requestStepRef, { steps: updatedSteps });
+    updateDocumentNonBlocking(requestRef, { steps: updatedSteps });
+
+    // Create audit log
+    const auditLogCollection = collection(requestRef, 'audit_logs');
+    const auditLogData = {
+        requestId: request.id,
+        userId: currentUser.uid,
+        userFullName: currentUser.fullName || currentUser.email,
+        userAvatarUrl: currentUser.avatarUrl,
+        timestamp: new Date().toISOString(),
+        action: 'STEP_ASSIGNEE_CHANGED',
+        details: { 
+            stepName: step.name,
+            assigneeName: suggestedUser.fullName
+        }
+    };
+    addDocumentNonBlocking(auditLogCollection, auditLogData);
+
 
     setIsOpen(false);
     toast({
@@ -168,3 +185,5 @@ export function AssigneeSuggester({
     </Card>
   );
 }
+
+    
