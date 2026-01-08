@@ -6,12 +6,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { RequestsTable } from "@/components/dashboard/requests-table";
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase";
 import { collection, query, where } from "firebase/firestore";
-import type { Request as RequestType } from '@/lib/types';
-import { FilePlus, Loader2 } from "lucide-react";
+import type { Request as RequestType, Task } from '@/lib/types';
+import { FilePlus } from "lucide-react";
 import Link from "next/link";
 import { Skeleton } from "@/components/ui/skeleton";
+import { TasksTable } from "@/components/dashboard/tasks-table";
 
-function RequestsTableSkeleton() {
+function DataTableSkeleton() {
     return (
       <div className="rounded-md border">
         <div className="p-4">
@@ -38,6 +39,7 @@ export default function DashboardPage() {
   const { user } = useUser();
   const firestore = useFirestore();
 
+  // Query for requests submitted BY the current user
   const requestsQuery = useMemoFirebase(() => {
     if (!firestore || !user) return null;
     return query(
@@ -45,7 +47,20 @@ export default function DashboardPage() {
     );
   }, [firestore, user]);
 
-  const { data: requests, isLoading } = useCollection<RequestType>(requestsQuery);
+  const { data: requests, isLoading: isLoadingRequests } = useCollection<RequestType>(requestsQuery);
+
+  // Query for tasks assigned TO the current user that are active
+  const tasksQuery = useMemoFirebase(() => {
+    if (!firestore || !user) return null;
+    return query(
+        collection(firestore, 'tasks'),
+        where('assigneeId', '==', user.uid),
+        where('status', '==', 'Active')
+    );
+  }, [firestore, user]);
+
+  const { data: tasks, isLoading: isLoadingTasks } = useCollection<Task>(tasksQuery);
+
 
   return (
     <SiteLayout>
@@ -59,16 +74,35 @@ export default function DashboardPage() {
             </Link>
           </Button>
         </header>
-        <main className="flex flex-1 flex-col gap-4 p-4 pt-0 sm:gap-8 sm:p-6 sm:pt-0">
+        <main className="flex flex-1 flex-col gap-8 p-4 pt-0 sm:p-6 sm:pt-0">
+          <Card>
+            <CardHeader>
+              <CardTitle>Mis Tareas Pendientes</CardTitle>
+              <CardDescription>Estas son las tareas activas que requieren tu atención.</CardDescription>
+            </CardHeader>
+            <CardContent>
+                {isLoadingTasks && <DataTableSkeleton />}
+                {!isLoadingTasks && tasks && <TasksTable tasks={tasks} />}
+                {!isLoadingTasks && !tasks?.length && (
+                    <div className="flex items-center justify-center rounded-lg border border-dashed shadow-sm p-8">
+                        <div className="text-center">
+                            <h3 className="text-2xl font-bold tracking-tight">Bandeja de entrada vacía</h3>
+                            <p className="text-sm text-muted-foreground">No tienes ninguna tarea asignada en este momento.</p>
+                        </div>
+                    </div>
+                )}
+            </CardContent>
+          </Card>
+          
           <Card>
             <CardHeader>
               <CardTitle>Mis Solicitudes</CardTitle>
               <CardDescription>Rastree el estado de todas las solicitudes que ha enviado.</CardDescription>
             </CardHeader>
             <CardContent>
-              {isLoading && <RequestsTableSkeleton />}
-              {!isLoading && requests && <RequestsTable requests={requests} />}
-              {!isLoading && !requests?.length && (
+              {isLoadingRequests && <DataTableSkeleton />}
+              {!isLoadingRequests && requests && <RequestsTable requests={requests} />}
+              {!isLoadingRequests && !requests?.length && (
                  <div className="flex flex-1 items-center justify-center rounded-lg border border-dashed shadow-sm p-8">
                     <div className="flex flex-col items-center gap-1 text-center">
                         <h3 className="text-2xl font-bold tracking-tight">No tiene solicitudes</h3>

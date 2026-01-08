@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { User, EnrichedWorkflowStep } from "@/lib/types";
+import type { User, EnrichedWorkflowStep, Request } from "@/lib/types";
 import { intelligentTaskAssignment } from "@/ai/flows/intelligent-task-assignment";
 import { Button } from "@/components/ui/button";
 import {
@@ -23,6 +23,9 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { useFirestore } from "@/firebase";
+import { doc } from "firebase/firestore";
+import { updateDocumentNonBlocking } from "@/firebase/non-blocking-updates";
 
 type Suggestion = {
   suggestedUserId: string;
@@ -31,26 +34,29 @@ type Suggestion = {
 
 export function AssigneeSuggester({
   step,
+  request,
   availableUsers,
 }: {
   step: EnrichedWorkflowStep;
+  request: Request;
   availableUsers: User[];
 }) {
   const [suggestion, setSuggestion] = useState<Suggestion | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
   const { toast } = useToast();
+  const firestore = useFirestore();
 
   const handleSuggest = async () => {
     setIsLoading(true);
     setSuggestion(null);
     try {
       const result = await intelligentTaskAssignment({
-        taskDescription: `Assign the task: "${step.name}"`,
+        taskDescription: `Assign the task: "${step.name}" for the request "${request.title}"`,
         availableUsers: availableUsers.map((u) => ({
           userId: u.id,
-          skills: u.skills,
-          currentWorkload: u.currentWorkload,
+          skills: u.skills ?? [],
+          currentWorkload: u.currentWorkload ?? 0,
           pastPerformance: 5, // Mocked for demonstration
         })),
       });
@@ -69,10 +75,25 @@ export function AssigneeSuggester({
   };
 
   const handleAssign = () => {
+    if (!suggestion || !suggestedUser || !firestore || !step.taskId) {
+        toast({ variant: 'destructive', title: 'Error', description: 'No se puede asignar la tarea.' });
+        return;
+    }
+
+    const taskRef = doc(firestore, 'tasks', step.taskId);
+    updateDocumentNonBlocking(taskRef, { assigneeId: suggestedUser.id });
+
+    // Also update the step in the request subcollection for consistency
+    const requestStepRef = doc(firestore, 'users', request.submittedBy, 'requests', request.id);
+    const updatedSteps = request.steps.map(s => 
+        s.id === step.id ? { ...s, assigneeId: suggestedUser.id } : s
+    );
+    updateDocumentNonBlocking(requestStepRef, { steps: updatedSteps });
+
     setIsOpen(false);
     toast({
         title: "¡Tarea Asignada!",
-        description: `${suggestedUser?.name} ha sido asignado a "${step.name}".`,
+        description: `${suggestedUser?.fullName} ha sido asignado a "${step.name}".`,
     });
   }
 
@@ -120,11 +141,11 @@ export function AssigneeSuggester({
               <div className="space-y-4 py-4">
                  <div className="flex items-center gap-4 rounded-lg border p-4">
                     <Avatar className="h-12 w-12">
-                        <AvatarImage src={suggestedUser.avatarUrl} alt={suggestedUser.name} />
-                        <AvatarFallback>{suggestedUser.name.charAt(0)}</AvatarFallback>
+                        <AvatarImage src={suggestedUser.avatarUrl} alt={suggestedUser.fullName} />
+                        <AvatarFallback>{suggestedUser.fullName.charAt(0)}</AvatarFallback>
                     </Avatar>
                     <div>
-                        <div className="font-bold text-lg">{suggestedUser.name}</div>
+                        <div className="font-bold text-lg">{suggestedUser.fullName}</div>
                         <div className="text-sm text-muted-foreground">{suggestedUser.email}</div>
                     </div>
                 </div>
@@ -138,7 +159,7 @@ export function AssigneeSuggester({
               <Button variant="ghost" onClick={() => setIsOpen(false)}>Cancelar</Button>
               <Button onClick={handleAssign} disabled={!suggestion || isLoading}>
                 <UserPlus className="mr-2 h-4 w-4" />
-                Asignar a {suggestedUser?.name.split(' ')[0]}
+                Asignar a {suggestedUser?.fullName.split(' ')[0]}
               </Button>
             </DialogFooter>
           </DialogContent>

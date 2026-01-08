@@ -119,54 +119,24 @@
         "data"
       ]
     },
-    "WorkflowStep": {
+    "Task": {
       "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "WorkflowStep",
+      "title": "Task",
       "type": "object",
-      "description": "Represents a single step within a workflow process.",
+      "description": "Represents a single actionable task assigned to a user, derived from a workflow step.",
       "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique identifier for the Workflow Step."
-        },
-        "templateId": {
-          "type": "string",
-          "description": "Reference to RequestTemplate. (Relationship: RequestTemplate 1:N WorkflowStep)"
-        },
-        "name": {
-          "type": "string",
-          "description": "Name of the workflow step."
-        },
-        "description": {
-          "type": "string",
-          "description": "A detailed explanation of the workflow step."
-        },
-        "assignee": {
-          "type": "string",
-          "description": "Reference to User assigned to the workflow step. (Relationship: User 1:N WorkflowStep)"
-        },
-        "dueDate": {
-          "type": "string",
-          "description": "The date and time by which this step needs to be completed.",
-          "format": "date-time"
-        },
-        "status": {
-          "type": "string",
-          "description": "Current status of the step (e.g., 'Pending', 'In Progress', 'Completed')."
-        },
-        "requestId": {
-          "type": "string",
-          "description": "Reference to Request. (Relationship: Request 1:N WorkflowStep)"
-        }
+        "id": { "type": "string", "description": "Unique identifier for the Task document." },
+        "requestId": { "type": "string", "description": "Reference to the parent Request." },
+        "requestTitle": { "type": "string", "description": "Denormalized title of the parent request for display purposes." },
+        "requestOwnerId": { "type": "string", "description": "The user ID of the person who created the request." },
+        "stepId": { "type": "string", "description": "Identifier of the step from the original template." },
+        "name": { "type": "string", "description": "Name of the task, inherited from the step definition." },
+        "status": { "type": "string", "description": "Current status of the task (e.g., 'Pending', 'Active', 'Completed')." },
+        "assigneeId": { "type": "string", "description": "The user ID of the person this task is assigned to. Can be null." },
+        "completedAt": { "type": "string", "description": "Timestamp when the task was completed.", "format": "date-time" },
+        "createdAt": { "type": "string", "description": "Timestamp when the task was created.", "format": "date-time" }
       },
-      "required": [
-        "id",
-        "templateId",
-        "name",
-        "assignee",
-        "status",
-        "requestId"
-      ]
+      "required": ["id", "requestId", "requestTitle", "requestOwnerId", "stepId", "name", "status", "createdAt"]
     },
     "User": {
       "$schema": "http://json-schema.org/draft-07/schema#",
@@ -315,26 +285,13 @@
         }
       },
       {
-        "path": "/users/{userId}/requests/{requestId}/workflow_steps/{workflowStepId}",
+        "path": "/tasks/{taskId}",
         "definition": {
-          "entityName": "WorkflowStep",
-          "schema": {
-            "$ref": "#/backend/entities/WorkflowStep"
-          },
-          "description": "Stores workflow steps for a specific request. Inherits ownership from the parent request document. Includes denormalized 'templateId' from the parent 'request'.",
+          "entityName": "Task",
+          "schema": { "$ref": "#/backend/entities/Task" },
+          "description": "A centralized collection of all actionable tasks. This structure allows for efficient querying of tasks assigned to a specific user across all requests.",
           "params": [
-            {
-              "name": "userId",
-              "description": "The unique identifier for the user who owns the request."
-            },
-            {
-              "name": "requestId",
-              "description": "The unique identifier for the request."
-            },
-            {
-              "name": "workflowStepId",
-              "description": "The unique identifier for the workflow step."
-            }
+            { "name": "taskId", "description": "The unique identifier for the task." }
           ]
         }
       },
@@ -363,6 +320,6 @@
         }
       }
     ],
-    "reasoning": "The Firestore structure is designed to manage request workflows, templates, requests, steps, users, and documents, focusing on security, scalability, and debuggability. It adheres to the core design principles of Authorization Independence, Clarity of Intent, DBAC (Database-Based Access Control), and Rules are not Filters. Authorization Independence is achieved through denormalization; for example, access to requests is controlled by the `submittedBy` field, which is a direct reference to the user who submitted the request. This eliminates the need for complex `get()` calls in security rules. Structural Segregation is applied by separating different types of data into distinct collections, ensuring that each collection has a homogeneous security posture. The structure models access using path-based ownership for user-owned data and standardizes on membership maps where collaboration is required.\n\nThe structure supports QAPs by segregating data based on access requirements. Private user data resides under `/users/{userId}`, while collaborative data, if any, would use a membership map to control access. This segregation prevents rules from being used as filters, ensuring that list operations are secure.\n\nInvariants are maintained through the structure by enforcing strict ownership (e.g., a request's `submittedBy` always points to the owner), timestamp fields to track creation and modification times, and denormalized data to ensure data consistency across collections."
+    "reasoning": "The Firestore structure is designed to manage request workflows, templates, requests, steps, users, and documents, focusing on security, scalability, and debuggability. A key change is the introduction of a top-level `/tasks` collection. This denormalizes workflow steps into a centralized, flat list of actionable tasks, which is critical for efficient querying. For example, fetching all tasks assigned to a specific user (`where('assigneeId', '==', userId)`) is now a simple, scalable query on a single collection. This avoids costly and complex collection group queries. Each task document contains denormalized data from its parent request (like `requestTitle` and `requestOwnerId`) to provide sufficient context for display in a user's task list without requiring additional lookups. The original request documents under `/users/{userId}/requests/{requestId}` still maintain a record of their steps, but now include a `taskId` to link back to the primary task document in the `/tasks` collection. This hybrid approach provides both a query-efficient task management system and a clear, hierarchical record of the entire request process."
   }
 }

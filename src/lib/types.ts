@@ -11,12 +11,26 @@ export type User = {
   role: UserRole;
 };
 
-export type WorkflowStepData = {
+// Represents a step within a template, before it becomes a live task
+export type WorkflowStepDefinition = {
   id: string;
   name: string;
-  status: 'Completed' | 'Pending' | 'Active';
+};
+
+export type TaskStatus = 'Completed' | 'Pending' | 'Active';
+
+// Represents a live, actionable task assigned to a user, based on a WorkflowStepDefinition
+export type Task = {
+  id: string; // Unique ID for the task document itself
+  requestTitle: string; // Denormalized from parent request
+  requestId: string; // ID of the parent request
+  requestOwnerId: string; // ID of the user who submitted the request
+  stepId: string; // ID from the original WorkflowStepDefinition in the template
+  name: string; // Name of the step/task
+  status: TaskStatus;
   assigneeId: string | null;
   completedAt: string | null;
+  createdAt: string; // Timestamp when the task was created
 };
 
 export type Request = {
@@ -27,7 +41,15 @@ export type Request = {
   createdAt: string;
   updatedAt: string;
   submittedBy: string; // User ID
-  steps: WorkflowStepData[];
+  // Steps are now mainly for historical/display purposes within the request context
+  steps: {
+    id: string; // Matches stepId from template
+    name: string;
+    status: TaskStatus;
+    assigneeId: string | null;
+    completedAt: string | null;
+    taskId: string | null; // Reference to the document in the /tasks collection
+  }[];
   formData: Record<string, any>;
   documents: { name: string; url: string }[];
   template?: Template; // Denormalized template data
@@ -37,11 +59,6 @@ export type FormField = {
   id: string;
   label: string;
   type: 'text' | 'textarea' | 'date' | 'number';
-};
-
-export type WorkflowStep = {
-  id: string;
-  name: string;
 };
 
 export type RuleCondition = {
@@ -65,13 +82,13 @@ export type Template = {
   name: string;
   description: string;
   fields: FormField[];
-  steps: WorkflowStep[];
+  steps: WorkflowStepDefinition[]; // Changed from WorkflowStep
   rules: Rule[];
 };
 
 
 // Enriched types for UI
-export type EnrichedWorkflowStep = Omit<WorkflowStepData, 'assigneeId'> & {
+export type EnrichedWorkflowStep = Omit<Request['steps'][0], 'assigneeId'> & {
   assignee: User | null;
 };
 

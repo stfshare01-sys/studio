@@ -42,16 +42,6 @@ function SubmittedBy({ userId }: { userId: string }) {
     );
 }
 
-function enrichRequest(request: RequestType, users: User[]): EnrichedRequest {
-    const submittedBy = users.find(u => u.id === request.submittedBy);
-    const steps: EnrichedWorkflowStep[] = request.steps.map(step => ({
-        ...step,
-        assignee: users.find(u => u.id === step.assigneeId) ?? null,
-    }));
-    return { ...request, submittedBy: submittedBy!, steps };
-}
-
-
 function RequestDetailSkeleton() {
     return (
         <div className="flex flex-1 flex-col">
@@ -95,6 +85,9 @@ export default function RequestDetailPage() {
   const { user, isUserLoading } = useUser();
   const firestore = useFirestore();
 
+  // A request can be found via its owner's subcollection.
+  // This hook assumes the current user is the owner.
+  // For assigned users to view, we'd need a different path or query.
   const requestRef = useMemoFirebase(() => {
     if (!firestore || !user?.uid) return null;
     return doc(firestore, 'users', user.uid, 'requests', id);
@@ -117,7 +110,6 @@ export default function RequestDetailPage() {
     if (request && users) {
         const submittedByUser = users.find(u => u.id === request.submittedBy);
         if (!submittedByUser) {
-            // Handle case where submitter is not found, maybe set a default or show an error
             return;
         }
 
@@ -135,11 +127,9 @@ export default function RequestDetailPage() {
   }
 
   if (!request || !enrichedRequest) {
-    // If we are not loading and there's no request, it's a 404
     if(!isRequestLoading){
         notFound();
     }
-    // Otherwise, we might still be enriching, so show skeleton
     return <SiteLayout><RequestDetailSkeleton /></SiteLayout>;
   }
 
@@ -187,7 +177,7 @@ export default function RequestDetailPage() {
                 </Card>
 
                 {activeStep && !activeStep.assignee && users && (
-                    <AssigneeSuggester step={activeStep} availableUsers={users} />
+                    <AssigneeSuggester step={activeStep} request={request} availableUsers={users} />
                 )}
             </div>
             
@@ -205,7 +195,6 @@ export default function RequestDetailPage() {
                         <Separator />
                         <dl className="grid gap-2">
                             {Object.entries(enrichedRequest.formData).map(([key, value]) => {
-                               // Find the field label from the template data if available, otherwise use the key
                                const fieldLabel = request.template?.fields.find((f: any) => f.id === key)?.label || key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
                                return (
                                 <div key={key} className="flex justify-between">

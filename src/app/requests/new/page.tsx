@@ -7,10 +7,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { addDocumentNonBlocking, useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase";
+import { addDocumentNonBlocking, setDocumentNonBlocking, useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { Template } from "@/lib/types";
-import { collection } from "firebase/firestore";
+import { collection, doc } from "firebase/firestore";
 import { Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -49,13 +49,43 @@ export default function NewRequestPage() {
         }
 
         setIsSubmitting(true);
+
+        const requestsCollection = collection(firestore, 'users', user.uid, 'requests');
+        const newRequestRef = doc(requestsCollection); // Create a reference with a new ID
+        const newRequestId = newRequestRef.id;
+        const now = new Date().toISOString();
+
+        // Create task documents in parallel
+        const taskPromises = selectedTemplate.steps.map(async (step, index) => {
+            const tasksCollection = collection(firestore, 'tasks');
+            const newTaskRef = doc(tasksCollection);
+            const taskData = {
+                id: newTaskRef.id,
+                requestId: newRequestId,
+                requestTitle: `${selectedTemplate.name} - ${new Date().toLocaleDateString('es-ES')}`,
+                requestOwnerId: user.uid,
+                stepId: step.id,
+                name: step.name,
+                status: index === 0 ? 'Active' : 'Pending',
+                assigneeId: null,
+                completedAt: null,
+                createdAt: now,
+            };
+            // Use a non-blocking set for the task
+            setDocumentNonBlocking(newTaskRef, taskData, {});
+            return { stepId: step.id, taskId: newTaskRef.id };
+        });
+
+        const taskResults = await Promise.all(taskPromises);
+        const taskIdMap = new Map(taskResults.map(r => [r.stepId, r.taskId]));
         
         const newRequest = {
+            id: newRequestId,
             title: `${selectedTemplate.name} - ${new Date().toLocaleDateString('es-ES')}`,
             templateId: selectedTemplate.id,
             submittedBy: user.uid,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
+            createdAt: now,
+            updatedAt: now,
             status: 'In Progress',
             formData,
             steps: selectedTemplate.steps.map((step, index) => ({
@@ -64,14 +94,14 @@ export default function NewRequestPage() {
                 status: index === 0 ? 'Active' : 'Pending',
                 assigneeId: null,
                 completedAt: null,
+                taskId: taskIdMap.get(step.id) || null,
             })),
             documents: [],
         };
 
         try {
-            const requestsCollection = collection(firestore, 'users', user.uid, 'requests');
-            // No se debe esperar a la función no bloqueante
-            addDocumentNonBlocking(requestsCollection, newRequest);
+            // Set the main request document
+            setDocumentNonBlocking(newRequestRef, newRequest, {});
 
             toast({
                 title: '¡Solicitud Enviada!',
