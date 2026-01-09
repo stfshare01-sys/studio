@@ -19,13 +19,24 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Search, ArrowUpDown, ChevronDown } from "lucide-react";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
+import { TableSkeleton } from "../ui/table-skeleton";
 
 const PAGE_SIZE = 10;
 
 type SortField = "name" | "createdAt" | "status";
 type SortOrder = "asc" | "desc";
 
-export function TasksTable({ tasks }: { tasks: Task[] }) {
+interface TasksTableProps {
+  tasks: Task[];
+  isLoading?: boolean;
+}
+
+export function TasksTable({ tasks, isLoading = false }: TasksTableProps) {
+  // Show skeleton while loading
+  if (isLoading) {
+    return <TableSkeleton columns={4} rows={5} />;
+  }
+
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [sortField, setSortField] = useState<SortField>("createdAt");
@@ -160,38 +171,41 @@ export function TasksTable({ tasks }: { tasks: Task[] }) {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>
+                <TableHead aria-sort={sortField === "name" ? (sortOrder === "asc" ? "ascending" : "descending") : "none"}>
                   <Button
                     variant="ghost"
                     size="sm"
                     className="-ml-3 h-8"
                     onClick={() => toggleSort("name")}
+                    aria-label={`Ordenar por tarea ${sortField === "name" ? (sortOrder === "asc" ? "descendente" : "ascendente") : ""}`}
                   >
                     Tarea
-                    <ArrowUpDown className="ml-2 h-4 w-4" />
+                    <ArrowUpDown className="ml-2 h-4 w-4" aria-hidden="true" />
                   </Button>
                 </TableHead>
                 <TableHead className="hidden sm:table-cell">Solicitud Relacionada</TableHead>
-                <TableHead className="hidden md:table-cell">
+                <TableHead className="hidden md:table-cell" aria-sort={sortField === "status" ? (sortOrder === "asc" ? "ascending" : "descending") : "none"}>
                   <Button
                     variant="ghost"
                     size="sm"
                     className="-ml-3 h-8"
                     onClick={() => toggleSort("status")}
+                    aria-label={`Ordenar por estado ${sortField === "status" ? (sortOrder === "asc" ? "descendente" : "ascendente") : ""}`}
                   >
                     Estado
-                    <ArrowUpDown className="ml-2 h-4 w-4" />
+                    <ArrowUpDown className="ml-2 h-4 w-4" aria-hidden="true" />
                   </Button>
                 </TableHead>
-                <TableHead className="hidden text-right sm:table-cell">
+                <TableHead className="hidden text-right sm:table-cell" aria-sort={sortField === "createdAt" ? (sortOrder === "asc" ? "ascending" : "descending") : "none"}>
                   <Button
                     variant="ghost"
                     size="sm"
                     className="-mr-3 h-8"
                     onClick={() => toggleSort("createdAt")}
+                    aria-label={`Ordenar por fecha ${sortField === "createdAt" ? (sortOrder === "asc" ? "descendente" : "ascendente") : ""}`}
                   >
                     Creado
-                    <ArrowUpDown className="ml-2 h-4 w-4" />
+                    <ArrowUpDown className="ml-2 h-4 w-4" aria-hidden="true" />
                   </Button>
                 </TableHead>
               </TableRow>
@@ -234,8 +248,8 @@ export function TasksTable({ tasks }: { tasks: Task[] }) {
       {/* Cargar más */}
       {hasMore && (
         <div className="flex justify-center">
-          <Button variant="outline" onClick={loadMore} className="gap-2">
-            <ChevronDown className="h-4 w-4" />
+          <Button variant="outline" onClick={loadMore} className="gap-2" aria-label={`Cargar más tareas. Mostrando ${paginatedTasks.length} de ${filteredAndSortedTasks.length}`}>
+            <ChevronDown className="h-4 w-4" aria-hidden="true" />
             Cargar más
           </Button>
         </div>

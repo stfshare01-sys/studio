@@ -20,6 +20,7 @@ import { Input } from "../ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Search, ArrowUpDown, ChevronDown } from "lucide-react";
 import { Button } from "../ui/button";
+import { TableSkeleton } from "../ui/table-skeleton";
 
 const PAGE_SIZE = 10;
 
@@ -45,9 +46,15 @@ type SortOrder = "asc" | "desc";
 interface RequestsTableProps {
   requests: Request[];
   users?: User[];
+  isLoading?: boolean;
 }
 
-export function RequestsTable({ requests, users = [] }: RequestsTableProps) {
+export function RequestsTable({ requests, users = [], isLoading = false }: RequestsTableProps) {
+  // Show skeleton while loading
+  if (isLoading) {
+    return <TableSkeleton columns={4} rows={5} />;
+  }
+
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [sortField, setSortField] = useState<SortField>("updatedAt");
@@ -179,38 +186,41 @@ export function RequestsTable({ requests, users = [] }: RequestsTableProps) {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>
+                <TableHead aria-sort={sortField === "title" ? (sortOrder === "asc" ? "ascending" : "descending") : "none"}>
                   <Button
                     variant="ghost"
                     size="sm"
                     className="-ml-3 h-8"
                     onClick={() => toggleSort("title")}
+                    aria-label={`Ordenar por solicitud ${sortField === "title" ? (sortOrder === "asc" ? "descendente" : "ascendente") : ""}`}
                   >
                     Solicitud
-                    <ArrowUpDown className="ml-2 h-4 w-4" />
+                    <ArrowUpDown className="ml-2 h-4 w-4" aria-hidden="true" />
                   </Button>
                 </TableHead>
                 <TableHead className="hidden sm:table-cell">Enviado por</TableHead>
-                <TableHead className="hidden md:table-cell">
+                <TableHead className="hidden md:table-cell" aria-sort={sortField === "status" ? (sortOrder === "asc" ? "ascending" : "descending") : "none"}>
                   <Button
                     variant="ghost"
                     size="sm"
                     className="-ml-3 h-8"
                     onClick={() => toggleSort("status")}
+                    aria-label={`Ordenar por estado ${sortField === "status" ? (sortOrder === "asc" ? "descendente" : "ascendente") : ""}`}
                   >
                     Estado
-                    <ArrowUpDown className="ml-2 h-4 w-4" />
+                    <ArrowUpDown className="ml-2 h-4 w-4" aria-hidden="true" />
                   </Button>
                 </TableHead>
-                <TableHead className="hidden text-right sm:table-cell">
+                <TableHead className="hidden text-right sm:table-cell" aria-sort={sortField === "updatedAt" ? (sortOrder === "asc" ? "ascending" : "descending") : "none"}>
                   <Button
                     variant="ghost"
                     size="sm"
                     className="-mr-3 h-8"
                     onClick={() => toggleSort("updatedAt")}
+                    aria-label={`Ordenar por fecha ${sortField === "updatedAt" ? (sortOrder === "asc" ? "descendente" : "ascendente") : ""}`}
                   >
                     Última Actualización
-                    <ArrowUpDown className="ml-2 h-4 w-4" />
+                    <ArrowUpDown className="ml-2 h-4 w-4" aria-hidden="true" />
                   </Button>
                 </TableHead>
               </TableRow>
@@ -273,8 +283,8 @@ export function RequestsTable({ requests, users = [] }: RequestsTableProps) {
       {/* Cargar más */}
       {hasMore && (
         <div className="flex justify-center">
-          <Button variant="outline" onClick={loadMore} className="gap-2">
-            <ChevronDown className="h-4 w-4" />
+          <Button variant="outline" onClick={loadMore} className="gap-2" aria-label={`Cargar más solicitudes. Mostrando ${paginatedRequests.length} de ${filteredAndSortedRequests.length}`}>
+            <ChevronDown className="h-4 w-4" aria-hidden="true" />
             Cargar más
           </Button>
         </div>

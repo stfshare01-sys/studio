@@ -87,7 +87,7 @@ function EditUserDialog({ user, isOpen, onOpenChange, onUserUpdate }: { user: Us
 
     return (
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
-            <DialogContent>
+            <DialogContent className="sm:max-w-[425px]">
                 <DialogHeader>
                     <DialogTitle>Editar Usuario</DialogTitle>
                     <DialogDescription>
@@ -95,24 +95,24 @@ function EditUserDialog({ user, isOpen, onOpenChange, onUserUpdate }: { user: Us
                     </DialogDescription>
                 </DialogHeader>
                 <div className="grid gap-4 py-4">
-                    <div className="grid grid-cols-4 items-center gap-4">
-                        <Label htmlFor="fullName" className="text-right">
+                    <div className="grid gap-2 sm:grid-cols-4 sm:items-center sm:gap-4">
+                        <Label htmlFor="fullName" className="sm:text-right">
                             Nombre
                         </Label>
-                        <Input id="fullName" value={formData.fullName} onChange={(e) => handleInputChange('fullName', e.target.value)} className="col-span-3" />
+                        <Input id="fullName" value={formData.fullName} onChange={(e) => handleInputChange('fullName', e.target.value)} className="sm:col-span-3" />
                     </div>
-                    <div className="grid grid-cols-4 items-center gap-4">
-                        <Label htmlFor="department" className="text-right">
+                    <div className="grid gap-2 sm:grid-cols-4 sm:items-center sm:gap-4">
+                        <Label htmlFor="department" className="sm:text-right">
                             Departamento
                         </Label>
-                        <Input id="department" value={formData.department} onChange={(e) => handleInputChange('department', e.target.value)} className="col-span-3" />
+                        <Input id="department" value={formData.department} onChange={(e) => handleInputChange('department', e.target.value)} className="sm:col-span-3" />
                     </div>
-                    <div className="grid grid-cols-4 items-center gap-4">
-                        <Label htmlFor="role" className="text-right">
+                    <div className="grid gap-2 sm:grid-cols-4 sm:items-center sm:gap-4">
+                        <Label htmlFor="role" className="sm:text-right">
                             Rol
                         </Label>
                          <Select value={formData.role} onValueChange={(value) => handleInputChange('role', value as UserRole)}>
-                            <SelectTrigger className="col-span-3">
+                            <SelectTrigger className="sm:col-span-3">
                                 <SelectValue placeholder="Seleccionar rol" />
                             </SelectTrigger>
                             <SelectContent>
@@ -122,11 +122,11 @@ function EditUserDialog({ user, isOpen, onOpenChange, onUserUpdate }: { user: Us
                         </Select>
                     </div>
                 </div>
-                <DialogFooter>
+                <DialogFooter className="flex-col gap-2 sm:flex-row">
                     <DialogClose asChild>
-                        <Button variant="outline">Cancelar</Button>
+                        <Button variant="outline" className="w-full sm:w-auto">Cancelar</Button>
                     </DialogClose>
-                    <Button onClick={handleSave}>Guardar Cambios</Button>
+                    <Button onClick={handleSave} className="w-full sm:w-auto">Guardar Cambios</Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>

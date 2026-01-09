@@ -680,16 +680,21 @@ export default function NewTemplatePage() {
 
 
 function RuleBuilderDialog({ fields, steps, onAddRule, onClose }: { fields: FormField[], steps: WorkflowStepDefinition[], onAddRule: (rule: Rule) => void, onClose: () => void }) {
+    const { toast } = useToast();
     const [conditionField, setConditionField] = useState<string>('');
     const [conditionOperator, setConditionOperator] = useState<RuleCondition['operator'] | ''>('');
     const [conditionValue, setConditionValue] = useState<string>('');
     const [actionStep, setActionStep] = useState<string>('');
-    
+
     const numericFields = fields.filter(f => f.type === 'number');
 
     const handleSubmit = () => {
         if (!conditionField || !conditionOperator || !conditionValue || !actionStep) {
-            alert("Por favor, rellene todos los campos de la regla.");
+            toast({
+                variant: "destructive",
+                title: "Campos incompletos",
+                description: "Por favor, rellene todos los campos de la regla.",
+            });
             return;
         }
 
@@ -705,6 +710,10 @@ function RuleBuilderDialog({ fields, steps, onAddRule, onClose }: { fields: Form
             }
         };
         onAddRule(newRule);
+        toast({
+            title: "Regla agregada",
+            description: "La regla de negocio se ha creado correctamente.",
+        });
         onClose();
     };
 

@@ -24,12 +24,34 @@ import { useRouter } from 'next/navigation';
 import { Logo } from '@/components/icons';
 import { FirebaseError } from 'firebase/app';
 import { useToast } from '@/hooks/use-toast';
+import { Loader2 } from 'lucide-react';
+
+// Validation helpers
+const isValidEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+const MIN_PASSWORD_LENGTH = 6;
+
+// Firebase error messages in Spanish
+const getFirebaseErrorMessage = (code: string): string => {
+  const errorMessages: Record<string, string> = {
+    'auth/email-already-in-use': 'Este correo electrónico ya está registrado.',
+    'auth/invalid-email': 'El formato del correo electrónico no es válido.',
+    'auth/weak-password': 'La contraseña debe tener al menos 6 caracteres.',
+    'auth/user-not-found': 'No existe una cuenta con este correo electrónico.',
+    'auth/wrong-password': 'La contraseña es incorrecta.',
+    'auth/invalid-credential': 'Las credenciales proporcionadas no son válidas.',
+    'auth/too-many-requests': 'Demasiados intentos fallidos. Intente de nuevo más tarde.',
+    'auth/network-request-failed': 'Error de conexión. Verifique su conexión a internet.',
+  };
+  return errorMessages[code] || 'Ha ocurrido un error de autenticación.';
+};
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [department, setDepartment] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
   const [isSigningIn, setIsSigningIn] = useState(true);
   const auth = useAuth();
@@ -44,9 +66,56 @@ export default function LoginPage() {
     }
   }, [user, isUserLoading, router]);
 
+  const validateForm = (): boolean => {
+    const newErrors: Record<string, string> = {};
+
+    // Email validation
+    if (!email.trim()) {
+      newErrors.email = 'El correo electrónico es requerido.';
+    } else if (!isValidEmail(email)) {
+      newErrors.email = 'Ingrese un correo electrónico válido.';
+    }
+
+    // Password validation
+    if (!password) {
+      newErrors.password = 'La contraseña es requerida.';
+    } else if (password.length < MIN_PASSWORD_LENGTH) {
+      newErrors.password = `La contraseña debe tener al menos ${MIN_PASSWORD_LENGTH} caracteres.`;
+    }
+
+    // Sign-up specific validations
+    if (!isSigningIn) {
+      if (!fullName.trim()) {
+        newErrors.fullName = 'El nombre completo es requerido.';
+      } else if (fullName.trim().length < 2) {
+        newErrors.fullName = 'El nombre debe tener al menos 2 caracteres.';
+      }
+
+      if (!department.trim()) {
+        newErrors.department = 'El departamento es requerido.';
+      }
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
   const handleAuthAction = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!auth || !firestore) return;
+
+    // Validate form before submitting
+    if (!validateForm()) {
+      toast({
+        variant: "destructive",
+        title: "Formulario incompleto",
+        description: "Por favor, corrija los errores en el formulario.",
+      });
+      return;
+    }
+
+    setIsSubmitting(true);
+    setErrors({});
 
     try {
       if (isSigningIn) {
@@ -60,18 +129,22 @@ export default function LoginPage() {
         // Create user profile in Firestore
         const userProfile = {
           id: newUser.uid,
-          fullName,
-          email,
-          department,
+          fullName: fullName.trim(),
+          email: email.trim().toLowerCase(),
+          department: department.trim(),
           role: 'Member', // Default role for new users
         };
-        
+
         const userDocRef = doc(firestore, 'users', newUser.uid);
         // Wait for the user profile to be created before proceeding
         // This prevents race conditions where the app tries to check permissions
         // before the user document exists in Firestore
         await setDoc(userDocRef, userProfile, { merge: true });
 
+        toast({
+          title: "Cuenta creada",
+          description: "Tu cuenta ha sido creada exitosamente.",
+        });
         // onAuthStateChanged will handle redirection after profile creation is confirmed.
       }
     } catch (error) {
@@ -79,7 +152,7 @@ export default function LoginPage() {
         toast({
             variant: "destructive",
             title: "Error de autenticación",
-            description: error.message,
+            description: getFirebaseErrorMessage(error.code),
         });
       } else {
         toast({
@@ -88,6 +161,8 @@ export default function LoginPage() {
             description: "Ha ocurrido un error inesperado.",
         });
       }
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -126,10 +201,16 @@ export default function LoginPage() {
                     id="fullName"
                     type="text"
                     placeholder="p. ej. Juan Pérez"
-                    required
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
+                    disabled={isSubmitting}
+                    aria-invalid={!!errors.fullName}
+                    aria-describedby={errors.fullName ? "fullName-error" : undefined}
+                    className={errors.fullName ? "border-destructive" : ""}
                   />
+                  {errors.fullName && (
+                    <p id="fullName-error" className="text-sm text-destructive">{errors.fullName}</p>
+                  )}
                 </div>
                 <div className="grid gap-2">
                   <Label htmlFor="department">Departamento</Label>
@@ -137,10 +218,16 @@ export default function LoginPage() {
                     id="department"
                     type="text"
                     placeholder="p. ej. Ventas"
-                    required
                     value={department}
                     onChange={(e) => setDepartment(e.target.value)}
+                    disabled={isSubmitting}
+                    aria-invalid={!!errors.department}
+                    aria-describedby={errors.department ? "department-error" : undefined}
+                    className={errors.department ? "border-destructive" : ""}
                   />
+                  {errors.department && (
+                    <p id="department-error" className="text-sm text-destructive">{errors.department}</p>
+                  )}
                 </div>
               </>
             )}
@@ -150,24 +237,38 @@ export default function LoginPage() {
                 id="email"
                 type="email"
                 placeholder="nombre@ejemplo.com"
-                required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                disabled={isSubmitting}
+                aria-invalid={!!errors.email}
+                aria-describedby={errors.email ? "email-error" : undefined}
+                className={errors.email ? "border-destructive" : ""}
               />
+              {errors.email && (
+                <p id="email-error" className="text-sm text-destructive">{errors.email}</p>
+              )}
             </div>
             <div className="grid gap-2">
               <Label htmlFor="password">Contraseña</Label>
               <Input
                 id="password"
                 type="password"
-                required
+                placeholder={isSigningIn ? "" : "Mínimo 6 caracteres"}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                disabled={isSubmitting}
+                aria-invalid={!!errors.password}
+                aria-describedby={errors.password ? "password-error" : undefined}
+                className={errors.password ? "border-destructive" : ""}
               />
+              {errors.password && (
+                <p id="password-error" className="text-sm text-destructive">{errors.password}</p>
+              )}
             </div>
           </CardContent>
           <CardFooter className="flex flex-col gap-4">
-            <Button type="submit" className="w-full">
+            <Button type="submit" className="w-full" disabled={isSubmitting}>
+              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {isSigningIn ? 'Iniciar Sesión' : 'Crear Cuenta'}
             </Button>
           </CardFooter>
