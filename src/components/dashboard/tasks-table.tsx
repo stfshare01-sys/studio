@@ -16,9 +16,11 @@ import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 import { Input } from "../ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
-import { Search, ArrowUpDown } from "lucide-react";
+import { Search, ArrowUpDown, ChevronDown } from "lucide-react";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
+
+const PAGE_SIZE = 10;
 
 type SortField = "name" | "createdAt" | "status";
 type SortOrder = "asc" | "desc";
@@ -28,6 +30,7 @@ export function TasksTable({ tasks }: { tasks: Task[] }) {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [sortField, setSortField] = useState<SortField>("createdAt");
   const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
+  const [displayCount, setDisplayCount] = useState(PAGE_SIZE);
 
   const filteredAndSortedTasks = useMemo(() => {
     let result = [...tasks];
@@ -63,6 +66,28 @@ export function TasksTable({ tasks }: { tasks: Task[] }) {
 
     return result;
   }, [tasks, searchTerm, statusFilter, sortField, sortOrder]);
+
+  // Paginated results
+  const paginatedTasks = useMemo(() => {
+    return filteredAndSortedTasks.slice(0, displayCount);
+  }, [filteredAndSortedTasks, displayCount]);
+
+  const hasMore = displayCount < filteredAndSortedTasks.length;
+
+  const loadMore = () => {
+    setDisplayCount(prev => prev + PAGE_SIZE);
+  };
+
+  // Reset pagination when filters change
+  const handleSearchChange = (value: string) => {
+    setSearchTerm(value);
+    setDisplayCount(PAGE_SIZE);
+  };
+
+  const handleStatusFilterChange = (value: string) => {
+    setStatusFilter(value);
+    setDisplayCount(PAGE_SIZE);
+  };
 
   const toggleSort = (field: SortField) => {
     if (sortField === field) {
@@ -100,11 +125,11 @@ export function TasksTable({ tasks }: { tasks: Task[] }) {
           <Input
             placeholder="Buscar tareas..."
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={(e) => handleSearchChange(e.target.value)}
             className="pl-9"
           />
         </div>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
+        <Select value={statusFilter} onValueChange={handleStatusFilterChange}>
           <SelectTrigger className="w-full sm:w-[180px]">
             <SelectValue placeholder="Filtrar por estado" />
           </SelectTrigger>
@@ -172,7 +197,7 @@ export function TasksTable({ tasks }: { tasks: Task[] }) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredAndSortedTasks.map((task) => (
+              {paginatedTasks.map((task) => (
                 <TableRow key={task.id}>
                   <TableCell>
                     <Link
@@ -206,9 +231,20 @@ export function TasksTable({ tasks }: { tasks: Task[] }) {
         </div>
       )}
 
+      {/* Cargar más */}
+      {hasMore && (
+        <div className="flex justify-center">
+          <Button variant="outline" onClick={loadMore} className="gap-2">
+            <ChevronDown className="h-4 w-4" />
+            Cargar más
+          </Button>
+        </div>
+      )}
+
       {/* Contador de resultados */}
       <p className="text-sm text-muted-foreground">
-        Mostrando {filteredAndSortedTasks.length} de {tasks.length} tareas
+        Mostrando {paginatedTasks.length} de {filteredAndSortedTasks.length} tareas
+        {filteredAndSortedTasks.length !== tasks.length && ` (${tasks.length} total)`}
       </p>
     </div>
   );

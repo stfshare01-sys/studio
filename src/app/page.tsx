@@ -6,8 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { RequestsTable } from "@/components/dashboard/requests-table";
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase";
-import { collection, query, where, collectionGroup } from "firebase/firestore";
-import type { Request as RequestType, Task } from '@/lib/types';
+import { collection, query, where } from "firebase/firestore";
+import type { Request as RequestType, Task, User } from '@/lib/types';
 import { FilePlus, Hourglass, CheckCircle, Timer } from "lucide-react";
 import Link from "next/link";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -66,10 +66,17 @@ export default function DashboardPage() {
     if (isUserLoading || !firestore) return null;
     return query(collection(firestore, 'tasks'));
   }, [firestore, isUserLoading]);
-  
+
+  // Query for users (for RequestsTable to avoid N+1)
+  const usersQuery = useMemoFirebase(() => {
+    if (isUserLoading || !firestore) return null;
+    return query(collection(firestore, 'users'));
+  }, [firestore, isUserLoading]);
+
   const { data: myRequests, isLoading: isLoadingMyRequests } = useCollection<RequestType>(myRequestsQuery);
   const { data: tasks, isLoading: isLoadingTasks } = useCollection<Task>(tasksQuery);
   const { data: allTasks, isLoading: isLoadingAllTasks } = useCollection<Task>(allTasksQuery);
+  const { data: users } = useCollection<User>(usersQuery);
 
 
   const stats = React.useMemo(() => {
@@ -173,7 +180,7 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent>
               {isLoadingMyRequests && <DataTableSkeleton />}
-              {!isLoadingMyRequests && myRequests && <RequestsTable requests={myRequests} />}
+              {!isLoadingMyRequests && myRequests && <RequestsTable requests={myRequests} users={users ?? []} />}
               {!isLoadingMyRequests && !myRequests?.length && (
                  <div className="flex flex-1 items-center justify-center rounded-lg border border-dashed shadow-sm p-8">
                     <div className="flex flex-col items-center gap-1 text-center">

@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import type { Request } from "@/lib/types";
+import type { Request, User } from "@/lib/types";
 import {
   Table,
   TableBody,
@@ -16,32 +16,16 @@ import Link from "next/link";
 import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
-import { useDoc, useFirestore, useMemoFirebase } from "@/firebase";
-import { doc } from "firebase/firestore";
-import type { User } from "@/lib/types";
-import { Skeleton } from "../ui/skeleton";
 import { Input } from "../ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
-import { Search, ArrowUpDown } from "lucide-react";
+import { Search, ArrowUpDown, ChevronDown } from "lucide-react";
 import { Button } from "../ui/button";
 
-function SubmittedBy({ userId }: { userId: string }) {
-    const firestore = useFirestore();
+const PAGE_SIZE = 10;
 
-    const userRef = useMemoFirebase(() => {
-        if (!firestore || !userId) return null;
-        return doc(firestore, 'users', userId);
-    }, [firestore, userId]);
-
-    const { data: user, isLoading } = useDoc<User>(userRef);
-
-    if (isLoading || !user) {
-        return (
-            <div className="flex items-center gap-2">
-                <Skeleton className="h-8 w-8 rounded-full" />
-                <Skeleton className="h-5 w-24 rounded-md" />
-            </div>
-        );
+function SubmittedBy({ user }: { user: User | undefined }) {
+    if (!user) {
+        return <span className="text-muted-foreground">Usuario desconocido</span>;
     }
 
     return (
@@ -58,11 +42,24 @@ function SubmittedBy({ userId }: { userId: string }) {
 type SortField = "title" | "updatedAt" | "status";
 type SortOrder = "asc" | "desc";
 
-export function RequestsTable({ requests }: { requests: Request[] }) {
+interface RequestsTableProps {
+  requests: Request[];
+  users?: User[];
+}
+
+export function RequestsTable({ requests, users = [] }: RequestsTableProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [sortField, setSortField] = useState<SortField>("updatedAt");
   const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
+  const [displayCount, setDisplayCount] = useState(PAGE_SIZE);
+
+  // Create a map of users for O(1) lookup
+  const usersMap = useMemo(() => {
+    const map = new Map<string, User>();
+    users.forEach(user => map.set(user.id, user));
+    return map;
+  }, [users]);
 
   const filteredAndSortedRequests = useMemo(() => {
     let result = [...requests];
@@ -98,6 +95,28 @@ export function RequestsTable({ requests }: { requests: Request[] }) {
     return result;
   }, [requests, searchTerm, statusFilter, sortField, sortOrder]);
 
+  // Paginated results
+  const paginatedRequests = useMemo(() => {
+    return filteredAndSortedRequests.slice(0, displayCount);
+  }, [filteredAndSortedRequests, displayCount]);
+
+  const hasMore = displayCount < filteredAndSortedRequests.length;
+
+  const loadMore = () => {
+    setDisplayCount(prev => prev + PAGE_SIZE);
+  };
+
+  // Reset pagination when filters change
+  const handleSearchChange = (value: string) => {
+    setSearchTerm(value);
+    setDisplayCount(PAGE_SIZE);
+  };
+
+  const handleStatusFilterChange = (value: string) => {
+    setStatusFilter(value);
+    setDisplayCount(PAGE_SIZE);
+  };
+
   const toggleSort = (field: SortField) => {
     if (sortField === field) {
       setSortOrder(sortOrder === "asc" ? "desc" : "asc");
@@ -125,11 +144,11 @@ export function RequestsTable({ requests }: { requests: Request[] }) {
           <Input
             placeholder="Buscar solicitudes..."
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={(e) => handleSearchChange(e.target.value)}
             className="pl-9"
           />
         </div>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
+        <Select value={statusFilter} onValueChange={handleStatusFilterChange}>
           <SelectTrigger className="w-full sm:w-[180px]">
             <SelectValue placeholder="Filtrar por estado" />
           </SelectTrigger>
@@ -197,7 +216,7 @@ export function RequestsTable({ requests }: { requests: Request[] }) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredAndSortedRequests.map((request) => (
+              {paginatedRequests.map((request) => (
                 <TableRow key={request.id}>
                   <TableCell>
                     <Link
@@ -222,7 +241,7 @@ export function RequestsTable({ requests }: { requests: Request[] }) {
                     </div>
                   </TableCell>
                   <TableCell className="hidden sm:table-cell">
-                    <SubmittedBy userId={request.submittedBy} />
+                    <SubmittedBy user={usersMap.get(request.submittedBy)} />
                   </TableCell>
                   <TableCell className="hidden md:table-cell">
                     <Badge
@@ -251,9 +270,20 @@ export function RequestsTable({ requests }: { requests: Request[] }) {
         </div>
       )}
 
+      {/* Cargar más */}
+      {hasMore && (
+        <div className="flex justify-center">
+          <Button variant="outline" onClick={loadMore} className="gap-2">
+            <ChevronDown className="h-4 w-4" />
+            Cargar más
+          </Button>
+        </div>
+      )}
+
       {/* Contador de resultados */}
       <p className="text-sm text-muted-foreground">
-        Mostrando {filteredAndSortedRequests.length} de {requests.length} solicitudes
+        Mostrando {paginatedRequests.length} de {filteredAndSortedRequests.length} solicitudes
+        {filteredAndSortedRequests.length !== requests.length && ` (${requests.length} total)`}
       </p>
     </div>
   );

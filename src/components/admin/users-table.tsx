@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
-import { MoreHorizontal, Trash2, Edit, Search, ArrowUpDown } from "lucide-react";
+import { MoreHorizontal, Trash2, Edit, Search, ArrowUpDown, ChevronDown } from "lucide-react";
 import { Button } from "../ui/button";
 import {
   DropdownMenu,
@@ -133,6 +133,8 @@ function EditUserDialog({ user, isOpen, onOpenChange, onUserUpdate }: { user: Us
     )
 }
 
+const PAGE_SIZE = 10;
+
 type SortField = "fullName" | "department" | "role";
 type SortOrder = "asc" | "desc";
 
@@ -148,6 +150,7 @@ export function UsersTable({ users }: { users: User[] }) {
     const [departmentFilter, setDepartmentFilter] = useState<string>("all");
     const [sortField, setSortField] = useState<SortField>("fullName");
     const [sortOrder, setSortOrder] = useState<SortOrder>("asc");
+    const [displayCount, setDisplayCount] = useState(PAGE_SIZE);
 
     // Obtener departamentos únicos
     const departments = useMemo(() => {
@@ -196,6 +199,33 @@ export function UsersTable({ users }: { users: User[] }) {
         return result;
     }, [users, searchTerm, roleFilter, departmentFilter, sortField, sortOrder]);
 
+    // Paginated results
+    const paginatedUsers = useMemo(() => {
+        return filteredAndSortedUsers.slice(0, displayCount);
+    }, [filteredAndSortedUsers, displayCount]);
+
+    const hasMore = displayCount < filteredAndSortedUsers.length;
+
+    const loadMore = () => {
+        setDisplayCount(prev => prev + PAGE_SIZE);
+    };
+
+    // Reset pagination when filters change
+    const handleSearchChange = (value: string) => {
+        setSearchTerm(value);
+        setDisplayCount(PAGE_SIZE);
+    };
+
+    const handleRoleFilterChange = (value: string) => {
+        setRoleFilter(value);
+        setDisplayCount(PAGE_SIZE);
+    };
+
+    const handleDepartmentFilterChange = (value: string) => {
+        setDepartmentFilter(value);
+        setDisplayCount(PAGE_SIZE);
+    };
+
     const toggleSort = (field: SortField) => {
         if (sortField === field) {
             setSortOrder(sortOrder === "asc" ? "desc" : "asc");
@@ -231,11 +261,11 @@ export function UsersTable({ users }: { users: User[] }) {
           <Input
             placeholder="Buscar por nombre o email..."
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={(e) => handleSearchChange(e.target.value)}
             className="pl-9"
           />
         </div>
-        <Select value={roleFilter} onValueChange={setRoleFilter}>
+        <Select value={roleFilter} onValueChange={handleRoleFilterChange}>
           <SelectTrigger className="w-full sm:w-[150px]">
             <SelectValue placeholder="Filtrar por rol" />
           </SelectTrigger>
@@ -245,7 +275,7 @@ export function UsersTable({ users }: { users: User[] }) {
             <SelectItem value="Member">Miembro</SelectItem>
           </SelectContent>
         </Select>
-        <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
+        <Select value={departmentFilter} onValueChange={handleDepartmentFilterChange}>
           <SelectTrigger className="w-full sm:w-[180px]">
             <SelectValue placeholder="Filtrar por depto" />
           </SelectTrigger>
@@ -315,7 +345,7 @@ export function UsersTable({ users }: { users: User[] }) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredAndSortedUsers.map((user) => (
+              {paginatedUsers.map((user) => (
                 <TableRow key={user.id}>
                   <TableCell>
                     <div className="flex items-center gap-3">
@@ -385,9 +415,20 @@ export function UsersTable({ users }: { users: User[] }) {
         </div>
       )}
 
+      {/* Cargar más */}
+      {hasMore && (
+        <div className="flex justify-center">
+          <Button variant="outline" onClick={loadMore} className="gap-2">
+            <ChevronDown className="h-4 w-4" />
+            Cargar más
+          </Button>
+        </div>
+      )}
+
       {/* Contador de resultados */}
       <p className="text-sm text-muted-foreground">
-        Mostrando {filteredAndSortedUsers.length} de {users.length} usuarios
+        Mostrando {paginatedUsers.length} de {filteredAndSortedUsers.length} usuarios
+        {filteredAndSortedUsers.length !== users.length && ` (${users.length} total)`}
       </p>
     </div>
     {selectedUser && (
