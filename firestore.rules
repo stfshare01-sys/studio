@@ -151,6 +151,19 @@ service cloud.firestore {
     }
 
     /**
+     * @description Manages user notifications. Only the owner can read, update, or delete their notifications.
+     * @path /users/{userId}/notifications/{notificationId}
+     */
+    match /users/{userId}/notifications/{notificationId} {
+      // User can read their own notifications
+      allow get, list: if isOwner(userId);
+      // System or admin can create notifications for a user
+      allow create: if isOwner(userId) || isAdmin();
+      // User can mark as read or delete their notifications
+      allow update, delete: if isOwner(userId);
+    }
+
+    /**
      * @description Manages the central tasks collection.
      * @path /tasks/{taskId}
      */

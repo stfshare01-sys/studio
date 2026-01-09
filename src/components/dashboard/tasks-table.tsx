@@ -1,6 +1,7 @@
 
 "use client";
 
+import { useState, useMemo } from "react";
 import type { Task } from "@/lib/types";
 import {
   Table,
@@ -13,45 +14,252 @@ import {
 import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
+import { Input } from "../ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
+import { Search, ArrowUpDown, ChevronDown } from "lucide-react";
+import { Button } from "../ui/button";
+import { Badge } from "../ui/badge";
+import { TableSkeleton } from "../ui/table-skeleton";
 
-export function TasksTable({ tasks }: { tasks: Task[] }) {
+const PAGE_SIZE = 10;
+
+type SortField = "name" | "createdAt" | "status";
+type SortOrder = "asc" | "desc";
+
+interface TasksTableProps {
+  tasks: Task[];
+  isLoading?: boolean;
+}
+
+export function TasksTable({ tasks, isLoading = false }: TasksTableProps) {
+  // Show skeleton while loading
+  if (isLoading) {
+    return <TableSkeleton columns={4} rows={5} />;
+  }
+
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [sortField, setSortField] = useState<SortField>("createdAt");
+  const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
+  const [displayCount, setDisplayCount] = useState(PAGE_SIZE);
+
+  const filteredAndSortedTasks = useMemo(() => {
+    let result = [...tasks];
+
+    // Filtrar por búsqueda
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase();
+      result = result.filter(t =>
+        t.name.toLowerCase().includes(term) ||
+        t.requestTitle.toLowerCase().includes(term)
+      );
+    }
+
+    // Filtrar por estado
+    if (statusFilter !== "all") {
+      result = result.filter(t => t.status === statusFilter);
+    }
+
+    // Ordenar
+    result.sort((a, b) => {
+      let comparison = 0;
+
+      if (sortField === "name") {
+        comparison = a.name.localeCompare(b.name);
+      } else if (sortField === "createdAt") {
+        comparison = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      } else if (sortField === "status") {
+        comparison = a.status.localeCompare(b.status);
+      }
+
+      return sortOrder === "asc" ? comparison : -comparison;
+    });
+
+    return result;
+  }, [tasks, searchTerm, statusFilter, sortField, sortOrder]);
+
+  // Paginated results
+  const paginatedTasks = useMemo(() => {
+    return filteredAndSortedTasks.slice(0, displayCount);
+  }, [filteredAndSortedTasks, displayCount]);
+
+  const hasMore = displayCount < filteredAndSortedTasks.length;
+
+  const loadMore = () => {
+    setDisplayCount(prev => prev + PAGE_SIZE);
+  };
+
+  // Reset pagination when filters change
+  const handleSearchChange = (value: string) => {
+    setSearchTerm(value);
+    setDisplayCount(PAGE_SIZE);
+  };
+
+  const handleStatusFilterChange = (value: string) => {
+    setStatusFilter(value);
+    setDisplayCount(PAGE_SIZE);
+  };
+
+  const toggleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortOrder(sortOrder === "asc" ? "desc" : "asc");
+    } else {
+      setSortField(field);
+      setSortOrder("desc");
+    }
+  };
+
+  const getStatusLabel = (status: string) => {
+    switch (status) {
+      case 'Active': return 'Activa';
+      case 'Pending': return 'Pendiente';
+      case 'Completed': return 'Completada';
+      default: return status;
+    }
+  };
+
+  const getStatusVariant = (status: string) => {
+    switch (status) {
+      case 'Active': return 'default';
+      case 'Pending': return 'secondary';
+      case 'Completed': return 'outline';
+      default: return 'secondary';
+    }
+  };
+
   return (
-    <div className="rounded-md border">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Tarea</TableHead>
-            <TableHead className="hidden sm:table-cell">Solicitud Relacionada</TableHead>
-            <TableHead className="hidden text-right sm:table-cell">Creado</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {tasks.map((task) => (
-            <TableRow key={task.id}>
-              <TableCell>
-                <Link
-                  href={`/requests/${task.requestId}`}
-                  className="font-medium text-primary hover:underline"
-                >
-                  {task.name}
-                </Link>
-                <div className="text-sm text-muted-foreground md:hidden mt-1">
-                   {task.requestTitle}
-                </div>
-              </TableCell>
-              <TableCell className="hidden sm:table-cell">
-                {task.requestTitle}
-              </TableCell>
-              <TableCell className="hidden text-right text-muted-foreground sm:table-cell">
-                {formatDistanceToNow(new Date(task.createdAt), {
-                  addSuffix: true,
-                  locale: es,
-                })}
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+    <div className="space-y-4">
+      {/* Filtros */}
+      <div className="flex flex-col sm:flex-row gap-4">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Buscar tareas..."
+            value={searchTerm}
+            onChange={(e) => handleSearchChange(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+        <Select value={statusFilter} onValueChange={handleStatusFilterChange}>
+          <SelectTrigger className="w-full sm:w-[180px]">
+            <SelectValue placeholder="Filtrar por estado" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos los estados</SelectItem>
+            <SelectItem value="Active">Activa</SelectItem>
+            <SelectItem value="Pending">Pendiente</SelectItem>
+            <SelectItem value="Completed">Completada</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* Resultados */}
+      {filteredAndSortedTasks.length === 0 ? (
+        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-8">
+          <p className="text-muted-foreground">No se encontraron tareas</p>
+          {(searchTerm || statusFilter !== "all") && (
+            <Button
+              variant="link"
+              onClick={() => { setSearchTerm(""); setStatusFilter("all"); }}
+            >
+              Limpiar filtros
+            </Button>
+          )}
+        </div>
+      ) : (
+        <div className="rounded-md border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead aria-sort={sortField === "name" ? (sortOrder === "asc" ? "ascending" : "descending") : "none"}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="-ml-3 h-8"
+                    onClick={() => toggleSort("name")}
+                    aria-label={`Ordenar por tarea ${sortField === "name" ? (sortOrder === "asc" ? "descendente" : "ascendente") : ""}`}
+                  >
+                    Tarea
+                    <ArrowUpDown className="ml-2 h-4 w-4" aria-hidden="true" />
+                  </Button>
+                </TableHead>
+                <TableHead className="hidden sm:table-cell">Solicitud Relacionada</TableHead>
+                <TableHead className="hidden md:table-cell" aria-sort={sortField === "status" ? (sortOrder === "asc" ? "ascending" : "descending") : "none"}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="-ml-3 h-8"
+                    onClick={() => toggleSort("status")}
+                    aria-label={`Ordenar por estado ${sortField === "status" ? (sortOrder === "asc" ? "descendente" : "ascendente") : ""}`}
+                  >
+                    Estado
+                    <ArrowUpDown className="ml-2 h-4 w-4" aria-hidden="true" />
+                  </Button>
+                </TableHead>
+                <TableHead className="hidden text-right sm:table-cell" aria-sort={sortField === "createdAt" ? (sortOrder === "asc" ? "ascending" : "descending") : "none"}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="-mr-3 h-8"
+                    onClick={() => toggleSort("createdAt")}
+                    aria-label={`Ordenar por fecha ${sortField === "createdAt" ? (sortOrder === "asc" ? "descendente" : "ascendente") : ""}`}
+                  >
+                    Creado
+                    <ArrowUpDown className="ml-2 h-4 w-4" aria-hidden="true" />
+                  </Button>
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {paginatedTasks.map((task) => (
+                <TableRow key={task.id}>
+                  <TableCell>
+                    <Link
+                      href={`/requests/${task.requestId}`}
+                      className="font-medium text-primary hover:underline"
+                    >
+                      {task.name}
+                    </Link>
+                    <div className="text-sm text-muted-foreground md:hidden mt-1">
+                       {task.requestTitle}
+                    </div>
+                  </TableCell>
+                  <TableCell className="hidden sm:table-cell">
+                    {task.requestTitle}
+                  </TableCell>
+                  <TableCell className="hidden md:table-cell">
+                    <Badge variant={getStatusVariant(task.status) as "default" | "secondary" | "destructive" | "outline"}>
+                      {getStatusLabel(task.status)}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="hidden text-right text-muted-foreground sm:table-cell">
+                    {formatDistanceToNow(new Date(task.createdAt), {
+                      addSuffix: true,
+                      locale: es,
+                    })}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+
+      {/* Cargar más */}
+      {hasMore && (
+        <div className="flex justify-center">
+          <Button variant="outline" onClick={loadMore} className="gap-2" aria-label={`Cargar más tareas. Mostrando ${paginatedTasks.length} de ${filteredAndSortedTasks.length}`}>
+            <ChevronDown className="h-4 w-4" aria-hidden="true" />
+            Cargar más
+          </Button>
+        </div>
+      )}
+
+      {/* Contador de resultados */}
+      <p className="text-sm text-muted-foreground">
+        Mostrando {paginatedTasks.length} de {filteredAndSortedTasks.length} tareas
+        {filteredAndSortedTasks.length !== tasks.length && ` (${tasks.length} total)`}
+      </p>
     </div>
   );
 }

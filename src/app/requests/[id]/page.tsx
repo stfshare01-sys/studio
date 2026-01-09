@@ -23,6 +23,7 @@ import { addDocumentNonBlocking } from "@/firebase/non-blocking-updates";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 import { ActivityLog } from "@/components/requests/activity-log";
+import { useToast } from "@/hooks/use-toast";
 
 function SubmittedBy({ userId }: { userId: string }) {
     const firestore = useFirestore();
@@ -130,6 +131,7 @@ export default function RequestDetailPage() {
   const { user, isUserLoading } = useUser();
   const firestore = useFirestore();
   const isAdmin = user?.role === 'Admin';
+  const { toast } = useToast();
 
   const [newComment, setNewComment] = useState("");
 
@@ -192,7 +194,17 @@ export default function RequestDetailPage() {
   }, [request, users, template, user, isAdmin]);
 
   const handleAddComment = () => {
-    if (!newComment.trim() || !user || !requestRef) return;
+    if (!newComment.trim() || !user || !requestRef) {
+      if (!newComment.trim()) {
+        toast({
+          variant: "destructive",
+          title: "Comentario vacío",
+          description: "Escribe un comentario antes de enviarlo.",
+        });
+      }
+      return;
+    }
+
     const commentsCollection = collection(requestRef, 'comments');
     const commentData = {
         requestId: requestRef.id,
@@ -215,6 +227,10 @@ export default function RequestDetailPage() {
     addDocumentNonBlocking(auditLogCollection, auditLogData);
 
     setNewComment("");
+    toast({
+      title: "Comentario enviado",
+      description: "Tu comentario ha sido publicado.",
+    });
   };
 
 
