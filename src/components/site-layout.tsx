@@ -30,6 +30,7 @@ import { Button } from "./ui/button";
 import { useAuth, useUser } from "@/firebase";
 import { signOut } from "firebase/auth";
 import { useEffect } from "react";
+import { NotificationCenter } from "@/components/notifications/notification-center";
 
 const navItems = [
   { href: "/", icon: LayoutDashboard, label: "Panel" },
@@ -136,8 +137,13 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
         </SidebarFooter>
       </Sidebar>
       <SidebarInset>
-        <div className="md:hidden flex items-center p-2 border-b">
-            <SidebarTrigger />
+        <div className="flex items-center justify-between p-2 border-b md:border-b-0">
+            <div className="md:hidden">
+                <SidebarTrigger />
+            </div>
+            <div className="flex items-center gap-2 ml-auto">
+                <NotificationCenter />
+            </div>
         </div>
         {children}
       </SidebarInset>
