@@ -96,9 +96,9 @@ export default function ReportsPage() {
     }, [firestore, isAdmin, isAuthLoading]);
 
     const usersQuery = useMemoFirebase(() => {
-        if (isAuthLoading || !firestore || !isAdmin) return null;
+        if (!firestore) return null;
         return query(collection(firestore, 'users'));
-    }, [firestore, isAdmin, isAuthLoading]);
+    }, [firestore]);
 
     const { data: requests, isLoading: isLoadingRequests } = useCollection<RequestType>(requestsQuery);
     const { data: tasks, isLoading: isLoadingTasks } = useCollection<Task>(tasksQuery);
@@ -226,7 +226,9 @@ export default function ReportsPage() {
         URL.revokeObjectURL(link.href);
     };
 
-    const isLoading = isAuthLoading || isLoadingRequests || isLoadingTasks || isLoadingUsers;
+    if (isLoadingData) {
+        return <ReportsSkeleton />;
+    }
 
     // Calculate summary stats
     const stats = useMemo(() => {
@@ -248,6 +250,41 @@ export default function ReportsPage() {
         };
     }, [filteredData]);
 
+    return (
+        <>
+            <Card>
+                <CardHeader>
+                    <CardTitle>Volumen de Solicitudes</CardTitle>
+                    <CardDescription>Número de solicitudes creadas y completadas a lo largo del tiempo.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <RequestVolumeChart requests={filteredData.requests} dateRange={dateRange} />
+                </CardContent>
+            </Card>
+
+            <Card>
+                <CardHeader>
+                    <CardTitle>Rendimiento por Usuario</CardTitle>
+                    <CardDescription>Métricas de finalización de tareas para cada usuario.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <UserPerformanceTable users={users ?? []} tasks={filteredData.tasks} />
+                </CardContent>
+            </Card>
+        </>
+    );
+}
+
+
+export default function ReportsPage() {
+    const { user, isUserLoading: isAuthLoading } = useUser();
+    const isAdmin = user?.role === 'Admin';
+
+    const [dateRange, setDateRange] = useState<DateRange | undefined>({
+        from: addDays(new Date(), -29),
+        to: new Date(),
+    });
+    
     return (
         <SiteLayout>
             <div className="flex flex-1 flex-col">

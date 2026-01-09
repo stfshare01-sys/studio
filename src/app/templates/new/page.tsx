@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { GripVertical, PlusCircle, Trash2, GitBranch, ShieldCheck, CheckCircle, GitMerge, GitFork, Library, WandSparkles, Loader2 } from "lucide-react";
+import { PlusCircle, Trash2, GitBranch, ShieldCheck, CheckCircle, GitMerge, GitFork, Library, WandSparkles, Loader2, ArrowUp, ArrowDown } from "lucide-react";
 import Link from "next/link";
 import {
   Dialog,
@@ -32,7 +32,6 @@ import {
 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 import { useFirestore } from "@/firebase";
 import { addDocumentNonBlocking } from "@/firebase/non-blocking-updates";
 import { collection } from "firebase/firestore";
@@ -40,14 +39,6 @@ import { useRouter } from "next/navigation";
 import type { FormField, WorkflowStepDefinition, Rule, RuleCondition, RuleAction, WorkflowStepType } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { generateProcessFromDescription, GenerateProcessOutput } from "@/ai/flows/process-generation";
-
-
-const reorder = <T,>(list: T[], startIndex: number, endIndex: number): T[] => {
-  const result = Array.from(list);
-  const [removed] = result.splice(startIndex, 1);
-  result.splice(endIndex, 0, removed);
-  return result;
-};
 
 
 const BpmnIcon = ({ type, className }: { type: WorkflowStepType, className?: string }) => {
@@ -250,68 +241,6 @@ export default function NewTemplatePage() {
       setPools(pools.map(pool => pool.id === poolId ? { ...pool, lanes: [...pool.lanes, newLane] } : pool));
   }
 
-  const onDragEnd = (result: DropResult) => {
-    const { source, destination, type } = result;
-    if (!destination) return;
-    
-    if (type === 'pool') {
-        setPools(reorder(pools, source.index, destination.index));
-        return;
-    }
-    
-    if (type === 'lane') {
-        const sourcePoolId = source.droppableId;
-        const destPoolId = destination.droppableId;
-        
-        const sourcePool = pools.find(p => p.id === sourcePoolId);
-        const destPool = pools.find(p => p.id === destPoolId);
-
-        if (!sourcePool || !destPool) return;
-
-        if (sourcePoolId === destPoolId) {
-            const reorderedLanes = reorder(sourcePool.lanes, source.index, destination.index);
-            setPools(pools.map(p => p.id === sourcePoolId ? { ...p, lanes: reorderedLanes } : p));
-        } else {
-            const [removed] = sourcePool.lanes.splice(source.index, 1);
-            destPool.lanes.splice(destination.index, 0, removed);
-            setPools([...pools]);
-        }
-        return;
-    }
-
-    if (type === 'step') {
-        const sourceLaneId = source.droppableId;
-        const destLaneId = destination.droppableId;
-        
-        let sourceLane: Lane | undefined;
-        let sourcePoolId: string | undefined;
-        let destLane: Lane | undefined;
-
-        pools.forEach(pool => {
-            const lane = pool.lanes.find(l => l.id === sourceLaneId);
-            if (lane) {
-                sourceLane = lane;
-                sourcePoolId = pool.id;
-            }
-            const dLane = pool.lanes.find(l => l.id === destLaneId);
-            if (dLane) {
-                destLane = dLane;
-            }
-        });
-
-        if (!sourceLane || !destLane) return;
-
-        if (sourceLaneId === destLaneId) {
-            const reorderedSteps = reorder(sourceLane.steps, source.index, destination.index);
-            sourceLane.steps = reorderedSteps;
-        } else {
-            const [removed] = sourceLane.steps.splice(source.index, 1);
-            destLane.steps.splice(destination.index, 0, removed);
-        }
-        setPools([...pools]);
-    }
-
-  };
 
   const handleSaveTemplate = async () => {
     if(!firestore) {
@@ -394,7 +323,6 @@ export default function NewTemplatePage() {
   
   return (
     <SiteLayout>
-        <DragDropContext onDragEnd={onDragEnd}>
         <div className="flex flex-1 flex-col">
         <header className="flex items-center justify-between p-4 sm:p-6">
             <div className="flex items-center gap-4">
@@ -440,25 +368,14 @@ export default function NewTemplatePage() {
                     </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
-                    <Droppable droppableId="fields-droppable">
-                        {(provided) => (
-                            <div {...provided.droppableProps} ref={provided.innerRef} className="space-y-2 rounded-md border p-4 min-h-[120px]">
+                        <div className="space-y-2 rounded-md border p-4 min-h-[120px]">
                             {fields.length === 0 && (
                                 <p className="text-center text-sm text-muted-foreground py-4">Añada campos a su formulario.</p>
                             )}
-                            {fields.map((field, index) => (
-                                <Draggable key={field.id} draggableId={field.id} index={index}>
-                                {(provided, snapshot) => (
-                                    <div
-                                    ref={provided.innerRef}
-                                    {...provided.draggableProps}
-                                    {...provided.dragHandleProps}
-                                    className={`group flex items-center gap-2 rounded-md p-3 ${snapshot.isDragging ? 'bg-primary/10' : 'bg-muted'}`}
-                                    >
-                                    <GripVertical className="h-5 w-5 text-muted-foreground cursor-grab" />
+                            {fields.map((field) => (
+                                <div key={field.id} className="group flex items-center gap-2 rounded-md p-3 bg-muted">
                                     <div className="flex-1 font-medium">{field.label}</div>
                                     <div className="text-sm text-muted-foreground">({fieldTypeLabels[field.type]})</div>
-
                                     <Button
                                         variant="ghost"
                                         size="icon"
@@ -468,14 +385,9 @@ export default function NewTemplatePage() {
                                         <Trash2 className="h-4 w-4 text-destructive" />
                                         <span className="sr-only">Eliminar campo</span>
                                     </Button>
-                                    </div>
-                                )}
-                                </Draggable>
+                                </div>
                             ))}
-                            {provided.placeholder}
-                            </div>
-                        )}
-                        </Droppable>
+                        </div>
 
                     <Dialog open={isFieldDialogOpen} onOpenChange={setIsFieldDialogOpen}>
                         <DialogTrigger asChild>
@@ -590,82 +502,49 @@ export default function NewTemplatePage() {
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                     <Droppable droppableId="board" type="pool">
-                        {(provided) => (
-                            <div {...provided.droppableProps} ref={provided.innerRef} className="space-y-4 rounded-md bg-muted/50 p-4 min-h-[300px]">
-                                {pools.map((pool, index) => (
-                                    <Draggable key={pool.id} draggableId={pool.id} index={index}>
-                                        {(provided) => (
-                                            <div ref={provided.innerRef} {...provided.draggableProps} className="rounded-lg border bg-card p-4 space-y-4">
-                                                <div className="flex items-center" {...provided.dragHandleProps}>
-                                                    <GripVertical className="h-5 w-5 text-muted-foreground cursor-grab" />
-                                                    <h3 className="font-semibold flex-1">{pool.name}</h3>
-                                                    <Button variant="ghost" size="sm" onClick={() => handleAddLaneToPool(pool.id)}>
-                                                        <PlusCircle className="mr-2 h-4 w-4" /> Añadir Carril
-                                                    </Button>
-                                                </div>
-                                                <Droppable droppableId={pool.id} type="lane">
-                                                    {(provided) => (
-                                                        <div ref={provided.innerRef} {...provided.droppableProps} className="space-y-2 pl-6">
-                                                            {pool.lanes.map((lane, index) => (
-                                                                 <Draggable key={lane.id} draggableId={lane.id} index={index}>
-                                                                    {(provided) => (
-                                                                        <div ref={provided.innerRef} {...provided.draggableProps} className="rounded-md border bg-background">
-                                                                             <div className="flex items-center p-2 border-b" {...provided.dragHandleProps}>
-                                                                                <GripVertical className="h-5 w-5 text-muted-foreground cursor-grab" />
-                                                                                <h4 className="text-sm font-medium flex-1">{lane.name}</h4>
-                                                                                
-                                                                                 <DropdownMenu>
-                                                                                    <DropdownMenuTrigger asChild>
-                                                                                        <Button variant="ghost" size="sm"><PlusCircle className="mr-2 h-4 w-4" />Añadir</Button>
-                                                                                    </DropdownMenuTrigger>
-                                                                                    <DropdownMenuContent>
-                                                                                        <DropdownMenuLabel>Elementos de BPMN</DropdownMenuLabel>
-                                                                                        <DropdownMenuItem onSelect={() => handleAddStepToLane(pool.id, lane.id, "Nueva Tarea", 'task')}>
-                                                                                            <BpmnIcon type="task" className="mr-2"/> Tarea
-                                                                                        </DropdownMenuItem>
-                                                                                         <DropdownMenuItem onSelect={() => handleAddStepToLane(pool.id, lane.id, "Nuevo Gateway", 'gateway-exclusive')}>
-                                                                                            <BpmnIcon type="gateway-exclusive" className="mr-2"/> Gateway Exclusivo
-                                                                                        </DropdownMenuItem>
-                                                                                    </DropdownMenuContent>
-                                                                                </DropdownMenu>
-
-                                                                            </div>
-                                                                            <Droppable droppableId={lane.id} type="step">
-                                                                                {(provided) => (
-                                                                                    <div ref={provided.innerRef} {...provided.droppableProps} className="p-2 min-h-[50px] space-y-2">
-                                                                                        {lane.steps.map((step, index) => (
-                                                                                            <Draggable key={step.id} draggableId={step.id} index={index}>
-                                                                                                {(provided, snapshot) => (
-                                                                                                    <div ref={provided.innerRef} {...provided.draggableProps} {...provided.dragHandleProps}
-                                                                                                        className={cn("group flex items-center gap-3 rounded-md p-2 border text-sm", snapshot.isDragging ? 'bg-primary/10 border-primary' : 'bg-muted border-muted')}>
-                                                                                                        <GripVertical className="h-4 w-4 text-muted-foreground cursor-grab" />
-                                                                                                        <BpmnIcon type={step.type} className="h-4 w-4" />
-                                                                                                        <div className="flex-1">{step.name}</div>
-                                                                                                    </div>
-                                                                                                )}
-                                                                                            </Draggable>
-                                                                                        ))}
-                                                                                        {provided.placeholder}
-                                                                                    </div>
-                                                                                )}
-                                                                            </Droppable>
-                                                                        </div>
-                                                                    )}
-                                                                 </Draggable>
-                                                            ))}
-                                                            {provided.placeholder}
-                                                        </div>
-                                                    )}
-                                                </Droppable>
+                    <div className="space-y-4 rounded-md bg-muted/50 p-4 min-h-[300px]">
+                        {pools.map((pool, poolIndex) => (
+                            <div key={pool.id} className="rounded-lg border bg-card p-4 space-y-4">
+                                <div className="flex items-center">
+                                    <h3 className="font-semibold flex-1">{pool.name}</h3>
+                                    <Button variant="ghost" size="sm" onClick={() => handleAddLaneToPool(pool.id)}>
+                                        <PlusCircle className="mr-2 h-4 w-4" /> Añadir Carril
+                                    </Button>
+                                </div>
+                                <div className="space-y-2 pl-6">
+                                    {pool.lanes.map((lane, laneIndex) => (
+                                        <div key={lane.id} className="rounded-md border bg-background">
+                                            <div className="flex items-center p-2 border-b">
+                                                <h4 className="text-sm font-medium flex-1">{lane.name}</h4>
+                                                <DropdownMenu>
+                                                    <DropdownMenuTrigger asChild>
+                                                        <Button variant="ghost" size="sm"><PlusCircle className="mr-2 h-4 w-4" />Añadir</Button>
+                                                    </DropdownMenuTrigger>
+                                                    <DropdownMenuContent>
+                                                        <DropdownMenuLabel>Elementos de BPMN</DropdownMenuLabel>
+                                                        <DropdownMenuItem onSelect={() => handleAddStepToLane(pool.id, lane.id, "Nueva Tarea", 'task')}>
+                                                            <BpmnIcon type="task" className="mr-2"/> Tarea
+                                                        </DropdownMenuItem>
+                                                        <DropdownMenuItem onSelect={() => handleAddStepToLane(pool.id, lane.id, "Nuevo Gateway", 'gateway-exclusive')}>
+                                                            <BpmnIcon type="gateway-exclusive" className="mr-2"/> Gateway Exclusivo
+                                                        </DropdownMenuItem>
+                                                    </DropdownMenuContent>
+                                                </DropdownMenu>
                                             </div>
-                                        )}
-                                    </Draggable>
-                                ))}
-                                {provided.placeholder}
+                                            <div className="p-2 min-h-[50px] space-y-2">
+                                                {lane.steps.map((step, stepIndex) => (
+                                                    <div key={step.id} className="group flex items-center gap-3 rounded-md p-2 border text-sm bg-muted border-muted">
+                                                        <BpmnIcon type={step.type} className="h-4 w-4" />
+                                                        <div className="flex-1">{step.name}</div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
                             </div>
-                        )}
-                    </Droppable>
+                        ))}
+                    </div>
                     <Button variant="outline" className="w-full mt-4" onClick={handleAddPool}>
                         <Library className="mr-2 h-4 w-4" /> Añadir Piscina
                     </Button>
@@ -673,7 +552,6 @@ export default function NewTemplatePage() {
             </Card>
         </main>
         </div>
-        </DragDropContext>
     </SiteLayout>
   );
 }
