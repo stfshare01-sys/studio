@@ -24,6 +24,7 @@ import {
   Users,
   BarChart3,
   Plug,
+  Activity,
 } from "lucide-react";
 import { Logo } from "@/components/icons";
 import { Button } from "./ui/button";
@@ -36,6 +37,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 const navItems = [
   { href: "/", icon: LayoutDashboard, label: "Panel" },
   { href: "/reports", icon: BarChart3, label: "Informes" },
+  { href: "/process-mining", icon: Activity, label: "Minería de Procesos" },
   { href: "/templates", icon: FolderKanban, label: "Plantillas" },
   { href: "/requests/new", icon: FilePlus, label: "Nueva Solicitud"},
   { href: "/integrations", icon: Plug, label: "Integraciones" },
