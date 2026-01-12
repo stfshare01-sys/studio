@@ -1,15 +1,18 @@
+
 'use client';
 
 import { firebaseConfig } from '@/firebase/config';
 import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
 import { getAuth, Auth } from 'firebase/auth';
 import { getFirestore, Firestore } from 'firebase/firestore';
+import { getStorage, FirebaseStorage } from 'firebase/storage';
 
 // Define a type for our singleton object
 type FirebaseServices = {
   app: FirebaseApp;
   auth: Auth;
   firestore: Firestore;
+  storage: FirebaseStorage;
 };
 
 // A private variable to hold the singleton instance
@@ -30,6 +33,7 @@ export function initializeFirebase(): FirebaseServices {
     app,
     auth: getAuth(app),
     firestore: getFirestore(app),
+    storage: getStorage(app),
   };
 
   return firebaseServices;

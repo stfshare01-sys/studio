@@ -9,10 +9,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { addDocumentNonBlocking, setDocumentNonBlocking, useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase";
+import { addDocumentNonBlocking, setDocumentNonBlocking, useCollection, useFirestore, useMemoFirebase, useUser, useStorage } from "@/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { Template } from "@/lib/types";
 import { collection, doc } from "firebase/firestore";
+import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
 import { Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -23,6 +24,7 @@ export default function NewRequestPage() {
     const router = useRouter();
     const { toast } = useToast();
     const { user, isUserLoading } = useUser();
+    const storage = useStorage();
 
     const templateId = searchParams.get('templateId');
     const [selectedTemplateId, setSelectedTemplateId] = React.useState<string | undefined>(templateId || undefined);
@@ -41,7 +43,7 @@ export default function NewRequestPage() {
     }
 
     const handleSubmit = async () => {
-        if (!selectedTemplate || !user || !firestore) {
+        if (!selectedTemplate || !user || !firestore || !storage) {
             toast({
                 variant: 'destructive',
                 title: 'Error',
@@ -56,6 +58,39 @@ export default function NewRequestPage() {
         const newRequestRef = doc(requestsCollection); // Create a reference with a new ID
         const newRequestId = newRequestRef.id;
         const now = new Date().toISOString();
+
+        // Handle file uploads
+        const documentUploadPromises: Promise<any>[] = [];
+        const fileFields = selectedTemplate.fields.filter(f => f.type === 'file');
+        const newFormData = {...formData};
+
+        for (const field of fileFields) {
+            const file = formData[field.id] as File;
+            if (file) {
+                const fileStorageRef = storageRef(storage, `requests/${newRequestId}/${file.name}`);
+                const uploadPromise = uploadBytes(fileStorageRef, file).then(async (snapshot) => {
+                    const downloadURL = await getDownloadURL(snapshot.ref);
+                    const docId = doc(collection(firestore, 'dummy')).id; // Generate a unique ID for the document entry
+                    
+                    // The value stored in formData for the file field will be the ID of the document entry
+                    newFormData[field.id] = docId;
+
+                    return {
+                        id: docId,
+                        requestId: newRequestId,
+                        filename: file.name,
+                        contentType: file.type,
+                        size: file.size,
+                        uploadDate: now,
+                        url: downloadURL,
+                    };
+                });
+                documentUploadPromises.push(uploadPromise);
+            }
+        }
+        
+        const uploadedDocuments = (await Promise.all(documentUploadPromises)).filter(Boolean);
+
 
         // Evaluate rules to see if any additional steps are needed
         const additionalSteps = selectedTemplate.rules?.reduce((acc, rule) => {
@@ -118,7 +153,7 @@ export default function NewRequestPage() {
             updatedAt: now,
             status: 'In Progress',
             completedAt: null,
-            formData,
+            formData: newFormData,
             steps: finalSteps.map((step, index) => ({
                 id: step.id,
                 name: step.name,
@@ -127,7 +162,7 @@ export default function NewRequestPage() {
                 completedAt: null,
                 taskId: taskIdMap.get(step.id) || null,
             })),
-            documents: [], // File handling would be implemented here
+            documents: uploadedDocuments,
         };
 
         try {
@@ -197,8 +232,6 @@ export default function NewRequestPage() {
                     </div>
                 );
             case 'file':
-                 // NOTE: File upload logic is complex and requires backend storage integration (e.g., Firebase Storage).
-                 // This is a placeholder UI. A real implementation would use a state to hold the file object and upload it on submit.
                 return <Input id={field.id} type="file" onChange={(e) => handleInputChange(field.id, e.target.files?.[0])} />;
             case 'date':
             case 'number':

@@ -5,7 +5,7 @@ import SiteLayout from "@/components/site-layout";
 import { notFound, useParams } from "next/navigation";
 import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from "@/firebase";
 import { doc, collection, query, serverTimestamp, orderBy } from "firebase/firestore";
-import type { Request as RequestType, EnrichedRequest, User, EnrichedWorkflowStep, Template, Comment as CommentType, EnrichedComment, AuditLog, FormField } from "@/lib/types";
+import type { Request as RequestType, EnrichedRequest, User, EnrichedWorkflowStep, Template, Comment as CommentType, EnrichedComment, AuditLog, FormField, Document as DocumentType } from "@/lib/types";
 import { ArrowLeft, User as UserIcon, Paperclip, Send } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -250,12 +250,19 @@ export default function RequestDetailPage() {
 
   const activeStep = enrichedRequest.steps.find(s => s.status === 'Active');
 
-  const getDisplayValue = (value: any) => {
+  const getDisplayValue = (value: any, fieldId: string) => {
+    const field = request.template?.fields.find((f: FormField) => f.id === fieldId);
+    if (field?.type === 'file') {
+        const document = request.documents.find(d => d.id === value);
+        return document ? (
+            <a href={document.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm font-medium text-primary hover:underline">
+                <Paperclip className="h-4 w-4" />
+                <span>{document.filename}</span>
+            </a>
+        ) : 'Archivo no encontrado';
+    }
     if (typeof value === 'boolean') {
       return value ? 'Sí' : 'No';
-    }
-    if (value instanceof File) {
-      return value.name;
     }
     return String(value);
   }
@@ -361,9 +368,9 @@ export default function RequestDetailPage() {
                             {Object.entries(enrichedRequest.formData).map(([key, value]) => {
                                const fieldLabel = request.template?.fields.find((f: FormField) => f.id === key)?.label || key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
                                return (
-                                <div key={key} className="flex justify-between">
+                                <div key={key} className="flex justify-between items-start">
                                     <dt className="text-muted-foreground">{fieldLabel}</dt>
-                                    <dd className="font-medium text-right">{getDisplayValue(value)}</dd>
+                                    <dd className="font-medium text-right">{getDisplayValue(value, key)}</dd>
                                 </div>
                                )
                             })}
@@ -388,10 +395,10 @@ export default function RequestDetailPage() {
                         <CardContent>
                             <ul className="space-y-2">
                                 {enrichedRequest.documents.map(doc => (
-                                    <li key={doc.name}>
-                                        <a href={doc.url} className="flex items-center gap-2 text-sm font-medium text-primary hover:underline">
+                                    <li key={doc.id}>
+                                        <a href={doc.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm font-medium text-primary hover:underline">
                                             <Paperclip className="h-4 w-4" />
-                                            <span>{doc.name}</span>
+                                            <span>{doc.filename}</span>
                                         </a>
                                     </li>
                                 ))}

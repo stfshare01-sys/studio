@@ -1,4 +1,5 @@
 
+
 export type UserRole = 'Admin' | 'Member';
 
 export type User = {
@@ -38,6 +39,16 @@ export type Task = {
   createdAt: string; // Timestamp when the task was created
 };
 
+export type Document = {
+  id: string;
+  requestId: string;
+  filename: string;
+  contentType: string;
+  size: number;
+  uploadDate: string;
+  url: string;
+};
+
 export type Request = {
   id: string;
   title: string;
@@ -57,7 +68,7 @@ export type Request = {
     taskId: string | null; // Reference to the document in the /tasks collection
   }[];
   formData: Record<string, any>;
-  documents: { name: string; url: string }[];
+  documents: Document[];
   template?: Template; // Denormalized template data
 };
 
@@ -93,16 +104,6 @@ export type Template = {
   fields: FormField[];
   steps: WorkflowStepDefinition[];
   rules: Rule[];
-};
-
-export type Document = {
-    id: string;
-    requestId: string;
-    filename: string;
-    contentType: string;
-    size: number;
-    uploadDate: string;
-    url: string;
 };
 
 export type Comment = {
