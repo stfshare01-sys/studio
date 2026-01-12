@@ -1,8 +1,8 @@
 
 'use server';
 
-import { Firestore, doc, collection } from 'firebase/firestore';
-import type { Task, Request, Template, User } from './types';
+import { Firestore, doc, collection, query, where, getDocs } from 'firebase/firestore';
+import type { Task, Request, Template, User, WorkflowStepDefinition } from './types';
 import { addDocumentNonBlocking, updateDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import { intelligentTaskAssignment } from '@/ai/flows/intelligent-task-assignment';
 
@@ -15,16 +15,76 @@ interface CompleteTaskParams {
     allUsers: User[];
 }
 
-/**
- * Completes a task and progresses the workflow to the next step.
- * This function handles:
- * 1. Updating the completed task's status.
- * 2. Updating the corresponding step in the parent request.
- * 3. Logging the completion in the audit trail.
- * 4. Finding and activating the next task in the sequence.
- * 5. Intelligently assigning the new active task.
- * 6. Sending a notification to the newly assigned user.
- */
+
+async function activateAndAssignTasks(
+    firestore: Firestore,
+    tasksToActivate: WorkflowStepDefinition[],
+    request: Request,
+    allUsers: User[],
+    updatedSteps: Request['steps'],
+    auditLogCollection: any
+) {
+    for (const stepDef of tasksToActivate) {
+        const stepInRequest = request.steps.find(s => s.id === stepDef.id);
+        if (stepInRequest && stepInRequest.taskId) {
+            const taskRef = doc(firestore, 'tasks', stepInRequest.taskId);
+            updateDocumentNonBlocking(taskRef, { status: 'Active' });
+
+            try {
+                const suggestion = await intelligentTaskAssignment({
+                    taskDescription: `Asignar la tarea: "${stepDef.name}" para la solicitud "${request.title}"`,
+                    assigneeRole: stepDef.assigneeRole || '',
+                    availableUsers: allUsers.map(u => ({
+                        userId: u.id,
+                        fullName: u.fullName,
+                        department: u.department,
+                        skills: u.skills ?? [],
+                        currentWorkload: u.currentWorkload ?? 0,
+                        pastPerformance: 5,
+                    })),
+                });
+
+                if (suggestion.suggestedUserId) {
+                    const assignee = allUsers.find(u => u.id === suggestion.suggestedUserId);
+                    updateDocumentNonBlocking(taskRef, { assigneeId: suggestion.suggestedUserId });
+
+                    const stepIndex = updatedSteps.findIndex(s => s.id === stepDef.id);
+                    if(stepIndex !== -1) {
+                        updatedSteps[stepIndex].assigneeId = suggestion.suggestedUserId;
+                        updatedSteps[stepIndex].status = 'Active';
+                    }
+
+                    addDocumentNonBlocking(auditLogCollection, {
+                        requestId: request.id,
+                        userId: 'system',
+                        userFullName: 'FlowMaster AI',
+                        timestamp: new Date().toISOString(),
+                        action: 'STEP_ASSIGNEE_CHANGED',
+                        details: {
+                            stepName: stepDef.name,
+                            assigneeName: assignee?.fullName || 'Desconocido',
+                            reason: suggestion.reason,
+                        }
+                    });
+
+                    const notificationRef = collection(firestore, 'users', suggestion.suggestedUserId, 'notifications');
+                    addDocumentNonBlocking(notificationRef, {
+                        title: 'Nueva Tarea Asignada',
+                        message: `Se te ha asignado la tarea "${stepDef.name}" para la solicitud "${request.title}".`,
+                        type: 'task',
+                        read: false,
+                        createdAt: new Date().toISOString(),
+                        link: `/requests/${request.id}`,
+                    });
+                }
+            } catch (error) {
+                console.error("Error during automatic task assignment:", error);
+            }
+        }
+    }
+}
+
+
 export async function completeTaskAndProgressWorkflow({
     firestore,
     task,
@@ -42,7 +102,7 @@ export async function completeTaskAndProgressWorkflow({
     updateDocumentNonBlocking(taskRef, { status: 'Completed', completedAt: now });
 
     // 2. Update step in the request document
-    const updatedSteps = request.steps.map(s =>
+    let updatedSteps = request.steps.map(s =>
         s.id === task.stepId ? { ...s, status: 'Completed', completedAt: now } : s
     );
     updateDocumentNonBlocking(requestRef, { steps: updatedSteps, updatedAt: now });
@@ -57,76 +117,79 @@ export async function completeTaskAndProgressWorkflow({
         action: 'STEP_COMPLETED',
         details: { stepName: task.name }
     });
+    
+    const findNextSteps = (currentStepId: string): { nextSteps: WorkflowStepDefinition[], precedingGatewayId?: string } => {
+        const currentStepIndex = template.steps.findIndex(s => s.id === currentStepId);
+        if (currentStepIndex === -1) return { nextSteps: [] };
 
-    // 4. Find the next step
-    const currentStepIndex = template.steps.findIndex(s => s.id === task.stepId);
-    const nextStepDefinition = template.steps[currentStepIndex + 1];
+        const currentStep = template.steps[currentStepIndex];
 
-    if (nextStepDefinition) {
-        // Find the corresponding step and task in the live request
-        const nextStepInRequest = request.steps.find(s => s.id === nextStepDefinition.id);
-        if (nextStepInRequest && nextStepInRequest.taskId) {
-            const nextTaskRef = doc(firestore, 'tasks', nextStepInRequest.taskId);
-
-            // 5. Activate the next task
-            updateDocumentNonBlocking(nextTaskRef, { status: 'Active' });
-
-            // 6. Intelligently assign the new active task
-            try {
-                const suggestion = await intelligentTaskAssignment({
-                    taskDescription: `Asignar la tarea: "${nextStepDefinition.name}" para la solicitud "${request.title}"`,
-                    assigneeRole: nextStepDefinition.assigneeRole || '',
-                    availableUsers: allUsers.map(u => ({
-                        userId: u.id,
-                        fullName: u.fullName,
-                        department: u.department,
-                        skills: u.skills ?? [],
-                        currentWorkload: u.currentWorkload ?? 0,
-                        pastPerformance: 5, // Mocked
-                    })),
-                });
-
-                if (suggestion.suggestedUserId) {
-                    const assignee = allUsers.find(u => u.id === suggestion.suggestedUserId);
-                    
-                    // Update task with assignee
-                    updateDocumentNonBlocking(nextTaskRef, { assigneeId: suggestion.suggestedUserId });
-                    
-                    // Update step in request with assignee
-                    const stepsWithNewAssignee = updatedSteps.map(s =>
-                        s.id === nextStepDefinition.id ? { ...s, status: 'Active', assigneeId: suggestion.suggestedUserId } : s
-                    );
-                    updateDocumentNonBlocking(requestRef, { steps: stepsWithNewAssignee, updatedAt: new Date().toISOString() });
-
-                    // Add audit log for assignment
-                    addDocumentNonBlocking(auditLogCollection, {
-                        requestId: request.id,
-                        userId: 'system',
-                        userFullName: 'FlowMaster AI',
-                        timestamp: new Date().toISOString(),
-                        action: 'STEP_ASSIGNEE_CHANGED',
-                        details: {
-                            stepName: nextStepDefinition.name,
-                            assigneeName: assignee?.fullName || 'Desconocido',
-                            reason: suggestion.reason,
-                        }
-                    });
-
-                    // 7. Send notification to the new assignee
-                    const notificationRef = collection(firestore, 'users', suggestion.suggestedUserId, 'notifications');
-                    addDocumentNonBlocking(notificationRef, {
-                        title: 'Nueva Tarea Asignada',
-                        message: `Se te ha asignado la tarea "${nextStepDefinition.name}" para la solicitud "${request.title}".`,
-                        type: 'task',
-                        read: false,
-                        createdAt: new Date().toISOString(),
-                        link: `/requests/${request.id}`,
-                    });
-                }
-            } catch (error) {
-                console.error("Error during automatic task assignment and notification:", error);
-            }
+        // Check if the current step is a parallel gateway (join)
+        if (currentStep.type === 'gateway-parallel') {
+            // This is a join gateway, find what comes after it
+            const stepAfterJoin = template.steps[currentStepIndex + 1];
+            return stepAfterJoin ? { nextSteps: [stepAfterJoin] } : { nextSteps: [] };
         }
+
+        const nextStep = template.steps[currentStepIndex + 1];
+        if (!nextStep) return { nextSteps: [] };
+
+        if (nextStep.type === 'gateway-parallel') {
+            // This is a split gateway, find all steps after it until the next gateway
+            const parallelSteps: WorkflowStepDefinition[] = [];
+            for (let i = currentStepIndex + 2; i < template.steps.length; i++) {
+                const step = template.steps[i];
+                if (step.type.includes('gateway')) {
+                    break;
+                }
+                parallelSteps.push(step);
+            }
+            return { nextSteps: parallelSteps, precedingGatewayId: nextStep.id };
+        }
+
+        return { nextSteps: [nextStep] };
+    }
+
+    const { nextSteps } = findNextSteps(task.stepId);
+
+    if (nextSteps.length > 0) {
+        // This is where we need to check for parallel gateway joins
+        const precedingStepsAreComplete = async (step: WorkflowStepDefinition): Promise<boolean> => {
+            const stepIndex = template.steps.findIndex(s => s.id === step.id);
+            if (stepIndex === 0) return true;
+
+            const prevStep = template.steps[stepIndex - 1];
+            if (prevStep.type === 'gateway-parallel') { // This step is after a join gateway
+                const gatewayIndex = stepIndex - 1;
+                let parallelBranchStartIndex = -1;
+                
+                // Find the corresponding split gateway
+                for (let i = gatewayIndex - 1; i >= 0; i--) {
+                    if (template.steps[i].type === 'gateway-parallel') {
+                        parallelBranchStartIndex = i + 1;
+                        break;
+                    }
+                }
+                
+                if (parallelBranchStartIndex !== -1) {
+                    const parallelSteps = template.steps.slice(parallelBranchStartIndex, gatewayIndex);
+                    const parallelStepIds = new Set(parallelSteps.map(s => s.id));
+                    const completedParallelSteps = updatedSteps.filter(s => parallelStepIds.has(s.id) && s.status === 'Completed');
+                    return completedParallelSteps.length === parallelSteps.length;
+                }
+            }
+            // Default sequential logic
+            return updatedSteps.find(s => s.id === prevStep.id)?.status === 'Completed';
+        };
+
+        const allPrerequisitesMet = await Promise.all(nextSteps.map(step => precedingStepsAreComplete(step)));
+        
+        if (allPrerequisitesMet.every(Boolean)) {
+            await activateAndAssignTasks(firestore, nextSteps, request, allUsers, updatedSteps, auditLogCollection);
+            // After assignment, save the final state of steps
+            updateDocumentNonBlocking(requestRef, { steps: updatedSteps, updatedAt: new Date().toISOString() });
+        }
+
     } else {
         // This was the last step, so complete the request
         updateDocumentNonBlocking(requestRef, {

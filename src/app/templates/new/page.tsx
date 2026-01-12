@@ -557,8 +557,11 @@ export default function NewTemplatePage() {
                                                             <DropdownMenuItem onSelect={() => handleAddStepToLane(pool.id, lane.id, "Nueva Tarea", 'task')}>
                                                                 <BpmnIcon type="task" className="mr-2"/> Tarea
                                                             </DropdownMenuItem>
-                                                            <DropdownMenuItem onSelect={() => handleAddStepToLane(pool.id, lane.id, "Nuevo Gateway", 'gateway-exclusive')}>
+                                                            <DropdownMenuItem onSelect={() => handleAddStepToLane(pool.id, lane.id, "Gateway Exclusivo", 'gateway-exclusive')}>
                                                                 <BpmnIcon type="gateway-exclusive" className="mr-2"/> Gateway Exclusivo
+                                                            </DropdownMenuItem>
+                                                             <DropdownMenuItem onSelect={() => handleAddStepToLane(pool.id, lane.id, "Gateway Paralelo", 'gateway-parallel')}>
+                                                                <BpmnIcon type="gateway-parallel" className="mr-2"/> Gateway Paralelo
                                                             </DropdownMenuItem>
                                                         </DropdownMenuContent>
                                                     </DropdownMenu>
