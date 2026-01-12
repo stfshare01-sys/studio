@@ -8,7 +8,7 @@ import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser, useStora
 import { doc, collection, query, serverTimestamp, orderBy, updateDoc } from "firebase/firestore";
 import { ref, deleteObject } from "firebase/storage";
 import type { Request as RequestType, EnrichedRequest, User, EnrichedWorkflowStep, Template, Comment as CommentType, EnrichedComment, AuditLog, FormField, Document as DocumentType, Task } from "@/lib/types";
-import { ArrowLeft, User as UserIcon, Paperclip, Send, Trash2, CheckCircle } from "lucide-react";
+import { ArrowLeft, User as UserIcon, Paperclip, Send, Trash2, CheckCircle, AlertTriangle } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -259,18 +259,20 @@ export default function RequestDetailPage() {
     }
   };
 
-  const handleCompleteTask = async (task: Task) => {
+  const handleCompleteTask = async (task: Task, outcome?: string) => {
       if (!firestore || !user || !request || !template || !users) {
           toast({ variant: 'destructive', title: 'Error', description: 'No se puede completar la tarea.' });
           return;
       }
       try {
-          await completeTaskAndProgressWorkflow(firestore, {
+          await completeTaskAndProgressWorkflow({
+              firestore,
               task,
               request,
               template,
               currentUser: user,
               allUsers: users,
+              outcome
           });
           toast({ title: "¡Tarea Completada!", description: `La tarea "${task.name}" ha sido completada.` });
       } catch (error) {
@@ -285,7 +287,7 @@ export default function RequestDetailPage() {
     return <SiteLayout><RequestDetailSkeleton /></SiteLayout>;
   }
 
-  if (!request || !enrichedRequest) {
+  if (!request || !enrichedRequest || !template) {
     if (!isRequestLoading && !request) notFound();
     return <SiteLayout><RequestDetailSkeleton /></SiteLayout>;
   }
@@ -295,6 +297,13 @@ export default function RequestDetailPage() {
   // Find the full task object for the active step
   const activeTask = activeStep?.taskId ? { ...activeStep, id: activeStep.taskId, requestTitle: request.title, requestId: request.id, requestOwnerId: request.submittedBy, createdAt: "" } as Task : null;
   const isCurrentUserAssignee = activeStep?.assigneeId === user?.uid;
+
+  const activeStepIndex = template.steps.findIndex(s => s.id === activeStep?.id);
+  const nextStepInTemplate = (activeStepIndex !== -1 && activeStepIndex < template.steps.length - 1) 
+    ? template.steps[activeStepIndex + 1] 
+    : null;
+
+  const isDecisionStep = nextStepInTemplate?.type === 'gateway-exclusive';
 
   const getDisplayValue = (value: any, fieldId: string) => {
     const field = request.template?.fields.find((f: FormField) => f.id === fieldId);
@@ -331,11 +340,22 @@ export default function RequestDetailPage() {
                     </Badge>
                 </div>
             </div>
-            {activeTask && isCurrentUserAssignee && (
+            {activeTask && isCurrentUserAssignee && !isDecisionStep && (
                 <Button onClick={() => handleCompleteTask(activeTask)} className="ml-auto">
                     <CheckCircle className="mr-2 h-4 w-4" />
                     Completar Tarea
                 </Button>
+            )}
+             {activeTask && isCurrentUserAssignee && isDecisionStep && (
+                <div className="ml-auto flex items-center gap-2">
+                    <span className="text-sm font-medium text-muted-foreground">Decisión requerida:</span>
+                    <Button variant="outline" onClick={() => handleCompleteTask(activeTask, 'Aprobado')}>
+                       Aprobar
+                    </Button>
+                     <Button variant="destructive" onClick={() => handleCompleteTask(activeTask, 'Rechazado')}>
+                       Rechazar
+                    </Button>
+                </div>
             )}
         </header>
 

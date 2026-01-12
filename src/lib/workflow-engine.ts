@@ -13,6 +13,7 @@ interface CompleteTaskParams {
     template: Template;
     currentUser: User;
     allUsers: User[];
+    outcome?: string; // For decision gateways
 }
 
 
@@ -92,6 +93,7 @@ export async function completeTaskAndProgressWorkflow({
     template,
     currentUser,
     allUsers,
+    outcome
 }: CompleteTaskParams): Promise<void> {
     const now = new Date().toISOString();
     const requestRef = doc(firestore, 'users', request.submittedBy, 'requests', request.id);
@@ -115,9 +117,29 @@ export async function completeTaskAndProgressWorkflow({
         userAvatarUrl: currentUser.avatarUrl,
         timestamp: now,
         action: 'STEP_COMPLETED',
-        details: { stepName: task.name }
+        details: { stepName: task.name, outcome }
     });
     
+    // Handle "Rechazado" outcome for exclusive gateways
+    if (outcome === 'Rechazado') {
+        updateDocumentNonBlocking(requestRef, {
+            status: 'Rejected',
+            completedAt: now,
+            updatedAt: now,
+        });
+        // Notify submitter of rejection
+        const submitterNotificationRef = collection(firestore, 'users', request.submittedBy, 'notifications');
+        addDocumentNonBlocking(submitterNotificationRef, {
+            title: 'Solicitud Rechazada',
+            message: `Tu solicitud "${request.title}" ha sido rechazada.`,
+            type: 'warning',
+            read: false,
+            createdAt: now,
+            link: `/requests/${request.id}`,
+        });
+        return; // Stop the workflow
+    }
+
     const findNextSteps = (currentStepId: string): { nextSteps: WorkflowStepDefinition[], precedingGatewayId?: string } => {
         const currentStepIndex = template.steps.findIndex(s => s.id === currentStepId);
         if (currentStepIndex === -1) return { nextSteps: [] };
@@ -145,6 +167,14 @@ export async function completeTaskAndProgressWorkflow({
                 parallelSteps.push(step);
             }
             return { nextSteps: parallelSteps, precedingGatewayId: nextStep.id };
+        }
+
+        // If next step is an exclusive gateway, skip it and find the next *actual* task
+        if (nextStep.type === 'gateway-exclusive') {
+            // Placeholder: A real implementation would check rules based on `outcome`
+            // For now, we'll just skip the gateway and go to the next step.
+            const stepAfterGateway = template.steps[currentStepIndex + 2];
+             return stepAfterGateway ? { nextSteps: [stepAfterGateway] } : { nextSteps: [] };
         }
 
         return { nextSteps: [nextStep] };
