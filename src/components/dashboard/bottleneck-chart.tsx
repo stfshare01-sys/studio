@@ -5,7 +5,6 @@ import { Bar, BarChart, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContaine
 import type { Task } from '@/lib/types';
 import { useMemo } from 'react';
 import { differenceInHours } from 'date-fns';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '../ui/skeleton';
 
 interface BottleneckChartProps {
