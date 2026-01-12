@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { PlusCircle, Trash2, GitBranch, ShieldCheck, CheckCircle, GitMerge, GitFork, Library, WandSparkles, Loader2, ArrowUp, ArrowDown } from "lucide-react";
+import { PlusCircle, Trash2, GitBranch, ShieldCheck, CheckCircle, GitMerge, GitFork, Library, WandSparkles, Loader2, UserSquare, Pencil } from "lucide-react";
 import Link from "next/link";
 import {
   Dialog,
@@ -39,6 +39,7 @@ import { useRouter } from "next/navigation";
 import type { FormField, WorkflowStepDefinition, Rule, RuleCondition, RuleAction, WorkflowStepType } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { generateProcessFromDescription, GenerateProcessOutput } from "@/ai/flows/process-generation";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 
 const BpmnIcon = ({ type, className }: { type: WorkflowStepType, className?: string }) => {
@@ -155,27 +156,27 @@ export default function NewTemplatePage() {
   // New state for pools and lanes
   const [pools, setPools] = useState<Pool[]>([]);
 
-
-  const handleAddStep = () => {
-    if (newStepName.trim() !== "") {
-      const newStep: WorkflowStepDefinition = {
-        id: `step-${Date.now()}`,
-        name: newStepName.trim(),
-        type: currentStepType,
-      };
-      // Instead of adding to a flat list, we need a target lane. For simplicity, let's not use this directly.
-      // This function will be called from within a lane context.
-      setNewStepName("");
-      setIsStepDialogOpen(false);
-      return newStep;
-    }
-    return null;
+  const handleUpdateStepRole = (poolId: string, laneId: string, stepId: string, assigneeRole: string) => {
+    setPools(prevPools => prevPools.map(pool => {
+        if (pool.id === poolId) {
+            return {
+                ...pool,
+                lanes: pool.lanes.map(lane => {
+                    if (lane.id === laneId) {
+                        return {
+                            ...lane,
+                            steps: lane.steps.map(step =>
+                                step.id === stepId ? { ...step, assigneeRole } : step
+                            )
+                        };
+                    }
+                    return lane;
+                })
+            };
+        }
+        return pool;
+    }));
   };
-
-  const openStepDialog = (type: WorkflowStepType) => {
-    setCurrentStepType(type);
-    setIsStepDialogOpen(true);
-  }
 
   const handleAddStepToLane = (poolId: string, laneId: string, stepName: string, stepType: WorkflowStepType) => {
     if (stepName.trim() === "") return;
@@ -184,6 +185,7 @@ export default function NewTemplatePage() {
         id: `step-${Date.now()}`,
         name: stepName.trim(),
         type: stepType,
+        assigneeRole: ''
     };
 
     setPools(prevPools => prevPools.map(pool => {
@@ -267,7 +269,7 @@ export default function NewTemplatePage() {
         name: templateName,
         description: templateDescription,
         fields,
-        steps: allSteps.map(s => ({id: s.id, name: s.name, type: s.type})),
+        steps: allSteps.map(s => ({id: s.id, name: s.name, type: s.type, assigneeRole: s.assigneeRole})),
         rules,
     };
 
@@ -313,11 +315,17 @@ export default function NewTemplatePage() {
       setTemplateName(data.name);
       setTemplateDescription(data.description);
       setFields(data.fields);
-      setPools(data.pools);
+      setPools(data.pools.map(p => ({
+          ...p,
+          lanes: p.lanes.map(l => ({
+              ...l,
+              steps: l.steps.map(s => ({...s, assigneeRole: ''}))
+          }))
+      })));
       setRules(data.rules);
 
       // Keep the flat `steps` list in sync for the rule builder
-      const allSteps = data.pools.flatMap(pool => pool.lanes.flatMap(lane => lane.steps));
+      const allSteps = data.pools.flatMap(pool => pool.lanes.flatMap(lane => lane.steps.map(s => ({...s, assigneeRole: ''}))));
       setSteps(allSteps);
   };
   
@@ -533,9 +541,32 @@ export default function NewTemplatePage() {
                                             </div>
                                             <div className="p-2 min-h-[50px] space-y-2">
                                                 {lane.steps.map((step, stepIndex) => (
-                                                    <div key={step.id} className="group flex items-center gap-3 rounded-md p-2 border text-sm bg-muted border-muted">
+                                                    <div key={step.id} className="group flex items-center gap-3 rounded-md p-2 border text-sm bg-card hover:bg-muted">
                                                         <BpmnIcon type={step.type} className="h-4 w-4" />
                                                         <div className="flex-1">{step.name}</div>
+                                                        <div className="flex items-center gap-1 text-muted-foreground">
+                                                            <Popover>
+                                                                <PopoverTrigger asChild>
+                                                                    <Button variant="ghost" size="sm" className="h-auto p-1">
+                                                                        <UserSquare className="h-3.5 w-3.5 mr-1" />
+                                                                        <span className="text-xs truncate max-w-[80px]">{step.assigneeRole || "Asignar Rol"}</span>
+                                                                        <Pencil className="h-3 w-3 ml-1 opacity-0 group-hover:opacity-100" />
+                                                                    </Button>
+                                                                </PopoverTrigger>
+                                                                <PopoverContent className="w-auto p-2">
+                                                                    <div className="space-y-2">
+                                                                        <Label htmlFor={`role-${step.id}`} className="text-xs">Rol de Asignación</Label>
+                                                                        <Input 
+                                                                            id={`role-${step.id}`}
+                                                                            placeholder="Ej: Finanzas"
+                                                                            value={step.assigneeRole}
+                                                                            onChange={(e) => handleUpdateStepRole(pool.id, lane.id, step.id, e.target.value)}
+                                                                            className="h-8"
+                                                                        />
+                                                                    </div>
+                                                                </PopoverContent>
+                                                            </Popover>
+                                                        </div>
                                                     </div>
                                                 ))}
                                             </div>

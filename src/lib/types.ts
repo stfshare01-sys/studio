@@ -18,6 +18,7 @@ export type WorkflowStepDefinition = {
   id: string;
   name: string;
   type: WorkflowStepType;
+  assigneeRole?: string; // e.g., 'Finance Approver', 'IT Support'
 };
 
 export type TaskStatus = 'Completed' | 'Pending' | 'Active';
