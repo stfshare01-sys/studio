@@ -250,6 +250,16 @@ export default function RequestDetailPage() {
 
   const activeStep = enrichedRequest.steps.find(s => s.status === 'Active');
 
+  const getDisplayValue = (value: any) => {
+    if (typeof value === 'boolean') {
+      return value ? 'Sí' : 'No';
+    }
+    if (value instanceof File) {
+      return value.name;
+    }
+    return String(value);
+  }
+
   return (
     <SiteLayout>
         <div className="flex flex-1 flex-col">
@@ -353,7 +363,7 @@ export default function RequestDetailPage() {
                                return (
                                 <div key={key} className="flex justify-between">
                                     <dt className="text-muted-foreground">{fieldLabel}</dt>
-                                    <dd className="font-medium text-right">{String(value)}</dd>
+                                    <dd className="font-medium text-right">{getDisplayValue(value)}</dd>
                                 </div>
                                )
                             })}

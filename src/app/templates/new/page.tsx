@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import { useState } from "react";
@@ -9,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { PlusCircle, Trash2, GitBranch, ShieldCheck, CheckCircle, GitMerge, GitFork, Library, WandSparkles, Loader2, UserSquare, Pencil, GripVertical } from "lucide-react";
+import { PlusCircle, Trash2, GitBranch, ShieldCheck, CheckCircle, GitMerge, GitFork, Library, WandSparkles, Loader2, UserSquare, Pencil, GripVertical, X } from "lucide-react";
 import Link from "next/link";
 import {
   Dialog,
@@ -39,10 +38,11 @@ import { useFirestore } from "@/firebase";
 import { addDocumentNonBlocking } from "@/firebase/non-blocking-updates";
 import { collection } from "firebase/firestore";
 import { useRouter } from "next/navigation";
-import type { FormField, WorkflowStepDefinition, Rule, RuleCondition, RuleAction, WorkflowStepType } from "@/lib/types";
+import type { FormField, WorkflowStepDefinition, Rule, RuleCondition, RuleAction, WorkflowStepType, FormFieldType } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { generateProcessFromDescription, GenerateProcessOutput } from "@/ai/flows/process-generation";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Badge } from "@/components/ui/badge";
 
 
 const BpmnIcon = ({ type, className }: { type: WorkflowStepType, className?: string }) => {
@@ -112,7 +112,7 @@ function CopilotDialog({ onApply }: { onApply: (data: GenerateProcessOutput) => 
                     <Label htmlFor="process-description" className="sr-only">Descripción del Proceso</Label>
                     <Textarea 
                         id="process-description"
-                        placeholder='Ej: "Crear un flujo para aprobar facturas. Si la factura supera los $5,000, necesita aprobación del gerente en el departamento de Finanzas. De lo contrario, solo requiere la aprobación del analista financiero. El proceso lo inicia cualquiera."'
+                        placeholder='Ej: "Crear un flujo para aprobar facturas. Si la factura supera los $5,000, necesita aprobación del gerente en el departamento de Finanzas. De lo contrario, solo requiere la aprobación del analista financiero. El proceso lo inicia cualquiera. Se necesita un campo para el nivel de prioridad (Alta, Media, Baja) y un campo para adjuntar la factura en PDF."'
                         rows={6}
                         value={description}
                         onChange={(e) => setDescription(e.target.value)}
@@ -136,7 +136,10 @@ function CopilotDialog({ onApply }: { onApply: (data: GenerateProcessOutput) => 
 function SortableField({ field, onRemove }: { field: FormField, onRemove: (id: string) => void }) {
     const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: field.id });
     const style = { transform: CSS.Transform.toString(transform), transition };
-    const fieldTypeLabels: Record<FormField['type'], string> = { text: 'Texto', textarea: 'Área de texto', date: 'Fecha', number: 'Número' };
+    const fieldTypeLabels: Record<FormFieldType, string> = { 
+        text: 'Texto', textarea: 'Área de texto', date: 'Fecha', number: 'Número',
+        select: 'Desplegable', checkbox: 'Casilla', radio: 'Opciones', file: 'Archivo'
+    };
 
     return (
         <div ref={setNodeRef} style={style} className="group flex items-center gap-2 rounded-md p-3 bg-muted">
@@ -200,8 +203,6 @@ export default function NewTemplatePage() {
   const [templateDescription, setTemplateDescription] = useState("");
   
   const [fields, setFields] = useState<FormField[]>([]);
-  const [newFieldName, setNewFieldName] = useState("");
-  const [newFieldType, setNewFieldType] = useState<FormField['type']>('text');
   const [isFieldDialogOpen, setIsFieldDialogOpen] = useState(false);
   
   const [rules, setRules] = useState<Rule[]>([]);
@@ -212,18 +213,19 @@ export default function NewTemplatePage() {
   const sensors = useSensors(useSensor(PointerSensor), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
 
   const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over, activatorEvent } = event;
-    const overContainer = (over?.data.current as any)?.sortable.containerId;
-    const activeContainer = (active.data.current as any)?.sortable.containerId;
-
+    const { active, over } = event;
+    
     if (over && active.id !== over.id) {
+        const activeContainer = (active.data.current as any)?.sortable.containerId;
+        const overContainer = (over?.data.current as any)?.sortable.containerId;
+        
         if (activeContainer === 'form-fields' && overContainer === 'form-fields') {
             setFields((items) => {
                 const oldIndex = items.findIndex(item => item.id === active.id);
                 const newIndex = items.findIndex(item => item.id === over.id);
                 return arrayMove(items, oldIndex, newIndex);
             });
-        } else if (activeContainer.startsWith('lane-') && activeContainer === overContainer) {
+        } else if (activeContainer?.startsWith('lane-') && activeContainer === overContainer) {
             setPools(prevPools => prevPools.map(pool => ({
                 ...pool,
                 lanes: pool.lanes.map(lane => {
@@ -287,16 +289,13 @@ export default function NewTemplatePage() {
     }));
   }
 
-  const handleAddField = () => {
-    if (newFieldName.trim() !== "") {
+  const handleAddField = (field: Omit<FormField, 'id'>) => {
+    if (field.label.trim() !== "") {
         const newField: FormField = {
             id: `field-${Date.now()}`,
-            label: newFieldName.trim(),
-            type: newFieldType,
+            ...field
         };
         setFields([...fields, newField]);
-        setNewFieldName("");
-        setNewFieldType("text");
         setIsFieldDialogOpen(false);
     }
   };
@@ -354,7 +353,6 @@ export default function NewTemplatePage() {
     };
 
     try {
-      if (!firestore) return;
       const templatesCollection = collection(firestore, 'request_templates');
       await addDocumentNonBlocking(templatesCollection, newTemplate);
 
@@ -375,13 +373,6 @@ export default function NewTemplatePage() {
     }
   }
 
-  const fieldTypeLabels: Record<FormField['type'], string> = {
-    text: 'Texto',
-    textarea: 'Área de texto',
-    date: 'Fecha',
-    number: 'Número',
-  };
-
   const handleAddRule = (rule: Rule) => {
     setRules([...rules, rule]);
     setIsRuleDialogOpen(false);
@@ -394,7 +385,7 @@ export default function NewTemplatePage() {
   const applyCopilotDraft = (data: GenerateProcessOutput) => {
       setTemplateName(data.name);
       setTemplateDescription(data.description);
-      setFields(data.fields);
+      setFields(data.fields.map(f => ({ ...f, options: f.options || [] })));
       setPools(data.pools.map(p => ({
           ...p,
           lanes: p.lanes.map(l => ({
@@ -449,13 +440,13 @@ export default function NewTemplatePage() {
                         <CardHeader>
                         <CardTitle>Campos del Formulario</CardTitle>
                         <CardDescription>
-                            Defina y ordene los datos que se recopilarán para esta plantilla.
+                            Defina los datos que se recopilarán para esta plantilla.
                         </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
                             <div className="space-y-2 rounded-md border p-4 min-h-[120px]">
                                 {fields.length === 0 ? (
-                                    <p className="text-center text-sm text-muted-foreground py-4">Arrastre y suelte campos aquí.</p>
+                                    <p className="text-center text-sm text-muted-foreground py-4">Añada campos a su formulario.</p>
                                 ) : (
                                     <SortableContext items={fields.map(f => f.id)} strategy={verticalListSortingStrategy} id="form-fields">
                                         {fields.map((field) => (
@@ -471,42 +462,7 @@ export default function NewTemplatePage() {
                                     <PlusCircle className="mr-2 h-4 w-4" /> Añadir Campo
                                 </Button>
                             </DialogTrigger>
-                            <DialogContent>
-                                <DialogHeader>
-                                    <DialogTitle>Añadir Nuevo Campo de Formulario</DialogTitle>
-                                </DialogHeader>
-                                <div className="py-4 space-y-4">
-                                    <div className="space-y-2">
-                                        <Label htmlFor="field-name">Etiqueta del Campo</Label>
-                                        <Input
-                                            id="field-name"
-                                            value={newFieldName}
-                                            onChange={(e) => setNewFieldName(e.target.value)}
-                                            placeholder="p.ej., Nombre del Solicitante"
-                                        />
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label htmlFor="field-type">Tipo de Campo</Label>
-                                        <Select value={newFieldType} onValueChange={(value) => setNewFieldType(value as FormField['type'])}>
-                                            <SelectTrigger id="field-type">
-                                                <SelectValue placeholder="Seleccione un tipo..." />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="text">Texto</SelectItem>
-                                                <SelectItem value="textarea">Área de texto</SelectItem>
-                                                <SelectItem value="date">Fecha</SelectItem>
-                                                <SelectItem value="number">Número</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-                                </div>
-                                <DialogFooter>
-                                    <DialogClose asChild>
-                                        <Button variant="ghost">Cancelar</Button>
-                                    </DialogClose>
-                                    <Button onClick={handleAddField}>Añadir Campo</Button>
-                                </DialogFooter>
-                            </DialogContent>
+                           <FieldBuilderDialog onAddField={handleAddField} onClose={() => setIsFieldDialogOpen(false)} />
                         </Dialog>
                         </CardContent>
                     </Card>
@@ -630,6 +586,104 @@ export default function NewTemplatePage() {
         </DndContext>
     </SiteLayout>
   );
+}
+
+
+function FieldBuilderDialog({ onAddField, onClose }: { onAddField: (field: Omit<FormField, 'id'>) => void, onClose: () => void }) {
+    const [label, setLabel] = useState("");
+    const [type, setType] = useState<FormFieldType>('text');
+    const [options, setOptions] = useState<string[]>(['']);
+
+    const handleAddOption = () => setOptions([...options, '']);
+    const handleOptionChange = (index: number, value: string) => {
+        const newOptions = [...options];
+        newOptions[index] = value;
+        setOptions(newOptions);
+    };
+    const handleRemoveOption = (index: number) => {
+        if (options.length > 1) {
+            setOptions(options.filter((_, i) => i !== index));
+        }
+    };
+
+    const handleSubmit = () => {
+        const finalField: Omit<FormField, 'id'> = { label: label.trim(), type };
+        if (['select', 'radio'].includes(type)) {
+            finalField.options = options.map(o => o.trim()).filter(o => o);
+        }
+        if (type === 'checkbox') {
+            finalField.options = [label.trim()]; // Checkbox often has one option which is the label itself
+        }
+        onAddField(finalField);
+        onClose();
+    };
+
+    const needsOptions = ['select', 'radio'].includes(type);
+
+    return (
+        <DialogContent>
+            <DialogHeader>
+                <DialogTitle>Añadir Nuevo Campo de Formulario</DialogTitle>
+            </DialogHeader>
+            <div className="py-4 space-y-4">
+                <div className="space-y-2">
+                    <Label htmlFor="field-label">Etiqueta del Campo</Label>
+                    <Input
+                        id="field-label"
+                        value={label}
+                        onChange={(e) => setLabel(e.target.value)}
+                        placeholder="p.ej., Nombre del Solicitante"
+                    />
+                </div>
+                <div className="space-y-2">
+                    <Label htmlFor="field-type">Tipo de Campo</Label>
+                    <Select value={type} onValueChange={(value) => setType(value as FormFieldType)}>
+                        <SelectTrigger id="field-type">
+                            <SelectValue placeholder="Seleccione un tipo..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="text">Texto</SelectItem>
+                            <SelectItem value="textarea">Área de texto</SelectItem>
+                            <SelectItem value="number">Número</SelectItem>
+                            <SelectItem value="date">Fecha</SelectItem>
+                            <SelectItem value="select">Lista desplegable</SelectItem>
+                            <SelectItem value="radio">Botones de opción</SelectItem>
+                            <SelectItem value="checkbox">Casilla de verificación</SelectItem>
+                            <SelectItem value="file">Carga de archivos</SelectItem>
+                        </SelectContent>
+                    </Select>
+                </div>
+                {needsOptions && (
+                    <div className="space-y-2 rounded-md border p-4">
+                        <Label>Opciones</Label>
+                        <div className="space-y-2">
+                            {options.map((option, index) => (
+                                <div key={index} className="flex items-center gap-2">
+                                    <Input
+                                        value={option}
+                                        onChange={(e) => handleOptionChange(index, e.target.value)}
+                                        placeholder={`Opción ${index + 1}`}
+                                    />
+                                    <Button variant="ghost" size="icon" onClick={() => handleRemoveOption(index)} disabled={options.length <= 1}>
+                                        <X className="h-4 w-4" />
+                                    </Button>
+                                </div>
+                            ))}
+                        </div>
+                        <Button variant="outline" size="sm" onClick={handleAddOption} className="mt-2">
+                            <PlusCircle className="mr-2 h-4 w-4" /> Añadir Opción
+                        </Button>
+                    </div>
+                )}
+            </div>
+            <DialogFooter>
+                <DialogClose asChild>
+                    <Button variant="ghost">Cancelar</Button>
+                </DialogClose>
+                <Button onClick={handleSubmit} disabled={!label.trim()}>Añadir Campo</Button>
+            </DialogFooter>
+        </DialogContent>
+    );
 }
 
 

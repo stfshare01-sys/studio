@@ -1,3 +1,4 @@
+
 export type UserRole = 'Admin' | 'Member';
 
 export type User = {
@@ -60,10 +61,13 @@ export type Request = {
   template?: Template; // Denormalized template data
 };
 
+export type FormFieldType = 'text' | 'textarea' | 'number' | 'date' | 'select' | 'checkbox' | 'radio' | 'file';
+
 export type FormField = {
   id: string;
   label: string;
-  type: 'text' | 'textarea' | 'date' | 'number';
+  type: FormFieldType;
+  options?: string[]; // For select, radio, checkbox
 };
 
 export type RuleCondition = {
@@ -87,7 +91,7 @@ export type Template = {
   name: string;
   description: string;
   fields: FormField[];
-  steps: WorkflowStepDefinition[]; // Changed from WorkflowStep
+  steps: WorkflowStepDefinition[];
   rules: Rule[];
 };
 

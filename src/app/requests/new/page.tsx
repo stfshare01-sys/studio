@@ -7,6 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { addDocumentNonBlocking, setDocumentNonBlocking, useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase";
 import { useToast } from "@/hooks/use-toast";
 import { Template } from "@/lib/types";
@@ -34,7 +36,7 @@ export default function NewRequestPage() {
 
     const selectedTemplate = templates?.find(t => t.id === selectedTemplateId);
 
-    const handleInputChange = (fieldId: string, value: string) => {
+    const handleInputChange = (fieldId: string, value: any) => {
         setFormData(prev => ({...prev, [fieldId]: value}));
     }
 
@@ -125,7 +127,7 @@ export default function NewRequestPage() {
                 completedAt: null,
                 taskId: taskIdMap.get(step.id) || null,
             })),
-            documents: [],
+            documents: [], // File handling would be implemented here
         };
 
         try {
@@ -161,6 +163,50 @@ export default function NewRequestPage() {
             setIsSubmitting(false);
         }
     };
+
+    const renderField = (field: Template['fields'][0]) => {
+        const value = formData[field.id];
+        switch (field.type) {
+            case 'textarea':
+                return <Textarea id={field.id} value={value || ''} onChange={(e) => handleInputChange(field.id, e.target.value)} placeholder={`Introduzca ${field.label.toLowerCase()}`} />;
+            case 'select':
+                return (
+                    <Select value={value} onValueChange={(val) => handleInputChange(field.id, val)}>
+                        <SelectTrigger id={field.id}><SelectValue placeholder={`Seleccione ${field.label.toLowerCase()}`} /></SelectTrigger>
+                        <SelectContent>
+                            {field.options?.map(option => <SelectItem key={option} value={option}>{option}</SelectItem>)}
+                        </SelectContent>
+                    </Select>
+                );
+            case 'radio':
+                return (
+                    <RadioGroup id={field.id} value={value} onValueChange={(val) => handleInputChange(field.id, val)} className="flex items-center gap-4">
+                        {field.options?.map(option => (
+                            <div key={option} className="flex items-center space-x-2">
+                                <RadioGroupItem value={option} id={`${field.id}-${option}`} />
+                                <Label htmlFor={`${field.id}-${option}`}>{option}</Label>
+                            </div>
+                        ))}
+                    </RadioGroup>
+                );
+            case 'checkbox':
+                return (
+                    <div className="flex items-center space-x-2">
+                        <Checkbox id={field.id} checked={!!value} onCheckedChange={(checked) => handleInputChange(field.id, checked)} />
+                        <Label htmlFor={field.id} className="font-normal">{field.label}</Label>
+                    </div>
+                );
+            case 'file':
+                 // NOTE: File upload logic is complex and requires backend storage integration (e.g., Firebase Storage).
+                 // This is a placeholder UI. A real implementation would use a state to hold the file object and upload it on submit.
+                return <Input id={field.id} type="file" onChange={(e) => handleInputChange(field.id, e.target.files?.[0])} />;
+            case 'date':
+            case 'number':
+            case 'text':
+            default:
+                return <Input id={field.id} type={field.type} value={value || ''} onChange={(e) => handleInputChange(field.id, e.target.value)} placeholder={`Introduzca ${field.label.toLowerCase()}`} />;
+        }
+    }
 
 
     return (
@@ -209,23 +255,8 @@ export default function NewRequestPage() {
                                 <div className="space-y-4 border-t pt-6">
                                     {selectedTemplate.fields.map(field => (
                                         <div key={field.id} className="space-y-2">
-                                            <Label htmlFor={field.id}>{field.label}</Label>
-                                            {field.type === 'textarea' ? (
-                                                <Textarea 
-                                                    id={field.id} 
-                                                    placeholder={`Introduzca ${field.label.toLowerCase()}`}
-                                                    value={formData[field.id] || ''}
-                                                    onChange={(e) => handleInputChange(field.id, e.target.value)}
-                                                />
-                                            ) : (
-                                                <Input 
-                                                    id={field.id} 
-                                                    type={field.type} 
-                                                    placeholder={`Introduzca ${field.label.toLowerCase()}`} 
-                                                    value={formData[field.id] || ''}
-                                                    onChange={(e) => handleInputChange(field.id, e.target.value)}
-                                                />
-                                            )}
+                                            {field.type !== 'checkbox' && <Label htmlFor={field.id}>{field.label}</Label>}
+                                            {renderField(field)}
                                         </div>
                                     ))}
                                 </div>
@@ -237,5 +268,3 @@ export default function NewRequestPage() {
         </SiteLayout>
     );
 }
-
-    

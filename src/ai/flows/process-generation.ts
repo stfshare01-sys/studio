@@ -1,3 +1,4 @@
+
 'use server';
 
 /**
@@ -9,7 +10,7 @@
  */
 
 import { ai } from '@/ai/genkit';
-import { z } from 'genkit';
+import { z } from 'zod';
 
 const GenerateProcessInputSchema = z.string().describe('A natural language description of a business process.');
 export type GenerateProcessInput = z.infer<typeof GenerateProcessInputSchema>;
@@ -22,7 +23,8 @@ const GenerateProcessOutputSchema = z.object({
     z.object({
       id: z.string().describe('A unique identifier for the field (e.g., "field-amount").'),
       label: z.string().describe('A user-friendly label for the form field (e.g., "Invoice Amount").'),
-      type: z.enum(['text', 'textarea', 'date', 'number']).describe('The data type of the form field.'),
+      type: z.enum(['text', 'textarea', 'date', 'number', 'select', 'radio', 'checkbox', 'file']).describe('The data type of the form field.'),
+      options: z.array(z.string()).optional().describe('For select, radio, or checkbox types, an array of possible choices.'),
     })
   ).describe('The form fields required to initiate the process.'),
   pools: z.array(
@@ -72,7 +74,7 @@ User's process description:
 
 Based on the description, perform the following actions:
 1.  **Infer a Template Name and Description**: Create a concise name and a short description for the process.
-2.  **Identify Form Fields**: Determine the necessary data inputs to start the process. For each input, define a field with an ID, a label, and a type (text, textarea, date, number). For example, "invoice amount" should become a 'number' field.
+2.  **Identify Form Fields**: Determine the necessary data inputs to start the process. For each input, define a field with an ID, a label, and a type. Supported types are 'text', 'textarea', 'date', 'number', 'select', 'radio', 'checkbox', 'file'. If a field implies a choice (e.g., "priority level high, medium, low"), use 'select' or 'radio' and populate the 'options' array. For "upload an invoice", use 'file'.
 3.  **Structure Pools and Lanes**: Identify the different departments, roles, or actors involved. Group them into "Pools" (e.g., "Sales Dept") and "Lanes" (e.g., "Sales Rep", "Sales Manager").
 4.  **Define Workflow Steps**: Extract all sequential or conditional activities. Assign each step an ID, a name, and a BPMN type ('task' for a standard activity, 'gateway-exclusive' for a decision point). Place each step within the correct lane.
 5.  **Derive Business Rules**: If the description contains conditional logic (e.g., "if the amount is over $5,000"), create a rule. A rule must have a 'condition' (referencing a fieldId, an operator, and a value) and an 'action' (which, for now, is always to require an additional step, referencing a stepId). Ensure the steps mentioned in rules are also defined in the pools/lanes structure.
