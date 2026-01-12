@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { PlusCircle, Trash2, GitBranch, ShieldCheck, CheckCircle, GitMerge, GitFork, Library, WandSparkles, Loader2, UserSquare, Pencil, GripVertical, X } from "lucide-react";
+import { PlusCircle, Trash2, GitBranch, ShieldCheck, CheckCircle, GitMerge, GitFork, Library, WandSparkles, Loader2, UserSquare, Pencil, GripVertical, X, AlertTriangle } from "lucide-react";
 import Link from "next/link";
 import {
   Dialog,
@@ -156,10 +156,21 @@ function SortableField({ field, onRemove }: { field: FormField, onRemove: (id: s
     );
 }
 
-function SortableStep({ step, poolId, laneId, onUpdateRole }: { step: WorkflowStepDefinition, poolId: string, laneId: string, onUpdateRole: (poolId: string, laneId: string, stepId: string, role: string) => void }) {
+function SortableStep({ step, poolId, laneId, onUpdateStep }: { step: WorkflowStepDefinition, poolId: string, laneId: string, onUpdateStep: (poolId: string, laneId: string, stepId: string, updates: Partial<WorkflowStepDefinition>) => void }) {
     const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: step.id });
     const style = { transform: CSS.Transform.toString(transform), transition };
+    const [outcomes, setOutcomes] = useState(step.outcomes || []);
+    const [newOutcome, setNewOutcome] = useState('');
 
+    const addOutcome = () => {
+        if(newOutcome.trim()) {
+            const updatedOutcomes = [...outcomes, newOutcome.trim()];
+            setOutcomes(updatedOutcomes);
+            onUpdateStep(poolId, laneId, step.id, { outcomes: updatedOutcomes });
+            setNewOutcome('');
+        }
+    }
+    
     return (
         <div ref={setNodeRef} style={style} className="group flex items-center gap-3 rounded-md p-2 border text-sm bg-card hover:bg-muted">
             <button {...attributes} {...listeners} className="cursor-grab p-1">
@@ -183,12 +194,37 @@ function SortableStep({ step, poolId, laneId, onUpdateRole }: { step: WorkflowSt
                                 id={`role-${step.id}`}
                                 placeholder="Ej: Finanzas"
                                 value={step.assigneeRole}
-                                onChange={(e) => onUpdateRole(poolId, laneId, step.id, e.target.value)}
+                                onChange={(e) => onUpdateStep(poolId, laneId, step.id, { assigneeRole: e.target.value })}
                                 className="h-8"
                             />
                         </div>
                     </PopoverContent>
                 </Popover>
+
+                 {step.type === 'task' && (
+                    <Popover>
+                        <PopoverTrigger asChild>
+                             <Button variant="ghost" size="sm" className="h-auto p-1">
+                                <GitBranch className="h-3.5 w-3.5 mr-1" />
+                                <span className="text-xs">{step.outcomes?.length || 0} Salidas</span>
+                                <Pencil className="h-3 w-3 ml-1 opacity-0 group-hover:opacity-100" />
+                            </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-60 p-2">
+                            <div className="space-y-2">
+                                <Label className="text-xs">Resultados de la Tarea (para decisiones)</Label>
+                                <div className="space-y-1">
+                                    {outcomes.map((o, i) => <Badge key={i} variant="secondary">{o}</Badge>)}
+                                </div>
+                                <div className="flex gap-1">
+                                    <Input placeholder="Ej: Aprobado" value={newOutcome} onChange={e => setNewOutcome(e.target.value)} className="h-8"/>
+                                    <Button size="sm" onClick={addOutcome}>Añadir</Button>
+                                </div>
+                                <p className="text-xs text-muted-foreground pt-1">Define los posibles resultados para esta tarea si precede a un Gateway Exclusivo.</p>
+                            </div>
+                        </PopoverContent>
+                    </Popover>
+                )}
             </div>
         </div>
     );
@@ -241,7 +277,7 @@ export default function NewTemplatePage() {
     }
   };
 
-  const handleUpdateStepRole = (poolId: string, laneId: string, stepId: string, assigneeRole: string) => {
+  const handleUpdateStep = (poolId: string, laneId: string, stepId: string, updates: Partial<WorkflowStepDefinition>) => {
     setPools(prevPools => prevPools.map(pool => {
         if (pool.id === poolId) {
             return {
@@ -251,7 +287,7 @@ export default function NewTemplatePage() {
                         return {
                             ...lane,
                             steps: lane.steps.map(step =>
-                                step.id === stepId ? { ...step, assigneeRole } : step
+                                step.id === stepId ? { ...step, ...updates } : step
                             )
                         };
                     }
@@ -272,6 +308,10 @@ export default function NewTemplatePage() {
         type: stepType,
         assigneeRole: ''
     };
+    
+    if (stepType === 'gateway-exclusive') {
+        newStep.name = 'Decisión';
+    }
 
     setPools(prevPools => prevPools.map(pool => {
         if (pool.id === poolId) {
@@ -348,7 +388,7 @@ export default function NewTemplatePage() {
         name: templateName,
         description: templateDescription,
         fields,
-        steps: allSteps.map(s => ({id: s.id, name: s.name, type: s.type, assigneeRole: s.assigneeRole})),
+        steps: allSteps, // Includes all properties like 'outcomes'
         rules,
     };
 
@@ -474,11 +514,16 @@ export default function NewTemplatePage() {
                     <CardContent className="space-y-4">
                         <div className="space-y-2 rounded-md border p-4">
                             {rules.length === 0 && (
-                                <p className="text-center text-sm text-muted-foreground py-4">No hay reglas definidas.</p>
+                                <div className="text-center text-sm text-muted-foreground py-4 space-y-1">
+                                    <p>No hay reglas definidas.</p>
+                                    <p className="text-xs">Las reglas permiten enrutar el flujo basado en resultados o datos.</p>
+                                </div>
                             )}
                             {rules.map((rule, index) => {
-                                const field = fields.find(f => f.id === rule.condition.fieldId);
                                 const allSteps = pools.flatMap(p => p.lanes.flatMap(l => l.steps));
+                                const source = rule.condition.type === 'form' 
+                                    ? fields.find(f => f.id === rule.condition.fieldId)
+                                    : allSteps.find(s => s.id === rule.condition.fieldId);
                                 const actionStep = allSteps.find(s => s.id === rule.action.stepId);
                                 return (
                                     <div key={index} className="group relative flex items-center gap-4 rounded-md bg-muted p-4">
@@ -488,13 +533,13 @@ export default function NewTemplatePage() {
                                         <div className="flex flex-col">
                                             <span className="text-sm font-bold">SI</span>
                                             <span className="font-mono text-sm bg-background p-1 rounded-sm">
-                                                {field?.label || '??'} {rule.condition.operator} {rule.condition.value}
+                                                {source?.name || source?.label || '??'} {rule.condition.operator} {rule.condition.value}
                                             </span>
                                         </div>
                                         <div className="flex flex-col">
                                             <span className="text-sm font-bold">ENTONCES</span>
                                             <span className="font-mono text-sm bg-background p-1 rounded-sm">
-                                                Añadir paso: {actionStep?.name || '??'}
+                                                Ruta a: {actionStep?.name || '??'}
                                             </span>
                                         </div>
                                         <Button
@@ -557,7 +602,7 @@ export default function NewTemplatePage() {
                                                             <DropdownMenuItem onSelect={() => handleAddStepToLane(pool.id, lane.id, "Nueva Tarea", 'task')}>
                                                                 <BpmnIcon type="task" className="mr-2"/> Tarea
                                                             </DropdownMenuItem>
-                                                            <DropdownMenuItem onSelect={() => handleAddStepToLane(pool.id, lane.id, "Gateway Exclusivo", 'gateway-exclusive')}>
+                                                            <DropdownMenuItem onSelect={() => handleAddStepToLane(pool.id, lane.id, "Decisión", 'gateway-exclusive')}>
                                                                 <BpmnIcon type="gateway-exclusive" className="mr-2"/> Gateway Exclusivo
                                                             </DropdownMenuItem>
                                                              <DropdownMenuItem onSelect={() => handleAddStepToLane(pool.id, lane.id, "Gateway Paralelo", 'gateway-parallel')}>
@@ -569,7 +614,7 @@ export default function NewTemplatePage() {
                                                 <div className="p-2 min-h-[50px] space-y-2">
                                                     <SortableContext items={lane.steps.map(s => s.id)} strategy={verticalListSortingStrategy} id={`lane-${lane.id}`}>
                                                         {lane.steps.map((step) => (
-                                                            <SortableStep key={step.id} step={step} poolId={pool.id} laneId={lane.id} onUpdateRole={handleUpdateStepRole}/>
+                                                            <SortableStep key={step.id} step={step} poolId={pool.id} laneId={lane.id} onUpdateStep={handleUpdateStep}/>
                                                         ))}
                                                     </SortableContext>
                                                 </div>
@@ -692,15 +737,19 @@ function FieldBuilderDialog({ onAddField, onClose }: { onAddField: (field: Omit<
 
 function RuleBuilderDialog({ fields, steps, onAddRule, onClose }: { fields: FormField[], steps: WorkflowStepDefinition[], onAddRule: (rule: Rule) => void, onClose: () => void }) {
     const { toast } = useToast();
-    const [conditionField, setConditionField] = useState<string>('');
+    const [ruleType, setRuleType] = useState<'form' | 'outcome'>('form');
+    const [conditionSource, setConditionSource] = useState<string>('');
     const [conditionOperator, setConditionOperator] = useState<RuleCondition['operator'] | ''>('');
     const [conditionValue, setConditionValue] = useState<string>('');
     const [actionStep, setActionStep] = useState<string>('');
 
-    const numericFields = fields.filter(f => f.type === 'number');
+    const decisionTasks = steps.filter(s => s.outcomes && s.outcomes.length > 0);
+    const formFieldsForRules = fields.filter(f => ['number', 'select', 'radio'].includes(f.type));
+
+    const selectedSource = ruleType === 'form' ? formFieldsForRules.find(f => f.id === conditionSource) : decisionTasks.find(s => s.id === conditionSource);
 
     const handleSubmit = () => {
-        if (!conditionField || !conditionOperator || !conditionValue || !actionStep) {
+        if (!conditionSource || !conditionOperator || !conditionValue || !actionStep) {
             toast({
                 variant: "destructive",
                 title: "Campos incompletos",
@@ -711,12 +760,13 @@ function RuleBuilderDialog({ fields, steps, onAddRule, onClose }: { fields: Form
 
         const newRule: Rule = {
             condition: {
-                fieldId: conditionField,
+                type: ruleType,
+                fieldId: conditionSource,
                 operator: conditionOperator as RuleCondition['operator'],
                 value: conditionValue,
             },
             action: {
-                type: 'REQUIRE_ADDITIONAL_STEP',
+                type: 'ROUTE_TO_STEP',
                 stepId: actionStep,
             }
         };
@@ -729,55 +779,81 @@ function RuleBuilderDialog({ fields, steps, onAddRule, onClose }: { fields: Form
     };
 
     return (
-        <DialogContent className="sm:max-w-[625px]">
+        <DialogContent className="sm:max-w-3xl">
             <DialogHeader>
                 <DialogTitle>Constructor de Reglas de Negocio</DialogTitle>
                 <DialogDescription>
-                    Cree una regla "SI-ENTONCES" para su flujo de trabajo.
+                    Cree una regla "SI-ENTONCES" para enrutar su flujo de trabajo.
                 </DialogDescription>
             </DialogHeader>
             <div className="grid gap-6 py-4">
                 <div className="p-4 rounded-md border">
                     <h3 className="mb-4 text-lg font-medium flex items-center"><ShieldCheck className="mr-2 h-5 w-5 text-primary"/> Condición (SI)</h3>
-                    <div className="grid grid-cols-3 gap-4">
-                        <div className="space-y-2">
-                            <Label>Campo</Label>
-                            <Select value={conditionField} onValueChange={setConditionField}>
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Seleccione un campo..."/>
-                                </SelectTrigger>
+                    <div className="grid grid-cols-4 gap-4">
+                        <div className="space-y-2 col-span-1">
+                            <Label>Tipo de Condición</Label>
+                            <Select value={ruleType} onValueChange={(v) => { setRuleType(v as any); setConditionSource(''); }}>
+                                <SelectTrigger><SelectValue/></SelectTrigger>
                                 <SelectContent>
-                                    {numericFields.map(field => (
-                                        <SelectItem key={field.id} value={field.id}>{field.label}</SelectItem>
-                                    ))}
+                                    <SelectItem value="form">Basada en Campo de Formulario</SelectItem>
+                                    <SelectItem value="outcome">Basada en Resultado de Tarea</SelectItem>
                                 </SelectContent>
                             </Select>
                         </div>
-                        <div className="space-y-2">
-                            <Label>Operador</Label>
-                             <Select value={conditionOperator} onValueChange={(v) => setConditionOperator(v as RuleCondition['operator'])}>
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Seleccione..."/>
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value=">">{'>'} (Mayor que)</SelectItem>
-                                    <SelectItem value="<">{'<'} (Menor que)</SelectItem>
-                                    <SelectItem value="==">{'=='} (Igual a)</SelectItem>
-                                    <SelectItem value="!=">{'!='} (No es igual a)</SelectItem>
-                                    <SelectItem value=">=">{'>='} (Mayor o igual que)</SelectItem>
-                                    <SelectItem value="<=">{'<='} (Menor o igual que)</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        <div className="space-y-2">
-                            <Label>Valor</Label>
-                            <Input 
-                                type="number" 
-                                placeholder="p.ej., 5000"
-                                value={conditionValue}
-                                onChange={(e) => setConditionValue(e.target.value)}
-                            />
-                        </div>
+                         <div className="space-y-2 col-span-3 grid grid-cols-3 gap-4">
+                            <div className="space-y-2">
+                                <Label>Fuente</Label>
+                                <Select value={conditionSource} onValueChange={setConditionSource}>
+                                    <SelectTrigger><SelectValue placeholder="Seleccione fuente..."/></SelectTrigger>
+                                    <SelectContent>
+                                        {ruleType === 'form' && formFieldsForRules.map(field => (
+                                            <SelectItem key={field.id} value={field.id}>{field.label}</SelectItem>
+                                        ))}
+                                         {ruleType === 'outcome' && decisionTasks.map(task => (
+                                            <SelectItem key={task.id} value={task.id}>{task.name}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Operador</Label>
+                                <Select value={conditionOperator} onValueChange={(v) => setConditionOperator(v as any)}>
+                                    <SelectTrigger><SelectValue placeholder="Seleccione..."/></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="==">{'=='} (Igual a)</SelectItem>
+                                        <SelectItem value="!=">{'!='} (No es igual a)</SelectItem>
+                                        {ruleType === 'form' && selectedSource?.type === 'number' && <>
+                                            <SelectItem value=">">{'>'} (Mayor que)</SelectItem>
+                                            <SelectItem value="<">{'<'} (Menor que)</SelectItem>
+                                            <SelectItem value=">=">{'>='} (Mayor o igual que)</SelectItem>
+                                            <SelectItem value="<=">{'<='} (Menor o igual que)</SelectItem>
+                                        </>}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Valor</Label>
+                                {ruleType === 'form' && selectedSource?.type === 'number' && (
+                                    <Input type="number" placeholder="p.ej., 5000" value={conditionValue} onChange={(e) => setConditionValue(e.target.value)} />
+                                )}
+                                {ruleType === 'form' && (selectedSource?.type === 'select' || selectedSource?.type === 'radio') && (
+                                     <Select value={conditionValue} onValueChange={setConditionValue}>
+                                        <SelectTrigger><SelectValue placeholder="Seleccione valor..."/></SelectTrigger>
+                                        <SelectContent>
+                                            {selectedSource.options?.map(opt => <SelectItem key={opt} value={opt}>{opt}</SelectItem>)}
+                                        </SelectContent>
+                                    </Select>
+                                )}
+                                {ruleType === 'outcome' && (
+                                     <Select value={conditionValue} onValueChange={setConditionValue}>
+                                        <SelectTrigger><SelectValue placeholder="Seleccione resultado..."/></SelectTrigger>
+                                        <SelectContent>
+                                            {selectedSource?.outcomes?.map(out => <SelectItem key={out} value={out}>{out}</SelectItem>)}
+                                        </SelectContent>
+                                    </Select>
+                                )}
+                            </div>
+                         </div>
                     </div>
                 </div>
 
@@ -786,17 +862,15 @@ function RuleBuilderDialog({ fields, steps, onAddRule, onClose }: { fields: Form
                     <div className="grid grid-cols-2 gap-4">
                          <div className="space-y-2">
                             <Label>Tipo de Acción</Label>
-                            <Select value="REQUIRE_ADDITIONAL_STEP" >
-                                <SelectTrigger>
-                                    <SelectValue/>
-                                </SelectTrigger>
+                            <Select value="ROUTE_TO_STEP" >
+                                <SelectTrigger><SelectValue/></SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="REQUIRE_ADDITIONAL_STEP">Requerir un paso adicional</SelectItem>
+                                    <SelectItem value="ROUTE_TO_STEP">Enrutar a Paso</SelectItem>
                                 </SelectContent>
                             </Select>
                         </div>
                         <div className="space-y-2">
-                            <Label>Paso de Aprobación</Label>
+                            <Label>Paso de Destino</Label>
                             <Select value={actionStep} onValueChange={setActionStep}>
                                 <SelectTrigger>
                                     <SelectValue placeholder="Seleccione un paso..."/>
@@ -808,6 +882,12 @@ function RuleBuilderDialog({ fields, steps, onAddRule, onClose }: { fields: Form
                                 </SelectContent>
                             </Select>
                         </div>
+                    </div>
+                </div>
+                 <div className="bg-amber-50 border-l-4 border-amber-400 p-3 text-amber-800 text-xs rounded-r-md">
+                    <div className="flex items-start">
+                        <AlertTriangle className="h-5 w-5 mr-2 shrink-0" />
+                        <p>Las reglas de "Ruta" se evalúan después de completar una tarea de decisión. Las reglas de "Añadir Paso" (basadas en campos de formulario) se evalúan solo al crear la solicitud.</p>
                     </div>
                 </div>
             </div>

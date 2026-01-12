@@ -7,7 +7,7 @@ import { notFound, useParams } from "next/navigation";
 import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser, useStorage } from "@/firebase";
 import { doc, collection, query, serverTimestamp, orderBy, updateDoc } from "firebase/firestore";
 import { ref, deleteObject } from "firebase/storage";
-import type { Request as RequestType, EnrichedRequest, User, EnrichedWorkflowStep, Template, Comment as CommentType, EnrichedComment, AuditLog, FormField, Document as DocumentType, Task } from "@/lib/types";
+import type { Request as RequestType, EnrichedRequest, User, EnrichedWorkflowStep, Template, Comment as CommentType, EnrichedComment, AuditLog, FormField, Document as DocumentType, Task, WorkflowStepDefinition } from "@/lib/types";
 import { ArrowLeft, User as UserIcon, Paperclip, Send, Trash2, CheckCircle, AlertTriangle } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -274,7 +274,7 @@ export default function RequestDetailPage() {
               allUsers: users,
               outcome
           });
-          toast({ title: "¡Tarea Completada!", description: `La tarea "${task.name}" ha sido completada.` });
+          toast({ title: "¡Tarea Completada!", description: `La tarea "${task.name}" ha sido completada con resultado: ${outcome}.` });
       } catch (error) {
           console.error("Error completing task:", error);
           toast({ variant: 'destructive', title: 'Error', description: 'No se pudo completar la tarea.' });
@@ -296,14 +296,10 @@ export default function RequestDetailPage() {
   
   // Find the full task object for the active step
   const activeTask = activeStep?.taskId ? { ...activeStep, id: activeStep.taskId, requestTitle: request.title, requestId: request.id, requestOwnerId: request.submittedBy, createdAt: "" } as Task : null;
+  const activeStepDefinition = activeTask ? template.steps.find(s => s.id === activeTask.stepId) : null;
+  
+  const isDecisionTask = activeStepDefinition?.outcomes && activeStepDefinition.outcomes.length > 0;
   const isCurrentUserAssignee = activeStep?.assigneeId === user?.uid;
-
-  const activeStepIndex = template.steps.findIndex(s => s.id === activeStep?.id);
-  const nextStepInTemplate = (activeStepIndex !== -1 && activeStepIndex < template.steps.length - 1) 
-    ? template.steps[activeStepIndex + 1] 
-    : null;
-
-  const isDecisionStep = nextStepInTemplate?.type === 'gateway-exclusive';
 
   const getDisplayValue = (value: any, fieldId: string) => {
     const field = request.template?.fields.find((f: FormField) => f.id === fieldId);
@@ -319,6 +315,34 @@ export default function RequestDetailPage() {
     if (typeof value === 'boolean') return value ? 'Sí' : 'No';
     return String(value);
   }
+
+  const renderActionButtons = () => {
+    if (!activeTask || !isCurrentUserAssignee) return null;
+
+    if (isDecisionTask) {
+      return (
+        <div className="ml-auto flex items-center gap-2">
+          <span className="text-sm font-medium text-muted-foreground">Decisión requerida:</span>
+          {activeStepDefinition?.outcomes?.map(outcome => (
+            <Button
+              key={outcome}
+              variant={outcome.toLowerCase() === 'rechazado' ? 'destructive' : 'outline'}
+              onClick={() => handleCompleteTask(activeTask, outcome)}
+            >
+              {outcome}
+            </Button>
+          ))}
+        </div>
+      );
+    }
+
+    return (
+      <Button onClick={() => handleCompleteTask(activeTask, 'Completado')} className="ml-auto">
+        <CheckCircle className="mr-2 h-4 w-4" />
+        Completar Tarea
+      </Button>
+    );
+  };
 
   return (
     <SiteLayout>
@@ -340,23 +364,7 @@ export default function RequestDetailPage() {
                     </Badge>
                 </div>
             </div>
-            {activeTask && isCurrentUserAssignee && !isDecisionStep && (
-                <Button onClick={() => handleCompleteTask(activeTask)} className="ml-auto">
-                    <CheckCircle className="mr-2 h-4 w-4" />
-                    Completar Tarea
-                </Button>
-            )}
-             {activeTask && isCurrentUserAssignee && isDecisionStep && (
-                <div className="ml-auto flex items-center gap-2">
-                    <span className="text-sm font-medium text-muted-foreground">Decisión requerida:</span>
-                    <Button variant="outline" onClick={() => handleCompleteTask(activeTask, 'Aprobado')}>
-                       Aprobar
-                    </Button>
-                     <Button variant="destructive" onClick={() => handleCompleteTask(activeTask, 'Rechazado')}>
-                       Rechazar
-                    </Button>
-                </div>
-            )}
+            {renderActionButtons()}
         </header>
 
         <main className="grid flex-1 gap-4 p-4 pt-0 sm:gap-8 sm:p-6 sm:pt-0 md:grid-cols-3">

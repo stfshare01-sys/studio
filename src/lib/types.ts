@@ -4,6 +4,7 @@
 
 
 
+
 export type UserRole = 'Admin' | 'Member';
 
 export type User = {
@@ -25,6 +26,8 @@ export type WorkflowStepDefinition = {
   name: string;
   type: WorkflowStepType;
   assigneeRole?: string; // e.g., 'Finance Approver', 'IT Support'
+  // For exclusive gateways, defines possible outcomes
+  outcomes?: string[];
 };
 
 export type TaskStatus = 'Completed' | 'Pending' | 'Active';
@@ -71,6 +74,7 @@ export type Request = {
     assigneeId: string | null;
     completedAt: string | null;
     taskId: string | null; // Reference to the document in the /tasks collection
+    outcome?: string | null; // The result of a decision task
   }[];
   formData: Record<string, any>;
   documents: Document[];
@@ -87,13 +91,14 @@ export type FormField = {
 };
 
 export type RuleCondition = {
-  fieldId: string;
+  fieldId: string; // Can be a form field ID or a step ID for outcome-based rules
   operator: '>' | '<' | '==' | '!=' | '>=' | '<=';
   value: any;
+  type: 'form' | 'outcome'; // Distinguish between form data rules and workflow outcome rules
 };
 
 export type RuleAction = {
-  type: 'REQUIRE_ADDITIONAL_STEP';
+  type: 'REQUIRE_ADDITIONAL_STEP' | 'ROUTE_TO_STEP';
   stepId: string;
 };
 
