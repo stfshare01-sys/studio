@@ -156,76 +156,105 @@ function SortableField({ field, onRemove }: { field: FormField, onRemove: (id: s
     );
 }
 
-function SortableStep({ step, poolId, laneId, onUpdateStep }: { step: WorkflowStepDefinition, poolId: string, laneId: string, onUpdateStep: (poolId: string, laneId: string, stepId: string, updates: Partial<WorkflowStepDefinition>) => void }) {
+function SortableStep({ 
+    step, 
+    poolId, 
+    laneId, 
+    onUpdateStep 
+}: { 
+    step: WorkflowStepDefinition, 
+    poolId: string, 
+    laneId: string, 
+    onUpdateStep: (poolId: string, laneId: string, stepId: string, updates: Partial<WorkflowStepDefinition>) => void 
+}) {
     const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: step.id });
     const style = { transform: CSS.Transform.toString(transform), transition };
-    const [outcomes, setOutcomes] = useState(step.outcomes || []);
+    
     const [newOutcome, setNewOutcome] = useState('');
 
     const addOutcome = () => {
         if(newOutcome.trim()) {
-            const updatedOutcomes = [...outcomes, newOutcome.trim()];
-            setOutcomes(updatedOutcomes);
+            const updatedOutcomes = [...(step.outcomes || []), newOutcome.trim()];
             onUpdateStep(poolId, laneId, step.id, { outcomes: updatedOutcomes });
             setNewOutcome('');
         }
     }
     
+    const removeOutcome = (index: number) => {
+        const updatedOutcomes = (step.outcomes || []).filter((_, i) => i !== index);
+        onUpdateStep(poolId, laneId, step.id, { outcomes: updatedOutcomes });
+    };
+
     return (
-        <div ref={setNodeRef} style={style} className="group flex items-center gap-3 rounded-md p-2 border text-sm bg-card hover:bg-muted">
-            <button {...attributes} {...listeners} className="cursor-grab p-1">
+        <div ref={setNodeRef} style={style} className="group flex items-start gap-3 rounded-md p-2 border text-sm bg-card hover:bg-muted">
+            <button {...attributes} {...listeners} className="cursor-grab p-1 mt-1">
                 <GripVertical className="h-4 w-4 text-muted-foreground" />
             </button>
-            <BpmnIcon type={step.type} className="h-4 w-4" />
-            <div className="flex-1">{step.name}</div>
-            <div className="flex items-center gap-1 text-muted-foreground">
-                <Popover>
-                    <PopoverTrigger asChild>
-                        <Button variant="ghost" size="sm" className="h-auto p-1">
-                            <UserSquare className="h-3.5 w-3.5 mr-1" />
-                            <span className="text-xs truncate max-w-[80px]">{step.assigneeRole || "Asignar Rol"}</span>
-                            <Pencil className="h-3 w-3 ml-1 opacity-0 group-hover:opacity-100" />
-                        </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-2">
-                        <div className="space-y-2">
-                            <Label htmlFor={`role-${step.id}`} className="text-xs">Rol de Asignación</Label>
-                            <Input
-                                id={`role-${step.id}`}
-                                placeholder="Ej: Finanzas"
-                                value={step.assigneeRole}
-                                onChange={(e) => onUpdateStep(poolId, laneId, step.id, { assigneeRole: e.target.value })}
-                                className="h-8"
-                            />
-                        </div>
-                    </PopoverContent>
-                </Popover>
-
-                 {step.type === 'task' && (
+            <BpmnIcon type={step.type} className="h-4 w-4 mt-1.5" />
+            <div className="flex-1 space-y-1">
+                <Input 
+                    value={step.name}
+                    onChange={(e) => onUpdateStep(poolId, laneId, step.id, { name: e.target.value })}
+                    className="h-8 border-none focus-visible:ring-1 focus-visible:ring-ring bg-transparent p-0"
+                    placeholder="Nombre del paso"
+                />
+                 <div className="flex items-center gap-1 text-muted-foreground">
                     <Popover>
                         <PopoverTrigger asChild>
-                             <Button variant="ghost" size="sm" className="h-auto p-1">
-                                <GitBranch className="h-3.5 w-3.5 mr-1" />
-                                <span className="text-xs">{step.outcomes?.length || 0} Salidas</span>
+                            <Button variant="ghost" size="sm" className="h-auto p-1">
+                                <UserSquare className="h-3.5 w-3.5 mr-1" />
+                                <span className="text-xs truncate max-w-[80px]">{step.assigneeRole || "Asignar Rol"}</span>
                                 <Pencil className="h-3 w-3 ml-1 opacity-0 group-hover:opacity-100" />
                             </Button>
                         </PopoverTrigger>
-                        <PopoverContent className="w-60 p-2">
+                        <PopoverContent className="w-auto p-2">
                             <div className="space-y-2">
-                                <Label className="text-xs">Resultados de la Tarea (para decisiones)</Label>
-                                <div className="space-y-1">
-                                    {outcomes.map((o, i) => <Badge key={i} variant="secondary">{o}</Badge>)}
-                                </div>
-                                <div className="flex gap-1">
-                                    <Input placeholder="Ej: Aprobado" value={newOutcome} onChange={e => setNewOutcome(e.target.value)} className="h-8"/>
-                                    <Button size="sm" onClick={addOutcome}>Añadir</Button>
-                                </div>
-                                <p className="text-xs text-muted-foreground pt-1">Define los posibles resultados para esta tarea si precede a un Gateway Exclusivo.</p>
+                                <Label htmlFor={`role-${step.id}`} className="text-xs">Rol de Asignación</Label>
+                                <Input
+                                    id={`role-${step.id}`}
+                                    placeholder="Ej: Finanzas"
+                                    value={step.assigneeRole || ''}
+                                    onChange={(e) => onUpdateStep(poolId, laneId, step.id, { assigneeRole: e.target.value })}
+                                    className="h-8"
+                                />
                             </div>
                         </PopoverContent>
                     </Popover>
-                )}
+
+                    {step.type === 'task' && (
+                        <Popover>
+                            <PopoverTrigger asChild>
+                                <Button variant="ghost" size="sm" className="h-auto p-1">
+                                    <GitBranch className="h-3.5 w-3.5 mr-1" />
+                                    <span className="text-xs">{step.outcomes?.length || 0} Salidas</span>
+                                    <Pencil className="h-3 w-3 ml-1 opacity-0 group-hover:opacity-100" />
+                                </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-60 p-2">
+                                <div className="space-y-2">
+                                    <Label className="text-xs">Resultados de la Tarea (para decisiones)</Label>
+                                    <div className="flex flex-wrap gap-1">
+                                        {(step.outcomes || []).map((o, i) => (
+                                            <Badge key={i} variant="secondary" className="group/badge relative">
+                                                {o}
+                                                <button onClick={() => removeOutcome(i)} className="absolute -top-1 -right-1 h-3 w-3 rounded-full bg-destructive text-destructive-foreground opacity-0 group-hover/badge:opacity-100 flex items-center justify-center p-0.5">
+                                                    <X className="h-2 w-2" />
+                                                </button>
+                                            </Badge>
+                                        ))}
+                                    </div>
+                                    <div className="flex gap-1">
+                                        <Input placeholder="Ej: Aprobado" value={newOutcome} onChange={e => setNewOutcome(e.target.value)} className="h-8"/>
+                                        <Button size="sm" onClick={addOutcome}>Añadir</Button>
+                                    </div>
+                                    <p className="text-xs text-muted-foreground pt-1">Define los posibles resultados para esta tarea si precede a un Gateway Exclusivo.</p>
+                                </div>
+                            </PopoverContent>
+                        </Popover>
+                    )}
+                </div>
             </div>
+            
         </div>
     );
 }
@@ -275,6 +304,23 @@ export default function NewTemplatePage() {
             })));
         }
     }
+  };
+
+  const handleUpdate = (type: 'pool' | 'lane', ids: { poolId: string, laneId?: string }, value: string) => {
+      setPools(prevPools => prevPools.map(pool => {
+          if (pool.id === ids.poolId) {
+              if (type === 'pool') {
+                  return { ...pool, name: value };
+              }
+              if (type === 'lane' && ids.laneId) {
+                  return {
+                      ...pool,
+                      lanes: pool.lanes.map(lane => lane.id === ids.laneId ? { ...lane, name: value } : lane)
+                  };
+              }
+          }
+          return pool;
+      }));
   };
 
   const handleUpdateStep = (poolId: string, laneId: string, stepId: string, updates: Partial<WorkflowStepDefinition>) => {
@@ -583,7 +629,11 @@ export default function NewTemplatePage() {
                             {pools.map((pool) => (
                                 <div key={pool.id} className="rounded-lg border bg-card p-4 space-y-4">
                                     <div className="flex items-center">
-                                        <h3 className="font-semibold flex-1">{pool.name}</h3>
+                                        <Input
+                                            value={pool.name}
+                                            onChange={(e) => handleUpdate('pool', { poolId: pool.id }, e.target.value)}
+                                            className="text-base font-semibold border-none focus-visible:ring-1 focus-visible:ring-ring bg-transparent p-0 flex-1"
+                                        />
                                         <Button variant="ghost" size="sm" onClick={() => handleAddLaneToPool(pool.id)}>
                                             <PlusCircle className="mr-2 h-4 w-4" /> Añadir Carril
                                         </Button>
@@ -592,7 +642,11 @@ export default function NewTemplatePage() {
                                         {pool.lanes.map((lane) => (
                                             <div key={lane.id} className="rounded-md border bg-background">
                                                 <div className="flex items-center p-2 border-b">
-                                                    <h4 className="text-sm font-medium flex-1">{lane.name}</h4>
+                                                    <Input
+                                                        value={lane.name}
+                                                        onChange={(e) => handleUpdate('lane', { poolId: pool.id, laneId: lane.id }, e.target.value)}
+                                                        className="h-8 text-sm font-medium border-none focus-visible:ring-1 focus-visible:ring-ring bg-transparent p-0 flex-1"
+                                                    />
                                                     <DropdownMenu>
                                                         <DropdownMenuTrigger asChild>
                                                             <Button variant="ghost" size="sm"><PlusCircle className="mr-2 h-4 w-4" />Añadir</Button>
@@ -900,3 +954,5 @@ function RuleBuilderDialog({ fields, steps, onAddRule, onClose }: { fields: Form
         </DialogContent>
     )
 }
+
+    
