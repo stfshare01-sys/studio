@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { PlusCircle, Trash2, GitBranch, ShieldCheck, CheckCircle, GitMerge, GitFork, Library, WandSparkles, Loader2, UserSquare, Pencil } from "lucide-react";
+import { PlusCircle, Trash2, GitBranch, ShieldCheck, CheckCircle, GitMerge, GitFork, Library, WandSparkles, Loader2, UserSquare, Pencil, GripVertical } from "lucide-react";
 import Link from "next/link";
 import {
   Dialog,
@@ -29,6 +29,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
+import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
@@ -130,6 +133,63 @@ function CopilotDialog({ onApply }: { onApply: (data: GenerateProcessOutput) => 
     )
 }
 
+function SortableField({ field, onRemove }: { field: FormField, onRemove: (id: string) => void }) {
+    const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: field.id });
+    const style = { transform: CSS.Transform.toString(transform), transition };
+    const fieldTypeLabels: Record<FormField['type'], string> = { text: 'Texto', textarea: 'Área de texto', date: 'Fecha', number: 'Número' };
+
+    return (
+        <div ref={setNodeRef} style={style} className="group flex items-center gap-2 rounded-md p-3 bg-muted">
+            <button {...attributes} {...listeners} className="cursor-grab p-1">
+                <GripVertical className="h-4 w-4 text-muted-foreground" />
+            </button>
+            <div className="flex-1 font-medium">{field.label}</div>
+            <div className="text-sm text-muted-foreground">({fieldTypeLabels[field.type]})</div>
+            <Button variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100" onClick={() => onRemove(field.id)}>
+                <Trash2 className="h-4 w-4 text-destructive" />
+                <span className="sr-only">Eliminar campo</span>
+            </Button>
+        </div>
+    );
+}
+
+function SortableStep({ step, poolId, laneId, onUpdateRole }: { step: WorkflowStepDefinition, poolId: string, laneId: string, onUpdateRole: (poolId: string, laneId: string, stepId: string, role: string) => void }) {
+    const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: step.id });
+    const style = { transform: CSS.Transform.toString(transform), transition };
+
+    return (
+        <div ref={setNodeRef} style={style} className="group flex items-center gap-3 rounded-md p-2 border text-sm bg-card hover:bg-muted">
+            <button {...attributes} {...listeners} className="cursor-grab p-1">
+                <GripVertical className="h-4 w-4 text-muted-foreground" />
+            </button>
+            <BpmnIcon type={step.type} className="h-4 w-4" />
+            <div className="flex-1">{step.name}</div>
+            <div className="flex items-center gap-1 text-muted-foreground">
+                <Popover>
+                    <PopoverTrigger asChild>
+                        <Button variant="ghost" size="sm" className="h-auto p-1">
+                            <UserSquare className="h-3.5 w-3.5 mr-1" />
+                            <span className="text-xs truncate max-w-[80px]">{step.assigneeRole || "Asignar Rol"}</span>
+                            <Pencil className="h-3 w-3 ml-1 opacity-0 group-hover:opacity-100" />
+                        </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-2">
+                        <div className="space-y-2">
+                            <Label htmlFor={`role-${step.id}`} className="text-xs">Rol de Asignación</Label>
+                            <Input
+                                id={`role-${step.id}`}
+                                placeholder="Ej: Finanzas"
+                                value={step.assigneeRole}
+                                onChange={(e) => onUpdateRole(poolId, laneId, step.id, e.target.value)}
+                                className="h-8"
+                            />
+                        </div>
+                    </PopoverContent>
+                </Popover>
+            </div>
+        </div>
+    );
+}
 
 export default function NewTemplatePage() {
   const { toast } = useToast();
@@ -139,12 +199,6 @@ export default function NewTemplatePage() {
   const [templateName, setTemplateName] = useState("");
   const [templateDescription, setTemplateDescription] = useState("");
   
-  const [steps, setSteps] = useState<WorkflowStepDefinition[]>([]);
-  const [newStepName, setNewStepName] = useState("");
-  const [isStepDialogOpen, setIsStepDialogOpen] = useState(false);
-  const [currentStepType, setCurrentStepType] = useState<WorkflowStepType>('task');
-
-
   const [fields, setFields] = useState<FormField[]>([]);
   const [newFieldName, setNewFieldName] = useState("");
   const [newFieldType, setNewFieldType] = useState<FormField['type']>('text');
@@ -153,8 +207,37 @@ export default function NewTemplatePage() {
   const [rules, setRules] = useState<Rule[]>([]);
   const [isRuleDialogOpen, setIsRuleDialogOpen] = useState(false);
 
-  // New state for pools and lanes
   const [pools, setPools] = useState<Pool[]>([]);
+
+  const sensors = useSensors(useSensor(PointerSensor), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over, activatorEvent } = event;
+    const overContainer = (over?.data.current as any)?.sortable.containerId;
+    const activeContainer = (active.data.current as any)?.sortable.containerId;
+
+    if (over && active.id !== over.id) {
+        if (activeContainer === 'form-fields' && overContainer === 'form-fields') {
+            setFields((items) => {
+                const oldIndex = items.findIndex(item => item.id === active.id);
+                const newIndex = items.findIndex(item => item.id === over.id);
+                return arrayMove(items, oldIndex, newIndex);
+            });
+        } else if (activeContainer.startsWith('lane-') && activeContainer === overContainer) {
+            setPools(prevPools => prevPools.map(pool => ({
+                ...pool,
+                lanes: pool.lanes.map(lane => {
+                    if (`lane-${lane.id}` === activeContainer) {
+                        const oldIndex = lane.steps.findIndex(step => step.id === active.id);
+                        const newIndex = lane.steps.findIndex(step => step.id === over.id);
+                        return { ...lane, steps: arrayMove(lane.steps, oldIndex, newIndex) };
+                    }
+                    return lane;
+                })
+            })));
+        }
+    }
+  };
 
   const handleUpdateStepRole = (poolId: string, laneId: string, stepId: string, assigneeRole: string) => {
     setPools(prevPools => prevPools.map(pool => {
@@ -202,9 +285,6 @@ export default function NewTemplatePage() {
         }
         return pool;
     }));
-    setSteps(prev => [...prev, newStep]); // Keep flat list in sync
-    setNewStepName("");
-    setIsStepDialogOpen(false);
   }
 
   const handleAddField = () => {
@@ -323,266 +403,231 @@ export default function NewTemplatePage() {
           }))
       })));
       setRules(data.rules);
-
-      // Keep the flat `steps` list in sync for the rule builder
-      const allSteps = data.pools.flatMap(pool => pool.lanes.flatMap(lane => lane.steps.map(s => ({...s, assigneeRole: ''}))));
-      setSteps(allSteps);
   };
   
   return (
     <SiteLayout>
-        <div className="flex flex-1 flex-col">
-        <header className="flex items-center justify-between p-4 sm:p-6">
-            <div className="flex items-center gap-4">
-                <h1 className="text-2xl font-bold tracking-tight">Crear Nueva Plantilla</h1>
-                <CopilotDialog onApply={applyCopilotDraft} />
-            </div>
-            <div className="flex gap-2">
-                <Button variant="outline" asChild><Link href="/templates">Cancelar</Link></Button>
-                <Button onClick={handleSaveTemplate}>Guardar Plantilla</Button>
-            </div>
-        </header>
-        <main className="grid flex-1 items-start gap-4 p-4 pt-0 sm:gap-8 sm:p-6 sm:pt-0 md:grid-cols-[1fr_2fr]">
-            <div className="grid auto-rows-max items-start gap-4 lg:gap-8">
-                <Card>
-                    <CardContent className="p-6">
-                        <div className="space-y-4">
-                        <div>
-                            <Label htmlFor="template-name">Nombre de la Plantilla</Label>
-                            <Input 
-                            id="template-name" 
-                            placeholder="p.ej., Orden de Compra"
-                            value={templateName}
-                            onChange={(e) => setTemplateName(e.target.value)}
-                            />
-                        </div>
-                        <div>
-                            <Label htmlFor="template-description">Descripción</Label>
-                            <Textarea 
-                            id="template-description" 
-                            placeholder="Una breve descripción de para qué sirve este flujo de trabajo."
-                            value={templateDescription}
-                            onChange={(e) => setTemplateDescription(e.target.value)}
-                            />
-                        </div>
-                        </div>
-                    </CardContent>
-                </Card>
-                <Card>
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <div className="flex flex-1 flex-col">
+            <header className="flex items-center justify-between p-4 sm:p-6">
+                <div className="flex items-center gap-4">
+                    <h1 className="text-2xl font-bold tracking-tight">Crear Nueva Plantilla</h1>
+                    <CopilotDialog onApply={applyCopilotDraft} />
+                </div>
+                <div className="flex gap-2">
+                    <Button variant="outline" asChild><Link href="/templates">Cancelar</Link></Button>
+                    <Button onClick={handleSaveTemplate}>Guardar Plantilla</Button>
+                </div>
+            </header>
+            <main className="grid flex-1 items-start gap-4 p-4 pt-0 sm:gap-8 sm:p-6 sm:pt-0 md:grid-cols-[1fr_2fr]">
+                <div className="grid auto-rows-max items-start gap-4 lg:gap-8">
+                    <Card>
+                        <CardContent className="p-6">
+                            <div className="space-y-4">
+                            <div>
+                                <Label htmlFor="template-name">Nombre de la Plantilla</Label>
+                                <Input 
+                                id="template-name" 
+                                placeholder="p.ej., Orden de Compra"
+                                value={templateName}
+                                onChange={(e) => setTemplateName(e.target.value)}
+                                />
+                            </div>
+                            <div>
+                                <Label htmlFor="template-description">Descripción</Label>
+                                <Textarea 
+                                id="template-description" 
+                                placeholder="Una breve descripción de para qué sirve este flujo de trabajo."
+                                value={templateDescription}
+                                onChange={(e) => setTemplateDescription(e.target.value)}
+                                />
+                            </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+                    <Card>
+                        <CardHeader>
+                        <CardTitle>Campos del Formulario</CardTitle>
+                        <CardDescription>
+                            Defina y ordene los datos que se recopilarán para esta plantilla.
+                        </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="space-y-2 rounded-md border p-4 min-h-[120px]">
+                                {fields.length === 0 ? (
+                                    <p className="text-center text-sm text-muted-foreground py-4">Arrastre y suelte campos aquí.</p>
+                                ) : (
+                                    <SortableContext items={fields.map(f => f.id)} strategy={verticalListSortingStrategy} id="form-fields">
+                                        {fields.map((field) => (
+                                            <SortableField key={field.id} field={field} onRemove={handleRemoveField} />
+                                        ))}
+                                    </SortableContext>
+                                )}
+                            </div>
+
+                        <Dialog open={isFieldDialogOpen} onOpenChange={setIsFieldDialogOpen}>
+                            <DialogTrigger asChild>
+                                <Button variant="outline" className="w-full">
+                                    <PlusCircle className="mr-2 h-4 w-4" /> Añadir Campo
+                                </Button>
+                            </DialogTrigger>
+                            <DialogContent>
+                                <DialogHeader>
+                                    <DialogTitle>Añadir Nuevo Campo de Formulario</DialogTitle>
+                                </DialogHeader>
+                                <div className="py-4 space-y-4">
+                                    <div className="space-y-2">
+                                        <Label htmlFor="field-name">Etiqueta del Campo</Label>
+                                        <Input
+                                            id="field-name"
+                                            value={newFieldName}
+                                            onChange={(e) => setNewFieldName(e.target.value)}
+                                            placeholder="p.ej., Nombre del Solicitante"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="field-type">Tipo de Campo</Label>
+                                        <Select value={newFieldType} onValueChange={(value) => setNewFieldType(value as FormField['type'])}>
+                                            <SelectTrigger id="field-type">
+                                                <SelectValue placeholder="Seleccione un tipo..." />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="text">Texto</SelectItem>
+                                                <SelectItem value="textarea">Área de texto</SelectItem>
+                                                <SelectItem value="date">Fecha</SelectItem>
+                                                <SelectItem value="number">Número</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                </div>
+                                <DialogFooter>
+                                    <DialogClose asChild>
+                                        <Button variant="ghost">Cancelar</Button>
+                                    </DialogClose>
+                                    <Button onClick={handleAddField}>Añadir Campo</Button>
+                                </DialogFooter>
+                            </DialogContent>
+                        </Dialog>
+                        </CardContent>
+                    </Card>
+                    <Card>
                     <CardHeader>
-                    <CardTitle>Campos del Formulario</CardTitle>
-                    <CardDescription>
-                        Defina los datos que se recopilarán para esta plantilla.
-                    </CardDescription>
+                        <CardTitle>Motor de Reglas de Negocio</CardTitle>
+                        <CardDescription>Defina la lógica condicional para automatizar las decisiones.</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
-                        <div className="space-y-2 rounded-md border p-4 min-h-[120px]">
-                            {fields.length === 0 && (
-                                <p className="text-center text-sm text-muted-foreground py-4">Añada campos a su formulario.</p>
+                        <div className="space-y-2 rounded-md border p-4">
+                            {rules.length === 0 && (
+                                <p className="text-center text-sm text-muted-foreground py-4">No hay reglas definidas.</p>
                             )}
-                            {fields.map((field) => (
-                                <div key={field.id} className="group flex items-center gap-2 rounded-md p-3 bg-muted">
-                                    <div className="flex-1 font-medium">{field.label}</div>
-                                    <div className="text-sm text-muted-foreground">({fieldTypeLabels[field.type]})</div>
-                                    <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        className="h-6 w-6 opacity-0 group-hover:opacity-100"
-                                        onClick={() => handleRemoveField(field.id)}
-                                    >
-                                        <Trash2 className="h-4 w-4 text-destructive" />
-                                        <span className="sr-only">Eliminar campo</span>
-                                    </Button>
+                            {rules.map((rule, index) => {
+                                const field = fields.find(f => f.id === rule.condition.fieldId);
+                                const allSteps = pools.flatMap(p => p.lanes.flatMap(l => l.steps));
+                                const actionStep = allSteps.find(s => s.id === rule.action.stepId);
+                                return (
+                                    <div key={index} className="group relative flex items-center gap-4 rounded-md bg-muted p-4">
+                                        <div className="absolute left-[-9px] top-[calc(50%-8px)] h-4 w-4 rounded-full bg-primary/20 flex items-center justify-center">
+                                            <GitBranch className="h-3 w-3 text-primary" />
+                                        </div>
+                                        <div className="flex flex-col">
+                                            <span className="text-sm font-bold">SI</span>
+                                            <span className="font-mono text-sm bg-background p-1 rounded-sm">
+                                                {field?.label || '??'} {rule.condition.operator} {rule.condition.value}
+                                            </span>
+                                        </div>
+                                        <div className="flex flex-col">
+                                            <span className="text-sm font-bold">ENTONCES</span>
+                                            <span className="font-mono text-sm bg-background p-1 rounded-sm">
+                                                Añadir paso: {actionStep?.name || '??'}
+                                            </span>
+                                        </div>
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="absolute right-2 top-2 h-6 w-6 opacity-0 group-hover:opacity-100"
+                                            onClick={() => handleRemoveRule(index)}
+                                        >
+                                            <Trash2 className="h-4 w-4 text-destructive" />
+                                            <span className="sr-only">Eliminar regla</span>
+                                        </Button>
+                                    </div>
+                                )
+                            })}
+                        </div>
+                        <Dialog open={isRuleDialogOpen} onOpenChange={setIsRuleDialogOpen}>
+                            <DialogTrigger asChild>
+                                <Button variant="outline" className="w-full">
+                                    <PlusCircle className="mr-2 h-4 w-4" /> Añadir Regla
+                                </Button>
+                            </DialogTrigger>
+                            <RuleBuilderDialog 
+                                fields={fields} 
+                                steps={pools.flatMap(p => p.lanes.flatMap(l => l.steps))} 
+                                onAddRule={handleAddRule} 
+                                onClose={() => setIsRuleDialogOpen(false)} 
+                            />
+                        </Dialog>
+                    </CardContent>
+                </Card>
+                </div>
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Lienzo del Flujo de Trabajo (BPMN)</CardTitle>
+                        <CardDescription>
+                            Diseñe y ordene las etapas de su proceso usando Piscinas (Pools) y Carriles (Lanes).
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        <div className="space-y-4 rounded-md bg-muted/50 p-4 min-h-[300px]">
+                            {pools.map((pool) => (
+                                <div key={pool.id} className="rounded-lg border bg-card p-4 space-y-4">
+                                    <div className="flex items-center">
+                                        <h3 className="font-semibold flex-1">{pool.name}</h3>
+                                        <Button variant="ghost" size="sm" onClick={() => handleAddLaneToPool(pool.id)}>
+                                            <PlusCircle className="mr-2 h-4 w-4" /> Añadir Carril
+                                        </Button>
+                                    </div>
+                                    <div className="space-y-2 pl-6">
+                                        {pool.lanes.map((lane) => (
+                                            <div key={lane.id} className="rounded-md border bg-background">
+                                                <div className="flex items-center p-2 border-b">
+                                                    <h4 className="text-sm font-medium flex-1">{lane.name}</h4>
+                                                    <DropdownMenu>
+                                                        <DropdownMenuTrigger asChild>
+                                                            <Button variant="ghost" size="sm"><PlusCircle className="mr-2 h-4 w-4" />Añadir</Button>
+                                                        </DropdownMenuTrigger>
+                                                        <DropdownMenuContent>
+                                                            <DropdownMenuLabel>Elementos de BPMN</DropdownMenuLabel>
+                                                            <DropdownMenuItem onSelect={() => handleAddStepToLane(pool.id, lane.id, "Nueva Tarea", 'task')}>
+                                                                <BpmnIcon type="task" className="mr-2"/> Tarea
+                                                            </DropdownMenuItem>
+                                                            <DropdownMenuItem onSelect={() => handleAddStepToLane(pool.id, lane.id, "Nuevo Gateway", 'gateway-exclusive')}>
+                                                                <BpmnIcon type="gateway-exclusive" className="mr-2"/> Gateway Exclusivo
+                                                            </DropdownMenuItem>
+                                                        </DropdownMenuContent>
+                                                    </DropdownMenu>
+                                                </div>
+                                                <div className="p-2 min-h-[50px] space-y-2">
+                                                    <SortableContext items={lane.steps.map(s => s.id)} strategy={verticalListSortingStrategy} id={`lane-${lane.id}`}>
+                                                        {lane.steps.map((step) => (
+                                                            <SortableStep key={step.id} step={step} poolId={pool.id} laneId={lane.id} onUpdateRole={handleUpdateStepRole}/>
+                                                        ))}
+                                                    </SortableContext>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
                                 </div>
                             ))}
                         </div>
-
-                    <Dialog open={isFieldDialogOpen} onOpenChange={setIsFieldDialogOpen}>
-                        <DialogTrigger asChild>
-                            <Button variant="outline" className="w-full">
-                                <PlusCircle className="mr-2 h-4 w-4" /> Añadir Campo
-                            </Button>
-                        </DialogTrigger>
-                        <DialogContent>
-                            <DialogHeader>
-                                <DialogTitle>Añadir Nuevo Campo de Formulario</DialogTitle>
-                            </DialogHeader>
-                            <div className="py-4 space-y-4">
-                                <div className="space-y-2">
-                                    <Label htmlFor="field-name">Etiqueta del Campo</Label>
-                                    <Input
-                                        id="field-name"
-                                        value={newFieldName}
-                                        onChange={(e) => setNewFieldName(e.target.value)}
-                                        placeholder="p.ej., Nombre del Solicitante"
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="field-type">Tipo de Campo</Label>
-                                    <Select value={newFieldType} onValueChange={(value) => setNewFieldType(value as FormField['type'])}>
-                                        <SelectTrigger id="field-type">
-                                            <SelectValue placeholder="Seleccione un tipo..." />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="text">Texto</SelectItem>
-                                            <SelectItem value="textarea">Área de texto</SelectItem>
-                                            <SelectItem value="date">Fecha</SelectItem>
-                                            <SelectItem value="number">Número</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                            </div>
-                            <DialogFooter>
-                                <DialogClose asChild>
-                                    <Button variant="ghost">Cancelar</Button>
-                                </DialogClose>
-                                <Button onClick={handleAddField}>Añadir Campo</Button>
-                            </DialogFooter>
-                        </DialogContent>
-                    </Dialog>
+                        <Button variant="outline" className="w-full mt-4" onClick={handleAddPool}>
+                            <Library className="mr-2 h-4 w-4" /> Añadir Piscina
+                        </Button>
                     </CardContent>
                 </Card>
-                <Card>
-                <CardHeader>
-                    <CardTitle>Motor de Reglas de Negocio</CardTitle>
-                    <CardDescription>Defina la lógica condicional para automatizar las decisiones.</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                    <div className="space-y-2 rounded-md border p-4">
-                        {rules.length === 0 && (
-                            <p className="text-center text-sm text-muted-foreground py-4">No hay reglas definidas.</p>
-                        )}
-                        {rules.map((rule, index) => {
-                            const field = fields.find(f => f.id === rule.condition.fieldId);
-                            const allSteps = pools.flatMap(p => p.lanes.flatMap(l => l.steps));
-                            const actionStep = allSteps.find(s => s.id === rule.action.stepId);
-                            return (
-                                <div key={index} className="group relative flex items-center gap-4 rounded-md bg-muted p-4">
-                                     <div className="absolute left-[-9px] top-[calc(50%-8px)] h-4 w-4 rounded-full bg-primary/20 flex items-center justify-center">
-                                        <GitBranch className="h-3 w-3 text-primary" />
-                                    </div>
-                                    <div className="flex flex-col">
-                                        <span className="text-sm font-bold">SI</span>
-                                        <span className="font-mono text-sm bg-background p-1 rounded-sm">
-                                            {field?.label || '??'} {rule.condition.operator} {rule.condition.value}
-                                        </span>
-                                    </div>
-                                    <div className="flex flex-col">
-                                        <span className="text-sm font-bold">ENTONCES</span>
-                                        <span className="font-mono text-sm bg-background p-1 rounded-sm">
-                                            Añadir paso: {actionStep?.name || '??'}
-                                        </span>
-                                    </div>
-                                    <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        className="absolute right-2 top-2 h-6 w-6 opacity-0 group-hover:opacity-100"
-                                        onClick={() => handleRemoveRule(index)}
-                                    >
-                                        <Trash2 className="h-4 w-4 text-destructive" />
-                                        <span className="sr-only">Eliminar regla</span>
-                                    </Button>
-                                </div>
-                            )
-                        })}
-                    </div>
-                    <Dialog open={isRuleDialogOpen} onOpenChange={setIsRuleDialogOpen}>
-                        <DialogTrigger asChild>
-                            <Button variant="outline" className="w-full">
-                                <PlusCircle className="mr-2 h-4 w-4" /> Añadir Regla
-                            </Button>
-                        </DialogTrigger>
-                        <RuleBuilderDialog 
-                            fields={fields} 
-                            steps={pools.flatMap(p => p.lanes.flatMap(l => l.steps))} 
-                            onAddRule={handleAddRule} 
-                            onClose={() => setIsRuleDialogOpen(false)} 
-                        />
-                    </Dialog>
-                </CardContent>
-            </Card>
+            </main>
             </div>
-            <Card>
-                <CardHeader>
-                    <CardTitle>Lienzo del Flujo de Trabajo (BPMN)</CardTitle>
-                    <CardDescription>
-                        Diseñe las etapas de su proceso usando Piscinas (Pools) y Carriles (Lanes).
-                    </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                    <div className="space-y-4 rounded-md bg-muted/50 p-4 min-h-[300px]">
-                        {pools.map((pool, poolIndex) => (
-                            <div key={pool.id} className="rounded-lg border bg-card p-4 space-y-4">
-                                <div className="flex items-center">
-                                    <h3 className="font-semibold flex-1">{pool.name}</h3>
-                                    <Button variant="ghost" size="sm" onClick={() => handleAddLaneToPool(pool.id)}>
-                                        <PlusCircle className="mr-2 h-4 w-4" /> Añadir Carril
-                                    </Button>
-                                </div>
-                                <div className="space-y-2 pl-6">
-                                    {pool.lanes.map((lane, laneIndex) => (
-                                        <div key={lane.id} className="rounded-md border bg-background">
-                                            <div className="flex items-center p-2 border-b">
-                                                <h4 className="text-sm font-medium flex-1">{lane.name}</h4>
-                                                <DropdownMenu>
-                                                    <DropdownMenuTrigger asChild>
-                                                        <Button variant="ghost" size="sm"><PlusCircle className="mr-2 h-4 w-4" />Añadir</Button>
-                                                    </DropdownMenuTrigger>
-                                                    <DropdownMenuContent>
-                                                        <DropdownMenuLabel>Elementos de BPMN</DropdownMenuLabel>
-                                                        <DropdownMenuItem onSelect={() => handleAddStepToLane(pool.id, lane.id, "Nueva Tarea", 'task')}>
-                                                            <BpmnIcon type="task" className="mr-2"/> Tarea
-                                                        </DropdownMenuItem>
-                                                        <DropdownMenuItem onSelect={() => handleAddStepToLane(pool.id, lane.id, "Nuevo Gateway", 'gateway-exclusive')}>
-                                                            <BpmnIcon type="gateway-exclusive" className="mr-2"/> Gateway Exclusivo
-                                                        </DropdownMenuItem>
-                                                    </DropdownMenuContent>
-                                                </DropdownMenu>
-                                            </div>
-                                            <div className="p-2 min-h-[50px] space-y-2">
-                                                {lane.steps.map((step, stepIndex) => (
-                                                    <div key={step.id} className="group flex items-center gap-3 rounded-md p-2 border text-sm bg-card hover:bg-muted">
-                                                        <BpmnIcon type={step.type} className="h-4 w-4" />
-                                                        <div className="flex-1">{step.name}</div>
-                                                        <div className="flex items-center gap-1 text-muted-foreground">
-                                                            <Popover>
-                                                                <PopoverTrigger asChild>
-                                                                    <Button variant="ghost" size="sm" className="h-auto p-1">
-                                                                        <UserSquare className="h-3.5 w-3.5 mr-1" />
-                                                                        <span className="text-xs truncate max-w-[80px]">{step.assigneeRole || "Asignar Rol"}</span>
-                                                                        <Pencil className="h-3 w-3 ml-1 opacity-0 group-hover:opacity-100" />
-                                                                    </Button>
-                                                                </PopoverTrigger>
-                                                                <PopoverContent className="w-auto p-2">
-                                                                    <div className="space-y-2">
-                                                                        <Label htmlFor={`role-${step.id}`} className="text-xs">Rol de Asignación</Label>
-                                                                        <Input 
-                                                                            id={`role-${step.id}`}
-                                                                            placeholder="Ej: Finanzas"
-                                                                            value={step.assigneeRole}
-                                                                            onChange={(e) => handleUpdateStepRole(pool.id, lane.id, step.id, e.target.value)}
-                                                                            className="h-8"
-                                                                        />
-                                                                    </div>
-                                                                </PopoverContent>
-                                                            </Popover>
-                                                        </div>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                    <Button variant="outline" className="w-full mt-4" onClick={handleAddPool}>
-                        <Library className="mr-2 h-4 w-4" /> Añadir Piscina
-                    </Button>
-                </CardContent>
-            </Card>
-        </main>
-        </div>
+        </DndContext>
     </SiteLayout>
   );
 }
