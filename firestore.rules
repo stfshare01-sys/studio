@@ -164,6 +164,16 @@ service cloud.firestore {
     }
 
     /**
+     * @description Allows collection group queries on requests for admin users.
+     * This is necessary for the Reports and Process Mining pages which need to
+     * query all requests across all users using collectionGroup().
+     * @path /{path=**}/requests/{requestId}
+     */
+    match /{path=**}/requests/{requestId} {
+      allow read: if isAdmin();
+    }
+
+    /**
      * @description Manages the central tasks collection.
      * @path /tasks/{taskId}
      */
