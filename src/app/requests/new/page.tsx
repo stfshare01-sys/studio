@@ -10,9 +10,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { addDocumentNonBlocking, setDocumentNonBlocking, useCollection, useFirestore, useMemoFirebase, useUser, useStorage } from "@/firebase";
+import { addDocumentNonBlocking, setDocumentNonBlocking, useCollection, useFirestore, useMemoFirebase, useUser, useStorage, updateDocumentNonBlocking } from "@/firebase";
 import { useToast } from "@/hooks/use-toast";
-import { Template } from "@/lib/types";
+import { Template, User } from "@/lib/types";
 import { collection, doc } from "firebase/firestore";
 import { ref as storageRef, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import { Loader2, XCircle } from "lucide-react";
@@ -20,6 +20,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import React from "react";
 import { Progress } from "@/components/ui/progress";
+import { intelligentTaskAssignment } from "@/ai/flows/intelligent-task-assignment";
 
 const ALLOWED_FILE_TYPES = [
     'image/jpeg',
@@ -30,6 +31,76 @@ const ALLOWED_FILE_TYPES = [
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
 ];
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
+
+
+async function assignInitialTask(
+    request: any, 
+    template: Template,
+    users: User[],
+    firestore: any,
+) {
+    if (!users || users.length === 0) {
+        console.warn("No users available for auto-assignment.");
+        return;
+    }
+
+    const firstStep = request.steps[0];
+    const firstStepDefinition = template.steps.find(s => s.id === firstStep.id);
+    const firstTaskRef = doc(firestore, 'tasks', firstStep.taskId);
+
+    if (!firstStepDefinition || !firstStepDefinition.assigneeRole) {
+        console.log("First step has no defined assignee role. Skipping auto-assignment.");
+        return;
+    }
+
+    try {
+        const suggestion = await intelligentTaskAssignment({
+            taskDescription: `Asignar la tarea inicial: "${firstStep.name}" para la solicitud "${request.title}"`,
+            assigneeRole: firstStepDefinition.assigneeRole,
+            availableUsers: users.map(u => ({
+                userId: u.id,
+                fullName: u.fullName,
+                department: u.department,
+                skills: u.skills ?? [],
+                currentWorkload: u.currentWorkload ?? 0,
+                pastPerformance: 5, // Mocked
+            }))
+        });
+
+        if (suggestion.suggestedUserId) {
+            const assignee = users.find(u => u.id === suggestion.suggestedUserId);
+            
+            // 1. Update the task document
+            updateDocumentNonBlocking(firstTaskRef, { assigneeId: suggestion.suggestedUserId });
+
+            // 2. Update the request document's steps array
+            const requestRef = doc(firestore, 'users', request.submittedBy, 'requests', request.id);
+            const updatedSteps = request.steps.map((s: any) => 
+                s.id === firstStep.id ? { ...s, assigneeId: suggestion.suggestedUserId } : s
+            );
+            updateDocumentNonBlocking(requestRef, { steps: updatedSteps });
+
+            // 3. Add an audit log for the assignment
+            const auditLogCollection = collection(requestRef, 'audit_logs');
+            addDocumentNonBlocking(auditLogCollection, {
+                requestId: request.id,
+                userId: 'system', // Indicates an automatic action
+                userFullName: 'FlowMaster AI',
+                timestamp: new Date().toISOString(),
+                action: 'STEP_ASSIGNEE_CHANGED',
+                details: { 
+                    stepName: firstStep.name,
+                    assigneeName: assignee?.fullName || suggestion.suggestedUserId,
+                    reason: suggestion.reason
+                }
+            });
+             console.log(`Task '${firstStep.name}' automatically assigned to ${assignee?.fullName}. Reason: ${suggestion.reason}`);
+        }
+    } catch (error) {
+        console.error("Error during automatic task assignment:", error);
+    }
+}
+
 
 export default function NewRequestPage() {
     const searchParams = useSearchParams();
@@ -49,6 +120,8 @@ export default function NewRequestPage() {
     const firestore = useFirestore();
     const templatesRef = useMemoFirebase(() => collection(firestore, 'request_templates'), [firestore]);
     const { data: templates } = useCollection<Template>(templatesRef);
+    const usersQuery = useMemoFirebase(() => collection(firestore, 'users'), [firestore]);
+    const { data: users } = useCollection<User>(usersQuery);
 
     const selectedTemplate = templates?.find(t => t.id === selectedTemplateId);
 
@@ -80,11 +153,11 @@ export default function NewRequestPage() {
     }
 
     const handleSubmit = async () => {
-        if (!selectedTemplate || !user || !firestore || !storage) {
+        if (!selectedTemplate || !user || !firestore || !storage || !users) {
             toast({
                 variant: 'destructive',
                 title: 'Error',
-                description: 'Por favor, seleccione una plantilla y asegúrese de haber iniciado sesión.',
+                description: 'Por favor, seleccione una plantilla y asegúrese de que todo esté cargado.',
             });
             return;
         }
@@ -115,7 +188,9 @@ export default function NewRequestPage() {
                 const filePath = `requests/${newRequestId}/${file.name}`;
                 const fileStorageRef = storageRef(storage, filePath);
                 
-                const uploadTask = uploadBytesResumable(fileStorageRef, file);
+                const uploadTask = uploadBytesResumable(fileStorageRef, file, {
+                    customMetadata: { ownerId: user.uid }
+                });
 
                 const uploadPromise = new Promise((resolve, reject) => {
                     uploadTask.on('state_changed',
@@ -238,6 +313,9 @@ export default function NewRequestPage() {
                 details: { title: newRequest.title }
             };
             addDocumentNonBlocking(auditLogCollection, auditLogData);
+            
+            // Non-blocking call to assign the initial task
+            assignInitialTask(newRequest, selectedTemplate, users, firestore);
 
             toast({
                 title: '¡Solicitud Enviada!',

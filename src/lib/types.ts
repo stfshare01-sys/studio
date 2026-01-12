@@ -1,5 +1,6 @@
 
 
+
 export type UserRole = 'Admin' | 'Member';
 
 export type User = {
@@ -137,6 +138,7 @@ export type EnrichedWorkflowStep = Omit<Request['steps'][0], 'assigneeId'> & {
 export type EnrichedRequest = Omit<Request, 'submittedBy' | 'steps'> & {
   submittedBy: User;
   steps: EnrichedWorkflowStep[];
+  template: Template; // Enriched requests must have the template
 };
 
 export type EnrichedComment = Omit<Comment, 'authorId'> & {

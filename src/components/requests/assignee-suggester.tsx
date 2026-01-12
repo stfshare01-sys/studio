@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { User, EnrichedWorkflowStep, Request } from "@/lib/types";
+import type { User, EnrichedWorkflowStep, Request, Template } from "@/lib/types";
 import { intelligentTaskAssignment } from "@/ai/flows/intelligent-task-assignment";
 import { Button } from "@/components/ui/button";
 import {
@@ -52,15 +52,19 @@ export function AssigneeSuggester({
     setIsLoading(true);
     setSuggestion(null);
     try {
-      const result = await intelligentTaskAssignment({
-        taskDescription: `Assign the task: "${step.name}" for the request "${request.title}"`,
-        availableUsers: availableUsers.map((u) => ({
-          userId: u.id,
-          skills: u.skills ?? [],
-          currentWorkload: u.currentWorkload ?? 0,
-          pastPerformance: 5, // Mocked for demonstration
-        })),
-      });
+        const stepDefinition = request.template?.steps.find(s => s.id === step.id);
+        const result = await intelligentTaskAssignment({
+            taskDescription: `Asignar la tarea: "${step.name}" para la solicitud "${request.title}"`,
+            assigneeRole: stepDefinition?.assigneeRole || '',
+            availableUsers: availableUsers.map((u) => ({
+                userId: u.id,
+                fullName: u.fullName,
+                department: u.department,
+                skills: u.skills ?? [],
+                currentWorkload: u.currentWorkload ?? 0,
+                pastPerformance: 5, // Mocked for demonstration
+            })),
+        });
       setSuggestion(result);
     } catch (error) {
       console.error("AI suggestion failed:", error);
@@ -101,7 +105,8 @@ export function AssigneeSuggester({
         action: 'STEP_ASSIGNEE_CHANGED',
         details: { 
             stepName: step.name,
-            assigneeName: suggestedUser.fullName
+            assigneeName: suggestedUser.fullName,
+            reason: suggestion.reason // Add reason from AI
         }
     };
     addDocumentNonBlocking(auditLogCollection, auditLogData);
@@ -185,5 +190,3 @@ export function AssigneeSuggester({
     </Card>
   );
 }
-
-    
