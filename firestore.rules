@@ -102,6 +102,19 @@ service cloud.firestore {
       allow create: if isOwner(userId) && request.resource.data.id == userId;
       allow update: if isOwnerOrAdmin(userId);
       allow delete: if isAdmin(); // Only admins can delete users
+
+      /**
+       * @description Manages user notifications. Only the owner can read, update, or delete their notifications.
+       * @path /users/{userId}/notifications/{notificationId}
+       */
+      match /notifications/{notificationId} {
+        // User can read their own notifications
+        allow get, list: if isOwner(userId);
+        // System or admin can create notifications for a user, or a user can create for themselves
+        allow create: if isOwner(userId) || isAdmin();
+        // User can mark as read or delete their notifications
+        allow update, delete: if isOwner(userId);
+      }
     }
 
      /**
@@ -144,23 +157,10 @@ service cloud.firestore {
         // Owner and admins can read the history.
         allow get, list: if isOwner(userId) || isAdmin();
         // Only the system (via user's credentials) can create new logs.
-        allow create: if isOwner(userId) && request.resource.data.userId == userId;
+        allow create: if isOwner(userId) || isAdmin(); // Allow admin for system actions
         // NO ONE can update or delete audit logs. This ensures immutability.
         allow update, delete: if false;
       }
-    }
-
-    /**
-     * @description Manages user notifications. Only the owner can read, update, or delete their notifications.
-     * @path /users/{userId}/notifications/{notificationId}
-     */
-    match /users/{userId}/notifications/{notificationId} {
-      // User can read their own notifications
-      allow get, list: if isOwner(userId);
-      // System or admin can create notifications for a user
-      allow create: if isOwner(userId) || isAdmin();
-      // User can mark as read or delete their notifications
-      allow update, delete: if isOwner(userId);
     }
 
     /**

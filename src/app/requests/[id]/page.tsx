@@ -7,8 +7,8 @@ import { notFound, useParams } from "next/navigation";
 import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser, useStorage } from "@/firebase";
 import { doc, collection, query, serverTimestamp, orderBy, updateDoc } from "firebase/firestore";
 import { ref, deleteObject } from "firebase/storage";
-import type { Request as RequestType, EnrichedRequest, User, EnrichedWorkflowStep, Template, Comment as CommentType, EnrichedComment, AuditLog, FormField, Document as DocumentType } from "@/lib/types";
-import { ArrowLeft, User as UserIcon, Paperclip, Send, Trash2 } from "lucide-react";
+import type { Request as RequestType, EnrichedRequest, User, EnrichedWorkflowStep, Template, Comment as CommentType, EnrichedComment, AuditLog, FormField, Document as DocumentType, Task } from "@/lib/types";
+import { ArrowLeft, User as UserIcon, Paperclip, Send, Trash2, CheckCircle } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -21,7 +21,7 @@ import { useEffect, useState } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ProcessDiscoveryChart } from "@/components/requests/process-discovery-chart";
 import { Textarea } from "@/components/ui/textarea";
-import { addDocumentNonBlocking } from "@/firebase/non-blocking-updates";
+import { addDocumentNonBlocking, updateDocumentNonBlocking } from "@/firebase/non-blocking-updates";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 import { ActivityLog } from "@/components/requests/activity-log";
@@ -37,6 +37,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { completeTaskAndProgressWorkflow } from "@/lib/workflow-engine";
 
 function SubmittedBy({ userId }: { userId: string }) {
     const firestore = useFirestore();
@@ -258,6 +259,25 @@ export default function RequestDetailPage() {
     }
   };
 
+  const handleCompleteTask = async (task: Task) => {
+      if (!firestore || !user || !request || !template || !users) {
+          toast({ variant: 'destructive', title: 'Error', description: 'No se puede completar la tarea.' });
+          return;
+      }
+      try {
+          await completeTaskAndProgressWorkflow(firestore, {
+              task,
+              request,
+              template,
+              currentUser: user,
+              allUsers: users,
+          });
+          toast({ title: "¡Tarea Completada!", description: `La tarea "${task.name}" ha sido completada.` });
+      } catch (error) {
+          console.error("Error completing task:", error);
+          toast({ variant: 'destructive', title: 'Error', description: 'No se pudo completar la tarea.' });
+      }
+  };
 
   const isLoading = isUserLoading || isRequestLoading || areUsersLoading || isTemplateLoading || areAuditLogsLoading;
 
@@ -271,6 +291,10 @@ export default function RequestDetailPage() {
   }
 
   const activeStep = enrichedRequest.steps.find(s => s.status === 'Active');
+  
+  // Find the full task object for the active step
+  const activeTask = activeStep?.taskId ? { ...activeStep, id: activeStep.taskId, requestTitle: request.title, requestId: request.id, requestOwnerId: request.submittedBy, createdAt: "" } as Task : null;
+  const isCurrentUserAssignee = activeStep?.assigneeId === user?.uid;
 
   const getDisplayValue = (value: any, fieldId: string) => {
     const field = request.template?.fields.find((f: FormField) => f.id === fieldId);
@@ -307,6 +331,12 @@ export default function RequestDetailPage() {
                     </Badge>
                 </div>
             </div>
+            {activeTask && isCurrentUserAssignee && (
+                <Button onClick={() => handleCompleteTask(activeTask)} className="ml-auto">
+                    <CheckCircle className="mr-2 h-4 w-4" />
+                    Completar Tarea
+                </Button>
+            )}
         </header>
 
         <main className="grid flex-1 gap-4 p-4 pt-0 sm:gap-8 sm:p-6 sm:pt-0 md:grid-cols-3">
