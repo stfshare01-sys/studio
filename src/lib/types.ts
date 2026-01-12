@@ -47,6 +47,7 @@ export type Document = {
   size: number;
   uploadDate: string;
   url: string;
+  storagePath: string; // Path in Firebase Storage
 };
 
 export type Request = {
@@ -114,7 +115,7 @@ export type Comment = {
     createdAt: string;
 };
 
-export type AuditLogAction = 'REQUEST_SUBMITTED' | 'STEP_ASSIGNEE_CHANGED' | 'COMMENT_ADDED' | 'STEP_COMPLETED';
+export type AuditLogAction = 'REQUEST_SUBMITTED' | 'STEP_ASSIGNEE_CHANGED' | 'COMMENT_ADDED' | 'STEP_COMPLETED' | 'DOCUMENT_DELETED';
 
 export type AuditLog = {
     id: string;

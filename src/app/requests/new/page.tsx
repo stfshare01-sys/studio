@@ -1,4 +1,5 @@
 
+
 "use client"
 import SiteLayout from "@/components/site-layout";
 import { Button } from "@/components/ui/button";
@@ -13,11 +14,22 @@ import { addDocumentNonBlocking, setDocumentNonBlocking, useCollection, useFires
 import { useToast } from "@/hooks/use-toast";
 import { Template } from "@/lib/types";
 import { collection, doc } from "firebase/firestore";
-import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
-import { Loader2 } from "lucide-react";
+import { ref as storageRef, uploadBytesResumable, getDownloadURL } from "firebase/storage";
+import { Loader2, XCircle } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import React from "react";
+import { Progress } from "@/components/ui/progress";
+
+const ALLOWED_FILE_TYPES = [
+    'image/jpeg',
+    'image/png',
+    'image/gif',
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+];
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
 
 export default function NewRequestPage() {
     const searchParams = useSearchParams();
@@ -31,12 +43,37 @@ export default function NewRequestPage() {
     const [isSubmitting, setIsSubmitting] = React.useState(false);
     
     const [formData, setFormData] = React.useState<Record<string, any>>({});
+    const [fileErrors, setFileErrors] = React.useState<Record<string, string>>({});
+    const [uploadProgress, setUploadProgress] = React.useState<Record<string, number>>({});
 
     const firestore = useFirestore();
     const templatesRef = useMemoFirebase(() => collection(firestore, 'request_templates'), [firestore]);
     const { data: templates } = useCollection<Template>(templatesRef);
 
     const selectedTemplate = templates?.find(t => t.id === selectedTemplateId);
+
+    const handleFileChange = (fieldId: string, file: File | undefined) => {
+        if (!file) {
+            handleInputChange(fieldId, undefined);
+            setFileErrors(prev => ({ ...prev, [fieldId]: "" }));
+            return;
+        }
+
+        if (!ALLOWED_FILE_TYPES.includes(file.type)) {
+            setFileErrors(prev => ({ ...prev, [fieldId]: "Tipo de archivo no permitido." }));
+            handleInputChange(fieldId, undefined); // Clear invalid file
+            return;
+        }
+
+        if (file.size > MAX_FILE_SIZE) {
+            setFileErrors(prev => ({ ...prev, [fieldId]: `El archivo excede el límite de 5MB.` }));
+            handleInputChange(fieldId, undefined); // Clear invalid file
+            return;
+        }
+
+        setFileErrors(prev => ({ ...prev, [fieldId]: "" }));
+        handleInputChange(fieldId, file);
+    }
 
     const handleInputChange = (fieldId: string, value: any) => {
         setFormData(prev => ({...prev, [fieldId]: value}));
@@ -51,11 +88,19 @@ export default function NewRequestPage() {
             });
             return;
         }
+        if (Object.values(fileErrors).some(err => err)) {
+             toast({
+                variant: 'destructive',
+                title: 'Errores en archivos',
+                description: 'Por favor, corrija los errores en los archivos adjuntos antes de enviar.',
+            });
+            return;
+        }
 
         setIsSubmitting(true);
 
         const requestsCollection = collection(firestore, 'users', user.uid, 'requests');
-        const newRequestRef = doc(requestsCollection); // Create a reference with a new ID
+        const newRequestRef = doc(requestsCollection);
         const newRequestId = newRequestRef.id;
         const now = new Date().toISOString();
 
@@ -67,30 +112,45 @@ export default function NewRequestPage() {
         for (const field of fileFields) {
             const file = formData[field.id] as File;
             if (file) {
-                const fileStorageRef = storageRef(storage, `requests/${newRequestId}/${file.name}`);
-                const uploadPromise = uploadBytes(fileStorageRef, file).then(async (snapshot) => {
-                    const downloadURL = await getDownloadURL(snapshot.ref);
-                    const docId = doc(collection(firestore, 'dummy')).id; // Generate a unique ID for the document entry
-                    
-                    // The value stored in formData for the file field will be the ID of the document entry
-                    newFormData[field.id] = docId;
+                const filePath = `requests/${newRequestId}/${file.name}`;
+                const fileStorageRef = storageRef(storage, filePath);
+                
+                const uploadTask = uploadBytesResumable(fileStorageRef, file);
 
-                    return {
-                        id: docId,
-                        requestId: newRequestId,
-                        filename: file.name,
-                        contentType: file.type,
-                        size: file.size,
-                        uploadDate: now,
-                        url: downloadURL,
-                    };
+                const uploadPromise = new Promise((resolve, reject) => {
+                    uploadTask.on('state_changed',
+                        (snapshot) => {
+                            const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+                            setUploadProgress(prev => ({...prev, [field.id]: progress}));
+                        },
+                        (error) => {
+                            console.error("Upload failed for", field.id, error);
+                            reject(error);
+                        },
+                        async () => {
+                            const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+                            const docId = doc(collection(firestore, 'dummy')).id;
+                            
+                            newFormData[field.id] = docId;
+
+                            resolve({
+                                id: docId,
+                                requestId: newRequestId,
+                                filename: file.name,
+                                contentType: file.type,
+                                size: file.size,
+                                uploadDate: now,
+                                url: downloadURL,
+                                storagePath: filePath, // Save storage path for deletion
+                            });
+                        }
+                    );
                 });
                 documentUploadPromises.push(uploadPromise);
             }
         }
         
         const uploadedDocuments = (await Promise.all(documentUploadPromises)).filter(Boolean);
-
 
         // Evaluate rules to see if any additional steps are needed
         const additionalSteps = selectedTemplate.rules?.reduce((acc, rule) => {
@@ -136,7 +196,6 @@ export default function NewRequestPage() {
                 completedAt: null,
                 createdAt: now,
             };
-            // Use a non-blocking set for the task
             setDocumentNonBlocking(newTaskRef, taskData, {});
             return { stepId: step.id, taskId: newTaskRef.id };
         });
@@ -166,10 +225,8 @@ export default function NewRequestPage() {
         };
 
         try {
-            // Set the main request document
             setDocumentNonBlocking(newRequestRef, newRequest, {});
 
-            // Create initial audit log
             const auditLogCollection = collection(newRequestRef, 'audit_logs');
             const auditLogData = {
                 requestId: newRequestId,
@@ -201,12 +258,15 @@ export default function NewRequestPage() {
 
     const renderField = (field: Template['fields'][0]) => {
         const value = formData[field.id];
+        const progress = uploadProgress[field.id];
+        const error = fileErrors[field.id];
+
         switch (field.type) {
             case 'textarea':
-                return <Textarea id={field.id} value={value || ''} onChange={(e) => handleInputChange(field.id, e.target.value)} placeholder={`Introduzca ${field.label.toLowerCase()}`} />;
+                return <Textarea id={field.id} value={value || ''} onChange={(e) => handleInputChange(field.id, e.target.value)} placeholder={`Introduzca ${field.label.toLowerCase()}`} disabled={isSubmitting}/>;
             case 'select':
                 return (
-                    <Select value={value} onValueChange={(val) => handleInputChange(field.id, val)}>
+                    <Select value={value} onValueChange={(val) => handleInputChange(field.id, val)} disabled={isSubmitting}>
                         <SelectTrigger id={field.id}><SelectValue placeholder={`Seleccione ${field.label.toLowerCase()}`} /></SelectTrigger>
                         <SelectContent>
                             {field.options?.map(option => <SelectItem key={option} value={option}>{option}</SelectItem>)}
@@ -215,7 +275,7 @@ export default function NewRequestPage() {
                 );
             case 'radio':
                 return (
-                    <RadioGroup id={field.id} value={value} onValueChange={(val) => handleInputChange(field.id, val)} className="flex items-center gap-4">
+                    <RadioGroup id={field.id} value={value} onValueChange={(val) => handleInputChange(field.id, val)} className="flex items-center gap-4" disabled={isSubmitting}>
                         {field.options?.map(option => (
                             <div key={option} className="flex items-center space-x-2">
                                 <RadioGroupItem value={option} id={`${field.id}-${option}`} />
@@ -227,17 +287,24 @@ export default function NewRequestPage() {
             case 'checkbox':
                 return (
                     <div className="flex items-center space-x-2">
-                        <Checkbox id={field.id} checked={!!value} onCheckedChange={(checked) => handleInputChange(field.id, checked)} />
+                        <Checkbox id={field.id} checked={!!value} onCheckedChange={(checked) => handleInputChange(field.id, checked)} disabled={isSubmitting} />
                         <Label htmlFor={field.id} className="font-normal">{field.label}</Label>
                     </div>
                 );
             case 'file':
-                return <Input id={field.id} type="file" onChange={(e) => handleInputChange(field.id, e.target.files?.[0])} />;
+                return (
+                    <div className="space-y-2">
+                        <Input id={field.id} type="file" onChange={(e) => handleFileChange(field.id, e.target.files?.[0])} disabled={isSubmitting} />
+                        {error && <p className="text-sm text-destructive flex items-center gap-1"><XCircle className="h-4 w-4"/> {error}</p>}
+                        {progress > 0 && progress < 100 && <Progress value={progress} className="w-full" />}
+                         {progress === 100 && <p className="text-sm text-green-600">Carga completa.</p>}
+                    </div>
+                );
             case 'date':
             case 'number':
             case 'text':
             default:
-                return <Input id={field.id} type={field.type} value={value || ''} onChange={(e) => handleInputChange(field.id, e.target.value)} placeholder={`Introduzca ${field.label.toLowerCase()}`} />;
+                return <Input id={field.id} type={field.type} value={value || ''} onChange={(e) => handleInputChange(field.id, e.target.value)} placeholder={`Introduzca ${field.label.toLowerCase()}`} disabled={isSubmitting}/>;
         }
     }
 
@@ -269,7 +336,7 @@ export default function NewRequestPage() {
                                 <Select
                                     value={selectedTemplateId}
                                     onValueChange={setSelectedTemplateId}
-                                    disabled={!!templateId}
+                                    disabled={!!templateId || isSubmitting}
                                 >
                                     <SelectTrigger id="template-select">
                                         <SelectValue placeholder="Elija una plantilla de flujo de trabajo..." />

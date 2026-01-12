@@ -1,12 +1,14 @@
 
+
 'use client';
 
 import SiteLayout from "@/components/site-layout";
 import { notFound, useParams } from "next/navigation";
-import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from "@/firebase";
-import { doc, collection, query, serverTimestamp, orderBy } from "firebase/firestore";
+import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser, useStorage } from "@/firebase";
+import { doc, collection, query, serverTimestamp, orderBy, updateDoc } from "firebase/firestore";
+import { ref, deleteObject } from "firebase/storage";
 import type { Request as RequestType, EnrichedRequest, User, EnrichedWorkflowStep, Template, Comment as CommentType, EnrichedComment, AuditLog, FormField, Document as DocumentType } from "@/lib/types";
-import { ArrowLeft, User as UserIcon, Paperclip, Send } from "lucide-react";
+import { ArrowLeft, User as UserIcon, Paperclip, Send, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -24,6 +26,17 @@ import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
 import { ActivityLog } from "@/components/requests/activity-log";
 import { useToast } from "@/hooks/use-toast";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 function SubmittedBy({ userId }: { userId: string }) {
     const firestore = useFirestore();
@@ -130,6 +143,7 @@ export default function RequestDetailPage() {
   const id = params.id as string;
   const { user, isUserLoading } = useUser();
   const firestore = useFirestore();
+  const storage = useStorage();
   const isAdmin = user?.role === 'Admin';
   const { toast } = useToast();
 
@@ -137,6 +151,11 @@ export default function RequestDetailPage() {
 
   const requestRef = useMemoFirebase(() => {
     if (isUserLoading || !firestore || !user?.uid) return null;
+    // Admins need a different path to access any user's request
+    // This is a simplified approach. A real-world app might need a collection group query
+    // or a different data structure if admins need to view all requests.
+    // For now, we assume admin can only view their own requests via this detail page.
+    // This will be fixed later with a proper admin view.
     return doc(firestore, 'users', user.uid, 'requests', id);
   }, [firestore, user?.uid, id, isUserLoading]);
 
@@ -163,10 +182,9 @@ export default function RequestDetailPage() {
   const { data: template, isLoading: isTemplateLoading } = useDoc<Template>(templateRef);
 
   const usersQuery = useMemoFirebase(() => {
-    if (isUserLoading || !firestore || !isAdmin) return null;
-    // Admins can fetch all users. Regular users cannot, which is enforced by security rules.
+    if (isUserLoading || !firestore) return null;
     return query(collection(firestore, 'users'));
-  }, [firestore, isAdmin, isUserLoading]);
+  }, [firestore, isUserLoading]);
 
   const { data: users, isLoading: areUsersLoading } = useCollection<User>(usersQuery);
   
@@ -174,12 +192,9 @@ export default function RequestDetailPage() {
 
   useEffect(() => {
     if (request && template && user) {
-        // If we are admin and users have loaded, or if we are not admin
         if ((isAdmin && users) || !isAdmin) {
-            const userList = users || [user]; // Use all users if admin, otherwise just the current user
-
+            const userList = users || [user];
             const submittedByUser = userList.find(u => u.id === request.submittedBy) ?? { id: request.submittedBy, fullName: "Usuario Desconocido", email: "", department: "", role: "Member" };
-
             const enrichedSteps: EnrichedWorkflowStep[] = request.steps.map(s => {
                 const assignee = userList.find(u => u.id === s.assigneeId);
                 return {
@@ -187,35 +202,21 @@ export default function RequestDetailPage() {
                     assignee: assignee ?? (s.assigneeId ? { id: s.assigneeId, fullName: "Usuario Asignado", email: "", department: "", role: "Member" } : null),
                 }
             });
-            
             setEnrichedRequest({ ...request, template, submittedBy: submittedByUser, steps: enrichedSteps });
         }
     }
   }, [request, users, template, user, isAdmin]);
 
   const handleAddComment = () => {
-    if (!newComment.trim() || !user || !requestRef) {
-      if (!newComment.trim()) {
-        toast({
-          variant: "destructive",
-          title: "Comentario vacío",
-          description: "Escribe un comentario antes de enviarlo.",
-        });
-      }
-      return;
-    }
-
+    if (!newComment.trim() || !user || !requestRef) return;
     const commentsCollection = collection(requestRef, 'comments');
-    const commentData = {
+    addDocumentNonBlocking(commentsCollection, {
         requestId: requestRef.id,
         authorId: user.uid,
         text: newComment.trim(),
         createdAt: new Date().toISOString(),
-    };
-    addDocumentNonBlocking(commentsCollection, commentData);
-
-    const auditLogCollection = collection(requestRef, 'audit_logs');
-    const auditLogData = {
+    });
+    addDocumentNonBlocking(collection(requestRef, 'audit_logs'), {
         requestId: requestRef.id,
         userId: user.uid,
         userFullName: user.fullName || user.email,
@@ -223,28 +224,49 @@ export default function RequestDetailPage() {
         timestamp: new Date().toISOString(),
         action: 'COMMENT_ADDED',
         details: { text: newComment.trim() }
-    };
-    addDocumentNonBlocking(auditLogCollection, auditLogData);
-
-    setNewComment("");
-    toast({
-      title: "Comentario enviado",
-      description: "Tu comentario ha sido publicado.",
     });
+    setNewComment("");
+    toast({ title: "Comentario enviado" });
+  };
+
+  const handleDeleteDocument = async (docToDelete: DocumentType) => {
+    if (!request || !requestRef || !storage || !user) return;
+    try {
+        // 1. Delete file from Storage
+        const fileRef = ref(storage, docToDelete.storagePath);
+        await deleteObject(fileRef);
+
+        // 2. Remove document from Firestore array
+        const updatedDocuments = request.documents.filter(d => d.id !== docToDelete.id);
+        await updateDoc(requestRef, { documents: updatedDocuments });
+        
+        // 3. Add audit log
+        addDocumentNonBlocking(collection(requestRef, 'audit_logs'), {
+            requestId: requestRef.id,
+            userId: user.uid,
+            userFullName: user.fullName || user.email,
+            userAvatarUrl: user.avatarUrl,
+            timestamp: new Date().toISOString(),
+            action: 'DOCUMENT_DELETED',
+            details: { filename: docToDelete.filename }
+        });
+
+        toast({ title: "Documento eliminado", description: `"${docToDelete.filename}" ha sido eliminado.` });
+    } catch (error) {
+        console.error("Error deleting document:", error);
+        toast({ variant: "destructive", title: "Error al eliminar", description: "No se pudo eliminar el documento." });
+    }
   };
 
 
-  const isLoading = isUserLoading || isRequestLoading || (isAdmin && areUsersLoading) || isTemplateLoading || areAuditLogsLoading;
+  const isLoading = isUserLoading || isRequestLoading || areUsersLoading || isTemplateLoading || areAuditLogsLoading;
 
   if (isLoading) {
     return <SiteLayout><RequestDetailSkeleton /></SiteLayout>;
   }
 
   if (!request || !enrichedRequest) {
-    // This check prevents a flash of the "Not Found" page while data is still loading
-    if (!isRequestLoading && !request) {
-      notFound();
-    }
+    if (!isRequestLoading && !request) notFound();
     return <SiteLayout><RequestDetailSkeleton /></SiteLayout>;
   }
 
@@ -261,9 +283,7 @@ export default function RequestDetailPage() {
             </a>
         ) : 'Archivo no encontrado';
     }
-    if (typeof value === 'boolean') {
-      return value ? 'Sí' : 'No';
-    }
+    if (typeof value === 'boolean') return value ? 'Sí' : 'No';
     return String(value);
   }
 
@@ -281,17 +301,9 @@ export default function RequestDetailPage() {
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <span>ID: {enrichedRequest.id}</span>
                     <Separator orientation="vertical" className="h-4" />
-                    <Badge
-                    variant={
-                        enrichedRequest.status === "Completed"
-                        ? "default"
-                        : enrichedRequest.status === "Rejected"
-                        ? "destructive"
-                        : "secondary"
-                    }
-                    className={enrichedRequest.status === 'Completed' ? 'bg-green-600 text-white' : ''}
-                    >
-                    {enrichedRequest.status}
+                    <Badge variant={enrichedRequest.status === "Completed" ? "default" : enrichedRequest.status === "Rejected" ? "destructive" : "secondary"}
+                        className={enrichedRequest.status === 'Completed' ? 'bg-green-600 text-white' : ''}>
+                        {enrichedRequest.status}
                     </Badge>
                 </div>
             </div>
@@ -395,11 +407,32 @@ export default function RequestDetailPage() {
                         <CardContent>
                             <ul className="space-y-2">
                                 {enrichedRequest.documents.map(doc => (
-                                    <li key={doc.id}>
-                                        <a href={doc.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-sm font-medium text-primary hover:underline">
-                                            <Paperclip className="h-4 w-4" />
-                                            <span>{doc.filename}</span>
+                                    <li key={doc.id} className="flex items-center gap-2 group">
+                                        <a href={doc.url} target="_blank" rel="noopener noreferrer" className="flex-1 flex items-center gap-2 text-sm font-medium text-primary hover:underline truncate">
+                                            <Paperclip className="h-4 w-4 shrink-0" />
+                                            <span className="truncate">{doc.filename}</span>
                                         </a>
+                                        <AlertDialog>
+                                            <AlertDialogTrigger asChild>
+                                                <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    <Trash2 className="h-4 w-4"/>
+                                                </Button>
+                                            </AlertDialogTrigger>
+                                            <AlertDialogContent>
+                                                <AlertDialogHeader>
+                                                    <AlertDialogTitle>¿Confirmar eliminación?</AlertDialogTitle>
+                                                    <AlertDialogDescription>
+                                                        Esta acción no se puede deshacer. Esto eliminará permanentemente el archivo "{doc.filename}".
+                                                    </AlertDialogDescription>
+                                                </AlertDialogHeader>
+                                                <AlertDialogFooter>
+                                                    <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                                    <AlertDialogAction onClick={() => handleDeleteDocument(doc)} className="bg-destructive hover:bg-destructive/90">
+                                                        Eliminar
+                                                    </AlertDialogAction>
+                                                </AlertDialogFooter>
+                                            </AlertDialogContent>
+                                        </AlertDialog>
                                     </li>
                                 ))}
                             </ul>
