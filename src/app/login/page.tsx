@@ -41,6 +41,7 @@ const getFirebaseErrorMessage = (code: string): string => {
     'auth/invalid-credential': 'Las credenciales proporcionadas no son válidas.',
     'auth/too-many-requests': 'Demasiados intentos fallidos. Intente de nuevo más tarde.',
     'auth/network-request-failed': 'Error de conexión. Verifique su conexión a internet.',
+    'auth/user-disabled': 'Esta cuenta de usuario ha sido deshabilitada por un administrador.',
   };
   return errorMessages[code] || 'Ha ocurrido un error de autenticación.';
 };
@@ -132,13 +133,12 @@ export default function LoginPage() {
           fullName: fullName.trim(),
           email: email.trim().toLowerCase(),
           department: department.trim(),
-          role: 'Member', // Default role for new users
+          role: 'Member', // Default role
+          status: 'active', // Default status
         };
 
         const userDocRef = doc(firestore, 'users', newUser.uid);
-        // Wait for the user profile to be created before proceeding
-        // This prevents race conditions where the app tries to check permissions
-        // before the user document exists in Firestore
+        
         await setDoc(userDocRef, userProfile, { merge: true });
 
         toast({

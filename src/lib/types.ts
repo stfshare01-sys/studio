@@ -1,5 +1,6 @@
 
 export type UserRole = 'Admin' | 'Member';
+export type UserStatus = 'active' | 'disabled';
 
 export type User = {
   id: string;
@@ -10,6 +11,7 @@ export type User = {
   skills?: string[];
   currentWorkload?: number;
   role: UserRole;
+  status: UserStatus;
 };
 
 // Represents a step within a template, before it becomes a live task
