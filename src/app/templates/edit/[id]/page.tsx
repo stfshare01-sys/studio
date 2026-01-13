@@ -390,20 +390,18 @@ export default function EditTemplatePage() {
         setTemplateDescription(templateData.description || "");
         setFields(templateData.fields || []);
         
-        const allSteps = templateData.steps || [];
-        const templatePools = templateData.pools;
-
-        if (templatePools && templatePools.length > 0) {
-            setPools(templatePools);
+        // Handle backwards compatibility for templates without pools
+        if (templateData.pools && templateData.pools.length > 0) {
+            setPools(templateData.pools);
         } else {
-             // Fallback to a default pool structure if `pools` is not defined
+            // If no pools, create a default structure from the flat 'steps' array
             setPools([{
                 id: 'pool-default',
                 name: 'Proceso Principal',
                 lanes: [{
                     id: 'lane-default',
                     name: 'Actores Principales',
-                    steps: allSteps,
+                    steps: templateData.steps || [],
                 }]
             }]);
         }
