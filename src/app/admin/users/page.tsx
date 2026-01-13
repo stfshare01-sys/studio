@@ -13,6 +13,8 @@ import { PlusCircle, ShieldAlert } from "lucide-react";
 import { updateDocumentNonBlocking } from "@/firebase/non-blocking-updates";
 import { doc } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
+import { CreateUserDialog } from "@/components/admin/create-user-dialog";
+import { useState } from "react";
 
 function UsersTableSkeleton() {
   return (
@@ -73,6 +75,8 @@ function AssignAdminButton() {
 function AdminView() {
     const { isUserLoading } = useUser();
     const firestore = useFirestore();
+    const [isCreateUserOpen, setIsCreateUserOpen] = useState(false);
+
     const usersQuery = useMemoFirebase(() => {
         if (isUserLoading || !firestore) return null;
         return query(collection(firestore, 'users'));
@@ -82,14 +86,24 @@ function AdminView() {
 
     if (isLoading) return <UsersTableSkeleton />;
 
-    if (users) return <UsersTable users={users} />;
+    if (users) return (
+        <>
+            <UsersTable users={users} />
+            <CreateUserDialog isOpen={isCreateUserOpen} onOpenChange={setIsCreateUserOpen} />
+        </>
+    );
 
     return (
         <div className="flex flex-1 items-center justify-center rounded-lg border border-dashed shadow-sm p-8">
             <div className="flex flex-col items-center gap-1 text-center">
                 <h3 className="text-2xl font-bold tracking-tight">No se encontraron usuarios</h3>
                 <p className="text-sm text-muted-foreground">No hay usuarios registrados en el sistema.</p>
+                <Button className="mt-4" onClick={() => setIsCreateUserOpen(true)}>
+                    <PlusCircle className="mr-2 h-4 w-4" />
+                    Crear Primer Usuario
+                </Button>
             </div>
+            <CreateUserDialog isOpen={isCreateUserOpen} onOpenChange={setIsCreateUserOpen} />
         </div>
     );
 }
@@ -97,13 +111,19 @@ function AdminView() {
 export default function UsersPage() {
     const { user: currentUser, isUserLoading } = useUser();
     const hasAdminRole = currentUser?.role === 'Admin';
+    const [isCreateUserOpen, setIsCreateUserOpen] = useState(false);
 
   return (
     <SiteLayout>
         <div className="flex flex-1 flex-col">
         <header className="flex items-center justify-between p-4 sm:p-6">
             <h1 className="text-2xl font-bold tracking-tight">Gestión de Usuarios</h1>
-            {/* Future "Add User" button can go here */}
+            {hasAdminRole && (
+                <Button onClick={() => setIsCreateUserOpen(true)}>
+                    <PlusCircle className="mr-2 h-4 w-4" />
+                    Añadir Usuario
+                </Button>
+            )}
         </header>
         <main className="flex flex-1 flex-col gap-4 p-4 pt-0 sm:gap-8 sm:p-6 sm:pt-0">
           <Card>
@@ -121,6 +141,7 @@ export default function UsersPage() {
           </Card>
         </main>
         </div>
+        <CreateUserDialog isOpen={isCreateUserOpen} onOpenChange={setIsCreateUserOpen} />
     </SiteLayout>
   );
 }
