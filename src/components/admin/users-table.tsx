@@ -27,7 +27,7 @@ import {
 import { Label } from "../ui/label";
 import { Input } from "../ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
-import { useFirestore } from "@/firebase";
+import { useFirestore, useCollection } from "@/firebase";
 import { doc, collection, query, where, orderBy, limit, getDocs, startAfter, DocumentSnapshot } from "firebase/firestore";
 import { updateDocumentNonBlocking } from "@/firebase/non-blocking-updates";
 import { useToast } from "@/hooks/use-toast";
@@ -36,13 +36,14 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/
 import { toggleUserStatus } from "@/firebase/admin-actions";
 import { TableSkeleton } from "../ui/table-skeleton";
 
-function EditUserDialog({ user, isOpen, onOpenChange }: { user: User | null, isOpen: boolean, onOpenChange: (open: boolean) => void }) {
+function EditUserDialog({ user, allUsers, isOpen, onOpenChange }: { user: User | null, allUsers: User[], isOpen: boolean, onOpenChange: (open: boolean) => void }) {
     const firestore = useFirestore();
     const { toast } = useToast();
     const [formData, setFormData] = useState({
         fullName: user?.fullName || '',
         department: user?.department || '',
         role: user?.role || 'Member',
+        managerId: user?.managerId || '',
     });
 
     React.useEffect(() => {
@@ -51,6 +52,7 @@ function EditUserDialog({ user, isOpen, onOpenChange }: { user: User | null, isO
                 fullName: user.fullName,
                 department: user.department,
                 role: user.role || 'Member',
+                managerId: user.managerId || '',
             });
         }
     }, [user]);
@@ -64,13 +66,19 @@ function EditUserDialog({ user, isOpen, onOpenChange }: { user: User | null, isO
     const handleSave = () => {
         if (!firestore) return;
         const userRef = doc(firestore, 'users', user.id);
-        updateDocumentNonBlocking(userRef, formData);
+        const updateData = { ...formData };
+        if (updateData.managerId === '') {
+            delete (updateData as any).managerId;
+        }
+        updateDocumentNonBlocking(userRef, updateData);
         toast({
             title: "Usuario actualizado",
             description: `Los datos de ${user.fullName} han sido actualizados.`,
         });
         onOpenChange(false);
     };
+
+    const potentialManagers = allUsers.filter(u => u.id !== user.id && u.role === 'Admin');
 
     return (
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
@@ -108,6 +116,22 @@ function EditUserDialog({ user, isOpen, onOpenChange }: { user: User | null, isO
                             </SelectContent>
                         </Select>
                     </div>
+                     <div className="grid gap-2 sm:grid-cols-4 sm:items-center sm:gap-4">
+                        <Label htmlFor="manager" className="sm:text-right">
+                            Gerente
+                        </Label>
+                         <Select value={formData.managerId} onValueChange={(value) => handleInputChange('managerId', value)}>
+                            <SelectTrigger className="sm:col-span-3">
+                                <SelectValue placeholder="Seleccionar gerente..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="">Sin Gerente</SelectItem>
+                                {potentialManagers.map(manager => (
+                                    <SelectItem key={manager.id} value={manager.id}>{manager.fullName}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
                 </div>
                 <DialogFooter className="flex-col gap-2 sm:flex-row">
                     <DialogClose asChild>
@@ -126,6 +150,7 @@ type SortOrder = "asc" | "desc";
 
 export function UsersTable() {
     const firestore = useFirestore();
+    const { data: allUsersData } = useCollection<User>(collection(firestore, 'users'));
     const { toast } = useToast();
 
     // Dialog state
@@ -389,7 +414,7 @@ export function UsersTable() {
       )}
       <p className="text-sm text-muted-foreground">Mostrando {filteredUsers.length} usuarios.</p>
     </div>
-    <EditUserDialog user={selectedUser} isOpen={isEditDialogOpen} onOpenChange={setIsEditDialogOpen} />
+    <EditUserDialog user={selectedUser} allUsers={allUsersData || []} isOpen={isEditDialogOpen} onOpenChange={setIsEditDialogOpen} />
     </TooltipProvider>
   );
 }

@@ -19,7 +19,7 @@ import { CheckCircle2, Circle, CircleDot, Replace } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
-import { useUser, useFirestore } from "@/firebase";
+import { useUser, useFirestore, useCollection, useMemoFirebase } from "@/firebase";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
@@ -65,7 +65,7 @@ function ReassignTaskDialog({ task, request, allUsers, onReassign }: { task: Tas
             details: {
                 stepName: task.name,
                 assigneeName: newAssignee.fullName,
-                reason: 'Reasignación manual por administrador.'
+                reason: 'Reasignación manual.'
             }
         });
 
@@ -122,7 +122,10 @@ function ReassignTaskDialog({ task, request, allUsers, onReassign }: { task: Tas
 
 export function WorkflowStepper({ steps, request, allUsers, onDataChange }: { steps: EnrichedWorkflowStep[], request: RequestType, allUsers: User[], onDataChange: () => void }) {
   const { user: currentUser } = useUser();
-  const isAdmin = currentUser?.role === 'Admin';
+  const firestore = useFirestore();
+  const usersQuery = useMemoFirebase(() => collection(firestore, 'users'), [firestore]);
+  const { data: allUsersData } = useCollection<User>(usersQuery);
+  const users = allUsersData || allUsers;
   
   const getStatusIcon = (status: EnrichedWorkflowStep['status']) => {
     switch (status) {
@@ -151,28 +154,33 @@ export function WorkflowStepper({ steps, request, allUsers, onDataChange }: { st
         createdAt: request.createdAt, // This is an approximation
     } : null;
 
+    const assignee = users.find(u => u.id === step.assigneeId);
+    const isManager = currentUser?.id === assignee?.managerId;
+    const isAdmin = currentUser?.role === 'Admin';
+    const canReassign = (isAdmin || isManager) && step.status === 'Active';
+
     switch (step.status) {
       case 'Completed':
         return (
           <div className="flex items-center gap-2">
             <Avatar className="h-5 w-5">
-              {step.assignee?.avatarUrl && <AvatarImage src={step.assignee.avatarUrl} alt={step.assignee.fullName} />}
-              <AvatarFallback>{step.assignee?.fullName.charAt(0)}</AvatarFallback>
+              {assignee?.avatarUrl && <AvatarImage src={assignee.avatarUrl} alt={assignee.fullName} />}
+              <AvatarFallback>{assignee?.fullName.charAt(0)}</AvatarFallback>
             </Avatar>
-            <span>Completado por {step.assignee?.fullName} el {format(new Date(step.completedAt!), "d 'de' MMMM 'de' yyyy", { locale: es })}</span>
+            <span>Completado por {assignee?.fullName} el {format(new Date(step.completedAt!), "d 'de' MMMM 'de' yyyy", { locale: es })}</span>
           </div>
         );
       case 'Active':
         return (
           <div className="flex items-center gap-2">
-            {step.assignee ? (
+            {assignee ? (
               <>
                 <Avatar className="h-5 w-5">
-                  {step.assignee?.avatarUrl && <AvatarImage src={step.assignee.avatarUrl} alt={step.assignee.fullName} />}
-                  <AvatarFallback>{step.assignee?.fullName.charAt(0)}</AvatarFallback>
+                  {assignee?.avatarUrl && <AvatarImage src={assignee.avatarUrl} alt={assignee.fullName} />}
+                  <AvatarFallback>{assignee?.fullName.charAt(0)}</AvatarFallback>
                 </Avatar>
-                <span>Asignado a {step.assignee.fullName}</span>
-                {isAdmin && task && <ReassignTaskDialog task={task} request={request} allUsers={allUsers} onReassign={onDataChange} />}
+                <span>Asignado a {assignee.fullName}</span>
+                {canReassign && task && <ReassignTaskDialog task={task} request={request} allUsers={users} onReassign={onDataChange} />}
               </>
             ) : (
                 <span>Pendiente de asignación</span>
