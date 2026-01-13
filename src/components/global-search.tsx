@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Search, Loader2, User, FolderKanban, FileText } from "lucide-react";
 import { useDebounce } from "@/hooks/use-debounce";
-import { useFirestore } from "@/firebase";
+import { useFirestore, useUser } from "@/firebase";
 import { collection, query, where, getDocs, limit, collectionGroup } from "firebase/firestore";
 import type { User as UserType, Template, Request } from "@/lib/types";
 import Link from "next/link";
@@ -33,6 +33,9 @@ export function GlobalSearch() {
   const [searchTerm, setSearchTerm] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  
+  const { user } = useUser();
+  const isAdmin = user?.role === 'Admin';
 
   const debouncedSearchTerm = useDebounce(searchTerm, 300);
   const firestore = useFirestore();
@@ -55,29 +58,31 @@ export function GlobalSearch() {
     }
     setIsLoading(true);
 
-    const lowerCaseTerm = term.toLowerCase();
+    const upperTerm = term.charAt(0).toUpperCase() + term.slice(1);
     
     // Create promises for each collection search
     const usersPromise = getDocs(query(
         collection(firestore, 'users'), 
-        where('fullName', '>=', term),
-        where('fullName', '<=', term + '\uf8ff'),
+        where('fullName', '>=', upperTerm),
+        where('fullName', '<=', upperTerm + '\uf8ff'),
         limit(5)
     ));
     
     const templatesPromise = getDocs(query(
         collection(firestore, 'request_templates'), 
-        where('name', '>=', term),
-        where('name', '<=', term + '\uf8ff'),
+        where('name', '>=', upperTerm),
+        where('name', '<=', upperTerm + '\uf8ff'),
         limit(5)
     ));
 
-    const requestsPromise = getDocs(query(
-        collectionGroup(firestore, 'requests'), 
-        where('title', '>=', term),
-        where('title', '<=', term + '\uf8ff'),
-        limit(5)
-    ));
+    const requestsPromise = isAdmin 
+      ? getDocs(query(
+          collectionGroup(firestore, 'requests'), 
+          where('title', '>=', upperTerm),
+          where('title', '<=', upperTerm + '\uf8ff'),
+          limit(5)
+        ))
+      : Promise.resolve(null); // Non-admins won't search requests globally
     
     try {
         const [usersSnapshot, templatesSnapshot, requestsSnapshot] = await Promise.all([usersPromise, templatesPromise, requestsPromise]);
@@ -107,7 +112,7 @@ export function GlobalSearch() {
             });
         });
 
-        requestsSnapshot.forEach(doc => {
+        requestsSnapshot?.forEach(doc => {
             const data = doc.data() as Request;
             newResults.push({
                 type: 'request',
@@ -124,7 +129,7 @@ export function GlobalSearch() {
     } finally {
         setIsLoading(false);
     }
-  }, [firestore]);
+  }, [firestore, isAdmin]);
 
 
   useEffect(() => {
@@ -222,4 +227,3 @@ export function GlobalSearch() {
     </>
   );
 }
-

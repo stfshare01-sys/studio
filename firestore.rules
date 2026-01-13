@@ -162,10 +162,10 @@ service cloud.firestore {
         allow update, delete: if false;
       }
     }
-
+    
     /**
      * @description Allows collection group queries on requests for admin users.
-     * This is necessary for the Reports and Process Mining pages which need to
+     * This is necessary for the Reports, Process Mining and Global Search pages which need to
      * query all requests across all users using collectionGroup().
      * @path /{path=**}/requests/{requestId}
      */
