@@ -38,7 +38,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useCollection, useDoc, useFirestore, useMemoFirebase, updateDocumentNonBlocking } from "@/firebase";
 import { collection, doc } from "firebase/firestore";
 import { useRouter, useParams } from "next/navigation";
-import type { FormField, WorkflowStepDefinition, Rule, RuleCondition, RuleAction, WorkflowStepType, FormFieldType, RuleOperator, User as UserType, RequestPriority, UserRole, EscalationPolicy } from "@/lib/types";
+import type { FormField, WorkflowStepDefinition, Rule, RuleCondition, RuleAction, WorkflowStepType, FormFieldType, RuleOperator, User as UserType, RequestPriority, UserRole, EscalationPolicy, Template } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { generateProcessFromDescription, GenerateProcessOutput } from "@/ai/flows/process-generation";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -391,7 +391,7 @@ export default function EditTemplatePage() {
         setFields(templateData.fields || []);
         
         const allSteps = templateData.steps || [];
-        const templatePools = (templateData as any).pools as Pool[] | undefined;
+        const templatePools = templateData.pools;
 
         if (templatePools && templatePools.length > 0) {
             setPools(templatePools);
@@ -572,9 +572,9 @@ export default function EditTemplatePage() {
         name: templateName,
         description: templateDescription,
         fields,
-        steps: allSteps, // Includes all properties like 'outcomes'
+        steps: allSteps,
         rules,
-        pools, // Save the pool structure
+        pools,
     };
 
     try {
@@ -631,6 +631,7 @@ export default function EditTemplatePage() {
             <header className="flex items-center justify-between p-4 sm:p-6">
                 <div className="flex items-center gap-4">
                     <h1 className="text-2xl font-bold tracking-tight">Editar Plantilla</h1>
+                     <CopilotDialog onApply={applyCopilotDraft} />
                 </div>
                 <div className="flex gap-2">
                     <Button variant="outline" asChild><Link href="/templates">Cancelar</Link></Button>
