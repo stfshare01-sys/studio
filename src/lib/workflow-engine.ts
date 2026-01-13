@@ -6,7 +6,7 @@ import { Firestore, doc, collection, getDoc } from 'firebase/firestore';
 import type { Task, Request, Template, User, WorkflowStepDefinition, Rule } from './types';
 import { addDocumentNonBlocking, updateDocumentNonBlocking, setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import { intelligentTaskAssignment } from '@/ai/flows/intelligent-task-assignment';
-import { addHours } from 'date-fns';
+import { addHours, isPast } from 'date-fns';
 
 interface EvaluateRulesParams {
     firestore: Firestore;
