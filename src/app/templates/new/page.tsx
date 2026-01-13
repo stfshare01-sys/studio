@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { PlusCircle, Trash2, GitBranch, ShieldCheck, CheckCircle, GitMerge, GitFork, Library, WandSparkles, Loader2, UserSquare, Pencil, GripVertical, X, AlertTriangle, User, Bell, ChevronsRight } from "lucide-react";
+import { PlusCircle, Trash2, GitBranch, ShieldCheck, CheckCircle, GitMerge, GitFork, Library, WandSparkles, Loader2, UserSquare, Pencil, GripVertical, X, AlertTriangle, User, Bell, ChevronsRight, Hash, CaseSensitive } from "lucide-react";
 import Link from "next/link";
 import {
   Dialog,
@@ -556,70 +556,38 @@ export default function NewTemplatePage() {
                         </CardContent>
                     </Card>
                     <Card>
-                    <CardHeader>
-                        <CardTitle>Motor de Reglas de Negocio</CardTitle>
-                        <CardDescription>Defina la lógica condicional para automatizar las decisiones.</CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                        <div className="space-y-2 rounded-md border p-4">
-                            {rules.length === 0 && (
-                                <div className="text-center text-sm text-muted-foreground py-4 space-y-1">
-                                    <p>No hay reglas definidas.</p>
-                                    <p className="text-xs">Las reglas permiten enrutar el flujo basado en resultados o datos.</p>
-                                </div>
-                            )}
-                            {rules.map((rule) => {
-                                const allSteps = pools.flatMap(p => p.lanes.flatMap(l => l.steps));
-                                const source = rule.condition.type === 'form' 
-                                    ? fields.find(f => f.id === rule.condition.fieldId)
-                                    : allSteps.find(s => s.id === rule.condition.fieldId);
-                                
-                                return (
-                                    <div key={rule.id} className="group relative flex items-center gap-4 rounded-md bg-muted p-3">
-                                        <div className="absolute left-[-9px] top-[calc(50%-8px)] h-4 w-4 rounded-full bg-primary/20 flex items-center justify-center">
-                                            <GitBranch className="h-3 w-3 text-primary" />
-                                        </div>
-                                        <div className="flex-1">
-                                            <div className="flex items-center text-xs text-muted-foreground">
-                                                <span>SI</span>
-                                                <Badge variant="secondary" className="mx-1">{source?.name || source?.label || '??'}</Badge>
-                                                <span>{rule.condition.operator}</span>
-                                                <Badge variant="secondary" className="mx-1">{rule.condition.value}</Badge>
-                                            </div>
-                                            <div className="flex items-center text-sm font-medium mt-1">
-                                                <span className="mr-1">ENTONCES</span>
-                                                <RuleActionDisplay rule={rule} steps={allSteps} users={users || []} />
-                                            </div>
-                                        </div>
-                                        <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            className="absolute right-1 top-1 h-6 w-6 opacity-0 group-hover:opacity-100"
-                                            onClick={() => handleRemoveRule(rule.id)}
-                                        >
-                                            <Trash2 className="h-4 w-4 text-destructive" />
-                                            <span className="sr-only">Eliminar regla</span>
-                                        </Button>
+                        <CardHeader>
+                            <CardTitle>Motor de Reglas de Negocio</CardTitle>
+                            <CardDescription>Defina la lógica condicional para automatizar las decisiones.</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="space-y-3">
+                                {rules.length === 0 && (
+                                    <div className="text-center text-sm text-muted-foreground py-4 space-y-1">
+                                        <p>No hay reglas definidas.</p>
+                                        <p className="text-xs">Las reglas permiten enrutar el flujo basado en resultados o datos.</p>
                                     </div>
-                                )
-                            })}
-                        </div>
-                        <Dialog open={isRuleDialogOpen} onOpenChange={setIsRuleDialogOpen}>
-                            <DialogTrigger asChild>
-                                <Button variant="outline" className="w-full">
-                                    <PlusCircle className="mr-2 h-4 w-4" /> Añadir Regla
-                                </Button>
-                            </DialogTrigger>
-                            <RuleBuilderDialog 
-                                fields={fields} 
-                                steps={pools.flatMap(p => p.lanes.flatMap(l => l.steps))} 
-                                users={users || []}
-                                onAddRule={handleAddRule} 
-                                onClose={() => setIsRuleDialogOpen(false)} 
-                            />
-                        </Dialog>
-                    </CardContent>
-                </Card>
+                                )}
+                                {rules.map((rule) => (
+                                    <RuleDisplay key={rule.id} rule={rule} fields={fields} pools={pools} users={users || []} onRemove={handleRemoveRule} />
+                                ))}
+                            </div>
+                            <Dialog open={isRuleDialogOpen} onOpenChange={setIsRuleDialogOpen}>
+                                <DialogTrigger asChild>
+                                    <Button variant="outline" className="w-full">
+                                        <PlusCircle className="mr-2 h-4 w-4" /> Añadir Regla
+                                    </Button>
+                                </DialogTrigger>
+                                <RuleBuilderDialog 
+                                    fields={fields} 
+                                    steps={pools.flatMap(p => p.lanes.flatMap(l => l.steps))} 
+                                    users={users || []}
+                                    onAddRule={handleAddRule} 
+                                    onClose={() => setIsRuleDialogOpen(false)} 
+                                />
+                            </Dialog>
+                        </CardContent>
+                    </Card>
                 </div>
                 <Card>
                     <CardHeader>
@@ -792,23 +760,116 @@ function FieldBuilderDialog({ onAddField, onClose }: { onAddField: (field: Omit<
     );
 }
 
-function RuleActionDisplay({ rule, steps, users }: { rule: Rule, steps: WorkflowStepDefinition[], users: UserType[] }) {
-    switch (rule.action.type) {
-        case 'REQUIRE_ADDITIONAL_STEP':
-        case 'ROUTE_TO_STEP':
-            const step = steps.find(s => s.id === rule.action.stepId);
-            return <><ChevronsRight className="h-4 w-4" /><Badge>{step?.name || '??'}</Badge></>;
-        case 'ASSIGN_USER':
-            const assignUser = users.find(u => u.id === rule.action.userId);
-            const assignStep = steps.find(s => s.id === rule.action.stepId);
-            return <><User className="h-4 w-4" /><Badge>{assignStep?.name || '??'}</Badge><span className="mx-1">a</span><Badge variant="secondary">{assignUser?.fullName || '??'}</Badge></>;
-        case 'SEND_NOTIFICATION':
-            return <><Bell className="h-4 w-4" /><Badge>{rule.action.message}</Badge><span className="mx-1">a</span><Badge variant="secondary">{rule.action.target}</Badge></>;
-        case 'CHANGE_REQUEST_PRIORITY':
-            return <><AlertTriangle className="h-4 w-4" /><Badge>Prioridad a {rule.action.priority}</Badge></>;
-        default:
-            return null;
+function RuleConditionDisplay({ condition, fields, steps }: { condition: RuleCondition, fields: FormField[], steps: WorkflowStepDefinition[] }) {
+    const source = condition.type === 'form' 
+        ? fields.find(f => f.id === condition.fieldId)
+        : steps.find(s => s.id === condition.fieldId);
+    
+    const operatorLabels: Partial<Record<RuleOperator, string>> = {
+        '==': '=', '!=': '!=', '>': '>', '<': '<', '>=': '>=', '<=': '<=',
+        'contains': 'contiene', 'is': 'es', 'is_not': 'no es',
+    };
+
+    const getSourceTypeIcon = (type: FormFieldType | 'outcome' | undefined) => {
+        switch(type) {
+            case 'number': return <Hash className="h-4 w-4 text-muted-foreground"/>;
+            case 'text':
+            case 'textarea':
+                return <CaseSensitive className="h-4 w-4 text-muted-foreground"/>;
+            case 'select':
+            case 'radio':
+            case 'checkbox':
+            case 'outcome':
+                return <GitBranch className="h-4 w-4 text-muted-foreground" />;
+            default: return null;
+        }
     }
+
+    return (
+        <div className="flex items-center gap-2 text-sm">
+            <span className="font-semibold text-muted-foreground">SI</span>
+            <div className="flex items-center gap-1">
+                {getSourceTypeIcon(source?.type || (condition.type === 'outcome' ? 'outcome' : undefined))}
+                <Badge variant="outline">{source?.name || source?.label || '??'}</Badge>
+            </div>
+            <span className="font-semibold text-muted-foreground">{operatorLabels[condition.operator] || condition.operator}</span>
+            <Badge variant="secondary" className="font-mono">{condition.value}</Badge>
+        </div>
+    );
+}
+
+
+function RuleActionDisplay({ action, steps, users }: { action: RuleAction, steps: WorkflowStepDefinition[], users: UserType[] }) {
+    const getActionIcon = (type: RuleAction['type']) => {
+        switch(type) {
+            case 'REQUIRE_ADDITIONAL_STEP':
+            case 'ROUTE_TO_STEP':
+                return <GitBranch className="h-5 w-5 text-primary"/>;
+            case 'ASSIGN_USER':
+                return <User className="h-5 w-5 text-primary"/>;
+            case 'SEND_NOTIFICATION':
+                return <Bell className="h-5 w-5 text-primary"/>;
+            case 'CHANGE_REQUEST_PRIORITY':
+                return <AlertTriangle className="h-5 w-5 text-primary"/>;
+        }
+    }
+
+    const renderActionDetails = () => {
+        switch (action.type) {
+            case 'REQUIRE_ADDITIONAL_STEP':
+            case 'ROUTE_TO_STEP':
+                const step = steps.find(s => s.id === action.stepId);
+                return <>{action.type === 'ROUTE_TO_STEP' ? 'Enrutar a' : 'Añadir paso'}: <Badge>{step?.name || '??'}</Badge></>;
+            case 'ASSIGN_USER':
+                const assignUser = users.find(u => u.id === action.userId);
+                const assignStep = steps.find(s => s.id === action.stepId);
+                return <>Asignar <Badge variant="secondary">{assignUser?.fullName || '??'}</Badge> a <Badge>{assignStep?.name || '??'}</Badge></>;
+            case 'SEND_NOTIFICATION':
+                return <>Notificar a <Badge variant="secondary">{action.target}</Badge> con mensaje: <span className="italic">"{action.message}"</span></>;
+            case 'CHANGE_REQUEST_PRIORITY':
+                return <>Cambiar prioridad a <Badge variant="destructive">{action.priority}</Badge></>;
+            default:
+                return null;
+        }
+    }
+
+    return (
+        <div className="flex items-center gap-3">
+             <div className="flex-shrink-0">{getActionIcon(action.type)}</div>
+            <div className="flex flex-wrap items-center gap-2 text-sm">{renderActionDetails()}</div>
+        </div>
+    );
+}
+
+function RuleDisplay({ rule, fields, pools, users, onRemove }: { rule: Rule, fields: FormField[], pools: Pool[], users: UserType[], onRemove: (id: string) => void }) {
+    const allSteps = pools.flatMap(p => p.lanes.flatMap(l => l.steps));
+
+    return (
+        <div className="group relative rounded-lg border bg-card p-4 transition-all hover:shadow-md">
+            <div className="grid grid-cols-[1fr,auto,1fr] items-center gap-4">
+                {/* Condition */}
+                <RuleConditionDisplay condition={rule.condition} fields={fields} steps={allSteps} />
+
+                {/* Arrow */}
+                <div className="flex justify-center">
+                    <ChevronsRight className="h-6 w-6 text-muted-foreground" />
+                </div>
+
+                {/* Action */}
+                <RuleActionDisplay action={rule.action} steps={allSteps} users={users} />
+            </div>
+
+            <Button
+                variant="ghost"
+                size="icon"
+                className="absolute right-1 top-1 h-6 w-6 opacity-0 group-hover:opacity-100"
+                onClick={() => onRemove(rule.id)}
+            >
+                <Trash2 className="h-4 w-4 text-destructive" />
+                <span className="sr-only">Eliminar regla</span>
+            </Button>
+        </div>
+    );
 }
 
 
@@ -828,10 +889,10 @@ function RuleBuilderDialog({ fields, steps, users, onAddRule, onClose }: { field
                 return [ { value: '==', label: 'es igual a' }, { value: '!=', label: 'no es igual a' }, { value: '>', label: 'es mayor que' }, { value: '<', label: 'es menor que' }, { value: '>=', label: 'es mayor o igual que' }, { value: '<=', label: 'es menor o igual que' } ];
             case 'text':
             case 'textarea':
-                return [ { value: '==', label: 'es igual a' }, { value: '!=', label: 'no es igual a' }, { value: 'contains', label: 'contiene' }, { value: 'not_contains', label: 'no contiene' } ];
+                return [ { value: 'is', label: 'es igual a' }, { value: 'is_not', label: 'no es igual a' }, { value: 'contains', label: 'contiene' }];
             case 'select':
             case 'radio':
-                return [ { value: '==', label: 'es' }, { value: '!=', label: 'no es' } ];
+                return [ { value: 'is', label: 'es' }, { value: 'is_not', label: 'no es' } ];
             default: return [];
         }
     };
@@ -944,3 +1005,5 @@ function RuleBuilderDialog({ fields, steps, users, onAddRule, onClose }: { field
         </DialogContent>
     )
 }
+
+    
