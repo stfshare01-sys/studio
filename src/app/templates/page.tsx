@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { FilePlus, FolderKanban, WandSparkles, Pencil } from "lucide-react";
 import Link from "next/link";
-import { useCollection, useFirestore, useMemoFirebase } from "@/firebase";
+import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase";
 import { collection } from "firebase/firestore";
 import type { Template } from "@/lib/types";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -38,6 +38,9 @@ function TemplateSkeleton() {
 
 export default function TemplatesPage() {
   const firestore = useFirestore();
+  const { user } = useUser();
+  const canCreate = user?.role === 'Admin' || user?.role === 'Designer';
+
   const templatesRef = useMemoFirebase(() => {
     if (!firestore) return null;
     return collection(firestore, 'request_templates');
@@ -54,12 +57,14 @@ export default function TemplatesPage() {
                 <h1 className="text-2xl font-bold tracking-tight">Plantillas de Flujo de Trabajo</h1>
                 <p className="text-muted-foreground">Construya, gestione y simule los planos de sus procesos.</p>
             </div>
-            <Button asChild>
-                <Link href="/templates/new">
-                    <FilePlus className="mr-2 h-4 w-4" />
-                    Nueva Plantilla
-                </Link>
-            </Button>
+            {canCreate && (
+                <Button asChild>
+                    <Link href="/templates/new">
+                        <FilePlus className="mr-2 h-4 w-4" />
+                        Nueva Plantilla
+                    </Link>
+                </Button>
+            )}
         </header>
         <main className="flex flex-1 flex-col gap-4 p-4 pt-0 sm:gap-8 sm:p-6 sm:pt-0">
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -86,18 +91,22 @@ export default function TemplatesPage() {
                     <Button asChild className="w-full">
                         <Link href={`/requests/new?templateId=${template.id}`}>Usar</Link>
                     </Button>
-                    <Button variant="outline" asChild className="w-full">
-                        <Link href={`/templates/edit/${template.id}`}>
-                            <Pencil className="mr-2 h-4 w-4" />
-                            Editar
-                        </Link>
-                    </Button>
-                    <div className="col-span-2">
-                        <Button variant="secondary" className="w-full" onClick={() => setSimulationTemplate(template)}>
-                            <WandSparkles className="mr-2 h-4 w-4" />
-                            Simular Cambio
+                    {canCreate ? (
+                        <Button variant="outline" asChild className="w-full">
+                            <Link href={`/templates/edit/${template.id}`}>
+                                <Pencil className="mr-2 h-4 w-4" />
+                                Editar
+                            </Link>
                         </Button>
-                    </div>
+                    ) : <div />}
+                    {user?.role === 'Admin' && (
+                        <div className="col-span-2">
+                            <Button variant="secondary" className="w-full" onClick={() => setSimulationTemplate(template)}>
+                                <WandSparkles className="mr-2 h-4 w-4" />
+                                Simular Cambio
+                            </Button>
+                        </div>
+                    )}
                 </CardFooter>
                 </Card>
             ))}
@@ -107,12 +116,14 @@ export default function TemplatesPage() {
                     <div className="flex flex-col items-center gap-1 text-center">
                         <h3 className="text-2xl font-bold tracking-tight">No tienes plantillas</h3>
                         <p className="text-sm text-muted-foreground">Crea una nueva plantilla para empezar.</p>
-                        <Button className="mt-4" asChild>
-                            <Link href="/templates/new">
-                                <FilePlus className="mr-2 h-4 w-4" />
-                                Nueva Plantilla
-                            </Link>
-                        </Button>
+                        {canCreate && (
+                            <Button className="mt-4" asChild>
+                                <Link href="/templates/new">
+                                    <FilePlus className="mr-2 h-4 w-4" />
+                                    Nueva Plantilla
+                                </Link>
+                            </Button>
+                        )}
                     </div>
                 </div>
             )}

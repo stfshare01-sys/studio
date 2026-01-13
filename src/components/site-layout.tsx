@@ -25,6 +25,7 @@ import {
   BarChart3,
   Plug,
   Activity,
+  Palette,
 } from "lucide-react";
 import { Logo } from "@/components/icons";
 import { Button } from "./ui/button";
@@ -35,18 +36,27 @@ import { NotificationCenter } from "@/components/notifications/notification-cent
 import { ThemeToggle } from "@/components/theme-toggle";
 import { GlobalSearch } from "@/components/global-search";
 
-const navItems = [
+const memberNavItems = [
+  { href: "/", icon: LayoutDashboard, label: "Panel" },
+  { href: "/templates", icon: FolderKanban, label: "Plantillas" },
+  { href: "/requests/new", icon: FilePlus, label: "Nueva Solicitud"},
+];
+
+const designerNavItems = [
+    { href: "/", icon: LayoutDashboard, label: "Panel" },
+    { href: "/templates", icon: FolderKanban, label: "Plantillas" },
+];
+
+const adminNavItems = [
   { href: "/", icon: LayoutDashboard, label: "Panel" },
   { href: "/reports", icon: BarChart3, label: "Informes" },
   { href: "/process-mining", icon: Activity, label: "Minería de Procesos" },
   { href: "/templates", icon: FolderKanban, label: "Plantillas" },
   { href: "/requests/new", icon: FilePlus, label: "Nueva Solicitud"},
   { href: "/integrations", icon: Plug, label: "Integraciones" },
+  { href: "/admin/users", icon: Users, label: "Usuarios (Admin)" },
 ];
 
-const adminNavItems = [
-    { href: "/admin/users", icon: Users, label: "Usuarios" },
-];
 
 export default function SiteLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -78,7 +88,17 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
 
   const displayName = user?.fullName || user?.email || 'Usuario';
   const displayEmail = user?.email || '';
-  const isAdmin = user?.role === 'Admin';
+  const userRole = user?.role || 'Member';
+  
+  const getNavItems = () => {
+      switch(userRole) {
+          case 'Admin': return adminNavItems;
+          case 'Designer': return designerNavItems;
+          default: return memberNavItems;
+      }
+  }
+  
+  const navItems = getNavItems();
 
 
   return (
@@ -98,7 +118,7 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
               <SidebarMenuItem key={item.href}>
                 <SidebarMenuButton
                   asChild
-                  isActive={pathname === item.href}
+                  isActive={pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href))}
                   className="w-full"
                 >
                   <Link href={item.href}>
@@ -107,20 +127,6 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
-            ))}
-            {isAdmin && adminNavItems.map((item) => (
-                <SidebarMenuItem key={item.href}>
-                    <SidebarMenuButton
-                    asChild
-                    isActive={pathname.startsWith(item.href)}
-                    className="w-full"
-                    >
-                    <Link href={item.href}>
-                        <item.icon className="size-4" />
-                        <span>{item.label}</span>
-                    </Link>
-                    </SidebarMenuButton>
-                </SidebarMenuItem>
             ))}
           </SidebarMenu>
         </SidebarContent>
