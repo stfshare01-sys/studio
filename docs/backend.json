@@ -1,6 +1,30 @@
 
 {
   "entities": {
+    "MasterList": {
+      "title": "Master List",
+      "type": "object",
+      "description": "Defines the schema and metadata for a master data list.",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "primaryKey": { "type": "string", "description": "The field ID to be used as the primary key for upserts." },
+        "fields": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "label": { "type": "string" },
+              "type": { "type": "string", "enum": ["text", "number", "boolean", "date"] }
+            },
+            "required": ["id", "label", "type"]
+          }
+        }
+      },
+      "required": ["id", "name", "fields", "primaryKey"]
+    },
     "RequestTemplate": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "RequestTemplate",
@@ -295,6 +319,27 @@
   },
   "firestore": {
     "structure": [
+      {
+        "path": "/master_lists/{listId}",
+        "definition": {
+          "entityName": "MasterList",
+          "schema": { "$ref": "#/backend/entities/MasterList" },
+          "description": "Stores the definitions/schemas of master data lists.",
+          "params": [{ "name": "listId", "description": "The unique ID for the master list definition." }]
+        }
+      },
+      {
+        "path": "/master_data/{listId}/{documentId}",
+        "definition": {
+          "entityName": "DynamicDocument",
+          "schema": { "type": "object", "properties": {} },
+          "description": "Stores the actual data for a master list. The schema is dynamic, based on the definition in /master_lists/{listId}.",
+          "params": [
+            { "name": "listId", "description": "The ID of the master list this data belongs to." },
+            { "name": "documentId", "description": "The unique ID for the data record, potentially based on the list's primary key." }
+          ]
+        }
+      },
       {
         "path": "/request_templates/{requestTemplateId}",
         "definition": {

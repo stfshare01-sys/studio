@@ -26,6 +26,7 @@ import {
   Plug,
   Activity,
   Palette,
+  Database,
 } from "lucide-react";
 import { Logo } from "@/components/icons";
 import { Button } from "./ui/button";
@@ -45,6 +46,7 @@ const memberNavItems = [
 const designerNavItems = [
     { href: "/", icon: LayoutDashboard, label: "Panel" },
     { href: "/templates", icon: FolderKanban, label: "Plantillas" },
+    { href: "/master-lists", icon: Database, label: "Listas Maestras"},
 ];
 
 const adminNavItems = [
@@ -52,6 +54,7 @@ const adminNavItems = [
   { href: "/reports", icon: BarChart3, label: "Informes" },
   { href: "/process-mining", icon: Activity, label: "Minería de Procesos" },
   { href: "/templates", icon: FolderKanban, label: "Plantillas" },
+  { href: "/master-lists", icon: Database, label: "Listas Maestras"},
   { href: "/requests/new", icon: FilePlus, label: "Nueva Solicitud"},
   { href: "/integrations", icon: Plug, label: "Integraciones" },
   { href: "/admin/users", icon: Users, label: "Usuarios (Admin)" },
