@@ -4,7 +4,7 @@
 
 import { Firestore, doc, collection, query, where, getDocs } from 'firebase/firestore';
 import type { Task, Request, Template, User, WorkflowStepDefinition } from './types';
-import { addDocumentNonBlocking, updateDocumentNonBlocking } from '@/firebase/non-blocking-updates';
+import { addDocumentNonBlocking, updateDocumentNonBlocking, setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import { intelligentTaskAssignment } from '@/ai/flows/intelligent-task-assignment';
 
 interface CompleteTaskParams {
@@ -15,6 +15,76 @@ interface CompleteTaskParams {
     currentUser: User;
     allUsers: User[];
     outcome?: string; // For decision gateways
+}
+
+/**
+ * Evaluates rules based on form data to determine if additional steps are needed.
+ * This can be used at request creation or during the workflow.
+ * @returns A list of step definitions that should be part of the process.
+ */
+export async function evaluateAndAddInitialSteps(
+    formData: Record<string, any>,
+    template: Template,
+    requestId: string,
+    requestOwnerId: string,
+    createdAt: string,
+    firestore: Firestore
+): Promise<{ finalSteps: WorkflowStepDefinition[], stepsWithTasks: (WorkflowStepDefinition & { taskId: string })[] }> {
+    const additionalSteps = template.rules?.reduce((acc, rule) => {
+        if (rule.condition.type !== 'form' || rule.action.type !== 'REQUIRE_ADDITIONAL_STEP') {
+            return acc;
+        }
+
+        const fieldValue = formData[rule.condition.fieldId];
+        let conditionMet = false;
+        if (fieldValue !== undefined) {
+            const val = parseFloat(fieldValue);
+            const ruleVal = parseFloat(rule.condition.value);
+            switch (rule.condition.operator) {
+                case '>': if (val > ruleVal) conditionMet = true; break;
+                case '<': if (val < ruleVal) conditionMet = true; break;
+                case '==': if (val == ruleVal) conditionMet = true; break;
+                case '!=': if (val != ruleVal) conditionMet = true; break;
+                case '>=': if (val >= ruleVal) conditionMet = true; break;
+                case '<=': if (val <= ruleVal) conditionMet = true; break;
+            }
+        }
+
+        if (conditionMet) {
+            const stepToAdd = template.steps.find(s => s.id === rule.action.stepId);
+            if (stepToAdd && !acc.some(s => s.id === stepToAdd.id)) {
+                acc.push(stepToAdd);
+            }
+        }
+        return acc;
+    }, [] as WorkflowStepDefinition[]) || [];
+
+    const finalSteps = [...template.steps, ...additionalSteps];
+    const uniqueSteps = Array.from(new Map(finalSteps.map(s => [s.id, s])).values());
+    
+    // Create task documents for all steps that will be part of this request
+    const taskCreationPromises = uniqueSteps.map(async (step) => {
+        const tasksCollection = collection(firestore, 'tasks');
+        const newTaskRef = doc(tasksCollection);
+        const taskData = {
+            id: newTaskRef.id,
+            requestId: requestId,
+            requestTitle: `${template.name} - ${new Date(createdAt).toLocaleDateString('es-ES')}`,
+            requestOwnerId: requestOwnerId,
+            stepId: step.id,
+            name: step.name,
+            status: 'Pending', // All tasks start as pending
+            assigneeId: null,
+            completedAt: null,
+            createdAt: createdAt,
+        };
+        setDocumentNonBlocking(newTaskRef, taskData, {});
+        return { ...step, taskId: newTaskRef.id };
+    });
+
+    const stepsWithTasks = await Promise.all(taskCreationPromises);
+    
+    return { finalSteps: uniqueSteps, stepsWithTasks };
 }
 
 
@@ -169,32 +239,38 @@ export async function completeTaskAndProgressWorkflow({
                 const nextStep = template.steps.find(s => s.id === rule.action.stepId);
                 return nextStep ? [nextStep] : [];
             }
-            // Default path if no rule matches
-             const nextStepInSequence = template.steps[currentStepIndex + 1];
-             if(nextStepInSequence && !nextStepInSequence.type.includes('gateway')) return [nextStepInSequence];
-             return [];
+             // If no rule matches (e.g. "Approved" outcome with no specific rule), fall through to sequential logic.
         }
 
         // B) Parallel Gateway (Split) Logic
         const nextStepInSequence = template.steps[currentStepIndex + 1];
         if (nextStepInSequence && nextStepInSequence.type === 'gateway-parallel') {
             const parallelGatewayIndex = currentStepIndex + 1;
-            const parallelSteps: WorkflowStepDefinition[] = [];
             
-            // Find all steps that are part of the parallel branches
-            // This assumes branches are defined sequentially after the split gateway
-            let i = parallelGatewayIndex + 1;
-            while(i < template.steps.length && !template.steps[i].type.includes('gateway')) {
-                parallelSteps.push(template.steps[i]);
-                i++;
+            // This is a "join" gateway if there are multiple incoming paths.
+            // But for a split, we look ahead.
+            let isSplitGateway = true; // Assume it's a split unless proven otherwise.
+            // A simple heuristic: if the previous step wasn't a gateway, this is likely a split.
+            if(currentStepIndex > 0 && template.steps[currentStepIndex].type.includes('gateway')) {
+                isSplitGateway = false;
             }
-            return parallelSteps;
+
+            if (isSplitGateway) {
+                const parallelSteps: WorkflowStepDefinition[] = [];
+                // Find all steps that are part of the parallel branches until a join gateway is found
+                let i = parallelGatewayIndex + 1;
+                while(i < template.steps.length) {
+                    const step = template.steps[i];
+                    if (step.type === 'gateway-parallel') break; // Found the join gateway
+                    parallelSteps.push(step);
+                    i++;
+                }
+                return parallelSteps;
+            }
         }
 
         // C) Default Sequential Logic
         if (nextStepInSequence) {
-             // If next step is a gateway, don't return it directly, logic will handle it on next iteration.
-            if(nextStepInSequence.type.includes('gateway')) return [nextStepInSequence];
             return [nextStepInSequence];
         }
 
@@ -204,37 +280,37 @@ export async function completeTaskAndProgressWorkflow({
     const nextSteps = findNextSteps(task.stepId);
 
     // 5. Check for Parallel Gateway (Join) condition
-    const checkJoinCondition = (step: WorkflowStepDefinition): boolean => {
-         const stepIndex = template.steps.findIndex(s => s.id === step.id);
-         if (stepIndex <= 0) return true; // Not a join or first step
+    const checkJoinCondition = (joinGatewayStep: WorkflowStepDefinition): boolean => {
+         const joinIndex = template.steps.findIndex(s => s.id === joinGatewayStep.id);
+         if (joinIndex <= 0) return true;
 
-         const prevStepDef = template.steps[stepIndex - 1];
-         if (prevStepDef && prevStepDef.type === 'gateway-parallel') {
-             // This is a join gateway. Find the corresponding split gateway.
-             let splitGatewayIndex = -1;
-             for (let i = stepIndex - 2; i >= 0; i--) {
-                if (template.steps[i].type === 'gateway-parallel') {
-                    splitGatewayIndex = i;
-                    break;
-                }
-             }
-
-             if (splitGatewayIndex !== -1) {
-                 // Get all steps between split and join gateways
-                 const parallelBranchSteps = template.steps.slice(splitGatewayIndex + 1, stepIndex - 1);
-                 const parallelStepIds = new Set(parallelBranchSteps.map(s => s.id));
-                 
-                 // Check if all steps in the parallel branches are completed
-                 const completedCount = updatedSteps.filter(s => parallelStepIds.has(s.id) && s.status === 'Completed').length;
-                 return completedCount === parallelBranchSteps.length;
-             }
+         // Find the corresponding split gateway by looking backwards
+         let splitGatewayIndex = -1;
+         for (let i = joinIndex - 1; i >= 0; i--) {
+            if (template.steps[i].type === 'gateway-parallel') {
+                splitGatewayIndex = i;
+                break;
+            }
          }
-         return true; // Not a join condition, proceed
+
+         if (splitGatewayIndex !== -1) {
+             // Get all steps between split and join gateways
+             const parallelBranchSteps = template.steps.slice(splitGatewayIndex + 1, joinIndex);
+             const parallelStepIds = new Set(parallelBranchSteps.map(s => s.id));
+             
+             // Check if all steps in the parallel branches are completed in the *current* request state
+             const completedCount = updatedSteps.filter(s => parallelStepIds.has(s.id) && s.status === 'Completed').length;
+             return completedCount === parallelBranchSteps.length;
+         }
+         
+         return true; // Not a well-formed join condition, proceed
     }
 
 
     if (nextSteps.length > 0) {
-        // If there's a single next step, check if it's a join.
+        let finalNextSteps = nextSteps;
+
+        // If the single next step is a join gateway, check condition
         if (nextSteps.length === 1 && nextSteps[0].type === 'gateway-parallel') {
              if (!checkJoinCondition(nextSteps[0])) {
                 // Not all parallel tasks are done, so we wait. Just save the current state.
@@ -244,22 +320,39 @@ export async function completeTaskAndProgressWorkflow({
              // If join condition is met, find the actual step *after* the join gateway
              const joinGatewayIndex = template.steps.findIndex(s => s.id === nextSteps[0].id);
              const stepAfterJoin = template.steps[joinGatewayIndex + 1];
-             if (stepAfterJoin) {
-                 await activateAndAssignTasks(firestore, [stepAfterJoin], request, allUsers, updatedSteps, auditLogCollection);
-             }
-        } else {
-            // Activate all next steps (for parallel split or single step)
-            await activateAndAssignTasks(firestore, nextSteps, request, allUsers, updatedSteps, auditLogCollection);
+             finalNextSteps = stepAfterJoin ? [stepAfterJoin] : [];
         }
-
+        
+        if (finalNextSteps.length > 0) {
+            await activateAndAssignTasks(firestore, finalNextSteps, request, allUsers, updatedSteps, auditLogCollection);
+        } else {
+             // This was the last step in a branch or the workflow
+            // Check if this completion finishes the entire request
+            const activeOrPendingTasks = updatedSteps.some(s => s.status === 'Active' || s.status === 'Pending');
+            if (!activeOrPendingTasks) {
+                 updateDocumentNonBlocking(requestRef, { status: 'Completed', completedAt: now });
+                 // Notify the original submitter that their request is complete
+                 const submitterNotificationRef = collection(firestore, 'users', request.submittedBy, 'notifications');
+                 addDocumentNonBlocking(submitterNotificationRef, {
+                     title: 'Solicitud Completada',
+                     message: `Tu solicitud "${request.title}" ha sido completada.`,
+                     type: 'success',
+                     read: false,
+                     createdAt: now,
+                     link: `/requests/${request.id}`,
+                 });
+            }
+        }
+        
         updateDocumentNonBlocking(requestRef, { steps: updatedSteps, updatedAt: now });
 
     } else {
-        // This was the last step, so complete the request
+        // No more steps found, this was the last step in the workflow
         updateDocumentNonBlocking(requestRef, {
             status: 'Completed',
             completedAt: now,
             updatedAt: now,
+            steps: updatedSteps,
         });
 
         // Notify the original submitter that their request is complete

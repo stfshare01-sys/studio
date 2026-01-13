@@ -21,6 +21,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import React from "react";
 import { Progress } from "@/components/ui/progress";
 import { intelligentTaskAssignment } from "@/ai/flows/intelligent-task-assignment";
+import { evaluateAndAddInitialSteps } from "@/lib/workflow-engine";
 
 const ALLOWED_FILE_TYPES = [
     'image/jpeg',
@@ -227,57 +228,8 @@ export default function NewRequestPage() {
         
         const uploadedDocuments = (await Promise.all(documentUploadPromises)).filter(Boolean);
 
-        // Evaluate rules to see if any additional steps are needed
-        const additionalSteps = selectedTemplate.rules?.reduce((acc, rule) => {
-            const fieldValue = formData[rule.condition.fieldId];
-            let conditionMet = false;
-            if (fieldValue !== undefined) {
-                const val = parseFloat(fieldValue);
-                const ruleVal = parseFloat(rule.condition.value);
-                switch (rule.condition.operator) {
-                    case '>': if (val > ruleVal) conditionMet = true; break;
-                    case '<': if (val < ruleVal) conditionMet = true; break;
-                    case '==': if (val == ruleVal) conditionMet = true; break;
-                    case '!=': if (val != ruleVal) conditionMet = true; break;
-                    case '>=': if (val >= ruleVal) conditionMet = true; break;
-                    case '<=': if (val <= ruleVal) conditionMet = true; break;
-                }
-            }
+        const { stepsWithTasks } = await evaluateAndAddInitialSteps(newFormData, selectedTemplate, newRequestId, user.uid, now, firestore);
 
-            if (conditionMet && rule.action.type === 'REQUIRE_ADDITIONAL_STEP') {
-                const stepToAdd = selectedTemplate.steps.find(s => s.id === rule.action.stepId);
-                if (stepToAdd && !acc.some(s => s.id === stepToAdd.id)) {
-                    acc.push(stepToAdd);
-                }
-            }
-            return acc;
-        }, [] as typeof selectedTemplate.steps) || [];
-
-        const finalSteps = [...selectedTemplate.steps, ...additionalSteps];
-
-        // Create task documents in parallel
-        const taskPromises = finalSteps.map(async (step, index) => {
-            const tasksCollection = collection(firestore, 'tasks');
-            const newTaskRef = doc(tasksCollection);
-            const taskData = {
-                id: newTaskRef.id,
-                requestId: newRequestId,
-                requestTitle: `${selectedTemplate.name} - ${new Date().toLocaleDateString('es-ES')}`,
-                requestOwnerId: user.uid,
-                stepId: step.id,
-                name: step.name,
-                status: index === 0 ? 'Active' : 'Pending',
-                assigneeId: null,
-                completedAt: null,
-                createdAt: now,
-            };
-            setDocumentNonBlocking(newTaskRef, taskData, {});
-            return { stepId: step.id, taskId: newTaskRef.id };
-        });
-
-        const taskResults = await Promise.all(taskPromises);
-        const taskIdMap = new Map(taskResults.map(r => [r.stepId, r.taskId]));
-        
         const newRequest = {
             id: newRequestId,
             title: `${selectedTemplate.name} - ${new Date().toLocaleDateString('es-ES')}`,
@@ -288,13 +240,13 @@ export default function NewRequestPage() {
             status: 'In Progress',
             completedAt: null,
             formData: newFormData,
-            steps: finalSteps.map((step, index) => ({
+            steps: stepsWithTasks.map((step, index) => ({
                 id: step.id,
                 name: step.name,
                 status: index === 0 ? 'Active' : 'Pending',
                 assigneeId: null,
                 completedAt: null,
-                taskId: taskIdMap.get(step.id) || null,
+                taskId: step.taskId,
             })),
             documents: uploadedDocuments,
         };
