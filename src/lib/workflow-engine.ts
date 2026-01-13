@@ -84,7 +84,7 @@ export async function evaluateAndExecuteRules({
                 case 'CHANGE_REQUEST_PRIORITY':
                     updateDocumentNonBlocking(requestRef, { priority: rule.action.priority });
                      addDocumentNonBlocking(auditLogCollection, {
-                        requestId: request.id, userId: 'system', userFullName: 'FlowMaster AI', timestamp: now, action: 'AUDIT',
+                        requestId: request.id, userId: 'system', userFullName: 'FlowMaster AI', timestamp: now, action: 'AUDIT_LOG_ENTRY' as any, // This should be a valid action
                         details: { message: `La prioridad de la solicitud cambió a "${rule.action.priority}" por una regla de negocio.` }
                     });
                     break;
@@ -308,7 +308,6 @@ export async function completeTaskAndProgressWorkflow({
     }
     
     // *** DYNAMIC RULE EVALUATION ***
-    // Re-evaluate rules to see if new steps need to be added mid-workflow
     const dynamicallyAddedSteps = await evaluateAndExecuteRules({
         firestore,
         formData: request.formData,
@@ -318,7 +317,6 @@ export async function completeTaskAndProgressWorkflow({
     });
 
     if (dynamicallyAddedSteps.length > 0) {
-        // Handle creation of new tasks for dynamically added steps
         const newStepsWithTasksPromises = dynamicallyAddedSteps.map(async (step) => {
             if (!updatedSteps.some(s => s.id === step.id)) { // Prevent duplicates
                 const newTaskRef = doc(collection(firestore, 'tasks'));
@@ -347,18 +345,16 @@ export async function completeTaskAndProgressWorkflow({
             return null;
         });
 
-        const newStepsWithTasks = (await Promise.all(newStepsWithTasksPromises)).filter(Boolean);
+        const newStepsWithTasks = (await Promise.all(newStepsWithTasksPromises)).filter(Boolean) as Request['steps'];
         updatedSteps = [...updatedSteps, ...newStepsWithTasks];
     }
-    // *****************************
-
+    
     // 4. Find the next step(s) in the workflow
     const findNextSteps = (currentStepId: string): WorkflowStepDefinition[] => {
         const currentStepDefinition = template.steps.find(s => s.id === currentStepId);
         const currentStepIndex = template.steps.findIndex(s => s.id === currentStepId);
         if (currentStepIndex === -1) return [];
         
-        // A) Exclusive Gateway Logic: Use rules to find the next step
         if (currentStepDefinition?.outcomes && currentStepDefinition.outcomes.length > 0) {
             const rule = template.rules.find(r => 
                 r.condition.type === 'outcome' &&
@@ -370,20 +366,15 @@ export async function completeTaskAndProgressWorkflow({
                 return nextStep ? [nextStep] : [];
             }
         }
-
-        // B) Parallel Gateway (Split) Logic
-        const nextStepInSequence = template.steps[currentStepIndex + 1];
+        
         if (currentStepDefinition?.type === 'gateway-parallel') {
-            const parallelGatewayIndex = currentStepIndex;
-            
-            let isSplitGateway = true;
-
+            const isSplitGateway = template.steps[currentStepIndex + 1] && template.steps[currentStepIndex + 1].type !== 'gateway-parallel';
             if (isSplitGateway) {
                 const parallelSteps: WorkflowStepDefinition[] = [];
-                let i = parallelGatewayIndex + 1;
+                let i = currentStepIndex + 1;
                 while(i < template.steps.length) {
                     const step = template.steps[i];
-                    if (step.type === 'gateway-parallel') break; // Found the join gateway
+                    if (step.type === 'gateway-parallel') break;
                     parallelSteps.push(step);
                     i++;
                 }
@@ -391,7 +382,7 @@ export async function completeTaskAndProgressWorkflow({
             }
         }
 
-        // C) Default Sequential Logic
+        const nextStepInSequence = template.steps[currentStepIndex + 1];
         if (nextStepInSequence) {
             return [nextStepInSequence];
         }
@@ -399,41 +390,42 @@ export async function completeTaskAndProgressWorkflow({
         return [];
     };
 
-    const nextSteps = findNextSteps(task.stepId);
+    // Helper to check if all branches leading to a join gateway are complete
+    const checkJoinCondition = (joinGatewayStepId: string): boolean => {
+        const joinIndex = template.steps.findIndex(s => s.id === joinGatewayStepId);
+        if (joinIndex <= 0) return true;
 
-    // 5. Check for Parallel Gateway (Join) condition
-    const checkJoinCondition = (joinGatewayStep: WorkflowStepDefinition): boolean => {
-         const joinIndex = template.steps.findIndex(s => s.id === joinGatewayStep.id);
-         if (joinIndex <= 0) return true;
-
-         let splitGatewayIndex = -1;
-         for (let i = joinIndex - 1; i >= 0; i--) {
+        let splitGatewayIndex = -1;
+        for (let i = joinIndex - 1; i >= 0; i--) {
             if (template.steps[i].type === 'gateway-parallel') {
                 splitGatewayIndex = i;
                 break;
             }
-         }
+        }
 
-         if (splitGatewayIndex !== -1) {
-             const parallelBranchSteps = template.steps.slice(splitGatewayIndex + 1, joinIndex);
-             const parallelStepIds = new Set(parallelBranchSteps.map(s => s.id));
-             
-             const completedCount = updatedSteps.filter(s => parallelStepIds.has(s.id) && s.status === 'Completed').length;
-             return completedCount === parallelBranchSteps.length;
-         }
-         
-         return true; // Not a well-formed join condition, proceed
-    }
+        if (splitGatewayIndex !== -1) {
+            const parallelBranchSteps = template.steps.slice(splitGatewayIndex + 1, joinIndex);
+            const parallelStepIds = new Set(parallelBranchSteps.map(s => s.id));
+            
+            const completedCount = updatedSteps.filter(s => parallelStepIds.has(s.id) && s.status === 'Completed').length;
+            return completedCount === parallelBranchSteps.length;
+        }
+        
+        return true; // Not a join gateway, proceed.
+    };
 
+    const nextSteps = findNextSteps(task.stepId);
 
     if (nextSteps.length > 0) {
         let finalNextSteps = nextSteps;
 
         if (nextSteps.length === 1 && nextSteps[0].type === 'gateway-parallel') {
-             if (!checkJoinCondition(nextSteps[0])) {
+             if (!checkJoinCondition(nextSteps[0].id)) {
+                // Not all branches are complete, just update the state and wait.
                 updateDocumentNonBlocking(requestRef, { steps: updatedSteps, updatedAt: now });
                 return;
              }
+             // All branches complete, find the step after the join gateway.
              const joinGatewayIndex = template.steps.findIndex(s => s.id === nextSteps[0].id);
              const stepAfterJoin = template.steps[joinGatewayIndex + 1];
              finalNextSteps = stepAfterJoin ? [stepAfterJoin] : [];
@@ -442,6 +434,7 @@ export async function completeTaskAndProgressWorkflow({
         if (finalNextSteps.length > 0) {
             await activateAndAssignTasks(firestore, finalNextSteps, request, allUsers, updatedSteps, auditLogCollection);
         } else {
+            // This is the end of a branch or the entire workflow. Check if all tasks are done.
             const activeOrPendingTasks = updatedSteps.some(s => s.status === 'Active' || s.status === 'Pending');
             if (!activeOrPendingTasks) {
                  updateDocumentNonBlocking(requestRef, { status: 'Completed', completedAt: now });
@@ -460,6 +453,7 @@ export async function completeTaskAndProgressWorkflow({
         updateDocumentNonBlocking(requestRef, { steps: updatedSteps, updatedAt: now });
 
     } else {
+        // No more steps defined, workflow is complete.
         updateDocumentNonBlocking(requestRef, {
             status: 'Completed',
             completedAt: now,
