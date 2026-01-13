@@ -5,7 +5,7 @@
 import SiteLayout from "@/components/site-layout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { FilePlus, FolderKanban, WandSparkles } from "lucide-react";
+import { FilePlus, FolderKanban, WandSparkles, Pencil } from "lucide-react";
 import Link from "next/link";
 import { useCollection, useFirestore, useMemoFirebase } from "@/firebase";
 import { collection } from "firebase/firestore";
@@ -82,14 +82,22 @@ export default function TemplatesPage() {
                     {template.fields.length} campos, {template.steps.length} pasos
                     </div>
                 </CardContent>
-                <CardFooter className="flex flex-col sm:flex-row gap-2">
+                <CardFooter className="grid grid-cols-2 gap-2">
                     <Button asChild className="w-full">
-                        <Link href={`/requests/new?templateId=${template.id}`}>Usar Plantilla</Link>
+                        <Link href={`/requests/new?templateId=${template.id}`}>Usar</Link>
                     </Button>
-                    <Button variant="outline" className="w-full" onClick={() => setSimulationTemplate(template)}>
-                        <WandSparkles className="mr-2 h-4 w-4" />
-                        Simular
+                    <Button variant="outline" asChild className="w-full">
+                        <Link href={`/templates/edit/${template.id}`}>
+                            <Pencil className="mr-2 h-4 w-4" />
+                            Editar
+                        </Link>
                     </Button>
+                    <div className="col-span-2">
+                        <Button variant="secondary" className="w-full" onClick={() => setSimulationTemplate(template)}>
+                            <WandSparkles className="mr-2 h-4 w-4" />
+                            Simular Cambio
+                        </Button>
+                    </div>
                 </CardFooter>
                 </Card>
             ))}
