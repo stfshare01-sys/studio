@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
 import type { User, UserRole, UserStatus } from "@/lib/types";
 import {
   Table,
@@ -16,49 +16,46 @@ import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
 import { MoreHorizontal, Trash2, Edit, Search, ArrowUpDown, ChevronDown, UserCheck, UserX, Ban } from "lucide-react";
 import { Button } from "../ui/button";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "../ui/dropdown-menu";
-import {
-    Dialog,
-    DialogContent,
-    DialogHeader,
-    DialogTitle,
-    DialogFooter,
-    DialogDescription,
-    DialogClose,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogDescription,
+  DialogClose,
 } from "@/components/ui/dialog";
 import { Label } from "../ui/label";
 import { Input } from "../ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { useFirestore } from "@/firebase";
-import { doc } from "firebase/firestore";
-import { updateDocumentNonBlocking, deleteDocumentNonBlocking } from "@/firebase/non-blocking-updates";
+import { doc, collection, query, where, orderBy, limit, getDocs, startAfter, DocumentSnapshot } from "firebase/firestore";
+import { updateDocumentNonBlocking } from "@/firebase/non-blocking-updates";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
 import { toggleUserStatus } from "@/firebase/admin-actions";
+import { TableSkeleton } from "../ui/table-skeleton";
 
-function EditUserDialog({ user, isOpen, onOpenChange, onUserUpdate }: { user: User, isOpen: boolean, onOpenChange: (open: boolean) => void, onUserUpdate: () => void }) {
+function EditUserDialog({ user, isOpen, onOpenChange }: { user: User | null, isOpen: boolean, onOpenChange: (open: boolean) => void }) {
     const firestore = useFirestore();
     const { toast } = useToast();
     const [formData, setFormData] = useState({
-        fullName: user.fullName,
-        department: user.department,
-        role: user.role || 'Member',
+        fullName: user?.fullName || '',
+        department: user?.department || '',
+        role: user?.role || 'Member',
     });
 
     React.useEffect(() => {
-        setFormData({
-            fullName: user.fullName,
-            department: user.department,
-            role: user.role || 'Member',
-        });
+        if (user) {
+            setFormData({
+                fullName: user.fullName,
+                department: user.department,
+                role: user.role || 'Member',
+            });
+        }
     }, [user]);
+
+    if (!user) return null;
 
     const handleInputChange = (id: string, value: string) => {
         setFormData(prev => ({...prev, [id]: value}));
@@ -72,7 +69,6 @@ function EditUserDialog({ user, isOpen, onOpenChange, onUserUpdate }: { user: Us
             title: "Usuario actualizado",
             description: `Los datos de ${user.fullName} han sido actualizados.`,
         });
-        onUserUpdate();
         onOpenChange(false);
     };
 
@@ -125,75 +121,93 @@ function EditUserDialog({ user, isOpen, onOpenChange, onUserUpdate }: { user: Us
 }
 
 const PAGE_SIZE = 10;
-
 type SortField = "fullName" | "department" | "role" | "status";
 type SortOrder = "asc" | "desc";
 
-export function UsersTable({ users }: { users: User[] }) {
+export function UsersTable() {
     const firestore = useFirestore();
     const { toast } = useToast();
+
+    // Dialog state
     const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
     const [selectedUser, setSelectedUser] = useState<User | null>(null);
 
-    // Filtros
+    // Data state
+    const [users, setUsers] = useState<User[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [lastDoc, setLastDoc] = useState<DocumentSnapshot | null>(null);
+    const [hasMore, setHasMore] = useState(true);
+
+    // Filters and sorting state
     const [searchTerm, setSearchTerm] = useState("");
     const [statusFilter, setStatusFilter] = useState<string>("all");
     const [roleFilter, setRoleFilter] = useState<string>("all");
-    const [departmentFilter, setDepartmentFilter] = useState<string>("all");
     const [sortField, setSortField] = useState<SortField>("fullName");
     const [sortOrder, setSortOrder] = useState<SortOrder>("asc");
-    const [displayCount, setDisplayCount] = useState(PAGE_SIZE);
+    
+    // Memoized search results (client-side search on top of server-side data)
+    const filteredUsers = useMemo(() => {
+        if (!searchTerm) return users;
+        const term = searchTerm.toLowerCase();
+        return users.filter(u =>
+            u.fullName.toLowerCase().includes(term) ||
+            u.email.toLowerCase().includes(term)
+        );
+    }, [users, searchTerm]);
 
-    // Obtener departamentos únicos
-    const departments = useMemo(() => {
-        const depts = new Set(users.map(u => u.department));
-        return Array.from(depts).sort();
-    }, [users]);
+    const fetchUsers = useCallback(async (loadMore = false) => {
+        if (!firestore) return;
+        setIsLoading(true);
 
-    // Filtrar y ordenar
-    const filteredAndSortedUsers = useMemo(() => {
-        let result = [...users];
-
-        if (searchTerm) {
-            const term = searchTerm.toLowerCase();
-            result = result.filter(u =>
-                u.fullName.toLowerCase().includes(term) ||
-                u.email.toLowerCase().includes(term)
-            );
-        }
+        const usersCollection = collection(firestore, 'users');
+        let q = query(usersCollection, orderBy(sortField, sortOrder));
 
         if (statusFilter !== "all") {
-            result = result.filter(u => (u.status || 'active') === statusFilter);
+            q = query(q, where('status', '==', statusFilter));
         }
         if (roleFilter !== "all") {
-            result = result.filter(u => u.role === roleFilter);
-        }
-        if (departmentFilter !== "all") {
-            result = result.filter(u => u.department === departmentFilter);
+            q = query(q, where('role', '==', roleFilter));
         }
 
-        result.sort((a, b) => {
-            let comparison = 0;
-            const valA = a[sortField] || (sortField === 'status' ? 'active' : '');
-            const valB = b[sortField] || (sortField === 'status' ? 'active' : '');
-            comparison = String(valA).localeCompare(String(valB));
-            return sortOrder === "asc" ? comparison : -comparison;
-        });
+        if (loadMore && lastDoc) {
+            q = query(q, startAfter(lastDoc), limit(PAGE_SIZE));
+        } else {
+            q = query(q, limit(PAGE_SIZE));
+        }
 
-        return result;
-    }, [users, searchTerm, roleFilter, statusFilter, departmentFilter, sortField, sortOrder]);
+        try {
+            const querySnapshot = await getDocs(q);
+            const newUsers = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User));
+            const lastVisible = querySnapshot.docs[querySnapshot.docs.length - 1];
+            
+            setLastDoc(lastVisible);
+            setHasMore(querySnapshot.docs.length === PAGE_SIZE);
+            
+            if (loadMore) {
+                setUsers(prev => [...prev, ...newUsers]);
+            } else {
+                setUsers(newUsers);
+            }
+        } catch (error) {
+            console.error("Error fetching users:", error);
+            toast({ variant: 'destructive', title: 'Error', description: 'No se pudieron cargar los usuarios.' });
+        } finally {
+            setIsLoading(false);
+        }
+    }, [firestore, sortField, sortOrder, statusFilter, roleFilter, lastDoc, toast]);
 
-    const paginatedUsers = useMemo(() => {
-        return filteredAndSortedUsers.slice(0, displayCount);
-    }, [filteredAndSortedUsers, displayCount]);
 
-    const hasMore = displayCount < filteredAndSortedUsers.length;
+    useEffect(() => {
+        setUsers([]); // Reset users on filter/sort change
+        setLastDoc(null);
+        setHasMore(true);
+        fetchUsers(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [sortField, sortOrder, statusFilter, roleFilter]); // `fetchUsers` is memoized, so we list dependencies here
 
-    const loadMore = () => setDisplayCount(prev => prev + PAGE_SIZE);
 
     const handleFilterChange = (setter: React.Dispatch<React.SetStateAction<string>>) => (value: string) => {
         setter(value);
-        setDisplayCount(PAGE_SIZE);
     };
 
     const toggleSort = (field: SortField) => {
@@ -214,6 +228,8 @@ export function UsersTable({ users }: { users: User[] }) {
         const newStatus = (user.status || 'active') === 'active' ? 'disabled' : 'active';
         try {
             await toggleUserStatus(user.id, newStatus === 'active');
+            // Update local state for immediate feedback
+            setUsers(prev => prev.map(u => u.id === user.id ? { ...u, status: newStatus } : u));
             toast({
                 title: `Usuario ${newStatus === 'active' ? 'Habilitado' : 'Deshabilitado'}`,
                 description: `${user.fullName} ha sido ${newStatus === 'active' ? 'habilitado' : 'deshabilitado'}.`,
@@ -227,14 +243,13 @@ export function UsersTable({ users }: { users: User[] }) {
         }
     }
 
-
   return (
     <TooltipProvider>
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row gap-4">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Buscar por nombre o email..." value={searchTerm} onChange={(e) => handleFilterChange(setSearchTerm)(e.target.value)} className="pl-9" />
+          <Input placeholder="Buscar por nombre o email..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-9" />
         </div>
         <Select value={statusFilter} onValueChange={handleFilterChange(setStatusFilter)}>
           <SelectTrigger className="w-full sm:w-[150px]"><SelectValue placeholder="Filtrar por estado" /></SelectTrigger>
@@ -253,12 +268,14 @@ export function UsersTable({ users }: { users: User[] }) {
           </SelectContent>
         </Select>
       </div>
-
-      {filteredAndSortedUsers.length === 0 ? (
+      
+      {isLoading && users.length === 0 ? (
+          <TableSkeleton columns={4} rows={5} />
+      ) : filteredUsers.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-8">
           <p className="text-muted-foreground">No se encontraron usuarios</p>
-          {(searchTerm || roleFilter !== "all" || departmentFilter !== "all") && (
-            <Button variant="link" onClick={() => { setSearchTerm(""); setRoleFilter("all"); setDepartmentFilter("all"); setStatusFilter("all"); }}>
+          {(searchTerm || roleFilter !== "all" || statusFilter !== "all") && (
+            <Button variant="link" onClick={() => { setSearchTerm(""); setRoleFilter("all"); setStatusFilter("all"); }}>
               Limpiar filtros
             </Button>
           )}
@@ -287,7 +304,7 @@ export function UsersTable({ users }: { users: User[] }) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {paginatedUsers.map((user) => (
+              {filteredUsers.map((user) => (
                 <TableRow key={user.id} className={cn((user.status || 'active') === 'disabled' && 'opacity-50')}>
                   <TableCell>
                     <div className="flex items-center gap-3">
@@ -364,16 +381,15 @@ export function UsersTable({ users }: { users: User[] }) {
 
       {hasMore && (
         <div className="flex justify-center">
-          <Button variant="outline" onClick={loadMore} className="gap-2">
+          <Button variant="outline" onClick={() => fetchUsers(true)} disabled={isLoading} className="gap-2">
+             {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             <ChevronDown className="h-4 w-4" /> Cargar más
           </Button>
         </div>
       )}
-      <p className="text-sm text-muted-foreground">Mostrando {paginatedUsers.length} de {filteredAndSortedUsers.length} usuarios</p>
+      <p className="text-sm text-muted-foreground">Mostrando {filteredUsers.length} usuarios.</p>
     </div>
-    {selectedUser && (
-        <EditUserDialog user={selectedUser} isOpen={isEditDialogOpen} onOpenChange={setIsEditDialogOpen} onUserUpdate={() => {}} />
-    )}
+    <EditUserDialog user={selectedUser} isOpen={isEditDialogOpen} onOpenChange={setIsEditDialogOpen} />
     </TooltipProvider>
   );
 }

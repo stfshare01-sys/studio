@@ -4,17 +4,16 @@
 import SiteLayout from "@/components/site-layout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase";
-import { collection, query } from "firebase/firestore";
 import type { User } from "@/lib/types";
 import { Skeleton } from "@/components/ui/skeleton";
 import { UsersTable } from "@/components/admin/users-table";
 import { PlusCircle, ShieldAlert } from "lucide-react";
 import { updateDocumentNonBlocking } from "@/firebase/non-blocking-updates";
-import { doc } from "firebase/firestore";
+import { doc, getFirestore } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { CreateUserDialog } from "@/components/admin/create-user-dialog";
 import { useState } from "react";
+import { useUser } from "@/firebase";
 
 function UsersTableSkeleton() {
   return (
@@ -41,7 +40,7 @@ function UsersTableSkeleton() {
 
 function AssignAdminButton() {
     const { user } = useUser();
-    const firestore = useFirestore();
+    const firestore = getFirestore();
     const { toast } = useToast();
 
     const handleAssignAdmin = () => {
@@ -73,38 +72,12 @@ function AssignAdminButton() {
 }
 
 function AdminView() {
-    const { isUserLoading } = useUser();
-    const firestore = useFirestore();
     const [isCreateUserOpen, setIsCreateUserOpen] = useState(false);
-
-    const usersQuery = useMemoFirebase(() => {
-        if (isUserLoading || !firestore) return null;
-        return query(collection(firestore, 'users'));
-    }, [firestore, isUserLoading]);
-
-    const { data: users, isLoading } = useCollection<User>(usersQuery);
-
-    if (isLoading) return <UsersTableSkeleton />;
-
-    if (users) return (
-        <>
-            <UsersTable users={users} />
-            <CreateUserDialog isOpen={isCreateUserOpen} onOpenChange={setIsCreateUserOpen} />
-        </>
-    );
-
     return (
-        <div className="flex flex-1 items-center justify-center rounded-lg border border-dashed shadow-sm p-8">
-            <div className="flex flex-col items-center gap-1 text-center">
-                <h3 className="text-2xl font-bold tracking-tight">No se encontraron usuarios</h3>
-                <p className="text-sm text-muted-foreground">No hay usuarios registrados en el sistema.</p>
-                <Button className="mt-4" onClick={() => setIsCreateUserOpen(true)}>
-                    <PlusCircle className="mr-2 h-4 w-4" />
-                    Crear Primer Usuario
-                </Button>
-            </div>
-            <CreateUserDialog isOpen={isCreateUserOpen} onOpenChange={setIsCreateUserOpen} />
-        </div>
+      <>
+        <UsersTable />
+        <CreateUserDialog isOpen={isCreateUserOpen} onOpenChange={setIsCreateUserOpen} />
+      </>
     );
 }
 
