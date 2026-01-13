@@ -384,21 +384,30 @@ export default function EditTemplatePage() {
   const { data: users } = useCollection<UserType>(usersQuery);
 
   // Effect to populate state from fetched template data
-  useEffect(() => {
+    useEffect(() => {
     if (templateData) {
         setTemplateName(templateData.name || "");
         setTemplateDescription(templateData.description || "");
         setFields(templateData.fields || []);
-        const defaultPool: Pool = {
-            id: 'pool-default',
-            name: 'Proceso Principal',
-            lanes: [{
-                id: 'lane-default',
-                name: 'Actores Principales',
-                steps: templateData.steps || [],
-            }]
-        };
-        setPools((templateData as any).pools || [defaultPool]); 
+        
+        const allSteps = templateData.steps || [];
+        const templatePools = (templateData as any).pools as Pool[] | undefined;
+
+        if (templatePools && templatePools.length > 0) {
+            setPools(templatePools);
+        } else {
+             // Fallback to a default pool structure if `pools` is not defined
+            setPools([{
+                id: 'pool-default',
+                name: 'Proceso Principal',
+                lanes: [{
+                    id: 'lane-default',
+                    name: 'Actores Principales',
+                    steps: allSteps,
+                }]
+            }]);
+        }
+        
         setRules(templateData.rules || []);
     }
   }, [templateData]);

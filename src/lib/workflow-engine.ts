@@ -2,7 +2,7 @@
 
 'use server';
 
-import { Firestore, doc, collection } from 'firebase/firestore';
+import { Firestore, doc, collection, getDoc } from 'firebase/firestore';
 import type { Task, Request, Template, User, WorkflowStepDefinition, Rule } from './types';
 import { addDocumentNonBlocking, updateDocumentNonBlocking, setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import { intelligentTaskAssignment } from '@/ai/flows/intelligent-task-assignment';
@@ -488,39 +488,101 @@ export async function completeTaskAndProgressWorkflow({
 interface HandleEscalationParams {
     firestore: Firestore;
     task: Task;
-    currentUser: User;
     allUsers: User[];
 }
 
-export async function handleTaskEscalation({
-    firestore,
-    task,
-    allUsers
-}: HandleEscalationParams) {
+export async function handleTaskEscalation({ firestore, task, allUsers }: HandleEscalationParams) {
     console.log(`Handling escalation for overdue task: ${task.id}`);
-    const requestRef = doc(firestore, 'users', task.requestOwnerId, 'requests', task.requestId);
+    
+    // Mark task as escalated to prevent re-triggering
     const taskRef = doc(firestore, 'tasks', task.id);
-    const auditLogCollection = collection(requestRef, 'audit_logs');
-    const now = new Date().toISOString();
-
     updateDocumentNonBlocking(taskRef, { isEscalated: true });
 
-    // Placeholder: Need to get template to find the escalation policy.
-    // This requires another read, which we'll simulate for now.
-    // In a real app, you might denormalize the policy onto the task or request.
-    const stepDef: Partial<WorkflowStepDefinition> & { escalationPolicy?: any } = {}; // Mocked
+    // Fetch the request to get the templateId
+    const requestRef = doc(firestore, 'users', task.requestOwnerId, 'requests', task.requestId);
+    const requestSnap = await getDoc(requestRef);
+    if (!requestSnap.exists()) {
+        console.error(`Escalation failed: Request ${task.requestId} not found.`);
+        return;
+    }
+    const requestData = requestSnap.data() as Request;
 
-    if (stepDef.escalationPolicy?.action === 'REASSIGN' && stepDef.escalationPolicy.targetRole) {
-        // Reassign
-    } else { // Default to NOTIFY
-        const assignee = allUsers.find(u => u.id === task.assigneeId);
-        if (assignee) {
-            const notificationRef = collection(firestore, 'users', assignee.id, 'notifications');
-            addDocumentNonBlocking(notificationRef, {
-                title: 'Tarea Vencida',
-                message: `La tarea "${task.name}" ha superado su SLA.`,
-                type: 'warning', read: false, createdAt: now, link: `/requests/${task.requestId}`,
+    // Fetch the template to get the step definition and policy
+    const templateRef = doc(firestore, 'request_templates', requestData.templateId);
+    const templateSnap = await getDoc(templateRef);
+    if (!templateSnap.exists()) {
+        console.error(`Escalation failed: Template ${requestData.templateId} not found.`);
+        return;
+    }
+    const templateData = templateSnap.data() as Template;
+    const stepDef = templateData.steps.find(s => s.id === task.stepId);
+    if (!stepDef?.escalationPolicy) {
+        console.log(`No escalation policy for step ${task.name}. Defaulting to notify assignee.`);
+    }
+
+    const policy = stepDef?.escalationPolicy;
+    const now = new Date().toISOString();
+    const auditLogCollection = collection(requestRef, 'audit_logs');
+    
+    // --- Execute Escalation Action ---
+    if (policy?.action === 'REASSIGN' && policy.targetRole) {
+        console.log(`Reassigning task ${task.id} to role: ${policy.targetRole}`);
+        try {
+            const suggestion = await intelligentTaskAssignment({
+                taskDescription: `Reasignar tarea vencida: "${task.name}"`,
+                assigneeRole: policy.targetRole,
+                availableUsers: allUsers.map(u => ({ userId: u.id, fullName: u.fullName, department: u.department, skills: u.skills ?? [], currentWorkload: u.currentWorkload ?? 0, pastPerformance: 5 })),
             });
+            
+            if (suggestion.suggestedUserId) {
+                const newAssignee = allUsers.find(u => u.id === suggestion.suggestedUserId);
+                updateDocumentNonBlocking(taskRef, { assigneeId: suggestion.suggestedUserId });
+
+                // Update steps array in request
+                const updatedSteps = requestData.steps.map(s => s.id === task.stepId ? { ...s, assigneeId: suggestion.suggestedUserId } : s);
+                updateDocumentNonBlocking(requestRef, { steps: updatedSteps });
+
+                addDocumentNonBlocking(auditLogCollection, {
+                    requestId: requestData.id, userId: 'system', userFullName: 'FlowMaster AI', timestamp: now, action: 'AUDIT_LOG_ENTRY' as any,
+                    details: { message: `Tarea "${task.name}" reasignada a ${newAssignee?.fullName} debido a vencimiento de SLA.` }
+                });
+                
+                // Notify new assignee
+                const notificationRef = collection(firestore, 'users', suggestion.suggestedUserId, 'notifications');
+                addDocumentNonBlocking(notificationRef, {
+                    title: 'Tarea Urgente Reasignada', message: `Se te ha reasignado la tarea vencida "${task.name}".`,
+                    type: 'warning', read: false, createdAt: now, link: `/requests/${requestData.id}`,
+                });
+            }
+        } catch (error) {
+            console.error("Reassignment failed:", error);
+        }
+
+    } else { // Default action is NOTIFY
+        console.log(`Notifying for overdue task: ${task.id}`);
+        const targets = policy?.notify || ['assignee'];
+        
+        for (const target of targets) {
+            let userToNotify: User | undefined;
+            if (target === 'assignee') {
+                userToNotify = allUsers.find(u => u.id === task.assigneeId);
+            } else if (target === 'manager') {
+                const assignee = allUsers.find(u => u.id === task.assigneeId);
+                userToNotify = allUsers.find(u => u.id === assignee?.managerId);
+            }
+            
+            if (userToNotify) {
+                const notificationRef = collection(firestore, 'users', userToNotify.id, 'notifications');
+                addDocumentNonBlocking(notificationRef, {
+                    title: 'Tarea Vencida',
+                    message: `La tarea "${task.name}" para la solicitud "${task.requestTitle}" ha superado su SLA.`,
+                    type: 'warning', read: false, createdAt: now, link: `/requests/${requestData.id}`,
+                });
+                addDocumentNonBlocking(auditLogCollection, {
+                    requestId: requestData.id, userId: 'system', userFullName: 'FlowMaster AI', timestamp: now, action: 'AUDIT_LOG_ENTRY' as any,
+                    details: { message: `Notificación de SLA vencido enviada a ${userToNotify.fullName}.` }
+                });
+            }
         }
     }
 }
