@@ -86,7 +86,7 @@ export async function evaluateAndExecuteRules({
                 case 'CHANGE_REQUEST_PRIORITY':
                     updateDocumentNonBlocking(requestRef, { priority: rule.action.priority });
                      addDocumentNonBlocking(auditLogCollection, {
-                        requestId: request.id, userId: 'system', userFullName: 'FlowMaster AI', timestamp: now, action: 'AUDIT_LOG_ENTRY' as any, // This should be a valid action
+                        requestId: request.id, userId: 'system', userFullName: 'FlowMaster AI', timestamp: now, action: 'REQUEST_SUBMITTED' as any, // This should be a valid action
                         details: { message: `La prioridad de la solicitud cambió a "${rule.action.priority}" por una regla de negocio.` }
                     });
                     break;
@@ -488,10 +488,11 @@ export async function completeTaskAndProgressWorkflow({
 interface HandleEscalationParams {
     firestore: Firestore;
     task: Task;
+    currentUser: User;
     allUsers: User[];
 }
 
-export async function handleTaskEscalation({ firestore, task, allUsers }: HandleEscalationParams) {
+export async function handleTaskEscalation({ firestore, task, currentUser, allUsers }: HandleEscalationParams) {
     console.log(`Handling escalation for overdue task: ${task.id}`);
     
     // Mark task as escalated to prevent re-triggering
@@ -543,7 +544,7 @@ export async function handleTaskEscalation({ firestore, task, allUsers }: Handle
                 updateDocumentNonBlocking(requestRef, { steps: updatedSteps });
 
                 addDocumentNonBlocking(auditLogCollection, {
-                    requestId: requestData.id, userId: 'system', userFullName: 'FlowMaster AI', timestamp: now, action: 'AUDIT_LOG_ENTRY' as any,
+                    requestId: requestData.id, userId: 'system', userFullName: 'FlowMaster AI', timestamp: now, action: 'REQUEST_SUBMITTED' as any,
                     details: { message: `Tarea "${task.name}" reasignada a ${newAssignee?.fullName} debido a vencimiento de SLA.` }
                 });
                 
@@ -579,7 +580,7 @@ export async function handleTaskEscalation({ firestore, task, allUsers }: Handle
                     type: 'warning', read: false, createdAt: now, link: `/requests/${requestData.id}`,
                 });
                 addDocumentNonBlocking(auditLogCollection, {
-                    requestId: requestData.id, userId: 'system', userFullName: 'FlowMaster AI', timestamp: now, action: 'AUDIT_LOG_ENTRY' as any,
+                    requestId: requestData.id, userId: 'system', userFullName: 'FlowMaster AI', timestamp: now, action: 'REQUEST_SUBMITTED' as any,
                     details: { message: `Notificación de SLA vencido enviada a ${userToNotify.fullName}.` }
                 });
             }

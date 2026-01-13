@@ -23,6 +23,7 @@ import { Badge } from "../ui/badge";
 import { TableSkeleton } from "../ui/table-skeleton";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useFirestore, useUser, useCollection, useMemoFirebase } from "@/firebase";
+import { collection } from "firebase/firestore";
 import { handleTaskEscalation } from "@/lib/workflow-engine";
 
 const PAGE_SIZE = 10;
