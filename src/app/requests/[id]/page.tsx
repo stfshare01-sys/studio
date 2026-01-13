@@ -5,7 +5,7 @@
 import SiteLayout from "@/components/site-layout";
 import { notFound, useParams } from "next/navigation";
 import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser, useStorage } from "@/firebase";
-import { doc, collection, query, serverTimestamp, orderBy, updateDoc, collectionGroup, where, getDocs, limit } from "firebase/firestore";
+import { doc, collection, query, serverTimestamp, orderBy, updateDoc, collectionGroup, where, getDocs, limit, getDoc } from "firebase/firestore";
 import { ref, deleteObject } from "firebase/storage";
 import type { Request as RequestType, EnrichedRequest, User, EnrichedWorkflowStep, Template, Comment as CommentType, EnrichedComment, AuditLog, FormField, Document as DocumentType, Task, WorkflowStepDefinition } from "@/lib/types";
 import { ArrowLeft, User as UserIcon, Paperclip, Send, Trash2, CheckCircle, AlertTriangle } from "lucide-react";
@@ -156,11 +156,10 @@ export default function RequestDetailPage() {
         if (isUserLoading || !firestore || !user) return;
 
         // 1. Try to find the request under the current user's path (most common case for submitters)
-        const userSpecificRequestRef = doc(firestore, 'users', user.uid, 'requests', id);
-        const userSpecificSnap = await getDocs(query(collection(firestore, 'users', user.uid, 'requests'), where('id', '==', id)));
+        let userSpecificSnap = await getDoc(doc(firestore, 'users', user.uid, 'requests', id));
 
-        if (!userSpecificSnap.empty) {
-            setRequestRef(userSpecificSnap.docs[0].ref);
+        if (userSpecificSnap.exists()) {
+            setRequestRef(userSpecificSnap.ref);
             return;
         }
         
