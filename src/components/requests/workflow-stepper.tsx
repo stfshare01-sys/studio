@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState } from "react";
@@ -106,7 +107,9 @@ function ReassignTaskDialog({ task, request, allUsers, onReassign }: { task: Tas
                         </SelectTrigger>
                         <SelectContent>
                             {allUsers.map(user => (
-                                <SelectItem key={user.id} value={user.id}>{user.fullName} ({user.department})</SelectItem>
+                                <SelectItem key={user.id} value={user.id} disabled={user.id === task.assigneeId}>
+                                    {user.fullName} ({user.department})
+                                </SelectItem>
                             ))}
                         </SelectContent>
                     </Select>

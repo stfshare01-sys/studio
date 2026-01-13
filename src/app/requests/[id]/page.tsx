@@ -5,7 +5,7 @@
 import SiteLayout from "@/components/site-layout";
 import { notFound, useParams } from "next/navigation";
 import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser, useStorage } from "@/firebase";
-import { doc, collection, query, serverTimestamp, orderBy, updateDoc } from "firebase/firestore";
+import { doc, collection, query, serverTimestamp, orderBy, updateDoc, collectionGroup, where, getDocs, limit } from "firebase/firestore";
 import { ref, deleteObject } from "firebase/storage";
 import type { Request as RequestType, EnrichedRequest, User, EnrichedWorkflowStep, Template, Comment as CommentType, EnrichedComment, AuditLog, FormField, Document as DocumentType, Task, WorkflowStepDefinition } from "@/lib/types";
 import { ArrowLeft, User as UserIcon, Paperclip, Send, Trash2, CheckCircle, AlertTriangle } from "lucide-react";
@@ -148,17 +148,57 @@ export default function RequestDetailPage() {
   const isAdmin = user?.role === 'Admin';
   const { toast } = useToast();
 
+  const [requestRef, setRequestRef] = useState<any>(null);
   const [newComment, setNewComment] = useState("");
+  
+  useEffect(() => {
+    async function findRequestRef() {
+        if (isUserLoading || !firestore || !user) return;
 
-  const requestRef = useMemoFirebase(() => {
-    if (isUserLoading || !firestore || !user?.uid) return null;
-    // Admins need a different path to access any user's request
-    // This is a simplified approach. A real-world app might need a collection group query
-    // or a different data structure if admins need to view all requests.
-    // For now, we assume admin can only view their own requests via this detail page.
-    // This will be fixed later with a proper admin view.
-    return doc(firestore, 'users', user.uid, 'requests', id);
-  }, [firestore, user?.uid, id, isUserLoading]);
+        // 1. Try to find the request under the current user's path (most common case for submitters)
+        const userSpecificRequestRef = doc(firestore, 'users', user.uid, 'requests', id);
+        const userSpecificSnap = await getDocs(query(collection(firestore, 'users', user.uid, 'requests'), where('id', '==', id)));
+
+        if (!userSpecificSnap.empty) {
+            setRequestRef(userSpecificSnap.docs[0].ref);
+            return;
+        }
+        
+        // 2. If not found and user is admin, search across all requests using a collection group query.
+        if (isAdmin) {
+            const requestsCollectionGroup = collectionGroup(firestore, 'requests');
+            const q = query(requestsCollectionGroup, where('id', '==', id), limit(1));
+            const querySnapshot = await getDocs(q);
+
+            if (!querySnapshot.empty) {
+                setRequestRef(querySnapshot.docs[0].ref);
+                return;
+            }
+        }
+        
+        // 3. Fallback for managers - find if a task in this request is assigned to their direct reports
+        const myTeamIds = (await getDocs(query(collection(firestore, 'users'), where('managerId', '==', user.uid)))).docs.map(d => d.id);
+        if (myTeamIds.length > 0) {
+            const tasksInRequestQuery = query(collection(firestore, 'tasks'), where('requestId', '==', id), where('assigneeId', 'in', myTeamIds));
+            const tasksSnapshot = await getDocs(tasksInRequestQuery);
+            if (!tasksSnapshot.empty) {
+                // Found a task assigned to my team, now find the request document itself
+                 const requestsCollectionGroup = collectionGroup(firestore, 'requests');
+                 const q = query(requestsCollectionGroup, where('id', '==', id), limit(1));
+                 const querySnapshot = await getDocs(q);
+                 if (!querySnapshot.empty) {
+                     setRequestRef(querySnapshot.docs[0].ref);
+                     return;
+                 }
+            }
+        }
+        
+        // If still not found after all checks, it's a true notFound situation for this user
+        setRequestRef(null);
+    }
+    findRequestRef();
+  }, [firestore, user, id, isUserLoading, isAdmin]);
+
 
   const { data: request, isLoading: isRequestLoading, forceRefetch } = useDoc<RequestType>(requestRef);
 
@@ -192,19 +232,17 @@ export default function RequestDetailPage() {
   const [enrichedRequest, setEnrichedRequest] = useState<EnrichedRequest | null>(null);
 
   useEffect(() => {
-    if (request && template && user) {
-        if ((isAdmin && users) || !isAdmin) {
-            const userList = users || [user];
-            const submittedByUser = userList.find(u => u.id === request.submittedBy) ?? { id: request.submittedBy, fullName: "Usuario Desconocido", email: "", department: "", role: "Member" };
-            const enrichedSteps: EnrichedWorkflowStep[] = request.steps.map(s => {
-                const assignee = userList.find(u => u.id === s.assigneeId);
-                return {
-                    ...s,
-                    assignee: assignee ?? (s.assigneeId ? { id: s.assigneeId, fullName: "Usuario Asignado", email: "", department: "", role: "Member" } : null),
-                }
-            });
-            setEnrichedRequest({ ...request, template, submittedBy: submittedByUser, steps: enrichedSteps });
-        }
+    if (request && template && user && users) {
+        const userList = users || [user];
+        const submittedByUser = userList.find(u => u.id === request.submittedBy) ?? { id: request.submittedBy, fullName: "Usuario Desconocido", email: "", department: "", role: "Member", status: 'active' };
+        const enrichedSteps: EnrichedWorkflowStep[] = request.steps.map(s => {
+            const assignee = userList.find(u => u.id === s.assigneeId);
+            return {
+                ...s,
+                assignee: assignee ?? (s.assigneeId ? { id: s.assigneeId, fullName: "Usuario Asignado", email: "", department: "", role: "Member", status: 'active' } : null),
+            }
+        });
+        setEnrichedRequest({ ...request, template, submittedBy: submittedByUser, steps: enrichedSteps });
     }
   }, [request, users, template, user, isAdmin]);
 
@@ -281,9 +319,9 @@ export default function RequestDetailPage() {
       }
   };
 
-  const isLoading = isUserLoading || isRequestLoading || areUsersLoading || isTemplateLoading || areAuditLogsLoading;
+  const isLoading = isUserLoading || !requestRef || isRequestLoading || areUsersLoading || isTemplateLoading || areAuditLogsLoading;
 
-  if (isLoading) {
+  if (isLoading && !request) {
     return <SiteLayout><RequestDetailSkeleton /></SiteLayout>;
   }
 
