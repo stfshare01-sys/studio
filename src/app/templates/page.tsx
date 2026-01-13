@@ -84,7 +84,7 @@ export default function TemplatesPage() {
                 </CardHeader>
                 <CardContent className="flex-grow">
                     <div className="text-sm font-medium">
-                    {template.fields.length} campos, {template.steps.length} pasos
+                    {template.steps.length} campos, {template.steps.length} pasos
                     </div>
                 </CardContent>
                 <CardFooter className="grid grid-cols-2 gap-2">
@@ -144,3 +144,5 @@ export default function TemplatesPage() {
     </SiteLayout>
   );
 }
+
+    

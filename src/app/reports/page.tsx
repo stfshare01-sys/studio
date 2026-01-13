@@ -366,11 +366,17 @@ export default function ReportsPage() {
     
     return (
         <SiteLayout>
-            <div className="flex flex-1 flex-col p-4 pt-0 sm:p-6 sm:pt-0">
-                {isAuthLoading && <ReportsSkeleton />}
-                {!isAuthLoading && !isAdmin && <AccessDenied />}
-                {!isAuthLoading && isAdmin && <ReportsView />}
+            <div className="flex flex-1 flex-col p-4 pt-6 sm:p-6">
+                {isAuthLoading ? (
+                    <ReportsSkeleton />
+                ) : isAdmin ? (
+                    <ReportsView />
+                ) : (
+                    <AccessDenied />
+                )}
             </div>
         </SiteLayout>
     );
 }
+
+    
