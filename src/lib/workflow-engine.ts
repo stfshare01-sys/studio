@@ -484,3 +484,43 @@ export async function completeTaskAndProgressWorkflow({
         });
     }
 }
+
+interface HandleEscalationParams {
+    firestore: Firestore;
+    task: Task;
+    currentUser: User;
+    allUsers: User[];
+}
+
+export async function handleTaskEscalation({
+    firestore,
+    task,
+    allUsers
+}: HandleEscalationParams) {
+    console.log(`Handling escalation for overdue task: ${task.id}`);
+    const requestRef = doc(firestore, 'users', task.requestOwnerId, 'requests', task.requestId);
+    const taskRef = doc(firestore, 'tasks', task.id);
+    const auditLogCollection = collection(requestRef, 'audit_logs');
+    const now = new Date().toISOString();
+
+    updateDocumentNonBlocking(taskRef, { isEscalated: true });
+
+    // Placeholder: Need to get template to find the escalation policy.
+    // This requires another read, which we'll simulate for now.
+    // In a real app, you might denormalize the policy onto the task or request.
+    const stepDef: Partial<WorkflowStepDefinition> & { escalationPolicy?: any } = {}; // Mocked
+
+    if (stepDef.escalationPolicy?.action === 'REASSIGN' && stepDef.escalationPolicy.targetRole) {
+        // Reassign
+    } else { // Default to NOTIFY
+        const assignee = allUsers.find(u => u.id === task.assigneeId);
+        if (assignee) {
+            const notificationRef = collection(firestore, 'users', assignee.id, 'notifications');
+            addDocumentNonBlocking(notificationRef, {
+                title: 'Tarea Vencida',
+                message: `La tarea "${task.name}" ha superado su SLA.`,
+                type: 'warning', read: false, createdAt: now, link: `/requests/${task.requestId}`,
+            });
+        }
+    }
+}

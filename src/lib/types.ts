@@ -13,10 +13,17 @@ export type User = {
   currentWorkload?: number;
   role: UserRole;
   status: UserStatus;
+  managerId?: string; // ID of the user's manager
 };
 
 // Represents a step within a template, before it becomes a live task
 export type WorkflowStepType = 'task' | 'gateway-exclusive' | 'gateway-parallel';
+
+export type EscalationPolicy = {
+    action: 'NOTIFY' | 'REASSIGN';
+    targetRole?: string; // For REASSIGN action
+    notify: ('assignee' | 'manager' | 'submitter')[];
+};
 
 export type WorkflowStepDefinition = {
   id: string;
@@ -26,6 +33,7 @@ export type WorkflowStepDefinition = {
   // For exclusive gateways, defines possible outcomes
   outcomes?: string[];
   slaHours?: number; // Service Level Agreement in hours
+  escalationPolicy?: EscalationPolicy;
 };
 
 export type TaskStatus = 'Completed' | 'Pending' | 'Active';
@@ -44,6 +52,7 @@ export type Task = {
   createdAt: string; // Timestamp when the task was created
   activatedAt?: string; // Timestamp when the task became active
   slaExpiresAt?: string; // Timestamp when the SLA for this task expires
+  isEscalated?: boolean; // Flag to prevent multiple escalations
 };
 
 export type Document = {

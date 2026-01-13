@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { PlusCircle, Trash2, GitBranch, ShieldCheck, CheckCircle, GitMerge, GitFork, Library, WandSparkles, Loader2, UserSquare, Pencil, GripVertical, X, AlertTriangle, User, Bell, ChevronsRight, Hash, CaseSensitive, Timer } from "lucide-react";
+import { PlusCircle, Trash2, GitBranch, ShieldCheck, CheckCircle, GitMerge, GitFork, Library, WandSparkles, Loader2, UserSquare, Pencil, GripVertical, X, AlertTriangle, User, Bell, ChevronsRight, Hash, CaseSensitive, Timer, Siren } from "lucide-react";
 import Link from "next/link";
 import {
   Dialog,
@@ -38,12 +38,13 @@ import { useToast } from "@/hooks/use-toast";
 import { useCollection, useDoc, useFirestore, useMemoFirebase, updateDocumentNonBlocking } from "@/firebase";
 import { collection, doc } from "firebase/firestore";
 import { useRouter, useParams } from "next/navigation";
-import type { FormField, WorkflowStepDefinition, Rule, RuleCondition, RuleAction, WorkflowStepType, FormFieldType, RuleOperator, User as UserType, RequestPriority, UserRole, Template } from "@/lib/types";
+import type { FormField, WorkflowStepDefinition, Rule, RuleCondition, RuleAction, WorkflowStepType, FormFieldType, RuleOperator, User as UserType, RequestPriority, UserRole, EscalationPolicy } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { generateProcessFromDescription, GenerateProcessOutput } from "@/ai/flows/process-generation";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Checkbox } from "@/components/ui/checkbox";
 
 
 const BpmnIcon = ({ type, className }: { type: WorkflowStepType, className?: string }) => {
@@ -186,6 +187,10 @@ function SortableStep({
         onUpdateStep(poolId, laneId, step.id, { outcomes: updatedOutcomes });
     };
 
+    const updateEscalationPolicy = (updates: Partial<EscalationPolicy>) => {
+        onUpdateStep(poolId, laneId, step.id, { escalationPolicy: { ...step.escalationPolicy, ...updates } as EscalationPolicy });
+    }
+
     return (
         <div ref={setNodeRef} style={style} className="group flex items-start gap-3 rounded-md p-2 border text-sm bg-card hover:bg-muted">
             <button {...attributes} {...listeners} className="cursor-grab p-1 mt-1">
@@ -199,7 +204,7 @@ function SortableStep({
                     className="h-8 border-none focus-visible:ring-1 focus-visible:ring-ring bg-transparent p-0"
                     placeholder="Nombre del paso"
                 />
-                 <div className="flex items-center gap-1 text-muted-foreground">
+                 <div className="flex flex-wrap items-center gap-1 text-muted-foreground">
                     <Popover>
                         <PopoverTrigger asChild>
                             <Button variant="ghost" size="sm" className="h-auto p-1">
@@ -253,7 +258,7 @@ function SortableStep({
                                 </div>
                             </PopoverContent>
                         </Popover>
-
+                        
                         <Popover>
                             <PopoverTrigger asChild>
                                 <Button variant="ghost" size="sm" className="h-auto p-1">
@@ -273,6 +278,49 @@ function SortableStep({
                                         onChange={(e) => onUpdateStep(poolId, laneId, step.id, { slaHours: e.target.value ? Number(e.target.value) : undefined })}
                                         className="h-8"
                                     />
+                                </div>
+                            </PopoverContent>
+                        </Popover>
+                        
+                        <Popover>
+                            <PopoverTrigger asChild>
+                                <Button variant="ghost" size="sm" className="h-auto p-1">
+                                    <Siren className="h-3.5 w-3.5 mr-1" />
+                                    <span className="text-xs">Escalado: {step.escalationPolicy?.action || 'Ninguno'}</span>
+                                    <Pencil className="h-3 w-3 ml-1 opacity-0 group-hover:opacity-100" />
+                                </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-64 p-2" align="start">
+                                <div className="space-y-3">
+                                    <Label className="text-xs">Política de Escalado por SLA</Label>
+                                    <div className="space-y-2">
+                                        <Label htmlFor={`esc-action-${step.id}`} className="text-xs font-normal">Acción</Label>
+                                        <Select
+                                            value={step.escalationPolicy?.action}
+                                            onValueChange={(val) => updateEscalationPolicy({ action: val as 'NOTIFY' | 'REASSIGN' })}
+                                        >
+                                            <SelectTrigger id={`esc-action-${step.id}`} className="h-8"><SelectValue placeholder="Seleccionar acción..." /></SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="NOTIFY">Notificar</SelectItem>
+                                                <SelectItem value="REASSIGN">Reasignar</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    {step.escalationPolicy?.action === 'NOTIFY' && (
+                                        <div className="space-y-2 pl-2 border-l-2 ml-1">
+                                            <Label className="text-xs font-normal">Notificar a</Label>
+                                            <div className="space-y-1">
+                                                <div className="flex items-center gap-2"><Checkbox id={`esc-notify-assignee-${step.id}`} checked={step.escalationPolicy.notify?.includes('assignee')} onCheckedChange={(checked) => updateEscalationPolicy({ notify: checked ? [...(step.escalationPolicy.notify || []), 'assignee'] : (step.escalationPolicy.notify || []).filter(n => n !== 'assignee') })} /><Label htmlFor={`esc-notify-assignee-${step.id}`} className="text-xs font-normal">Asignado Actual</Label></div>
+                                                <div className="flex items-center gap-2"><Checkbox id={`esc-notify-manager-${step.id}`} checked={step.escalationPolicy.notify?.includes('manager')} onCheckedChange={(checked) => updateEscalationPolicy({ notify: checked ? [...(step.escalationPolicy.notify || []), 'manager'] : (step.escalationPolicy.notify || []).filter(n => n !== 'manager') })} /><Label htmlFor={`esc-notify-manager-${step.id}`} className="text-xs font-normal">Gerente del Asignado</Label></div>
+                                            </div>
+                                        </div>
+                                    )}
+                                    {step.escalationPolicy?.action === 'REASSIGN' && (
+                                        <div className="space-y-2 pl-2 border-l-2 ml-1">
+                                            <Label htmlFor={`esc-target-${step.id}`} className="text-xs font-normal">Reasignar a Rol</Label>
+                                            <Input id={`esc-target-${step.id}`} placeholder="Ej: Gerentes de TI" value={step.escalationPolicy.targetRole || ''} onChange={e => updateEscalationPolicy({ targetRole: e.target.value })} className="h-8" />
+                                        </div>
+                                    )}
                                 </div>
                             </PopoverContent>
                         </Popover>
@@ -341,9 +389,6 @@ export default function EditTemplatePage() {
         setTemplateName(templateData.name || "");
         setTemplateDescription(templateData.description || "");
         setFields(templateData.fields || []);
-        // The 'pools' data structure is not part of the 'Template' type yet.
-        // We'll assume a flat `steps` array for now and handle pools later.
-        // For now, let's create a default pool and lane.
         const defaultPool: Pool = {
             id: 'pool-default',
             name: 'Proceso Principal',
@@ -353,7 +398,7 @@ export default function EditTemplatePage() {
                 steps: templateData.steps || [],
             }]
         };
-        setPools((templateData as any).pools || [defaultPool]); // Use pools if they exist, otherwise fallback
+        setPools((templateData as any).pools || [defaultPool]); 
         setRules(templateData.rules || []);
     }
   }, [templateData]);
