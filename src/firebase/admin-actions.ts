@@ -16,15 +16,27 @@ async function callAdminBackend(action: string, payload: any) {
     
     // Simulate updating Firestore from the "backend"
     const { firestore } = initializeFirebase();
+
     if (action === 'toggleUserStatus' && payload.uid) {
         const userRef = doc(firestore, 'users', payload.uid);
         updateDocumentNonBlocking(userRef, { status: payload.enable ? 'active' : 'disabled' });
     }
+
+    if (action === 'updateUserRole' && payload.uid) {
+        // This simulates updating the Firestore doc AND setting a custom claim.
+        console.log(`[SIMULATED ADMIN ACTION] Setting role claim for ${payload.uid} to "${payload.role}"`);
+        const userRef = doc(firestore, 'users', payload.uid);
+        updateDocumentNonBlocking(userRef, { role: payload.role });
+    }
+
      if (action === 'createUser' && payload.email) {
         // This is a very simplified simulation. A real backend would use the Admin SDK
         // to create a user, which returns a UID. We'll generate a mock UID.
         const mockUid = `mock_${Date.now()}`;
         console.log(`[SIMULATED ADMIN ACTION] Generated mock UID: ${mockUid}`);
+
+        // In a real scenario, the Admin SDK would also set the custom claim here.
+        console.log(`[SIMULATED ADMIN ACTION] Setting role claim for ${mockUid} to "${payload.role}"`);
 
         const userRef = doc(firestore, 'users', mockUid);
         setDocumentNonBlocking(userRef, {
@@ -85,5 +97,23 @@ export async function createNewUser(payload: CreateUserPayload): Promise<{ succe
     } catch (error) {
         console.error(`Error creando nuevo usuario:`, error);
         throw new Error('No se pudo crear el nuevo usuario.');
+    }
+}
+
+/**
+ * Updates a user's role, simulating a backend call that sets a custom claim.
+ * @param uid The UID of the user.
+ * @param role The new role to assign.
+ */
+export async function updateUserRole(uid: string, role: UserRole): Promise<void> {
+    const action = 'updateUserRole';
+    try {
+        const result = await callAdminBackend(action, { uid, role });
+        if (!result.success) {
+            throw new Error('La actualización de rol simulada falló.');
+        }
+    } catch (error) {
+        console.error(`Error al actualizar el rol para el usuario ${uid}:`, error);
+        throw new Error('No se pudo actualizar el rol del usuario.');
     }
 }

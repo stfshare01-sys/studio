@@ -76,14 +76,9 @@ export function CreateUserDialog({ isOpen, onOpenChange }: CreateUserDialogProps
 
         setIsSubmitting(true);
         try {
-            await createNewUser({
-                email: formData.email,
-                fullName: formData.fullName,
-                department: formData.department,
-                role: formData.role,
-            });
-            // NOTE: In a real app, the password would be sent securely to the admin function.
-            // Here, we just acknowledge it was "used".
+            // The admin action now also simulates setting custom claims
+            await createNewUser(formData);
+            
             toast({
                 title: "Usuario Creado",
                 description: `Se ha creado la cuenta para ${formData.fullName}.`,
@@ -140,6 +135,7 @@ export function CreateUserDialog({ isOpen, onOpenChange }: CreateUserDialogProps
                             </SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="Admin">Admin</SelectItem>
+                                <SelectItem value="Designer">Diseñador de Procesos</SelectItem>
                                 <SelectItem value="Member">Miembro</SelectItem>
                             </SelectContent>
                         </Select>

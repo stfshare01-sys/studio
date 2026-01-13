@@ -1,6 +1,6 @@
 
 
-export type UserRole = 'Admin' | 'Member';
+export type UserRole = 'Admin' | 'Member' | 'Designer';
 export type UserStatus = 'active' | 'disabled';
 
 export type User = {

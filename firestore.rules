@@ -1,34 +1,4 @@
 
-/**
- * # Firestore Security Rules: FlowMaster Prototyping
- *
- * ## Core Philosophy
- * This ruleset enforces a strict user-ownership security model. All user-generated
- * data (like Requests, Workflow Steps, and Documents) is stored in subcollections
- * under that user's private document tree. Access is fundamentally controlled by
- * the path of the document, ensuring users can only interact with their own data.
- * Publicly accessible data, like request templates, is structurally segregated
- * into its own top-level collection with read-only permissions for all users.
- *
- * ## Data Structure
- * - `/request_templates/{requestTemplateId}`: A public, read-only collection of available workflow templates.
- * - `/users/{userId}`: A collection of user profiles. Each user can only access and manage their own document.
- * - `/users/{userId}/requests/{requestId}`: A private subcollection where each user stores their submitted requests.
- * - `/tasks/{taskId}`: A centralized collection for all actionable tasks. Access is controlled by the `assigneeId` field.
- * - `/users/{userId}/requests/{requestId}/...`: Deeper subcollections for documents, inheriting ownership from the parent request.
- *
- * ## Key Security Decisions
- * - **Strict Ownership**: All data under `/users/{userId}` is accessible only to the authenticated user whose UID matches `{userId}`.
- * - **No User Enumeration (for non-admins)**: Listing documents in the top-level `/users` collection is disallowed for regular users to protect privacy. Admins are an exception.
- * - **Public Read-Only Templates**: Request templates are readable by anyone (including unauthenticated users) to allow for a flexible UI, but are not writable by clients to protect their integrity.
- * - **Task-Based Access**: Users can read tasks assigned to them from the `/tasks` collection. They can update tasks if they are the assignee.
- *
- * ## Denormalization for Authorization
- * To ensure fast and secure authorization, rules rely on denormalized fields. For example, a new document in `/users/{userId}/requests/{requestId}` must contain a `submittedBy` field that matches `{userId}`.
- *
- * ## Structural Segregation
- * The separation of public data (`/request_templates`) from private user data (`/users`) is a deliberate choice. The introduction of the `/tasks` collection is another example, allowing for efficient, secure queries on assigned tasks without exposing unrelated data.
- */
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -37,46 +7,22 @@ service cloud.firestore {
     // Helper Functions
     // -------------------------------------------------------------------------
 
-    /**
-     * Verifies that a user is signed in.
-     */
     function isSignedIn() {
       return request.auth != null;
     }
+    
+    // NEW: Check role from the custom token claim. Much more efficient.
+    function hasRole(role) {
+      return isSignedIn() && request.auth.token.role == role;
+    }
 
-    /**
-     * Verifies that the currently signed-in user's UID matches the
-     * provided `userId`. This is the primary ownership check.
-     */
     function isOwner(userId) {
       return isSignedIn() && request.auth.uid == userId;
     }
     
     function isOwnerOrAdmin(userId) {
-      return isOwner(userId) || isAdmin();
+      return isOwner(userId) || hasRole('Admin');
     }
-
-    /**
-     * Verifies ownership for an existing document. Used for update/delete
-     * operations to prevent acting on non-existent data.
-     */
-    function isExistingOwner(userId) {
-      return isOwner(userId) && resource != null;
-    }
-
-    /**
-     * Checks if the requesting user has the 'Admin' role.
-     * This requires a get() call to the user's own profile document.
-     * IMPORTANT: Safely handles the case where the user document doesn't exist yet.
-     */
-    function isAdmin() {
-      // Check if the user is signed in and their role in the /users collection is 'Admin'.
-      // This is a potentially expensive operation as it performs a document read.
-      // Use this function judiciously in your rules.
-      let userDoc = get(/databases/$(database)/documents/users/$(request.auth.uid));
-      return isSignedIn() && userDoc != null && userDoc.data != null && userDoc.data.role == 'Admin';
-    }
-
 
     // -------------------------------------------------------------------------
     // Collection Rules
@@ -87,32 +33,29 @@ service cloud.firestore {
      * @path /request_templates/{requestTemplateId}
      */
     match /request_templates/{requestTemplateId} {
-      allow get, list: if true;
-      // Admins should be able to create/update templates in the future
-      allow write: if isAdmin();
+      allow get, list: if isSignedIn();
+      // Allow create, update, delete only for Admins or Designers
+      allow write: if hasRole('Admin') || hasRole('Designer');
     }
 
     /**
-     * @description Manages user profiles. A user can read/update their own profile. Admins can read all profiles and update any profile.
+     * @description Manages user profiles. A user can read/update their own profile. Admins can manage all profiles.
      * @path /users/{userId}
      */
     match /users/{userId} {
       allow get: if isOwnerOrAdmin(userId);
-      allow list: if isAdmin();
+      allow list: if hasRole('Admin'); // Only Admins can list all users
       allow create: if isOwner(userId) && request.resource.data.id == userId;
-      allow update: if isOwnerOrAdmin(userId);
-      allow delete: if isAdmin(); // Only admins can delete users
+      allow update: if isOwnerOrAdmin(userId); // Users can update their own profile, Admins can update any
+      allow delete: if hasRole('Admin'); // Only admins can delete users
 
       /**
        * @description Manages user notifications. Only the owner can read, update, or delete their notifications.
        * @path /users/{userId}/notifications/{notificationId}
        */
       match /notifications/{notificationId} {
-        // User can read their own notifications
         allow get, list: if isOwner(userId);
-        // System or admin can create notifications for a user, or a user can create for themselves
-        allow create: if isOwner(userId) || isAdmin();
-        // User can mark as read or delete their notifications
+        allow create: if isOwner(userId) || hasRole('Admin'); // System (via admin) can create notifications
         allow update, delete: if isOwner(userId);
       }
     }
@@ -122,55 +65,31 @@ service cloud.firestore {
      * @path /users/{userId}/requests/{requestId}
      */
     match /users/{userId}/requests/{requestId} {
-      // Collection group query for reports page
-      allow list: if isAdmin();
+      allow list: if hasRole('Admin');
       allow get, create, update, delete: if isOwner(userId);
 
-      /**
-       * @description Manages documents attached to a specific request. Access is inherited from the parent request's owner.
-       * @path /users/{userId}/requests/{requestId}/documents/{documentId}
-       */
       match /documents/{documentId} {
-        allow get, list: if isOwner(userId);
-        allow create: if isOwner(userId) && request.resource.data.requestId == requestId;
-        allow update: if isExistingOwner(userId) && request.resource.data.requestId == resource.data.requestId;
-        allow delete: if isExistingOwner(userId);
+        allow get, list, create, update, delete: if isOwner(userId);
       }
 
-      /**
-       * @description Manages comments on a specific request. Access is inherited from the parent request's owner.
-       * @path /users/{userId}/requests/{requestId}/comments/{commentId}
-       */
       match /comments/{commentId} {
-        // Any user involved in the request should be able to read/write comments.
-        // For simplicity, we'll stick to owner-only for now.
-        allow get, list: if isOwner(userId) || isAdmin();
-        allow create: if isOwner(userId) && request.resource.data.authorId == userId;
-        allow update, delete: if isOwner(userId) && request.resource.data.authorId == resource.data.authorId;
+        allow get, list, create, update, delete: if isOwner(userId) || hasRole('Admin');
       }
 
-      /**
-       * @description Manages the immutable audit trail for a request.
-       * @path /users/{userId}/requests/{requestId}/audit_logs/{auditLogId}
-       */
       match /audit_logs/{auditLogId} {
-        // Owner and admins can read the history.
-        allow get, list: if isOwner(userId) || isAdmin();
-        // Only the system (via user's credentials) can create new logs.
-        allow create: if isOwner(userId) || isAdmin(); // Allow admin for system actions
-        // NO ONE can update or delete audit logs. This ensures immutability.
-        allow update, delete: if false;
+        allow get, list: if isOwnerOrAdmin(userId);
+        allow create: if isOwnerOrAdmin(userId);
+        allow update, delete: if false; // Immutable
       }
     }
     
     /**
      * @description Allows collection group queries on requests for admin users.
-     * This is necessary for the Reports, Process Mining and Global Search pages which need to
-     * query all requests across all users using collectionGroup().
      * @path /{path=**}/requests/{requestId}
      */
     match /{path=**}/requests/{requestId} {
-      allow read: if isAdmin();
+      // Admins can read all requests across all users for reporting/search
+      allow read: if hasRole('Admin');
     }
 
     /**
@@ -178,16 +97,21 @@ service cloud.firestore {
      * @path /tasks/{taskId}
      */
     match /tasks/{taskId} {
-      // Allow reading a single task if you are the assignee. Admins can read any task.
-      allow get: if isSignedIn() && (request.auth.uid == resource.data.assigneeId || isAdmin());
-      // Allow any signed-in user to list all tasks for analytics purposes on the dashboard.
+      // Allow reading a single task if you are the assignee, owner of the request, or an admin.
+      allow get: if isSignedIn() && (request.auth.uid == resource.data.assigneeId || request.auth.uid == resource.data.requestOwnerId || hasRole('Admin'));
+      
+      // Allow any signed-in user to list all tasks for analytics, but specific filtering should be done client-side or with more specific rules.
       allow list: if isSignedIn();
+      
       // Allow creating a task if you are the owner of the parent request.
       allow create: if isSignedIn() && request.auth.uid == request.resource.data.requestOwnerId;
-      // Allow updating a task if you are the assignee.
-      allow update: if isSignedIn() && (request.auth.uid == resource.data.assigneeId || isAdmin());
+      
+      // Allow updating a task if you are the assignee or an Admin.
+      // A manager could also update, which requires a more complex rule.
+      allow update: if isSignedIn() && (request.auth.uid == resource.data.assigneeId || hasRole('Admin'));
+      
       // Disallow client-side deletes for now to maintain history. Admins are an exception.
-      allow delete: if isAdmin();
+      allow delete: if hasRole('Admin');
     }
   }
 }

@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
-import { MoreHorizontal, Trash2, Edit, Search, ArrowUpDown, ChevronDown, UserCheck, UserX, Ban } from "lucide-react";
+import { MoreHorizontal, Trash2, Edit, Search, ArrowUpDown, ChevronDown, UserCheck, UserX, Ban, Palette } from "lucide-react";
 import { Button } from "../ui/button";
 import {
   Dialog,
@@ -29,15 +29,13 @@ import { Input } from "../ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { useFirestore, useCollection } from "@/firebase";
 import { doc, collection, query, where, orderBy, limit, getDocs, startAfter, DocumentSnapshot } from "firebase/firestore";
-import { updateDocumentNonBlocking } from "@/firebase/non-blocking-updates";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
-import { toggleUserStatus } from "@/firebase/admin-actions";
+import { toggleUserStatus, updateUserRole } from "@/firebase/admin-actions";
 import { TableSkeleton } from "../ui/table-skeleton";
 
 function EditUserDialog({ user, allUsers, isOpen, onOpenChange }: { user: User | null, allUsers: User[], isOpen: boolean, onOpenChange: (open: boolean) => void }) {
-    const firestore = useFirestore();
     const { toast } = useToast();
     const [formData, setFormData] = useState({
         fullName: user?.fullName || '',
@@ -63,17 +61,15 @@ function EditUserDialog({ user, allUsers, isOpen, onOpenChange }: { user: User |
         setFormData(prev => ({...prev, [id]: value}));
     };
 
-    const handleSave = () => {
-        if (!firestore) return;
-        const userRef = doc(firestore, 'users', user.id);
-        const updateData = { ...formData };
-        if (updateData.managerId === '') {
-            delete (updateData as any).managerId;
-        }
-        updateDocumentNonBlocking(userRef, updateData);
+    const handleSave = async () => {
+        if (!user) return;
+        
+        // Use the new admin action to update the role, which simulates setting custom claims
+        await updateUserRole(user.id, formData.role as UserRole);
+
         toast({
             title: "Usuario actualizado",
-            description: `Los datos de ${user.fullName} han sido actualizados.`,
+            description: `Los datos de ${user.fullName} han sido actualizados. Los cambios de rol pueden requerir que el usuario cierre y vuelva a iniciar sesión.`,
         });
         onOpenChange(false);
     };
@@ -94,13 +90,13 @@ function EditUserDialog({ user, allUsers, isOpen, onOpenChange }: { user: User |
                         <Label htmlFor="fullName" className="sm:text-right">
                             Nombre
                         </Label>
-                        <Input id="fullName" value={formData.fullName} onChange={(e) => handleInputChange('fullName', e.target.value)} className="sm:col-span-3" />
+                        <Input disabled id="fullName" value={formData.fullName} onChange={(e) => handleInputChange('fullName', e.target.value)} className="sm:col-span-3" />
                     </div>
                     <div className="grid gap-2 sm:grid-cols-4 sm:items-center sm:gap-4">
                         <Label htmlFor="department" className="sm:text-right">
                             Departamento
                         </Label>
-                        <Input id="department" value={formData.department} onChange={(e) => handleInputChange('department', e.target.value)} className="sm:col-span-3" />
+                        <Input disabled id="department" value={formData.department} onChange={(e) => handleInputChange('department', e.target.value)} className="sm:col-span-3" />
                     </div>
                     <div className="grid gap-2 sm:grid-cols-4 sm:items-center sm:gap-4">
                         <Label htmlFor="role" className="sm:text-right">
@@ -112,6 +108,7 @@ function EditUserDialog({ user, allUsers, isOpen, onOpenChange }: { user: User |
                             </SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="Admin">Admin</SelectItem>
+                                <SelectItem value="Designer">Diseñador de Procesos</SelectItem>
                                 <SelectItem value="Member">Miembro</SelectItem>
                             </SelectContent>
                         </Select>
@@ -120,7 +117,7 @@ function EditUserDialog({ user, allUsers, isOpen, onOpenChange }: { user: User |
                         <Label htmlFor="manager" className="sm:text-right">
                             Gerente
                         </Label>
-                         <Select value={formData.managerId} onValueChange={(value) => handleInputChange('managerId', value)}>
+                         <Select disabled value={formData.managerId} onValueChange={(value) => handleInputChange('managerId', value)}>
                             <SelectTrigger className="sm:col-span-3">
                                 <SelectValue placeholder="Seleccionar gerente..." />
                             </SelectTrigger>
@@ -289,6 +286,7 @@ export function UsersTable() {
           <SelectContent>
             <SelectItem value="all">Todos los roles</SelectItem>
             <SelectItem value="Admin">Admin</SelectItem>
+            <SelectItem value="Designer">Diseñador</SelectItem>
             <SelectItem value="Member">Miembro</SelectItem>
           </SelectContent>
         </Select>
@@ -352,6 +350,7 @@ export function UsersTable() {
                             {(user.status || 'active') === 'active' ? 'Activo' : 'Deshabilitado'}
                         </Badge>
                         {user.role === 'Admin' && <Badge variant={'destructive'}>Admin</Badge>}
+                        {user.role === 'Designer' && <Badge className="bg-blue-100 text-blue-800" variant={'secondary'}>Diseñador</Badge>}
                     </div>
                   </TableCell>
                   <TableCell className="text-right">
