@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState } from "react";
@@ -7,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { PlusCircle, Trash2, GitBranch, ShieldCheck, CheckCircle, GitMerge, GitFork, Library, WandSparkles, Loader2, UserSquare, Pencil, GripVertical, X, AlertTriangle } from "lucide-react";
+import { PlusCircle, Trash2, GitBranch, ShieldCheck, CheckCircle, GitMerge, GitFork, Library, WandSparkles, Loader2, UserSquare, Pencil, GripVertical, X, AlertTriangle, User, Bell, ChevronsRight } from "lucide-react";
 import Link from "next/link";
 import {
   Dialog,
@@ -33,11 +34,11 @@ import { CSS } from '@dnd-kit/utilities';
 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { useFirestore } from "@/firebase";
+import { useCollection, useFirestore, useMemoFirebase } from "@/firebase";
 import { addDocumentNonBlocking } from "@/firebase/non-blocking-updates";
 import { collection } from "firebase/firestore";
 import { useRouter } from "next/navigation";
-import type { FormField, WorkflowStepDefinition, Rule, RuleCondition, RuleAction, WorkflowStepType, FormFieldType, RuleOperator } from "@/lib/types";
+import type { FormField, WorkflowStepDefinition, Rule, RuleCondition, RuleAction, WorkflowStepType, FormFieldType, RuleOperator, User as UserType, RequestPriority, UserRole } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { generateProcessFromDescription, GenerateProcessOutput } from "@/ai/flows/process-generation";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -274,6 +275,9 @@ export default function NewTemplatePage() {
 
   const [pools, setPools] = useState<Pool[]>([]);
 
+  const usersQuery = useMemoFirebase(() => collection(firestore, 'users'), [firestore]);
+  const { data: users } = useCollection<UserType>(usersQuery);
+
   const sensors = useSensors(useSensor(PointerSensor), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
 
   const handleDragEnd = (event: DragEndEvent) => {
@@ -354,8 +358,8 @@ export default function NewTemplatePage() {
         assigneeRole: ''
     };
     
-    if (stepType === 'gateway-exclusive') {
-        newStep.name = 'Decisión';
+    if (stepType === 'gateway-exclusive' || stepType === 'gateway-parallel') {
+        newStep.name = stepType === 'gateway-exclusive' ? 'Decisión Exclusiva' : 'Gateway Paralelo';
     }
 
     setPools(prevPools => prevPools.map(pool => {
@@ -458,13 +462,13 @@ export default function NewTemplatePage() {
     }
   }
 
-  const handleAddRule = (rule: Rule) => {
-    setRules([...rules, rule]);
+  const handleAddRule = (rule: Omit<Rule, 'id'>) => {
+    setRules([...rules, { ...rule, id: `rule-${Date.now()}` }]);
     setIsRuleDialogOpen(false);
   }
 
-  const handleRemoveRule = (index: number) => {
-    setRules(rules.filter((_, i) => i !== index));
+  const handleRemoveRule = (id: string) => {
+    setRules(rules.filter((rule) => rule.id !== id));
   }
   
   const applyCopilotDraft = (data: GenerateProcessOutput) => {
@@ -478,7 +482,7 @@ export default function NewTemplatePage() {
               steps: l.steps.map(s => ({...s, assigneeRole: ''}))
           }))
       })));
-      setRules(data.rules);
+      setRules(data.rules.map(r => ({...r, id: `rule-ai-${Date.now()}-${Math.random()}`})));
   };
   
   return (
@@ -564,34 +568,34 @@ export default function NewTemplatePage() {
                                     <p className="text-xs">Las reglas permiten enrutar el flujo basado en resultados o datos.</p>
                                 </div>
                             )}
-                            {rules.map((rule, index) => {
+                            {rules.map((rule) => {
                                 const allSteps = pools.flatMap(p => p.lanes.flatMap(l => l.steps));
                                 const source = rule.condition.type === 'form' 
                                     ? fields.find(f => f.id === rule.condition.fieldId)
                                     : allSteps.find(s => s.id === rule.condition.fieldId);
-                                const actionStep = allSteps.find(s => s.id === rule.action.stepId);
+                                
                                 return (
-                                    <div key={index} className="group relative flex items-center gap-4 rounded-md bg-muted p-4">
+                                    <div key={rule.id} className="group relative flex items-center gap-4 rounded-md bg-muted p-3">
                                         <div className="absolute left-[-9px] top-[calc(50%-8px)] h-4 w-4 rounded-full bg-primary/20 flex items-center justify-center">
                                             <GitBranch className="h-3 w-3 text-primary" />
                                         </div>
-                                        <div className="flex flex-col">
-                                            <span className="text-sm font-bold">SI</span>
-                                            <span className="font-mono text-sm bg-background p-1 rounded-sm">
-                                                {source?.name || source?.label || '??'} {rule.condition.operator} {rule.condition.value}
-                                            </span>
-                                        </div>
-                                        <div className="flex flex-col">
-                                            <span className="text-sm font-bold">ENTONCES</span>
-                                            <span className="font-mono text-sm bg-background p-1 rounded-sm">
-                                                Ruta a: {actionStep?.name || '??'}
-                                            </span>
+                                        <div className="flex-1">
+                                            <div className="flex items-center text-xs text-muted-foreground">
+                                                <span>SI</span>
+                                                <Badge variant="secondary" className="mx-1">{source?.name || source?.label || '??'}</Badge>
+                                                <span>{rule.condition.operator}</span>
+                                                <Badge variant="secondary" className="mx-1">{rule.condition.value}</Badge>
+                                            </div>
+                                            <div className="flex items-center text-sm font-medium mt-1">
+                                                <span className="mr-1">ENTONCES</span>
+                                                <RuleActionDisplay rule={rule} steps={allSteps} users={users || []} />
+                                            </div>
                                         </div>
                                         <Button
                                             variant="ghost"
                                             size="icon"
-                                            className="absolute right-2 top-2 h-6 w-6 opacity-0 group-hover:opacity-100"
-                                            onClick={() => handleRemoveRule(index)}
+                                            className="absolute right-1 top-1 h-6 w-6 opacity-0 group-hover:opacity-100"
+                                            onClick={() => handleRemoveRule(rule.id)}
                                         >
                                             <Trash2 className="h-4 w-4 text-destructive" />
                                             <span className="sr-only">Eliminar regla</span>
@@ -609,6 +613,7 @@ export default function NewTemplatePage() {
                             <RuleBuilderDialog 
                                 fields={fields} 
                                 steps={pools.flatMap(p => p.lanes.flatMap(l => l.steps))} 
+                                users={users || []}
                                 onAddRule={handleAddRule} 
                                 onClose={() => setIsRuleDialogOpen(false)} 
                             />
@@ -655,7 +660,7 @@ export default function NewTemplatePage() {
                                                             <DropdownMenuItem onSelect={() => handleAddStepToLane(pool.id, lane.id, "Nueva Tarea", 'task')}>
                                                                 <BpmnIcon type="task" className="mr-2"/> Tarea
                                                             </DropdownMenuItem>
-                                                            <DropdownMenuItem onSelect={() => handleAddStepToLane(pool.id, lane.id, "Decisión", 'gateway-exclusive')}>
+                                                            <DropdownMenuItem onSelect={() => handleAddStepToLane(pool.id, lane.id, "Gateway Exclusivo", 'gateway-exclusive')}>
                                                                 <BpmnIcon type="gateway-exclusive" className="mr-2"/> Gateway Exclusivo
                                                             </DropdownMenuItem>
                                                              <DropdownMenuItem onSelect={() => handleAddStepToLane(pool.id, lane.id, "Gateway Paralelo", 'gateway-parallel')}>
@@ -787,83 +792,60 @@ function FieldBuilderDialog({ onAddField, onClose }: { onAddField: (field: Omit<
     );
 }
 
+function RuleActionDisplay({ rule, steps, users }: { rule: Rule, steps: WorkflowStepDefinition[], users: UserType[] }) {
+    switch (rule.action.type) {
+        case 'REQUIRE_ADDITIONAL_STEP':
+        case 'ROUTE_TO_STEP':
+            const step = steps.find(s => s.id === rule.action.stepId);
+            return <><ChevronsRight className="h-4 w-4" /><Badge>{step?.name || '??'}</Badge></>;
+        case 'ASSIGN_USER':
+            const assignUser = users.find(u => u.id === rule.action.userId);
+            const assignStep = steps.find(s => s.id === rule.action.stepId);
+            return <><User className="h-4 w-4" /><Badge>{assignStep?.name || '??'}</Badge><span className="mx-1">a</span><Badge variant="secondary">{assignUser?.fullName || '??'}</Badge></>;
+        case 'SEND_NOTIFICATION':
+            return <><Bell className="h-4 w-4" /><Badge>{rule.action.message}</Badge><span className="mx-1">a</span><Badge variant="secondary">{rule.action.target}</Badge></>;
+        case 'CHANGE_REQUEST_PRIORITY':
+            return <><AlertTriangle className="h-4 w-4" /><Badge>Prioridad a {rule.action.priority}</Badge></>;
+        default:
+            return null;
+    }
+}
 
-function RuleBuilderDialog({ fields, steps, onAddRule, onClose }: { fields: FormField[], steps: WorkflowStepDefinition[], onAddRule: (rule: Rule) => void, onClose: () => void }) {
+
+function RuleBuilderDialog({ fields, steps, users, onAddRule, onClose }: { fields: FormField[], steps: WorkflowStepDefinition[], users: UserType[], onAddRule: (rule: Omit<Rule, 'id'>) => void, onClose: () => void }) {
     const { toast } = useToast();
-    const [ruleType, setRuleType] = useState<'form' | 'outcome'>('form');
-    const [conditionSource, setConditionSource] = useState<string>('');
-    const [conditionOperator, setConditionOperator] = useState<RuleOperator | ''>('');
-    const [conditionValue, setConditionValue] = useState<string>('');
-    const [actionStep, setActionStep] = useState<string>('');
+    const [condition, setCondition] = useState<Partial<RuleCondition>>({ type: 'form' });
+    const [action, setAction] = useState<Partial<RuleAction>>({ type: 'REQUIRE_ADDITIONAL_STEP' });
 
     const decisionTasks = steps.filter(s => s.outcomes && s.outcomes.length > 0);
     const formFieldsForRules = fields.filter(f => ['number', 'select', 'radio', 'text'].includes(f.type));
-
-    const selectedSource = ruleType === 'form' ? formFieldsForRules.find(f => f.id === conditionSource) : decisionTasks.find(s => s.id === conditionSource);
-
-    const getOperatorsForType = (type: FormFieldType | 'outcome'): { value: RuleOperator, label: string }[] => {
-        if (type === 'outcome') {
-            return [{ value: '==', label: 'es igual a' }];
-        }
+    const selectedSource = condition.type === 'form' ? formFieldsForRules.find(f => f.id === condition.fieldId) : decisionTasks.find(s => s.id === condition.fieldId);
+    
+    const getOperatorsForType = (type?: FormFieldType | 'outcome'): { value: RuleOperator, label: string }[] => {
+        if (type === 'outcome') return [{ value: '==', label: 'es igual a' }];
         switch (type) {
             case 'number':
-                return [
-                    { value: '==', label: 'es igual a' },
-                    { value: '!=', label: 'no es igual a' },
-                    { value: '>', label: 'es mayor que' },
-                    { value: '<', label: 'es menor que' },
-                    { value: '>=', label: 'es mayor o igual que' },
-                    { value: '<=', label: 'es menor o igual que' },
-                ];
+                return [ { value: '==', label: 'es igual a' }, { value: '!=', label: 'no es igual a' }, { value: '>', label: 'es mayor que' }, { value: '<', label: 'es menor que' }, { value: '>=', label: 'es mayor o igual que' }, { value: '<=', label: 'es menor o igual que' } ];
             case 'text':
             case 'textarea':
-                 return [
-                    { value: '==', label: 'es igual a' },
-                    { value: '!=', label: 'no es igual a' },
-                    { value: 'contains', label: 'contiene' },
-                    { value: 'not_contains', label: 'no contiene' },
-                ];
+                return [ { value: '==', label: 'es igual a' }, { value: '!=', label: 'no es igual a' }, { value: 'contains', label: 'contiene' }, { value: 'not_contains', label: 'no contiene' } ];
             case 'select':
             case 'radio':
-                return [
-                    { value: '==', label: 'es' },
-                    { value: '!=', label: 'no es' },
-                ];
-            default:
-                return [];
+                return [ { value: '==', label: 'es' }, { value: '!=', label: 'no es' } ];
+            default: return [];
         }
     };
     
-    const availableOperators = getOperatorsForType(selectedSource?.type || (ruleType === 'outcome' ? 'outcome' : 'text'));
-
+    const availableOperators = getOperatorsForType(selectedSource?.type || (condition.type === 'outcome' ? 'outcome' : undefined));
 
     const handleSubmit = () => {
-        if (!conditionSource || !conditionOperator || !conditionValue || !actionStep) {
-            toast({
-                variant: "destructive",
-                title: "Campos incompletos",
-                description: "Por favor, rellene todos los campos de la regla.",
-            });
-            return;
+        if (!condition.fieldId || !condition.operator || !condition.value) {
+            toast({ variant: "destructive", title: "Condición incompleta" }); return;
         }
 
-        const newRule: Rule = {
-            condition: {
-                type: ruleType,
-                fieldId: conditionSource,
-                operator: conditionOperator as RuleOperator,
-                value: conditionValue,
-            },
-            action: {
-                type: 'ROUTE_TO_STEP',
-                stepId: actionStep,
-            }
-        };
+        const newRule: Omit<Rule, 'id'> = { condition: condition as RuleCondition, action: action as RuleAction };
         onAddRule(newRule);
-        toast({
-            title: "Regla agregada",
-            description: "La regla de negocio se ha creado correctamente.",
-        });
+        toast({ title: "Regla agregada" });
         onClose();
     };
 
@@ -871,9 +853,7 @@ function RuleBuilderDialog({ fields, steps, onAddRule, onClose }: { fields: Form
         <DialogContent className="sm:max-w-3xl">
             <DialogHeader>
                 <DialogTitle>Constructor de Reglas de Negocio</DialogTitle>
-                <DialogDescription>
-                    Cree una regla "SI-ENTONCES" para enrutar su flujo de trabajo.
-                </DialogDescription>
+                <DialogDescription>Cree una regla "SI-ENTONCES" para automatizar su flujo de trabajo.</DialogDescription>
             </DialogHeader>
             <div className="grid gap-6 py-4">
                 <div className="p-4 rounded-md border">
@@ -881,7 +861,7 @@ function RuleBuilderDialog({ fields, steps, onAddRule, onClose }: { fields: Form
                     <div className="grid grid-cols-4 gap-4">
                         <div className="space-y-2 col-span-1">
                             <Label>Tipo de Condición</Label>
-                            <Select value={ruleType} onValueChange={(v) => { setRuleType(v as any); setConditionSource(''); setConditionOperator(''); setConditionValue(''); }}>
+                            <Select value={condition.type} onValueChange={(v) => setCondition({ type: v as any })}>
                                 <SelectTrigger><SelectValue/></SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="form">Basada en Campo de Formulario</SelectItem>
@@ -892,53 +872,30 @@ function RuleBuilderDialog({ fields, steps, onAddRule, onClose }: { fields: Form
                          <div className="space-y-2 col-span-3 grid grid-cols-3 gap-4">
                             <div className="space-y-2">
                                 <Label>Fuente</Label>
-                                <Select value={conditionSource} onValueChange={setConditionSource}>
+                                <Select value={condition.fieldId} onValueChange={(v) => setCondition(c => ({...c, fieldId: v }))}>
                                     <SelectTrigger><SelectValue placeholder="Seleccione fuente..."/></SelectTrigger>
                                     <SelectContent>
-                                        {ruleType === 'form' && formFieldsForRules.map(field => (
-                                            <SelectItem key={field.id} value={field.id}>{field.label}</SelectItem>
-                                        ))}
-                                         {ruleType === 'outcome' && decisionTasks.map(task => (
-                                            <SelectItem key={task.id} value={task.id}>{task.name}</SelectItem>
-                                        ))}
+                                        {condition.type === 'form' && formFieldsForRules.map(field => <SelectItem key={field.id} value={field.id}>{field.label}</SelectItem>)}
+                                        {condition.type === 'outcome' && decisionTasks.map(task => <SelectItem key={task.id} value={task.id}>{task.name}</SelectItem>)}
                                     </SelectContent>
                                 </Select>
                             </div>
                             <div className="space-y-2">
                                 <Label>Operador</Label>
-                                <Select value={conditionOperator} onValueChange={(v) => setConditionOperator(v as any)} disabled={!selectedSource}>
+                                <Select value={condition.operator} onValueChange={(v) => setCondition(c => ({...c, operator: v as any }))} disabled={!selectedSource}>
                                     <SelectTrigger><SelectValue placeholder="Seleccione..."/></SelectTrigger>
-                                    <SelectContent>
-                                        {availableOperators.map(op => (
-                                            <SelectItem key={op.value} value={op.value}>{op.label}</SelectItem>
-                                        ))}
-                                    </SelectContent>
+                                    <SelectContent>{availableOperators.map(op => <SelectItem key={op.value} value={op.value}>{op.label}</SelectItem>)}</SelectContent>
                                 </Select>
                             </div>
                             <div className="space-y-2">
                                 <Label>Valor</Label>
-                                {ruleType === 'form' && (selectedSource?.type === 'number' || selectedSource?.type === 'text' || selectedSource?.type === 'textarea') && (
-                                    <Input
-                                        type={selectedSource?.type === 'number' ? 'number' : 'text'}
-                                        placeholder="p.ej., 5000 o 'Urgente'"
-                                        value={conditionValue}
-                                        onChange={(e) => setConditionValue(e.target.value)}
-                                        disabled={!selectedSource}
-                                    />
-                                )}
-                                {ruleType === 'form' && (selectedSource?.type === 'select' || selectedSource?.type === 'radio') && (
-                                     <Select value={conditionValue} onValueChange={setConditionValue} disabled={!selectedSource}>
+                                {selectedSource && (selectedSource.type === 'number' || selectedSource.type === 'text' || selectedSource.type === 'textarea') ? (
+                                    <Input type={selectedSource?.type === 'number' ? 'number' : 'text'} placeholder="p.ej., 5000" value={condition.value || ''} onChange={(e) => setCondition(c => ({...c, value: e.target.value}))} />
+                                ) : (
+                                     <Select value={condition.value} onValueChange={(v) => setCondition(c => ({...c, value: v}))} disabled={!selectedSource}>
                                         <SelectTrigger><SelectValue placeholder="Seleccione valor..."/></SelectTrigger>
                                         <SelectContent>
-                                            {selectedSource.options?.map(opt => <SelectItem key={opt} value={opt}>{opt}</SelectItem>)}
-                                        </SelectContent>
-                                    </Select>
-                                )}
-                                {ruleType === 'outcome' && (
-                                     <Select value={conditionValue} onValueChange={setConditionValue} disabled={!selectedSource}>
-                                        <SelectTrigger><SelectValue placeholder="Seleccione resultado..."/></SelectTrigger>
-                                        <SelectContent>
-                                            {selectedSource?.outcomes?.map(out => <SelectItem key={out} value={out}>{out}</SelectItem>)}
+                                            {(selectedSource?.options || selectedSource?.outcomes)?.map(opt => <SelectItem key={opt} value={opt}>{opt}</SelectItem>)}
                                         </SelectContent>
                                     </Select>
                                 )}
@@ -950,42 +907,38 @@ function RuleBuilderDialog({ fields, steps, onAddRule, onClose }: { fields: Form
                 <div className="p-4 rounded-md border">
                     <h3 className="mb-4 text-lg font-medium flex items-center"><GitBranch className="mr-2 h-5 w-5 text-primary"/> Acción (ENTONCES)</h3>
                     <div className="grid grid-cols-2 gap-4">
-                         <div className="space-y-2">
+                        <div className="space-y-2">
                             <Label>Tipo de Acción</Label>
-                            <Select value={ruleType === 'form' ? 'REQUIRE_ADDITIONAL_STEP' : 'ROUTE_TO_STEP'} >
+                            <Select value={action.type} onValueChange={(v) => setAction({ type: v as any })}>
                                 <SelectTrigger><SelectValue/></SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="REQUIRE_ADDITIONAL_STEP">Añadir Paso Requerido</SelectItem>
                                     <SelectItem value="ROUTE_TO_STEP">Enrutar a Paso</SelectItem>
+                                    <SelectItem value="ASSIGN_USER">Asignar Usuario a Tarea</SelectItem>
+                                    <SelectItem value="SEND_NOTIFICATION">Enviar Notificación</SelectItem>
+                                    <SelectItem value="CHANGE_REQUEST_PRIORITY">Cambiar Prioridad de Solicitud</SelectItem>
                                 </SelectContent>
                             </Select>
                         </div>
                         <div className="space-y-2">
-                            <Label>Paso de Destino</Label>
-                            <Select value={actionStep} onValueChange={setActionStep}>
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Seleccione un paso..."/>
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {steps.map(step => (
-                                        <SelectItem key={step.id} value={step.id}>{step.name}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                            { (action.type === 'REQUIRE_ADDITIONAL_STEP' || action.type === 'ROUTE_TO_STEP') &&
+                                <><Label>Paso de Destino</Label><Select value={(action as any).stepId} onValueChange={(v) => setAction(a => ({...a, stepId: v}))}><SelectTrigger><SelectValue placeholder="Seleccione un paso..."/></SelectTrigger><SelectContent>{steps.map(step => <SelectItem key={step.id} value={step.id}>{step.name}</SelectItem>)}</SelectContent></Select></>
+                            }
+                            { action.type === 'ASSIGN_USER' &&
+                                <div className="grid grid-cols-2 gap-2"><div className="space-y-2"><Label>Tarea</Label><Select value={(action as any).stepId} onValueChange={(v) => setAction(a => ({...a, stepId: v}))}><SelectTrigger><SelectValue placeholder="Seleccione tarea..."/></SelectTrigger><SelectContent>{steps.map(step => <SelectItem key={step.id} value={step.id}>{step.name}</SelectItem>)}</SelectContent></Select></div><div className="space-y-2"><Label>Usuario</Label><Select value={(action as any).userId} onValueChange={(v) => setAction(a => ({...a, userId: v}))}><SelectTrigger><SelectValue placeholder="Seleccione usuario..."/></SelectTrigger><SelectContent>{users.map(user => <SelectItem key={user.id} value={user.id}>{user.fullName}</SelectItem>)}</SelectContent></Select></div></div>
+                            }
+                            { action.type === 'SEND_NOTIFICATION' &&
+                                <div className="grid grid-cols-2 gap-2"><div className="space-y-2"><Label>Destinatario</Label><Select value={(action as any).target} onValueChange={(v) => setAction(a => ({...a, target: v}))}><SelectTrigger><SelectValue placeholder="Seleccione..."/></SelectTrigger><SelectContent><SelectItem value="submitter">Creador de la solicitud</SelectItem><SelectItem value="Admin">Admin</SelectItem><SelectItem value="Member">Miembro</SelectItem></SelectContent></Select></div><div className="space-y-2"><Label>Mensaje</Label><Input placeholder="Tu mensaje aquí" value={(action as any).message || ''} onChange={(e) => setAction(a => ({...a, message: e.target.value}))}/></div></div>
+                            }
+                             { action.type === 'CHANGE_REQUEST_PRIORITY' &&
+                                <><Label>Nueva Prioridad</Label><Select value={(action as any).priority} onValueChange={(v) => setAction(a => ({...a, priority: v}))}><SelectTrigger><SelectValue placeholder="Seleccione prioridad..."/></SelectTrigger><SelectContent><SelectItem value="Alta">Alta</SelectItem><SelectItem value="Media">Media</SelectItem><SelectItem value="Baja">Baja</SelectItem></SelectContent></Select></>
+                            }
                         </div>
-                    </div>
-                </div>
-                 <div className="bg-amber-50 border-l-4 border-amber-400 p-3 text-amber-800 text-xs rounded-r-md">
-                    <div className="flex items-start">
-                        <AlertTriangle className="h-5 w-5 mr-2 shrink-0" />
-                        <p>Las reglas de "Ruta" se evalúan después de completar una tarea de decisión. Las reglas de "Añadir Paso" (basadas en campos de formulario) se evalúan solo al crear la solicitud.</p>
                     </div>
                 </div>
             </div>
             <DialogFooter>
-                <DialogClose asChild>
-                    <Button variant="ghost">Cancelar</Button>
-                </DialogClose>
+                <DialogClose asChild><Button variant="ghost">Cancelar</Button></DialogClose>
                 <Button onClick={handleSubmit}>Añadir Regla</Button>
             </DialogFooter>
         </DialogContent>

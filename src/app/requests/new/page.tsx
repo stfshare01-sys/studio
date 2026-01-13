@@ -228,7 +228,7 @@ export default function NewRequestPage() {
         
         const uploadedDocuments = (await Promise.all(documentUploadPromises)).filter(Boolean);
 
-        const { stepsWithTasks } = await evaluateAndAddInitialSteps(newFormData, selectedTemplate, newRequestId, user.uid, now, firestore);
+        const { stepsWithTasks } = await evaluateAndAddInitialSteps(newFormData, selectedTemplate, newRequestId, user.uid, now, firestore, users);
 
         const newRequest = {
             id: newRequestId,
@@ -238,6 +238,7 @@ export default function NewRequestPage() {
             createdAt: now,
             updatedAt: now,
             status: 'In Progress',
+            priority: 'Media',
             completedAt: null,
             formData: newFormData,
             steps: stepsWithTasks.map((step, index) => ({

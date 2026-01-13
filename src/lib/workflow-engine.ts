@@ -1,3 +1,4 @@
+
 'use server';
 
 import { Firestore, doc, collection } from 'firebase/firestore';
@@ -5,30 +6,30 @@ import type { Task, Request, Template, User, WorkflowStepDefinition, Rule } from
 import { addDocumentNonBlocking, updateDocumentNonBlocking, setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import { intelligentTaskAssignment } from '@/ai/flows/intelligent-task-assignment';
 
-interface CompleteTaskParams {
+interface EvaluateRulesParams {
     firestore: Firestore;
-    task: Task;
-    request: Request;
+    formData: Record<string, any>;
+    request: Partial<Request> & { id: string, title: string, submittedBy: string };
     template: Template;
-    currentUser: User;
     allUsers: User[];
-    outcome?: string; // For decision gateways
 }
 
 /**
- * Evaluates rules based on the current request state.
- * Can be used at request creation or during the workflow.
- * @returns A list of step definitions that should be added to the process.
+ * Evaluates rules and executes their actions.
+ * @returns A list of new step definitions to be added to the process.
  */
-export function evaluateRules(
-    formData: Record<string, any>,
-    template: Template
-): WorkflowStepDefinition[] {
-    const stepsToAdd = template.rules?.reduce((acc, rule) => {
-        if (rule.condition.type !== 'form' || rule.action.type !== 'REQUIRE_ADDITIONAL_STEP') {
-            return acc;
-        }
+export async function evaluateAndExecuteRules({
+    firestore,
+    formData,
+    request,
+    template,
+    allUsers,
+}: EvaluateRulesParams): Promise<WorkflowStepDefinition[]> {
+    const stepsToAdd: WorkflowStepDefinition[] = [];
 
+    if (!template.rules) return stepsToAdd;
+
+    for (const rule of template.rules) {
         const fieldValue = formData[rule.condition.fieldId];
         let conditionMet = false;
 
@@ -58,21 +59,56 @@ export function evaluateRules(
                     if (typeof fieldValue === 'string' && fieldValue.includes(ruleValue)) conditionMet = true;
                     break;
                 case 'not_contains':
-                     if (typeof fieldValue === 'string' && !fieldValue.includes(ruleValue)) conditionMet = true;
+                    if (typeof fieldValue === 'string' && !fieldValue.includes(ruleValue)) conditionMet = true;
                     break;
             }
         }
-
+        
         if (conditionMet) {
-            const stepToAdd = template.steps.find(s => s.id === rule.action.stepId);
-            if (stepToAdd && !acc.some(s => s.id === stepToAdd.id)) {
-                acc.push(stepToAdd);
+            const requestRef = doc(firestore, 'users', request.submittedBy, 'requests', request.id);
+            const auditLogCollection = collection(requestRef, 'audit_logs');
+            const now = new Date().toISOString();
+
+            switch (rule.action.type) {
+                case 'REQUIRE_ADDITIONAL_STEP':
+                    const stepToAdd = template.steps.find(s => s.id === rule.action.stepId);
+                    if (stepToAdd) {
+                        stepsToAdd.push(stepToAdd);
+                    }
+                    break;
+                case 'ASSIGN_USER':
+                    // This action is better handled post-step creation
+                    break;
+                case 'CHANGE_REQUEST_PRIORITY':
+                    updateDocumentNonBlocking(requestRef, { priority: rule.action.priority });
+                     addDocumentNonBlocking(auditLogCollection, {
+                        requestId: request.id, userId: 'system', userFullName: 'FlowMaster AI', timestamp: now, action: 'AUDIT',
+                        details: { message: `La prioridad de la solicitud cambió a "${rule.action.priority}" por una regla de negocio.` }
+                    });
+                    break;
+                case 'SEND_NOTIFICATION':
+                    let targetUsers: User[] = [];
+                    if (rule.action.target === 'submitter') {
+                        const submitter = allUsers.find(u => u.id === request.submittedBy);
+                        if (submitter) targetUsers.push(submitter);
+                    } else {
+                        targetUsers = allUsers.filter(u => u.role === rule.action.target);
+                    }
+
+                    for (const targetUser of targetUsers) {
+                        const notificationRef = collection(firestore, 'users', targetUser.id, 'notifications');
+                        addDocumentNonBlocking(notificationRef, {
+                            title: 'Notificación de Proceso',
+                            message: rule.action.message.replace('{{request.title}}', request.title),
+                            type: 'info', read: false, createdAt: now, link: `/requests/${request.id}`,
+                        });
+                    }
+                    break;
             }
         }
-        return acc;
-    }, [] as WorkflowStepDefinition[]) || [];
+    }
 
-    return stepsToAdd;
+    return Array.from(new Map(stepsToAdd.map(s => [s.id, s])).values());
 }
 
 
@@ -85,10 +121,16 @@ export async function evaluateAndAddInitialSteps(
     requestId: string,
     requestOwnerId: string,
     createdAt: string,
-    firestore: Firestore
+    firestore: Firestore,
+    allUsers: User[],
 ): Promise<{ finalSteps: WorkflowStepDefinition[], stepsWithTasks: (WorkflowStepDefinition & { taskId: string })[] }> {
-    const additionalSteps = evaluateRules(formData, template);
-
+    
+    const additionalSteps = await evaluateAndExecuteRules({
+        firestore, formData, allUsers,
+        request: { id: requestId, title: `${template.name} - ${new Date(createdAt).toLocaleDateString('es-ES')}`, submittedBy: requestOwnerId },
+        template
+    });
+    
     const finalSteps = [...template.steps, ...additionalSteps];
     const uniqueSteps = Array.from(new Map(finalSteps.map(s => [s.id, s])).values());
     
@@ -115,6 +157,17 @@ export async function evaluateAndAddInitialSteps(
     const stepsWithTasks = await Promise.all(taskCreationPromises);
     
     return { finalSteps: uniqueSteps, stepsWithTasks };
+}
+
+// ... Rest of the file
+interface CompleteTaskParams {
+    firestore: Firestore;
+    task: Task;
+    request: Request;
+    template: Template;
+    currentUser: User;
+    allUsers: User[];
+    outcome?: string; // For decision gateways
 }
 
 
@@ -274,20 +327,13 @@ export async function completeTaskAndProgressWorkflow({
 
         // B) Parallel Gateway (Split) Logic
         const nextStepInSequence = template.steps[currentStepIndex + 1];
-        if (nextStepInSequence && nextStepInSequence.type === 'gateway-parallel') {
-            const parallelGatewayIndex = currentStepIndex + 1;
+        if (currentStepDefinition?.type === 'gateway-parallel') {
+            const parallelGatewayIndex = currentStepIndex;
             
-            // This is a "join" gateway if there are multiple incoming paths.
-            // But for a split, we look ahead.
-            let isSplitGateway = true; // Assume it's a split unless proven otherwise.
-            // A simple heuristic: if the previous step wasn't a gateway, this is likely a split.
-            if(currentStepIndex > 0 && template.steps[currentStepIndex].type.includes('gateway')) {
-                isSplitGateway = false;
-            }
+            let isSplitGateway = true;
 
             if (isSplitGateway) {
                 const parallelSteps: WorkflowStepDefinition[] = [];
-                // Find all steps that are part of the parallel branches until a join gateway is found
                 let i = parallelGatewayIndex + 1;
                 while(i < template.steps.length) {
                     const step = template.steps[i];
@@ -314,7 +360,6 @@ export async function completeTaskAndProgressWorkflow({
          const joinIndex = template.steps.findIndex(s => s.id === joinGatewayStep.id);
          if (joinIndex <= 0) return true;
 
-         // Find the corresponding split gateway by looking backwards
          let splitGatewayIndex = -1;
          for (let i = joinIndex - 1; i >= 0; i--) {
             if (template.steps[i].type === 'gateway-parallel') {
@@ -324,11 +369,9 @@ export async function completeTaskAndProgressWorkflow({
          }
 
          if (splitGatewayIndex !== -1) {
-             // Get all steps between split and join gateways
              const parallelBranchSteps = template.steps.slice(splitGatewayIndex + 1, joinIndex);
              const parallelStepIds = new Set(parallelBranchSteps.map(s => s.id));
              
-             // Check if all steps in the parallel branches are completed in the *current* request state
              const completedCount = updatedSteps.filter(s => parallelStepIds.has(s.id) && s.status === 'Completed').length;
              return completedCount === parallelBranchSteps.length;
          }
@@ -340,14 +383,11 @@ export async function completeTaskAndProgressWorkflow({
     if (nextSteps.length > 0) {
         let finalNextSteps = nextSteps;
 
-        // If the single next step is a join gateway, check condition
         if (nextSteps.length === 1 && nextSteps[0].type === 'gateway-parallel') {
              if (!checkJoinCondition(nextSteps[0])) {
-                // Not all parallel tasks are done, so we wait. Just save the current state.
                 updateDocumentNonBlocking(requestRef, { steps: updatedSteps, updatedAt: now });
                 return;
              }
-             // If join condition is met, find the actual step *after* the join gateway
              const joinGatewayIndex = template.steps.findIndex(s => s.id === nextSteps[0].id);
              const stepAfterJoin = template.steps[joinGatewayIndex + 1];
              finalNextSteps = stepAfterJoin ? [stepAfterJoin] : [];
@@ -356,12 +396,9 @@ export async function completeTaskAndProgressWorkflow({
         if (finalNextSteps.length > 0) {
             await activateAndAssignTasks(firestore, finalNextSteps, request, allUsers, updatedSteps, auditLogCollection);
         } else {
-             // This was the last step in a branch or the workflow
-            // Check if this completion finishes the entire request
             const activeOrPendingTasks = updatedSteps.some(s => s.status === 'Active' || s.status === 'Pending');
             if (!activeOrPendingTasks) {
                  updateDocumentNonBlocking(requestRef, { status: 'Completed', completedAt: now });
-                 // Notify the original submitter that their request is complete
                  const submitterNotificationRef = collection(firestore, 'users', request.submittedBy, 'notifications');
                  addDocumentNonBlocking(submitterNotificationRef, {
                      title: 'Solicitud Completada',
@@ -377,7 +414,6 @@ export async function completeTaskAndProgressWorkflow({
         updateDocumentNonBlocking(requestRef, { steps: updatedSteps, updatedAt: now });
 
     } else {
-        // No more steps found, this was the last step in the workflow
         updateDocumentNonBlocking(requestRef, {
             status: 'Completed',
             completedAt: now,
@@ -385,7 +421,6 @@ export async function completeTaskAndProgressWorkflow({
             steps: updatedSteps,
         });
 
-        // Notify the original submitter that their request is complete
         const submitterNotificationRef = collection(firestore, 'users', request.submittedBy, 'notifications');
         addDocumentNonBlocking(submitterNotificationRef, {
             title: 'Solicitud Completada',

@@ -1,10 +1,4 @@
 
-
-
-
-
-
-
 export type UserRole = 'Admin' | 'Member';
 
 export type User = {
@@ -57,11 +51,14 @@ export type Document = {
   storagePath: string; // Path in Firebase Storage
 };
 
+export type RequestPriority = 'Baja' | 'Media' | 'Alta';
+
 export type Request = {
   id: string;
   title: string;
   templateId: string;
   status: 'In Progress' | 'Completed' | 'Rejected';
+  priority: RequestPriority;
   createdAt: string;
   updatedAt: string;
   completedAt?: string | null; // Added for cycle time calculation
@@ -102,12 +99,15 @@ export type RuleCondition = {
   type: 'form' | 'outcome'; // Distinguish between form data rules and workflow outcome rules
 };
 
-export type RuleAction = {
-  type: 'REQUIRE_ADDITIONAL_STEP' | 'ROUTE_TO_STEP';
-  stepId: string;
-};
+export type RuleAction = 
+  | { type: 'REQUIRE_ADDITIONAL_STEP'; stepId: string; }
+  | { type: 'ROUTE_TO_STEP'; stepId: string; }
+  | { type: 'ASSIGN_USER'; stepId: string; userId: string; }
+  | { type: 'SEND_NOTIFICATION'; target: 'submitter' | UserRole; message: string; }
+  | { type: 'CHANGE_REQUEST_PRIORITY'; priority: RequestPriority; };
 
 export type Rule = {
+  id: string;
   condition: RuleCondition;
   action: RuleAction;
 };
