@@ -176,13 +176,13 @@ export default function RequestDetailPage() {
             }
         }
         
-        // 3. Fallback for managers - find if a task in this request is assigned to their direct reports
+        // 3. Fallback for managers - check if a task in this request is assigned to their direct reports
         const myTeamIds = (await getDocs(query(collection(firestore, 'users'), where('managerId', '==', user.uid)))).docs.map(d => d.id);
         if (myTeamIds.length > 0) {
             const tasksInRequestQuery = query(collection(firestore, 'tasks'), where('requestId', '==', id), where('assigneeId', 'in', myTeamIds));
             const tasksSnapshot = await getDocs(tasksInRequestQuery);
             if (!tasksSnapshot.empty) {
-                // Found a task assigned to my team, now find the request document itself
+                // Found a relevant task, now find the request document itself
                  const requestsCollectionGroup = collectionGroup(firestore, 'requests');
                  const q = query(requestsCollectionGroup, where('id', '==', id), limit(1));
                  const querySnapshot = await getDocs(q);
