@@ -50,9 +50,11 @@ export async function evaluateAndExecuteRules({
                     }
                     break;
                 case '==':
+                case 'is': // Treat 'is' as strict equality
                     if (fieldValue == ruleValue) conditionMet = true;
                     break;
                 case '!=':
+                case 'is_not': // Treat 'is_not' as strict inequality
                     if (fieldValue != ruleValue) conditionMet = true;
                     break;
                 case 'contains':
@@ -272,8 +274,8 @@ export async function completeTaskAndProgressWorkflow({
     let updatedSteps = request.steps.map(s =>
         s.id === task.stepId ? { ...s, status: 'Completed', completedAt: now, outcome: outcome || null } : s
     );
-
-    // 3. Add audit log for task completion
+    
+    // Add audit log for task completion
     addDocumentNonBlocking(auditLogCollection, {
         requestId: request.id,
         userId: currentUser.id,
@@ -304,6 +306,51 @@ export async function completeTaskAndProgressWorkflow({
         });
         return; // Stop the workflow
     }
+    
+    // *** DYNAMIC RULE EVALUATION ***
+    // Re-evaluate rules to see if new steps need to be added mid-workflow
+    const dynamicallyAddedSteps = await evaluateAndExecuteRules({
+        firestore,
+        formData: request.formData,
+        request,
+        template,
+        allUsers,
+    });
+
+    if (dynamicallyAddedSteps.length > 0) {
+        // Handle creation of new tasks for dynamically added steps
+        const newStepsWithTasksPromises = dynamicallyAddedSteps.map(async (step) => {
+            if (!updatedSteps.some(s => s.id === step.id)) { // Prevent duplicates
+                const newTaskRef = doc(collection(firestore, 'tasks'));
+                const newTaskData = {
+                    id: newTaskRef.id,
+                    requestId: request.id,
+                    requestTitle: request.title,
+                    requestOwnerId: request.submittedBy,
+                    stepId: step.id,
+                    name: step.name,
+                    status: 'Pending',
+                    assigneeId: null,
+                    completedAt: null,
+                    createdAt: now,
+                };
+                setDocumentNonBlocking(newTaskRef, newTaskData, {});
+                return {
+                    id: step.id,
+                    name: step.name,
+                    status: 'Pending',
+                    assigneeId: null,
+                    completedAt: null,
+                    taskId: newTaskRef.id,
+                };
+            }
+            return null;
+        });
+
+        const newStepsWithTasks = (await Promise.all(newStepsWithTasksPromises)).filter(Boolean);
+        updatedSteps = [...updatedSteps, ...newStepsWithTasks];
+    }
+    // *****************************
 
     // 4. Find the next step(s) in the workflow
     const findNextSteps = (currentStepId: string): WorkflowStepDefinition[] => {
@@ -322,7 +369,6 @@ export async function completeTaskAndProgressWorkflow({
                 const nextStep = template.steps.find(s => s.id === rule.action.stepId);
                 return nextStep ? [nextStep] : [];
             }
-             // If no rule matches (e.g. "Approved" outcome with no specific rule), fall through to sequential logic.
         }
 
         // B) Parallel Gateway (Split) Logic

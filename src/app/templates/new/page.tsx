@@ -767,7 +767,7 @@ function RuleConditionDisplay({ condition, fields, steps }: { condition: RuleCon
     
     const operatorLabels: Partial<Record<RuleOperator, string>> = {
         '==': '=', '!=': '!=', '>': '>', '<': '<', '>=': '>=', '<=': '<=',
-        'contains': 'contiene', 'is': 'es', 'is_not': 'no es',
+        'contains': 'contiene', 'not_contains': 'no contiene', 'is': 'es', 'is_not': 'no es',
     };
 
     const getSourceTypeIcon = (type: FormFieldType | 'outcome' | undefined) => {
@@ -879,7 +879,7 @@ function RuleBuilderDialog({ fields, steps, users, onAddRule, onClose }: { field
     const [action, setAction] = useState<Partial<RuleAction>>({ type: 'REQUIRE_ADDITIONAL_STEP' });
 
     const decisionTasks = steps.filter(s => s.outcomes && s.outcomes.length > 0);
-    const formFieldsForRules = fields.filter(f => ['number', 'select', 'radio', 'text'].includes(f.type));
+    const formFieldsForRules = fields.filter(f => ['number', 'select', 'radio', 'text', 'textarea'].includes(f.type));
     const selectedSource = condition.type === 'form' ? formFieldsForRules.find(f => f.id === condition.fieldId) : decisionTasks.find(s => s.id === condition.fieldId);
     
     const getOperatorsForType = (type?: FormFieldType | 'outcome'): { value: RuleOperator, label: string }[] => {
@@ -889,7 +889,7 @@ function RuleBuilderDialog({ fields, steps, users, onAddRule, onClose }: { field
                 return [ { value: '==', label: 'es igual a' }, { value: '!=', label: 'no es igual a' }, { value: '>', label: 'es mayor que' }, { value: '<', label: 'es menor que' }, { value: '>=', label: 'es mayor o igual que' }, { value: '<=', label: 'es menor o igual que' } ];
             case 'text':
             case 'textarea':
-                return [ { value: 'is', label: 'es igual a' }, { value: 'is_not', label: 'no es igual a' }, { value: 'contains', label: 'contiene' }];
+                return [ { value: 'is', label: 'es igual a' }, { value: 'is_not', label: 'no es igual a' }, { value: 'contains', label: 'contiene' }, { value: 'not_contains', label: 'no contiene' }];
             case 'select':
             case 'radio':
                 return [ { value: 'is', label: 'es' }, { value: 'is_not', label: 'no es' } ];
@@ -900,7 +900,7 @@ function RuleBuilderDialog({ fields, steps, users, onAddRule, onClose }: { field
     const availableOperators = getOperatorsForType(selectedSource?.type || (condition.type === 'outcome' ? 'outcome' : undefined));
 
     const handleSubmit = () => {
-        if (!condition.fieldId || !condition.operator || !condition.value) {
+        if (!condition.fieldId || !condition.operator || (condition.value === undefined || condition.value === '')) {
             toast({ variant: "destructive", title: "Condición incompleta" }); return;
         }
 

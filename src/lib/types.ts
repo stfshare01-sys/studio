@@ -88,9 +88,10 @@ export type FormField = {
 };
 
 export type RuleOperator = 
-    | '==' | '!=' // Generic equality for text, numbers, selects
+    | '==' | '!=' // Generic equality
     | '>' | '<' | '>=' | '<=' // For numbers
-    | 'contains' | 'not_contains'; // For text
+    | 'contains' | 'not_contains' // For text
+    | 'is' | 'is_not'; // For selects/radios
 
 export type RuleCondition = {
   fieldId: string; // Can be a form field ID or a step ID for outcome-based rules
