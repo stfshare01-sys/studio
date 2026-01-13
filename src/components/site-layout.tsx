@@ -33,6 +33,7 @@ import { signOut } from "firebase/auth";
 import { useEffect } from "react";
 import { NotificationCenter } from "@/components/notifications/notification-center";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { GlobalSearch } from "@/components/global-search";
 
 const navItems = [
   { href: "/", icon: LayoutDashboard, label: "Panel" },
@@ -146,6 +147,7 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
                 <SidebarTrigger />
             </div>
             <div className="flex items-center gap-1 ml-auto">
+                <GlobalSearch />
                 <ThemeToggle />
                 <NotificationCenter />
             </div>
