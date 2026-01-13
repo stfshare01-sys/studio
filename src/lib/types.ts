@@ -1,4 +1,5 @@
 
+
 export type UserRole = 'Admin' | 'Member';
 export type UserStatus = 'active' | 'disabled';
 
@@ -24,6 +25,7 @@ export type WorkflowStepDefinition = {
   assigneeRole?: string; // e.g., 'Finance Approver', 'IT Support'
   // For exclusive gateways, defines possible outcomes
   outcomes?: string[];
+  slaHours?: number; // Service Level Agreement in hours
 };
 
 export type TaskStatus = 'Completed' | 'Pending' | 'Active';
@@ -40,6 +42,8 @@ export type Task = {
   assigneeId: string | null;
   completedAt: string | null;
   createdAt: string; // Timestamp when the task was created
+  activatedAt?: string; // Timestamp when the task became active
+  slaExpiresAt?: string; // Timestamp when the SLA for this task expires
 };
 
 export type Document = {
@@ -122,6 +126,15 @@ export type Template = {
   fields: FormField[];
   steps: WorkflowStepDefinition[];
   rules: Rule[];
+  pools?: {
+      id: string;
+      name: string;
+      lanes: {
+          id: string;
+          name: string;
+          steps: WorkflowStepDefinition[];
+      }[];
+  }[];
 };
 
 export type Comment = {
@@ -132,7 +145,7 @@ export type Comment = {
     createdAt: string;
 };
 
-export type AuditLogAction = 'REQUEST_SUBMITTED' | 'STEP_ASSIGNEE_CHANGED' | 'COMMENT_ADDED' | 'STEP_COMPLETED' | 'DOCUMENT_DELETED' | 'NOTIFICATION_SENT';
+export type AuditLogAction = 'REQUEST_SUBMITTED' | 'STEP_ASSIGNEE_CHANGED' | 'COMMENT_ADDED' | 'STEP_COMPLETED' | 'DOCUMENT_DELETED' | 'NOTIFICATION_SENT' | 'AUDIT_LOG_ENTRY';
 
 export type AuditLog = {
     id: string;

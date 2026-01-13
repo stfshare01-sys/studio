@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState } from "react";
@@ -8,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { PlusCircle, Trash2, GitBranch, ShieldCheck, CheckCircle, GitMerge, GitFork, Library, WandSparkles, Loader2, UserSquare, Pencil, GripVertical, X, AlertTriangle, User, Bell, ChevronsRight, Hash, CaseSensitive } from "lucide-react";
+import { PlusCircle, Trash2, GitBranch, ShieldCheck, CheckCircle, GitMerge, GitFork, Library, WandSparkles, Loader2, UserSquare, Pencil, GripVertical, X, AlertTriangle, User, Bell, ChevronsRight, Hash, CaseSensitive, Timer } from "lucide-react";
 import Link from "next/link";
 import {
   Dialog,
@@ -222,6 +223,7 @@ function SortableStep({
                     </Popover>
 
                     {step.type === 'task' && (
+                        <>
                         <Popover>
                             <PopoverTrigger asChild>
                                 <Button variant="ghost" size="sm" className="h-auto p-1">
@@ -251,6 +253,30 @@ function SortableStep({
                                 </div>
                             </PopoverContent>
                         </Popover>
+                        
+                        <Popover>
+                            <PopoverTrigger asChild>
+                                <Button variant="ghost" size="sm" className="h-auto p-1">
+                                    <Timer className="h-3.5 w-3.5 mr-1" />
+                                    <span className="text-xs truncate max-w-[80px]">SLA: {step.slaHours ? `${step.slaHours}h` : 'N/A'}</span>
+                                    <Pencil className="h-3 w-3 ml-1 opacity-0 group-hover:opacity-100" />
+                                </Button>
+                            </PopoverTrigger>
+                             <PopoverContent className="w-auto p-2">
+                                <div className="space-y-2">
+                                    <Label htmlFor={`sla-${step.id}`} className="text-xs">SLA (horas)</Label>
+                                    <Input
+                                        id={`sla-${step.id}`}
+                                        type="number"
+                                        placeholder="Ej: 8"
+                                        value={step.slaHours || ''}
+                                        onChange={(e) => onUpdateStep(poolId, laneId, step.id, { slaHours: e.target.value ? Number(e.target.value) : undefined })}
+                                        className="h-8"
+                                    />
+                                </div>
+                            </PopoverContent>
+                        </Popover>
+                        </>
                     )}
                 </div>
             </div>

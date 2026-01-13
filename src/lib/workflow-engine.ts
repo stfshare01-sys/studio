@@ -1,10 +1,12 @@
 
+
 'use server';
 
 import { Firestore, doc, collection } from 'firebase/firestore';
 import type { Task, Request, Template, User, WorkflowStepDefinition, Rule } from './types';
 import { addDocumentNonBlocking, updateDocumentNonBlocking, setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import { intelligentTaskAssignment } from '@/ai/flows/intelligent-task-assignment';
+import { addHours } from 'date-fns';
 
 interface EvaluateRulesParams {
     firestore: Firestore;
@@ -181,13 +183,23 @@ async function activateAndAssignTasks(
     updatedSteps: Request['steps'],
     auditLogCollection: any
 ) {
+    const now = new Date();
+
     for (const stepDef of tasksToActivate) {
         const stepInRequest = request.steps.find(s => s.id === stepDef.id);
         if (stepInRequest && stepInRequest.taskId) {
             const taskRef = doc(firestore, 'tasks', stepInRequest.taskId);
             
             // Mark task as active
-            let taskUpdates: Record<string, any> = { status: 'Active' };
+            let taskUpdates: Record<string, any> = { 
+                status: 'Active',
+                activatedAt: now.toISOString() 
+            };
+
+            // Calculate SLA expiration if defined
+            if (stepDef.slaHours) {
+                taskUpdates.slaExpiresAt = addHours(now, stepDef.slaHours).toISOString();
+            }
 
             // Find step index in updatedSteps to modify it
             const stepIndex = updatedSteps.findIndex(s => s.id === stepDef.id);

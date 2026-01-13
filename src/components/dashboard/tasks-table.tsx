@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, useMemo } from "react";
@@ -12,14 +13,15 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import Link from "next/link";
-import { formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow, isPast } from "date-fns";
 import { es } from "date-fns/locale";
 import { Input } from "../ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
-import { Search, ArrowUpDown, ChevronDown } from "lucide-react";
+import { Search, ArrowUpDown, ChevronDown, AlertTriangle } from "lucide-react";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
 import { TableSkeleton } from "../ui/table-skeleton";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 const PAGE_SIZE = 10;
 
@@ -128,138 +130,154 @@ export function TasksTable({ tasks, isLoading = false }: TasksTableProps) {
   };
 
   return (
-    <div className="space-y-4">
-      {/* Filtros */}
-      <div className="flex flex-col sm:flex-row gap-4">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Buscar tareas..."
-            value={searchTerm}
-            onChange={(e) => handleSearchChange(e.target.value)}
-            className="pl-9"
-          />
+    <TooltipProvider>
+      <div className="space-y-4">
+        {/* Filtros */}
+        <div className="flex flex-col sm:flex-row gap-4">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Buscar tareas..."
+              value={searchTerm}
+              onChange={(e) => handleSearchChange(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+          <Select value={statusFilter} onValueChange={handleStatusFilterChange}>
+            <SelectTrigger className="w-full sm:w-[180px]">
+              <SelectValue placeholder="Filtrar por estado" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos los estados</SelectItem>
+              <SelectItem value="Active">Activa</SelectItem>
+              <SelectItem value="Pending">Pendiente</SelectItem>
+              <SelectItem value="Completed">Completada</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
-        <Select value={statusFilter} onValueChange={handleStatusFilterChange}>
-          <SelectTrigger className="w-full sm:w-[180px]">
-            <SelectValue placeholder="Filtrar por estado" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todos los estados</SelectItem>
-            <SelectItem value="Active">Activa</SelectItem>
-            <SelectItem value="Pending">Pendiente</SelectItem>
-            <SelectItem value="Completed">Completada</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
 
-      {/* Resultados */}
-      {filteredAndSortedTasks.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-8">
-          <p className="text-muted-foreground">No se encontraron tareas</p>
-          {(searchTerm || statusFilter !== "all") && (
-            <Button
-              variant="link"
-              onClick={() => { setSearchTerm(""); setStatusFilter("all"); }}
-            >
-              Limpiar filtros
-            </Button>
-          )}
-        </div>
-      ) : (
-        <div className="rounded-md border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead aria-sort={sortField === "name" ? (sortOrder === "asc" ? "ascending" : "descending") : "none"}>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="-ml-3 h-8"
-                    onClick={() => toggleSort("name")}
-                    aria-label={`Ordenar por tarea ${sortField === "name" ? (sortOrder === "asc" ? "descendente" : "ascendente") : ""}`}
-                  >
-                    Tarea
-                    <ArrowUpDown className="ml-2 h-4 w-4" aria-hidden="true" />
-                  </Button>
-                </TableHead>
-                <TableHead className="hidden sm:table-cell">Solicitud Relacionada</TableHead>
-                <TableHead className="hidden md:table-cell" aria-sort={sortField === "status" ? (sortOrder === "asc" ? "ascending" : "descending") : "none"}>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="-ml-3 h-8"
-                    onClick={() => toggleSort("status")}
-                    aria-label={`Ordenar por estado ${sortField === "status" ? (sortOrder === "asc" ? "descendente" : "ascendente") : ""}`}
-                  >
-                    Estado
-                    <ArrowUpDown className="ml-2 h-4 w-4" aria-hidden="true" />
-                  </Button>
-                </TableHead>
-                <TableHead className="hidden text-right sm:table-cell" aria-sort={sortField === "createdAt" ? (sortOrder === "asc" ? "ascending" : "descending") : "none"}>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="-mr-3 h-8"
-                    onClick={() => toggleSort("createdAt")}
-                    aria-label={`Ordenar por fecha ${sortField === "createdAt" ? (sortOrder === "asc" ? "descendente" : "ascendente") : ""}`}
-                  >
-                    Creado
-                    <ArrowUpDown className="ml-2 h-4 w-4" aria-hidden="true" />
-                  </Button>
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {paginatedTasks.map((task) => (
-                <TableRow key={task.id}>
-                  <TableCell>
-                    <Link
-                      href={`/requests/${task.requestId}`}
-                      className="font-medium text-primary hover:underline"
+        {/* Resultados */}
+        {filteredAndSortedTasks.length === 0 ? (
+          <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-8">
+            <p className="text-muted-foreground">No se encontraron tareas</p>
+            {(searchTerm || statusFilter !== "all") && (
+              <Button
+                variant="link"
+                onClick={() => { setSearchTerm(""); setStatusFilter("all"); }}
+              >
+                Limpiar filtros
+              </Button>
+            )}
+          </div>
+        ) : (
+          <div className="rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead aria-sort={sortField === "name" ? (sortOrder === "asc" ? "ascending" : "descending") : "none"}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="-ml-3 h-8"
+                      onClick={() => toggleSort("name")}
+                      aria-label={`Ordenar por tarea ${sortField === "name" ? (sortOrder === "asc" ? "descendente" : "ascendente") : ""}`}
                     >
-                      {task.name}
-                    </Link>
-                    <div className="text-sm text-muted-foreground md:hidden mt-1">
-                       {task.requestTitle}
-                    </div>
-                  </TableCell>
-                  <TableCell className="hidden sm:table-cell">
-                    {task.requestTitle}
-                  </TableCell>
-                  <TableCell className="hidden md:table-cell">
-                    <Badge variant={getStatusVariant(task.status) as "default" | "secondary" | "destructive" | "outline"}>
-                      {getStatusLabel(task.status)}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="hidden text-right text-muted-foreground sm:table-cell">
-                    {formatDistanceToNow(new Date(task.createdAt), {
-                      addSuffix: true,
-                      locale: es,
-                    })}
-                  </TableCell>
+                      Tarea
+                      <ArrowUpDown className="ml-2 h-4 w-4" aria-hidden="true" />
+                    </Button>
+                  </TableHead>
+                  <TableHead className="hidden sm:table-cell">Solicitud Relacionada</TableHead>
+                  <TableHead className="hidden md:table-cell" aria-sort={sortField === "status" ? (sortOrder === "asc" ? "ascending" : "descending") : "none"}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="-ml-3 h-8"
+                      onClick={() => toggleSort("status")}
+                      aria-label={`Ordenar por estado ${sortField === "status" ? (sortOrder === "asc" ? "descendente" : "ascendente") : ""}`}
+                    >
+                      Estado
+                      <ArrowUpDown className="ml-2 h-4 w-4" aria-hidden="true" />
+                    </Button>
+                  </TableHead>
+                  <TableHead className="hidden text-right sm:table-cell" aria-sort={sortField === "createdAt" ? (sortOrder === "asc" ? "ascending" : "descending") : "none"}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="-mr-3 h-8"
+                      onClick={() => toggleSort("createdAt")}
+                      aria-label={`Ordenar por fecha ${sortField === "createdAt" ? (sortOrder === "asc" ? "descendente" : "ascendente") : ""}`}
+                    >
+                      Creado
+                      <ArrowUpDown className="ml-2 h-4 w-4" aria-hidden="true" />
+                    </Button>
+                  </TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      )}
+              </TableHeader>
+              <TableBody>
+                {paginatedTasks.map((task) => {
+                  const isOverdue = task.slaExpiresAt && isPast(new Date(task.slaExpiresAt)) && task.status === 'Active';
+                  return (
+                  <TableRow key={task.id}>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        {isOverdue && (
+                          <Tooltip>
+                            <TooltipTrigger>
+                              <AlertTriangle className="h-4 w-4 text-destructive" />
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Esta tarea ha excedido su SLA.</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        )}
+                        <Link
+                          href={`/requests/${task.requestId}`}
+                          className="font-medium text-primary hover:underline"
+                        >
+                          {task.name}
+                        </Link>
+                      </div>
+                      <div className="text-sm text-muted-foreground md:hidden mt-1">
+                         {task.requestTitle}
+                      </div>
+                    </TableCell>
+                    <TableCell className="hidden sm:table-cell">
+                      {task.requestTitle}
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell">
+                      <Badge variant={getStatusVariant(task.status) as "default" | "secondary" | "destructive" | "outline"}>
+                        {getStatusLabel(task.status)}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="hidden text-right text-muted-foreground sm:table-cell">
+                      {formatDistanceToNow(new Date(task.createdAt), {
+                        addSuffix: true,
+                        locale: es,
+                      })}
+                    </TableCell>
+                  </TableRow>
+                )})}
+              </TableBody>
+            </Table>
+          </div>
+        )}
 
-      {/* Cargar más */}
-      {hasMore && (
-        <div className="flex justify-center">
-          <Button variant="outline" onClick={loadMore} className="gap-2" aria-label={`Cargar más tareas. Mostrando ${paginatedTasks.length} de ${filteredAndSortedTasks.length}`}>
-            <ChevronDown className="h-4 w-4" aria-hidden="true" />
-            Cargar más
-          </Button>
-        </div>
-      )}
+        {/* Cargar más */}
+        {hasMore && (
+          <div className="flex justify-center">
+            <Button variant="outline" onClick={loadMore} className="gap-2" aria-label={`Cargar más tareas. Mostrando ${paginatedTasks.length} de ${filteredAndSortedTasks.length}`}>
+              <ChevronDown className="h-4 w-4" aria-hidden="true" />
+              Cargar más
+            </Button>
+          </div>
+        )}
 
-      {/* Contador de resultados */}
-      <p className="text-sm text-muted-foreground">
-        Mostrando {paginatedTasks.length} de {filteredAndSortedTasks.length} tareas
-        {filteredAndSortedTasks.length !== tasks.length && ` (${tasks.length} total)`}
-      </p>
-    </div>
+        {/* Contador de resultados */}
+        <p className="text-sm text-muted-foreground">
+          Mostrando {paginatedTasks.length} de {filteredAndSortedTasks.length} tareas
+          {filteredAndSortedTasks.length !== tasks.length && ` (${tasks.length} total)`}
+        </p>
+      </div>
+    </TooltipProvider>
   );
 }
