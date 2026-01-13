@@ -17,7 +17,7 @@ import { Separator } from "@/components/ui/separator";
 import { WorkflowStepper } from "@/components/requests/workflow-stepper";
 import { AssigneeSuggester } from "@/components/requests/assignee-suggester";
 import { Badge } from "@/components/ui/badge";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ProcessDiscoveryChart } from "@/components/requests/process-discovery-chart";
 import { Textarea } from "@/components/ui/textarea";
@@ -160,7 +160,7 @@ export default function RequestDetailPage() {
     return doc(firestore, 'users', user.uid, 'requests', id);
   }, [firestore, user?.uid, id, isUserLoading]);
 
-  const { data: request, isLoading: isRequestLoading } = useDoc<RequestType>(requestRef);
+  const { data: request, isLoading: isRequestLoading, forceRefetch } = useDoc<RequestType>(requestRef);
 
   const commentsQuery = useMemoFirebase(() => {
     if (!requestRef) return null;
@@ -375,7 +375,7 @@ export default function RequestDetailPage() {
                         <CardDescription>El flujo de trabajo diseñado para esta solicitud.</CardDescription>
                     </CardHeader>
                     <CardContent>
-                        <WorkflowStepper steps={enrichedRequest.steps} />
+                        <WorkflowStepper steps={enrichedRequest.steps} request={request} allUsers={users || []} onDataChange={forceRefetch} />
                     </CardContent>
                 </Card>
 
