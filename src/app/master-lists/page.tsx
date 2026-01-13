@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import SiteLayout from '@/components/site-layout';
@@ -12,7 +13,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { useCollection, useFirestore, useMemoFirebase, useUser } from '@/firebase';
-import { collection } from 'firebase/firestore';
+import { collection, doc } from 'firebase/firestore';
 import { PlusCircle, Database, Pencil, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -89,8 +90,8 @@ export default function MasterListsPage() {
             </p>
           </div>
           {canCreate && (
-            <Button asChild disabled>
-              <Link href="/master-lists/new">
+            <Button asChild>
+              <Link href="/templates/new">
                 <PlusCircle className="mr-2 h-4 w-4" />
                 Nueva Lista
               </Link>
@@ -124,8 +125,8 @@ export default function MasterListsPage() {
                         </Button>
                         {canCreate && (
                             <div className="flex">
-                                <Button variant="outline" size="icon" asChild disabled>
-                                    <Link href={`/master-lists/edit/${list.id}`}>
+                                <Button variant="outline" size="icon" asChild>
+                                    <Link href={`/templates/edit/${list.id}`}>
                                         <Pencil className="h-4 w-4" />
                                     </Link>
                                 </Button>
@@ -162,8 +163,8 @@ export default function MasterListsPage() {
                         <h3 className="text-2xl font-bold tracking-tight">No hay listas maestras</h3>
                         <p className="text-sm text-muted-foreground">Cree una nueva lista para empezar a gestionar datos.</p>
                         {canCreate && (
-                            <Button className="mt-4" asChild disabled>
-                                <Link href="/master-lists/new">
+                            <Button className="mt-4" asChild>
+                                <Link href="/templates/new">
                                     <PlusCircle className="mr-2 h-4 w-4" />
                                     Nueva Lista
                                 </Link>
@@ -177,3 +178,5 @@ export default function MasterListsPage() {
     </SiteLayout>
   );
 }
+
+    
