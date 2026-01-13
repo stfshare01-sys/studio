@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState } from "react";
@@ -38,7 +37,7 @@ import { useFirestore } from "@/firebase";
 import { addDocumentNonBlocking } from "@/firebase/non-blocking-updates";
 import { collection } from "firebase/firestore";
 import { useRouter } from "next/navigation";
-import type { FormField, WorkflowStepDefinition, Rule, RuleCondition, RuleAction, WorkflowStepType, FormFieldType } from "@/lib/types";
+import type { FormField, WorkflowStepDefinition, Rule, RuleCondition, RuleAction, WorkflowStepType, FormFieldType, RuleOperator } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { generateProcessFromDescription, GenerateProcessOutput } from "@/ai/flows/process-generation";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -793,14 +792,50 @@ function RuleBuilderDialog({ fields, steps, onAddRule, onClose }: { fields: Form
     const { toast } = useToast();
     const [ruleType, setRuleType] = useState<'form' | 'outcome'>('form');
     const [conditionSource, setConditionSource] = useState<string>('');
-    const [conditionOperator, setConditionOperator] = useState<RuleCondition['operator'] | ''>('');
+    const [conditionOperator, setConditionOperator] = useState<RuleOperator | ''>('');
     const [conditionValue, setConditionValue] = useState<string>('');
     const [actionStep, setActionStep] = useState<string>('');
 
     const decisionTasks = steps.filter(s => s.outcomes && s.outcomes.length > 0);
-    const formFieldsForRules = fields.filter(f => ['number', 'select', 'radio'].includes(f.type));
+    const formFieldsForRules = fields.filter(f => ['number', 'select', 'radio', 'text'].includes(f.type));
 
     const selectedSource = ruleType === 'form' ? formFieldsForRules.find(f => f.id === conditionSource) : decisionTasks.find(s => s.id === conditionSource);
+
+    const getOperatorsForType = (type: FormFieldType | 'outcome'): { value: RuleOperator, label: string }[] => {
+        if (type === 'outcome') {
+            return [{ value: '==', label: 'es igual a' }];
+        }
+        switch (type) {
+            case 'number':
+                return [
+                    { value: '==', label: 'es igual a' },
+                    { value: '!=', label: 'no es igual a' },
+                    { value: '>', label: 'es mayor que' },
+                    { value: '<', label: 'es menor que' },
+                    { value: '>=', label: 'es mayor o igual que' },
+                    { value: '<=', label: 'es menor o igual que' },
+                ];
+            case 'text':
+            case 'textarea':
+                 return [
+                    { value: '==', label: 'es igual a' },
+                    { value: '!=', label: 'no es igual a' },
+                    { value: 'contains', label: 'contiene' },
+                    { value: 'not_contains', label: 'no contiene' },
+                ];
+            case 'select':
+            case 'radio':
+                return [
+                    { value: '==', label: 'es' },
+                    { value: '!=', label: 'no es' },
+                ];
+            default:
+                return [];
+        }
+    };
+    
+    const availableOperators = getOperatorsForType(selectedSource?.type || (ruleType === 'outcome' ? 'outcome' : 'text'));
+
 
     const handleSubmit = () => {
         if (!conditionSource || !conditionOperator || !conditionValue || !actionStep) {
@@ -816,7 +851,7 @@ function RuleBuilderDialog({ fields, steps, onAddRule, onClose }: { fields: Form
             condition: {
                 type: ruleType,
                 fieldId: conditionSource,
-                operator: conditionOperator as RuleCondition['operator'],
+                operator: conditionOperator as RuleOperator,
                 value: conditionValue,
             },
             action: {
@@ -846,7 +881,7 @@ function RuleBuilderDialog({ fields, steps, onAddRule, onClose }: { fields: Form
                     <div className="grid grid-cols-4 gap-4">
                         <div className="space-y-2 col-span-1">
                             <Label>Tipo de Condición</Label>
-                            <Select value={ruleType} onValueChange={(v) => { setRuleType(v as any); setConditionSource(''); }}>
+                            <Select value={ruleType} onValueChange={(v) => { setRuleType(v as any); setConditionSource(''); setConditionOperator(''); setConditionValue(''); }}>
                                 <SelectTrigger><SelectValue/></SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="form">Basada en Campo de Formulario</SelectItem>
@@ -871,27 +906,28 @@ function RuleBuilderDialog({ fields, steps, onAddRule, onClose }: { fields: Form
                             </div>
                             <div className="space-y-2">
                                 <Label>Operador</Label>
-                                <Select value={conditionOperator} onValueChange={(v) => setConditionOperator(v as any)}>
+                                <Select value={conditionOperator} onValueChange={(v) => setConditionOperator(v as any)} disabled={!selectedSource}>
                                     <SelectTrigger><SelectValue placeholder="Seleccione..."/></SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="==">{'=='} (Igual a)</SelectItem>
-                                        <SelectItem value="!=">{'!='} (No es igual a)</SelectItem>
-                                        {ruleType === 'form' && selectedSource?.type === 'number' && <>
-                                            <SelectItem value=">">{'>'} (Mayor que)</SelectItem>
-                                            <SelectItem value="<">{'<'} (Menor que)</SelectItem>
-                                            <SelectItem value=">=">{'>='} (Mayor o igual que)</SelectItem>
-                                            <SelectItem value="<=">{'<='} (Menor o igual que)</SelectItem>
-                                        </>}
+                                        {availableOperators.map(op => (
+                                            <SelectItem key={op.value} value={op.value}>{op.label}</SelectItem>
+                                        ))}
                                     </SelectContent>
                                 </Select>
                             </div>
                             <div className="space-y-2">
                                 <Label>Valor</Label>
-                                {ruleType === 'form' && selectedSource?.type === 'number' && (
-                                    <Input type="number" placeholder="p.ej., 5000" value={conditionValue} onChange={(e) => setConditionValue(e.target.value)} />
+                                {ruleType === 'form' && (selectedSource?.type === 'number' || selectedSource?.type === 'text' || selectedSource?.type === 'textarea') && (
+                                    <Input
+                                        type={selectedSource?.type === 'number' ? 'number' : 'text'}
+                                        placeholder="p.ej., 5000 o 'Urgente'"
+                                        value={conditionValue}
+                                        onChange={(e) => setConditionValue(e.target.value)}
+                                        disabled={!selectedSource}
+                                    />
                                 )}
                                 {ruleType === 'form' && (selectedSource?.type === 'select' || selectedSource?.type === 'radio') && (
-                                     <Select value={conditionValue} onValueChange={setConditionValue}>
+                                     <Select value={conditionValue} onValueChange={setConditionValue} disabled={!selectedSource}>
                                         <SelectTrigger><SelectValue placeholder="Seleccione valor..."/></SelectTrigger>
                                         <SelectContent>
                                             {selectedSource.options?.map(opt => <SelectItem key={opt} value={opt}>{opt}</SelectItem>)}
@@ -899,7 +935,7 @@ function RuleBuilderDialog({ fields, steps, onAddRule, onClose }: { fields: Form
                                     </Select>
                                 )}
                                 {ruleType === 'outcome' && (
-                                     <Select value={conditionValue} onValueChange={setConditionValue}>
+                                     <Select value={conditionValue} onValueChange={setConditionValue} disabled={!selectedSource}>
                                         <SelectTrigger><SelectValue placeholder="Seleccione resultado..."/></SelectTrigger>
                                         <SelectContent>
                                             {selectedSource?.outcomes?.map(out => <SelectItem key={out} value={out}>{out}</SelectItem>)}
@@ -916,9 +952,10 @@ function RuleBuilderDialog({ fields, steps, onAddRule, onClose }: { fields: Form
                     <div className="grid grid-cols-2 gap-4">
                          <div className="space-y-2">
                             <Label>Tipo de Acción</Label>
-                            <Select value="ROUTE_TO_STEP" >
+                            <Select value={ruleType === 'form' ? 'REQUIRE_ADDITIONAL_STEP' : 'ROUTE_TO_STEP'} >
                                 <SelectTrigger><SelectValue/></SelectTrigger>
                                 <SelectContent>
+                                    <SelectItem value="REQUIRE_ADDITIONAL_STEP">Añadir Paso Requerido</SelectItem>
                                     <SelectItem value="ROUTE_TO_STEP">Enrutar a Paso</SelectItem>
                                 </SelectContent>
                             </Select>
@@ -954,5 +991,3 @@ function RuleBuilderDialog({ fields, steps, onAddRule, onClose }: { fields: Form
         </DialogContent>
     )
 }
-
-    

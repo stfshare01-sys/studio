@@ -90,9 +90,14 @@ export type FormField = {
   options?: string[]; // For select, radio, checkbox
 };
 
+export type RuleOperator = 
+    | '==' | '!=' // Generic equality for text, numbers, selects
+    | '>' | '<' | '>=' | '<=' // For numbers
+    | 'contains' | 'not_contains'; // For text
+
 export type RuleCondition = {
   fieldId: string; // Can be a form field ID or a step ID for outcome-based rules
-  operator: '>' | '<' | '==' | '!=' | '>=' | '<=';
+  operator: RuleOperator;
   value: any;
   type: 'form' | 'outcome'; // Distinguish between form data rules and workflow outcome rules
 };

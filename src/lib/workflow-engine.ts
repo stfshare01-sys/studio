@@ -1,9 +1,7 @@
-
-
 'use server';
 
-import { Firestore, doc, collection, query, where, getDocs } from 'firebase/firestore';
-import type { Task, Request, Template, User, WorkflowStepDefinition } from './types';
+import { Firestore, doc, collection } from 'firebase/firestore';
+import type { Task, Request, Template, User, WorkflowStepDefinition, Rule } from './types';
 import { addDocumentNonBlocking, updateDocumentNonBlocking, setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import { intelligentTaskAssignment } from '@/ai/flows/intelligent-task-assignment';
 
@@ -18,35 +16,50 @@ interface CompleteTaskParams {
 }
 
 /**
- * Evaluates rules based on form data to determine if additional steps are needed.
- * This can be used at request creation or during the workflow.
- * @returns A list of step definitions that should be part of the process.
+ * Evaluates rules based on the current request state.
+ * Can be used at request creation or during the workflow.
+ * @returns A list of step definitions that should be added to the process.
  */
-export async function evaluateAndAddInitialSteps(
+export function evaluateRules(
     formData: Record<string, any>,
-    template: Template,
-    requestId: string,
-    requestOwnerId: string,
-    createdAt: string,
-    firestore: Firestore
-): Promise<{ finalSteps: WorkflowStepDefinition[], stepsWithTasks: (WorkflowStepDefinition & { taskId: string })[] }> {
-    const additionalSteps = template.rules?.reduce((acc, rule) => {
+    template: Template
+): WorkflowStepDefinition[] {
+    const stepsToAdd = template.rules?.reduce((acc, rule) => {
         if (rule.condition.type !== 'form' || rule.action.type !== 'REQUIRE_ADDITIONAL_STEP') {
             return acc;
         }
 
         const fieldValue = formData[rule.condition.fieldId];
         let conditionMet = false;
-        if (fieldValue !== undefined) {
-            const val = parseFloat(fieldValue);
-            const ruleVal = parseFloat(rule.condition.value);
+
+        if (fieldValue !== undefined && fieldValue !== null) {
+            const ruleValue = rule.condition.value;
             switch (rule.condition.operator) {
-                case '>': if (val > ruleVal) conditionMet = true; break;
-                case '<': if (val < ruleVal) conditionMet = true; break;
-                case '==': if (val == ruleVal) conditionMet = true; break;
-                case '!=': if (val != ruleVal) conditionMet = true; break;
-                case '>=': if (val >= ruleVal) conditionMet = true; break;
-                case '<=': if (val <= ruleVal) conditionMet = true; break;
+                case '>':
+                case '<':
+                case '>=':
+                case '<=':
+                    const numFieldValue = parseFloat(fieldValue);
+                    const numRuleValue = parseFloat(ruleValue);
+                    if (!isNaN(numFieldValue) && !isNaN(numRuleValue)) {
+                        if (rule.condition.operator === '>' && numFieldValue > numRuleValue) conditionMet = true;
+                        if (rule.condition.operator === '<' && numFieldValue < numRuleValue) conditionMet = true;
+                        if (rule.condition.operator === '>=' && numFieldValue >= numRuleValue) conditionMet = true;
+                        if (rule.condition.operator === '<=' && numFieldValue <= numRuleValue) conditionMet = true;
+                    }
+                    break;
+                case '==':
+                    if (fieldValue == ruleValue) conditionMet = true;
+                    break;
+                case '!=':
+                    if (fieldValue != ruleValue) conditionMet = true;
+                    break;
+                case 'contains':
+                    if (typeof fieldValue === 'string' && fieldValue.includes(ruleValue)) conditionMet = true;
+                    break;
+                case 'not_contains':
+                     if (typeof fieldValue === 'string' && !fieldValue.includes(ruleValue)) conditionMet = true;
+                    break;
             }
         }
 
@@ -58,6 +71,23 @@ export async function evaluateAndAddInitialSteps(
         }
         return acc;
     }, [] as WorkflowStepDefinition[]) || [];
+
+    return stepsToAdd;
+}
+
+
+/**
+ * Sets up the initial steps and tasks for a new request, evaluating rules.
+ */
+export async function evaluateAndAddInitialSteps(
+    formData: Record<string, any>,
+    template: Template,
+    requestId: string,
+    requestOwnerId: string,
+    createdAt: string,
+    firestore: Firestore
+): Promise<{ finalSteps: WorkflowStepDefinition[], stepsWithTasks: (WorkflowStepDefinition & { taskId: string })[] }> {
+    const additionalSteps = evaluateRules(formData, template);
 
     const finalSteps = [...template.steps, ...additionalSteps];
     const uniqueSteps = Array.from(new Map(finalSteps.map(s => [s.id, s])).values());
