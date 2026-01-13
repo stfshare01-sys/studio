@@ -87,11 +87,12 @@ export function useCollection<T = any>(
       (error: FirestoreError) => {
         let path: string | undefined;
         try {
-             // This logic extracts the path from either a ref or a query
-            path =
-            memoizedTargetRefOrQuery.type === 'collection'
-                ? (memoizedTargetRefOrQuery as CollectionReference).path
-                : (memoizedTargetRefOrQuery as unknown as InternalQuery)._query.path.canonicalString()
+            // This logic extracts the path from either a ref or a query
+            if ('path' in memoizedTargetRefOrQuery) {
+                path = (memoizedTargetRefOrQuery as CollectionReference).path;
+            } else if ('_query' in memoizedTargetRefOrQuery && (memoizedTargetRefOrQuery as any)._query?.path?.toString) {
+                path = (memoizedTargetRefOrQuery as any)._query.path.toString();
+            }
         } catch(e) {
             console.error("Could not determine path for Firestore error", e);
         }
