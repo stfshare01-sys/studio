@@ -79,11 +79,9 @@ export function useCollection<T = any>(
             // This logic extracts the path from either a ref or a query
             if ('path' in memoizedTargetRefOrQuery) {
                 path = (memoizedTargetRefOrQuery as CollectionReference).path;
-            } else if ('_query' in memoizedTargetRefOrQuery && (memoizedTargetRefOrQuery as any)._query?.path?.toString) {
-                path = (memoizedTargetRefOrQuery as any)._query.path.toString();
-            } else if (memoizedTargetRefOrQuery.converter) {
-                // Fallback for some query types, might not be perfect
-                path = (memoizedTargetRefOrQuery as any)._query.path.canonicalString();
+            } else if ((memoizedTargetRefOrQuery as any)._query) {
+                // This is a less reliable fallback for Query objects
+                path = (memoizedTargetRefOrQuery as any)._query.path?.canonicalString();
             }
         } catch(e) {
             console.error("Could not determine path for Firestore error", e);

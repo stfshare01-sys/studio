@@ -67,16 +67,9 @@ export default function DashboardPage() {
     return query(collection(firestore, 'tasks'));
   }, [firestore, isUserLoading]);
 
-  // Query for users (for RequestsTable to avoid N+1)
-  const usersQuery = useMemoFirebase(() => {
-    if (isUserLoading || !firestore) return null;
-    return query(collection(firestore, 'users'));
-  }, [firestore, isUserLoading]);
-
   const { data: myRequests, isLoading: isLoadingMyRequests } = useCollection<RequestType>(myRequestsQuery);
   const { data: tasks, isLoading: isLoadingTasks } = useCollection<Task>(tasksQuery);
   const { data: allTasks, isLoading: isLoadingAllTasks } = useCollection<Task>(allTasksQuery);
-  const { data: users } = useCollection<User>(usersQuery);
 
 
   const stats = React.useMemo(() => {
@@ -180,7 +173,7 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent>
               {isLoadingMyRequests && <DataTableSkeleton />}
-              {!isLoadingMyRequests && myRequests && <RequestsTable requests={myRequests} users={users ?? []} />}
+              {!isLoadingMyRequests && myRequests && <RequestsTable requests={myRequests} />}
               {!isLoadingMyRequests && !myRequests?.length && (
                  <div className="flex flex-1 items-center justify-center rounded-lg border border-dashed shadow-sm p-8">
                     <div className="flex flex-col items-center gap-1 text-center">
