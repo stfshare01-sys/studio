@@ -11,14 +11,27 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // Check role from the custom token claim
+    // Check if user document exists
+    function userDocExists() {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    // Get the user's role from their Firestore document
+    // This is used because custom claims are not being set by a backend function
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    // Check role from the user's Firestore document
+    // Returns false if user document doesn't exist yet (e.g., during signup)
     function hasRole(role) {
-      return isSignedIn() && request.auth.token.role == role;
+      return isSignedIn() && userDocExists() && getUserData().role == role;
     }
 
     // Check if user has any of the specified roles
+    // Returns false if user document doesn't exist yet
     function hasAnyRole(roles) {
-      return isSignedIn() && request.auth.token.role in roles;
+      return isSignedIn() && userDocExists() && getUserData().role in roles;
     }
 
     function isOwner(userId) {
