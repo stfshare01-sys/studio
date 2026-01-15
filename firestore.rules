@@ -86,8 +86,8 @@ service cloud.firestore {
      * @path /users/{userId}/requests/{requestId}
      */
     match /users/{userId}/requests/{requestId} {
-      // Admins can list all requests
-      allow list: if hasRole('Admin');
+      // Owner can list their own requests, Admins can list all
+      allow list: if isOwner(userId) || hasRole('Admin');
       // Owner can perform all operations on their requests
       allow get, create, update, delete: if isOwner(userId);
 
