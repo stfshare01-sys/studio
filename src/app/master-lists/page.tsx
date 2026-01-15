@@ -91,7 +91,7 @@ export default function MasterListsPage() {
           </div>
           {canCreate && (
             <Button asChild>
-              <Link href="/templates/new">
+              <Link href="/master-lists/new">
                 <PlusCircle className="mr-2 h-4 w-4" />
                 Nueva Lista
               </Link>
@@ -126,7 +126,7 @@ export default function MasterListsPage() {
                         {canCreate && (
                             <div className="flex">
                                 <Button variant="outline" size="icon" asChild>
-                                    <Link href={`/templates/edit/${list.id}`}>
+                                    <Link href={`/master-lists/edit/${list.id}`}>
                                         <Pencil className="h-4 w-4" />
                                     </Link>
                                 </Button>
@@ -164,7 +164,7 @@ export default function MasterListsPage() {
                         <p className="text-sm text-muted-foreground">Cree una nueva lista para empezar a gestionar datos.</p>
                         {canCreate && (
                             <Button className="mt-4" asChild>
-                                <Link href="/templates/new">
+                                <Link href="/master-lists/new">
                                     <PlusCircle className="mr-2 h-4 w-4" />
                                     Nueva Lista
                                 </Link>

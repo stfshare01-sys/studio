@@ -2,7 +2,7 @@
 
 'use server';
 
-import { Firestore, doc, collection, getDoc } from 'firebase/firestore';
+import { Firestore, doc, collection, getDoc, runTransaction, writeBatch } from 'firebase/firestore';
 import type { Task, Request, Template, User, WorkflowStepDefinition, Rule } from './types';
 import { addDocumentNonBlocking, updateDocumentNonBlocking, setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import { intelligentTaskAssignment } from '@/ai/flows/intelligent-task-assignment';
@@ -138,8 +138,11 @@ export async function evaluateAndAddInitialSteps(
     const finalSteps = [...template.steps, ...additionalSteps];
     const uniqueSteps = Array.from(new Map(finalSteps.map(s => [s.id, s])).values());
     
-    // Create task documents for all steps that will be part of this request
-    const taskCreationPromises = uniqueSteps.map(async (step) => {
+    // Create task documents atomically using writeBatch
+    const batch = writeBatch(firestore);
+    const stepsWithTasks: (WorkflowStepDefinition & { taskId: string })[] = [];
+
+    for (const step of uniqueSteps) {
         const tasksCollection = collection(firestore, 'tasks');
         const newTaskRef = doc(tasksCollection);
         const taskData = {
@@ -154,12 +157,13 @@ export async function evaluateAndAddInitialSteps(
             completedAt: null,
             createdAt: createdAt,
         };
-        setDocumentNonBlocking(newTaskRef, taskData, {});
-        return { ...step, taskId: newTaskRef.id };
-    });
+        batch.set(newTaskRef, taskData);
+        stepsWithTasks.push({ ...step, taskId: newTaskRef.id });
+    }
 
-    const stepsWithTasks = await Promise.all(taskCreationPromises);
-    
+    // Commit all task creations atomically
+    await batch.commit();
+
     return { finalSteps: uniqueSteps, stepsWithTasks };
 }
 
@@ -276,48 +280,64 @@ export async function completeTaskAndProgressWorkflow({
 }: CompleteTaskParams): Promise<void> {
     const now = new Date().toISOString();
     const requestRef = doc(firestore, 'users', request.submittedBy, 'requests', request.id);
-    const auditLogCollection = collection(requestRef, 'audit_logs');
     const taskRef = doc(firestore, 'tasks', task.id);
 
-    // 1. Update the completed task in /tasks collection
-    updateDocumentNonBlocking(taskRef, { status: 'Completed', completedAt: now });
-
-    // 2. Update the corresponding step in the request document
+    // 1. Update the corresponding step in the request document
     let updatedSteps = request.steps.map(s =>
         s.id === task.stepId ? { ...s, status: 'Completed', completedAt: now, outcome: outcome || null } : s
     );
-    
-    // Add audit log for task completion
-    addDocumentNonBlocking(auditLogCollection, {
-        requestId: request.id,
-        userId: currentUser.id,
-        userFullName: currentUser.fullName,
-        userAvatarUrl: currentUser.avatarUrl,
-        timestamp: now,
-        action: 'STEP_COMPLETED',
-        details: { stepName: task.name, outcome: outcome || 'Completado' }
+
+    // 2. Execute core task completion atomically in a transaction
+    await runTransaction(firestore, async (transaction) => {
+        // Read phase - verify task hasn't changed
+        const taskSnap = await transaction.get(taskRef);
+        if (!taskSnap.exists() || taskSnap.data()?.status === 'Completed') {
+            throw new Error('Task already completed or does not exist');
+        }
+
+        // Write phase - all writes must happen after reads
+        // Update task status
+        transaction.update(taskRef, { status: 'Completed', completedAt: now });
+
+        // Create audit log
+        const auditLogRef = doc(collection(requestRef, 'audit_logs'));
+        transaction.set(auditLogRef, {
+            requestId: request.id,
+            userId: currentUser.id,
+            userFullName: currentUser.fullName,
+            userAvatarUrl: currentUser.avatarUrl,
+            timestamp: now,
+            action: 'STEP_COMPLETED',
+            details: { stepName: task.name, outcome: outcome || 'Completado' }
+        });
+
+        // Handle rejection flow
+        if (outcome === 'Rechazado') {
+            transaction.update(requestRef, {
+                status: 'Rejected',
+                completedAt: now,
+                updatedAt: now,
+                steps: updatedSteps,
+            });
+            // Notification for rejection
+            const notificationRef = doc(collection(firestore, 'users', request.submittedBy, 'notifications'));
+            transaction.set(notificationRef, {
+                title: 'Solicitud Rechazada',
+                message: `Tu solicitud "${request.title}" ha sido rechazada.`,
+                type: 'warning',
+                read: false,
+                createdAt: now,
+                link: `/requests/${request.id}`,
+            });
+        }
     });
-    
-    // Handle "Rechazado" outcome for exclusive gateways
+
+    // If rejected, stop workflow progression here
     if (outcome === 'Rechazado') {
-        updateDocumentNonBlocking(requestRef, {
-            status: 'Rejected',
-            completedAt: now,
-            updatedAt: now,
-            steps: updatedSteps, // Save the completed "rejection" step
-        });
-        // Notify submitter of rejection
-        const submitterNotificationRef = collection(firestore, 'users', request.submittedBy, 'notifications');
-        addDocumentNonBlocking(submitterNotificationRef, {
-            title: 'Solicitud Rechazada',
-            message: `Tu solicitud "${request.title}" ha sido rechazada.`,
-            type: 'warning',
-            read: false,
-            createdAt: now,
-            link: `/requests/${request.id}`,
-        });
-        return; // Stop the workflow
+        return;
     }
+
+    const auditLogCollection = collection(requestRef, 'audit_logs');
     
     // *** DYNAMIC RULE EVALUATION ***
     const dynamicallyAddedSteps = await evaluateAndExecuteRules({
@@ -434,7 +454,9 @@ export async function completeTaskAndProgressWorkflow({
         if (nextSteps.length === 1 && nextSteps[0].type === 'gateway-parallel') {
              if (!checkJoinCondition(nextSteps[0].id)) {
                 // Not all branches are complete, just update the state and wait.
-                updateDocumentNonBlocking(requestRef, { steps: updatedSteps, updatedAt: now });
+                const waitBatch = writeBatch(firestore);
+                waitBatch.update(requestRef, { steps: updatedSteps, updatedAt: now });
+                await waitBatch.commit();
                 return;
              }
              // All branches complete, find the step after the join gateway.
@@ -442,39 +464,46 @@ export async function completeTaskAndProgressWorkflow({
              const stepAfterJoin = template.steps[joinGatewayIndex + 1];
              finalNextSteps = stepAfterJoin ? [stepAfterJoin] : [];
         }
-        
+
         if (finalNextSteps.length > 0) {
             await activateAndAssignTasks(firestore, finalNextSteps, request, allUsers, updatedSteps, auditLogCollection);
         } else {
             // This is the end of a branch or the entire workflow. Check if all tasks are done.
             const activeOrPendingTasks = updatedSteps.some(s => s.status === 'Active' || s.status === 'Pending');
             if (!activeOrPendingTasks) {
-                 updateDocumentNonBlocking(requestRef, { status: 'Completed', completedAt: now });
-                 const submitterNotificationRef = collection(firestore, 'users', request.submittedBy, 'notifications');
-                 addDocumentNonBlocking(submitterNotificationRef, {
-                     title: 'Solicitud Completada',
-                     message: `Tu solicitud "${request.title}" ha sido completada.`,
-                     type: 'success',
-                     read: false,
-                     createdAt: now,
-                     link: `/requests/${request.id}`,
-                 });
+                // Complete workflow atomically with batch
+                const completeBatch = writeBatch(firestore);
+                completeBatch.update(requestRef, { status: 'Completed', completedAt: now, steps: updatedSteps, updatedAt: now });
+                const notificationRef = doc(collection(firestore, 'users', request.submittedBy, 'notifications'));
+                completeBatch.set(notificationRef, {
+                    title: 'Solicitud Completada',
+                    message: `Tu solicitud "${request.title}" ha sido completada.`,
+                    type: 'success',
+                    read: false,
+                    createdAt: now,
+                    link: `/requests/${request.id}`,
+                });
+                await completeBatch.commit();
+                return;
             }
         }
-        
-        updateDocumentNonBlocking(requestRef, { steps: updatedSteps, updatedAt: now });
+
+        // Update request steps
+        const updateBatch = writeBatch(firestore);
+        updateBatch.update(requestRef, { steps: updatedSteps, updatedAt: now });
+        await updateBatch.commit();
 
     } else {
-        // No more steps defined, workflow is complete.
-        updateDocumentNonBlocking(requestRef, {
+        // No more steps defined, workflow is complete - use batch for atomicity
+        const completeBatch = writeBatch(firestore);
+        completeBatch.update(requestRef, {
             status: 'Completed',
             completedAt: now,
             updatedAt: now,
             steps: updatedSteps,
         });
-
-        const submitterNotificationRef = collection(firestore, 'users', request.submittedBy, 'notifications');
-        addDocumentNonBlocking(submitterNotificationRef, {
+        const notificationRef = doc(collection(firestore, 'users', request.submittedBy, 'notifications'));
+        completeBatch.set(notificationRef, {
             title: 'Solicitud Completada',
             message: `Tu solicitud "${request.title}" ha sido completada.`,
             type: 'success',
@@ -482,6 +511,7 @@ export async function completeTaskAndProgressWorkflow({
             createdAt: now,
             link: `/requests/${request.id}`,
         });
+        await completeBatch.commit();
     }
 }
 
@@ -494,28 +524,49 @@ interface HandleEscalationParams {
 
 export async function handleTaskEscalation({ firestore, task, currentUser, allUsers }: HandleEscalationParams) {
     console.log(`Handling escalation for overdue task: ${task.id}`);
-    
-    // Mark task as escalated to prevent re-triggering
+
     const taskRef = doc(firestore, 'tasks', task.id);
-    updateDocumentNonBlocking(taskRef, { isEscalated: true });
-
-    // Fetch the request to get the templateId
     const requestRef = doc(firestore, 'users', task.requestOwnerId, 'requests', task.requestId);
-    const requestSnap = await getDoc(requestRef);
-    if (!requestSnap.exists()) {
-        console.error(`Escalation failed: Request ${task.requestId} not found.`);
-        return;
-    }
-    const requestData = requestSnap.data() as Request;
 
-    // Fetch the template to get the step definition and policy
-    const templateRef = doc(firestore, 'request_templates', requestData.templateId);
-    const templateSnap = await getDoc(templateRef);
-    if (!templateSnap.exists()) {
-        console.error(`Escalation failed: Template ${requestData.templateId} not found.`);
+    // Use transaction to atomically check and mark task as escalated (prevents race conditions)
+    let requestData: Request | null = null;
+    let templateData: Template | null = null;
+
+    try {
+        await runTransaction(firestore, async (transaction) => {
+            // Read phase
+            const taskSnap = await transaction.get(taskRef);
+            if (!taskSnap.exists()) {
+                throw new Error(`Task ${task.id} not found`);
+            }
+            if (taskSnap.data()?.isEscalated) {
+                throw new Error(`Task ${task.id} already escalated`);
+            }
+
+            const requestSnap = await transaction.get(requestRef);
+            if (!requestSnap.exists()) {
+                throw new Error(`Request ${task.requestId} not found`);
+            }
+            requestData = requestSnap.data() as Request;
+
+            const templateRef = doc(firestore, 'request_templates', requestData.templateId);
+            const templateSnap = await transaction.get(templateRef);
+            if (!templateSnap.exists()) {
+                throw new Error(`Template ${requestData.templateId} not found`);
+            }
+            templateData = templateSnap.data() as Template;
+
+            // Write phase - mark task as escalated
+            transaction.update(taskRef, { isEscalated: true });
+        });
+    } catch (error) {
+        console.error(`Escalation failed:`, error);
         return;
     }
-    const templateData = templateSnap.data() as Template;
+
+    if (!requestData || !templateData) {
+        return;
+    }
     const stepDef = templateData.steps.find(s => s.id === task.stepId);
     if (!stepDef?.escalationPolicy) {
         console.log(`No escalation policy for step ${task.name}. Defaulting to notify assignee.`);
@@ -537,23 +588,32 @@ export async function handleTaskEscalation({ firestore, task, currentUser, allUs
             
             if (suggestion.suggestedUserId) {
                 const newAssignee = allUsers.find(u => u.id === suggestion.suggestedUserId);
-                updateDocumentNonBlocking(taskRef, { assigneeId: suggestion.suggestedUserId });
+
+                // Use batch for atomic reassignment
+                const reassignBatch = writeBatch(firestore);
+
+                // Update task assignee
+                reassignBatch.update(taskRef, { assigneeId: suggestion.suggestedUserId });
 
                 // Update steps array in request
                 const updatedSteps = requestData.steps.map(s => s.id === task.stepId ? { ...s, assigneeId: suggestion.suggestedUserId } : s);
-                updateDocumentNonBlocking(requestRef, { steps: updatedSteps });
+                reassignBatch.update(requestRef, { steps: updatedSteps });
 
-                addDocumentNonBlocking(auditLogCollection, {
-                    requestId: requestData.id, userId: 'system', userFullName: 'FlowMaster AI', timestamp: now, action: 'REQUEST_SUBMITTED' as any,
+                // Add audit log
+                const auditLogRef = doc(auditLogCollection);
+                reassignBatch.set(auditLogRef, {
+                    requestId: requestData.id, userId: 'system', userFullName: 'FlowMaster AI', timestamp: now, action: 'STEP_ASSIGNEE_CHANGED',
                     details: { message: `Tarea "${task.name}" reasignada a ${newAssignee?.fullName} debido a vencimiento de SLA.` }
                 });
-                
+
                 // Notify new assignee
-                const notificationRef = collection(firestore, 'users', suggestion.suggestedUserId, 'notifications');
-                addDocumentNonBlocking(notificationRef, {
+                const notificationRef = doc(collection(firestore, 'users', suggestion.suggestedUserId, 'notifications'));
+                reassignBatch.set(notificationRef, {
                     title: 'Tarea Urgente Reasignada', message: `Se te ha reasignado la tarea vencida "${task.name}".`,
                     type: 'warning', read: false, createdAt: now, link: `/requests/${requestData.id}`,
                 });
+
+                await reassignBatch.commit();
             }
         } catch (error) {
             console.error("Reassignment failed:", error);
@@ -562,7 +622,11 @@ export async function handleTaskEscalation({ firestore, task, currentUser, allUs
     } else { // Default action is NOTIFY
         console.log(`Notifying for overdue task: ${task.id}`);
         const targets = policy?.notify || ['assignee'];
-        
+
+        // Use batch to send all notifications atomically
+        const notifyBatch = writeBatch(firestore);
+        let hasNotifications = false;
+
         for (const target of targets) {
             let userToNotify: User | undefined;
             if (target === 'assignee') {
@@ -571,19 +635,25 @@ export async function handleTaskEscalation({ firestore, task, currentUser, allUs
                 const assignee = allUsers.find(u => u.id === task.assigneeId);
                 userToNotify = allUsers.find(u => u.id === assignee?.managerId);
             }
-            
+
             if (userToNotify) {
-                const notificationRef = collection(firestore, 'users', userToNotify.id, 'notifications');
-                addDocumentNonBlocking(notificationRef, {
+                hasNotifications = true;
+                const notificationRef = doc(collection(firestore, 'users', userToNotify.id, 'notifications'));
+                notifyBatch.set(notificationRef, {
                     title: 'Tarea Vencida',
                     message: `La tarea "${task.name}" para la solicitud "${task.requestTitle}" ha superado su SLA.`,
                     type: 'warning', read: false, createdAt: now, link: `/requests/${requestData.id}`,
                 });
-                addDocumentNonBlocking(auditLogCollection, {
-                    requestId: requestData.id, userId: 'system', userFullName: 'FlowMaster AI', timestamp: now, action: 'REQUEST_SUBMITTED' as any,
+                const auditLogRef = doc(auditLogCollection);
+                notifyBatch.set(auditLogRef, {
+                    requestId: requestData.id, userId: 'system', userFullName: 'FlowMaster AI', timestamp: now, action: 'STEP_ASSIGNEE_CHANGED',
                     details: { message: `Notificación de SLA vencido enviada a ${userToNotify.fullName}.` }
                 });
             }
+        }
+
+        if (hasNotifications) {
+            await notifyBatch.commit();
         }
     }
 }
