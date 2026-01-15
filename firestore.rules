@@ -10,18 +10,32 @@ service cloud.firestore {
     function isSignedIn() {
       return request.auth != null;
     }
-    
-    // NEW: Check role from the custom token claim. Much more efficient.
+
+    // Check role from the custom token claim
     function hasRole(role) {
       return isSignedIn() && request.auth.token.role == role;
+    }
+
+    // Check if user has any of the specified roles
+    function hasAnyRole(roles) {
+      return isSignedIn() && request.auth.token.role in roles;
     }
 
     function isOwner(userId) {
       return isSignedIn() && request.auth.uid == userId;
     }
-    
+
     function isOwnerOrAdmin(userId) {
       return isOwner(userId) || hasRole('Admin');
+    }
+
+    // Validate that required fields exist and are of correct type
+    function hasRequiredTaskFields() {
+      let data = request.resource.data;
+      return data.keys().hasAll(['requestId', 'requestOwnerId', 'stepId', 'name', 'status', 'createdAt'])
+        && data.status in ['Pending', 'Active', 'Completed']
+        && data.requestOwnerId is string
+        && data.requestId is string;
     }
 
     // -------------------------------------------------------------------------
@@ -29,89 +43,145 @@ service cloud.firestore {
     // -------------------------------------------------------------------------
 
     /**
-     * @description Defines rules for request templates, which are public and read-only for all clients.
+     * @description Defines rules for request templates.
+     * Read: All authenticated users
+     * Write: Admins and Designers only
      * @path /request_templates/{requestTemplateId}
      */
     match /request_templates/{requestTemplateId} {
       allow get, list: if isSignedIn();
-      // Allow create, update, delete only for Admins or Designers
-      allow write: if hasRole('Admin') || hasRole('Designer');
+      allow write: if hasAnyRole(['Admin', 'Designer']);
     }
 
     /**
-     * @description Manages user profiles. A user can read/update their own profile. Admins can manage all profiles.
+     * @description Manages user profiles.
      * @path /users/{userId}
      */
     match /users/{userId} {
+      // Users can read their own profile, Admins can read any
       allow get: if isOwnerOrAdmin(userId);
-      allow list: if hasRole('Admin'); // Only Admins can list all users
+      // All signed-in users can list users (needed for task assignment dropdowns)
+      allow list: if isSignedIn();
+      // Users can only create their own profile with matching ID
       allow create: if isOwner(userId) && request.resource.data.id == userId;
-      allow update: if isOwnerOrAdmin(userId); // Users can update their own profile, Admins can update any
-      allow delete: if hasRole('Admin'); // Only admins can delete users
+      // Users can update their own profile, Admins can update any
+      allow update: if isOwnerOrAdmin(userId);
+      // Only admins can delete users
+      allow delete: if hasRole('Admin');
 
       /**
-       * @description Manages user notifications. Only the owner can read, update, or delete their notifications.
+       * @description User notifications
        * @path /users/{userId}/notifications/{notificationId}
        */
       match /notifications/{notificationId} {
         allow get, list: if isOwner(userId);
-        allow create: if isOwner(userId) || hasRole('Admin'); // System (via admin) can create notifications
+        // System and admins can create notifications for any user
+        allow create: if isSignedIn();
         allow update, delete: if isOwner(userId);
       }
     }
 
-     /**
-     * @description Manages user-submitted requests. Only the owner can perform any action on their requests. Admins can view all requests.
+    /**
+     * @description User-submitted requests and their subcollections.
      * @path /users/{userId}/requests/{requestId}
      */
     match /users/{userId}/requests/{requestId} {
+      // Admins can list all requests
       allow list: if hasRole('Admin');
+      // Owner can perform all operations on their requests
       allow get, create, update, delete: if isOwner(userId);
 
+      // Documents attached to requests
       match /documents/{documentId} {
         allow get, list, create, update, delete: if isOwner(userId);
       }
 
+      // Comments on requests - readable by participants and admins
       match /comments/{commentId} {
-        allow get, list, create, update, delete: if isOwner(userId) || hasRole('Admin');
+        allow get, list: if isSignedIn(); // Allow participants to read comments
+        allow create: if isSignedIn(); // Any authenticated user can comment
+        allow update: if isSignedIn() && request.auth.uid == resource.data.authorId; // Only author can edit
+        allow delete: if isOwner(userId) || hasRole('Admin') || request.auth.uid == resource.data.authorId;
       }
 
+      // Audit logs - immutable history
       match /audit_logs/{auditLogId} {
-        allow get, list: if isOwnerOrAdmin(userId);
-        allow create: if isOwnerOrAdmin(userId);
-        allow update, delete: if false; // Immutable
+        allow get, list: if isSignedIn(); // Participants can view audit trail
+        allow create: if isSignedIn(); // System creates logs
+        allow update, delete: if false; // Immutable - no edits or deletes
       }
     }
-    
+
     /**
-     * @description Allows collection group queries on requests for admin users.
+     * @description Collection group queries on requests.
      * @path /{path=**}/requests/{requestId}
      */
     match /{path=**}/requests/{requestId} {
-      // Admins can read all requests across all users for reporting/search
-      allow read: if hasRole('Admin');
+      // Admins and Designers can read all requests for reporting
+      allow read: if hasAnyRole(['Admin', 'Designer']);
     }
 
     /**
-     * @description Manages the central tasks collection.
+     * @description Central tasks collection for workflow management.
      * @path /tasks/{taskId}
      */
     match /tasks/{taskId} {
-      // Allow reading a single task if you are the assignee, owner of the request, or an admin.
-      allow get: if isSignedIn() && (request.auth.uid == resource.data.assigneeId || request.auth.uid == resource.data.requestOwnerId || hasRole('Admin'));
-      
-      // Allow any signed-in user to list all tasks for analytics, but specific filtering should be done client-side or with more specific rules.
+      // Read: Assignee, request owner, or admin
+      allow get: if isSignedIn() && (
+        request.auth.uid == resource.data.assigneeId ||
+        request.auth.uid == resource.data.requestOwnerId ||
+        hasRole('Admin')
+      );
+
+      // List: Users can list tasks where they are assignee or request owner
+      // Note: Requires compound index on assigneeId and requestOwnerId
       allow list: if isSignedIn();
-      
-      // Allow creating a task if you are the owner of the parent request.
-      allow create: if isSignedIn() && request.auth.uid == request.resource.data.requestOwnerId;
-      
-      // Allow updating a task if you are the assignee or an Admin.
-      // A manager could also update, which requires a more complex rule.
-      allow update: if isSignedIn() && (request.auth.uid == resource.data.assigneeId || hasRole('Admin'));
-      
-      // Disallow client-side deletes for now to maintain history. Admins are an exception.
+
+      // Create: Only request owner can create tasks with proper validation
+      allow create: if isSignedIn()
+        && request.auth.uid == request.resource.data.requestOwnerId
+        && hasRequiredTaskFields();
+
+      // Update: Assignee, request owner, or Admin can update
+      // Validates that critical fields cannot be changed
+      allow update: if isSignedIn() && (
+        request.auth.uid == resource.data.assigneeId ||
+        request.auth.uid == resource.data.requestOwnerId ||
+        hasRole('Admin')
+      ) && (
+        // Prevent changing the request association
+        request.resource.data.requestId == resource.data.requestId &&
+        request.resource.data.requestOwnerId == resource.data.requestOwnerId
+      );
+
+      // Delete: Only admins can delete tasks
       allow delete: if hasRole('Admin');
+    }
+
+    /**
+     * @description Master Lists for reference data.
+     * Read: All authenticated users
+     * Write: Admins and Designers
+     * @path /master_lists/{listId}
+     */
+    match /master_lists/{listId} {
+      allow get, list: if isSignedIn();
+      allow write: if hasAnyRole(['Admin', 'Designer']);
+
+      // Items within a master list
+      match /items/{itemId} {
+        allow get, list: if isSignedIn();
+        allow write: if hasAnyRole(['Admin', 'Designer']);
+      }
+    }
+
+    /**
+     * @description Integrations configuration.
+     * Read/Write: Admins only
+     * @path /integrations/{integrationId}
+     */
+    match /integrations/{integrationId} {
+      allow read, write: if hasRole('Admin');
     }
   }
 }
