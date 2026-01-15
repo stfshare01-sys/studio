@@ -1,10 +1,11 @@
+
 "use client";
 
 import type { AuditLog, AuditLogAction } from "@/lib/types";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
-import { FilePlus, MessageSquarePlus, UserCheck, CheckCircle2, Bot } from "lucide-react";
+import { FilePlus, MessageSquarePlus, UserCheck, CheckCircle2, Bot, Trash2 } from "lucide-react";
 import { Skeleton } from "../ui/skeleton";
 import {
   Tooltip,
@@ -40,7 +41,7 @@ const actionDetails: Record<AuditLogAction, { icon: React.ElementType, text: (lo
         text: (log) => `${log.userFullName} completó la tarea "${log.details.stepName}".`,
     },
     DOCUMENT_DELETED: {
-        icon: FilePlus, // Placeholder, you might want a more specific icon
+        icon: Trash2,
         text: (log) => `${log.userFullName} eliminó el documento "${log.details.filename}".`,
     }
 };

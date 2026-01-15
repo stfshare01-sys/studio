@@ -657,3 +657,4 @@ export async function handleTaskEscalation({ firestore, task, currentUser, allUs
         }
     }
 }
+
