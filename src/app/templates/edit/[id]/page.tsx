@@ -162,12 +162,14 @@ function SortableStep({
     step, 
     poolId, 
     laneId, 
-    onUpdateStep 
+    onUpdateStep,
+    onDeleteStep
 }: { 
     step: WorkflowStepDefinition, 
     poolId: string, 
     laneId: string, 
-    onUpdateStep: (poolId: string, laneId: string, stepId: string, updates: Partial<WorkflowStepDefinition>) => void 
+    onUpdateStep: (poolId: string, laneId: string, stepId: string, updates: Partial<WorkflowStepDefinition>) => void,
+    onDeleteStep: (poolId: string, laneId: string, stepId: string) => void
 }) {
     const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: step.id });
     const style = { transform: CSS.Transform.toString(transform), transition };
@@ -328,7 +330,15 @@ function SortableStep({
                     )}
                 </div>
             </div>
-            
+            <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 opacity-0 group-hover:opacity-100 text-destructive hover:text-destructive hover:bg-destructive/10 self-start mt-1"
+                onClick={() => onDeleteStep(poolId, laneId, step.id)}
+            >
+                <Trash2 className="h-4 w-4" />
+                <span className="sr-only">Eliminar paso</span>
+            </Button>
         </div>
     );
 }
@@ -544,6 +554,36 @@ export default function EditTemplatePage() {
       setPools(pools.map(pool => pool.id === poolId ? { ...pool, lanes: [...pool.lanes, newLane] } : pool));
   }
 
+  const handleDeletePool = (poolId: string) => {
+    setPools(pools.filter(pool => pool.id !== poolId));
+  }
+
+  const handleDeleteLane = (poolId: string, laneId: string) => {
+      setPools(pools.map(pool => {
+          if (pool.id === poolId) {
+              return { ...pool, lanes: pool.lanes.filter(lane => lane.id !== laneId) };
+          }
+          return pool;
+      }));
+  }
+
+  const handleDeleteStep = (poolId: string, laneId: string, stepId: string) => {
+      setPools(pools.map(pool => {
+          if (pool.id === poolId) {
+              return {
+                  ...pool,
+                  lanes: pool.lanes.map(lane => {
+                      if (lane.id === laneId) {
+                          return { ...lane, steps: lane.steps.filter(step => step.id !== stepId) };
+                      }
+                      return lane;
+                  })
+              };
+          }
+          return pool;
+      }));
+  }
+
 
   const handleSaveTemplate = async () => {
     if(!templateRef) {
@@ -736,8 +776,8 @@ export default function EditTemplatePage() {
                     <CardContent className="space-y-4">
                         <div className="space-y-4 rounded-md bg-muted/50 p-4 min-h-[300px]">
                             {pools.map((pool) => (
-                                <div key={pool.id} className="rounded-lg border bg-card p-4 space-y-4">
-                                    <div className="flex items-center">
+                                <div key={pool.id} className="group/pool rounded-lg border bg-card p-4 space-y-4">
+                                    <div className="flex items-center gap-2">
                                         <Input
                                             value={pool.name}
                                             onChange={(e) => handleUpdate('pool', { poolId: pool.id }, e.target.value)}
@@ -746,11 +786,20 @@ export default function EditTemplatePage() {
                                         <Button variant="ghost" size="sm" onClick={() => handleAddLaneToPool(pool.id)}>
                                             <PlusCircle className="mr-2 h-4 w-4" /> Añadir Carril
                                         </Button>
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-8 w-8 opacity-0 group-hover/pool:opacity-100 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                            onClick={() => handleDeletePool(pool.id)}
+                                        >
+                                            <Trash2 className="h-4 w-4" />
+                                            <span className="sr-only">Eliminar piscina</span>
+                                        </Button>
                                     </div>
                                     <div className="space-y-2 pl-6">
                                         {pool.lanes.map((lane) => (
-                                            <div key={lane.id} className="rounded-md border bg-background">
-                                                <div className="flex items-center p-2 border-b">
+                                            <div key={lane.id} className="group/lane rounded-md border bg-background">
+                                                <div className="flex items-center gap-2 p-2 border-b">
                                                     <Input
                                                         value={lane.name}
                                                         onChange={(e) => handleUpdate('lane', { poolId: pool.id, laneId: lane.id }, e.target.value)}
@@ -773,11 +822,20 @@ export default function EditTemplatePage() {
                                                             </DropdownMenuItem>
                                                         </DropdownMenuContent>
                                                     </DropdownMenu>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="h-8 w-8 opacity-0 group-hover/lane:opacity-100 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                                        onClick={() => handleDeleteLane(pool.id, lane.id)}
+                                                    >
+                                                        <Trash2 className="h-4 w-4" />
+                                                        <span className="sr-only">Eliminar carril</span>
+                                                    </Button>
                                                 </div>
                                                 <div className="p-2 min-h-[50px] space-y-2">
                                                     <SortableContext items={lane.steps.map(s => s.id)} strategy={verticalListSortingStrategy} id={`lane-${lane.id}`}>
                                                         {lane.steps.map((step) => (
-                                                            <SortableStep key={step.id} step={step} poolId={pool.id} laneId={lane.id} onUpdateStep={handleUpdateStep}/>
+                                                            <SortableStep key={step.id} step={step} poolId={pool.id} laneId={lane.id} onUpdateStep={handleUpdateStep} onDeleteStep={handleDeleteStep} />
                                                         ))}
                                                     </SortableContext>
                                                 </div>
