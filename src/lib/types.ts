@@ -101,12 +101,7 @@ export type FormFieldType =
   | 'select'
   | 'checkbox'
   | 'radio'
-  | 'file'
-  | 'table'           // Dynamic table with rows/columns
-  | 'autocalculated'  // Field calculated from formula
-  | 'signature'       // Digital signature capture
-  | 'checklist'       // Checklist with multiple items to check
-  | 'webservice';     // Combo populated from web service
+  | 'file';
 
 export type TableColumn = {
   id: string;
@@ -119,25 +114,7 @@ export type FormField = {
   id: string;
   label: string;
   type: FormFieldType;
-  options?: string[];           // For select, radio, checkbox
-  // Table specific properties
-  columns?: TableColumn[];      // For table type
-  // Autocalculated specific properties
-  formula?: string;             // Formula expression (e.g., "{field1} + {field2}")
-  referencedFields?: string[];  // IDs of fields used in formula
-  // Webservice specific properties
-  webserviceUrl?: string;       // URL to fetch options from
-  webserviceValueField?: string; // Field name for value in response
-  webserviceLabelField?: string; // Field name for label in response
-  // Checklist specific properties
-  checklistItems?: string[];    // Items to check off
-  // Visibility/behavior properties
-  visibility?: 'editable' | 'readonly' | 'required' | 'hidden';
-  visibilityCondition?: {       // Dynamic visibility based on other field
-    fieldId: string;
-    operator: '==' | '!=' | 'contains';
-    value: string;
-  };
+  options?: string[];
 };
 
 export type RuleOperator = 

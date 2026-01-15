@@ -138,28 +138,17 @@ function CopilotDialog({ onApply }: { onApply: (data: GenerateProcessOutput) => 
 function SortableField({ field, onRemove }: { field: FormField, onRemove: (id: string) => void }) {
     const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: field.id });
     const style = { transform: CSS.Transform.toString(transform), transition };
-    const fieldTypeLabels: Record<FormFieldType, string> = {
+    const fieldTypeLabels: Record<FormFieldType, string> = { 
         text: 'Texto', textarea: 'Área de texto', date: 'Fecha', number: 'Número',
-        select: 'Desplegable', checkbox: 'Casilla', radio: 'Opciones', file: 'Archivo',
-        table: 'Tabla', autocalculated: 'Autocalculado', signature: 'Firma', checklist: 'Checklist', webservice: 'Web Service'
+        select: 'Desplegable', checkbox: 'Casilla', radio: 'Opciones', file: 'Archivo'
     };
-    const visibilityBadges: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
-        required: { label: '✱', variant: 'destructive' },
-        readonly: { label: '👁', variant: 'secondary' },
-        hidden: { label: '⊘', variant: 'outline' },
-    };
-
-    const visInfo = field.visibility && visibilityBadges[field.visibility];
 
     return (
         <div ref={setNodeRef} style={style} className="group flex items-center gap-2 rounded-md p-3 bg-muted">
             <button {...attributes} {...listeners} className="cursor-grab p-1">
                 <GripVertical className="h-4 w-4 text-muted-foreground" />
             </button>
-            <div className="flex-1 font-medium flex items-center gap-2">
-                {field.label}
-                {visInfo && <Badge variant={visInfo.variant} className="text-[10px] px-1 py-0">{visInfo.label}</Badge>}
-            </div>
+            <div className="flex-1 font-medium">{field.label}</div>
             <div className="text-sm text-muted-foreground">({fieldTypeLabels[field.type]})</div>
             <Button variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100" onClick={() => onRemove(field.id)}>
                 <Trash2 className="h-4 w-4 text-destructive" />
@@ -678,7 +667,7 @@ export default function NewTemplatePage() {
                                     <PlusCircle className="mr-2 h-4 w-4" /> Añadir Campo
                                 </Button>
                             </DialogTrigger>
-                           <FieldBuilderDialog onAddField={handleAddField} onClose={() => setIsFieldDialogOpen(false)} existingFields={fields} />
+                           <FieldBuilderDialog onAddField={handleAddField} onClose={() => setIsFieldDialogOpen(false)} />
                         </Dialog>
                         </CardContent>
                     </Card>
@@ -690,25 +679,9 @@ export default function NewTemplatePage() {
                         <CardContent className="space-y-4">
                             <div className="space-y-3">
                                 {rules.length === 0 && (
-                                    <div className="rounded-lg border-2 border-dashed border-muted-foreground/25 p-6 space-y-3">
-                                        <div className="text-center space-y-2">
-                                            <ShieldCheck className="h-10 w-10 mx-auto text-muted-foreground/50" />
-                                            <p className="font-medium">No hay reglas definidas</p>
-                                            <p className="text-sm text-muted-foreground max-w-xs mx-auto">
-                                                Las reglas automatizan decisiones en el flujo usando lógica <strong>SI-ENTONCES</strong>.
-                                            </p>
-                                        </div>
-                                        <div className="text-xs text-muted-foreground space-y-1 bg-muted/50 rounded-md p-3">
-                                            <p className="font-medium text-foreground">Ejemplos de uso:</p>
-                                            <ul className="list-disc list-inside space-y-1 ml-1">
-                                                <li><strong>SI</strong> Monto &gt; $5,000 → <strong>ENTONCES</strong> Requiere aprobación de Gerente</li>
-                                                <li><strong>SI</strong> Resultado de Revisión = "Rechazado" → <strong>ENTONCES</strong> Enrutar a correcciones</li>
-                                                <li><strong>SI</strong> Prioridad = "Alta" → <strong>ENTONCES</strong> Notificar al Administrador</li>
-                                            </ul>
-                                        </div>
-                                        <p className="text-xs text-center text-muted-foreground">
-                                            ⓘ Primero cree campos de formulario y pasos en el flujo para usarlos en las reglas.
-                                        </p>
+                                    <div className="text-center text-sm text-muted-foreground py-4 space-y-1">
+                                        <p>No hay reglas definidas.</p>
+                                        <p className="text-xs">Las reglas permiten enrutar el flujo basado en resultados o datos.</p>
                                     </div>
                                 )}
                                 {rules.map((rule) => (
@@ -824,20 +797,10 @@ export default function NewTemplatePage() {
 }
 
 
-function FieldBuilderDialog({ onAddField, onClose, existingFields = [] }: { onAddField: (field: Omit<FormField, 'id'>) => void, onClose: () => void, existingFields?: FormField[] }) {
+function FieldBuilderDialog({ onAddField, onClose }: { onAddField: (field: Omit<FormField, 'id'>) => void, onClose: () => void }) {
     const [label, setLabel] = useState("");
     const [type, setType] = useState<FormFieldType>('text');
     const [options, setOptions] = useState<string[]>(['']);
-    // Autocalculated field state
-    const [formula, setFormula] = useState("");
-    // Checklist state
-    const [checklistItems, setChecklistItems] = useState<string[]>(['']);
-    // Webservice state
-    const [webserviceUrl, setWebserviceUrl] = useState("");
-    const [webserviceValueField, setWebserviceValueField] = useState("value");
-    const [webserviceLabelField, setWebserviceLabelField] = useState("label");
-    // Visibility state
-    const [visibility, setVisibility] = useState<'editable' | 'readonly' | 'required' | 'hidden'>('editable');
 
     const handleAddOption = () => setOptions([...options, '']);
     const handleOptionChange = (index: number, value: string) => {
@@ -851,41 +814,13 @@ function FieldBuilderDialog({ onAddField, onClose, existingFields = [] }: { onAd
         }
     };
 
-    const handleAddChecklistItem = () => setChecklistItems([...checklistItems, '']);
-    const handleChecklistItemChange = (index: number, value: string) => {
-        const newItems = [...checklistItems];
-        newItems[index] = value;
-        setChecklistItems(newItems);
-    };
-    const handleRemoveChecklistItem = (index: number) => {
-        if (checklistItems.length > 1) {
-            setChecklistItems(checklistItems.filter((_, i) => i !== index));
-        }
-    };
-
     const handleSubmit = () => {
-        const finalField: Omit<FormField, 'id'> = { label: label.trim(), type, visibility };
+        const finalField: Omit<FormField, 'id'> = { label: label.trim(), type };
         if (['select', 'radio'].includes(type)) {
             finalField.options = options.map(o => o.trim()).filter(o => o);
         }
         if (type === 'checkbox') {
-            finalField.options = [label.trim()];
-        }
-        if (type === 'autocalculated') {
-            finalField.formula = formula;
-            // Extract referenced field IDs from formula (e.g., {field-123} -> field-123)
-            const matches = formula.match(/\{([^}]+)\}/g);
-            if (matches) {
-                finalField.referencedFields = matches.map(m => m.slice(1, -1));
-            }
-        }
-        if (type === 'checklist') {
-            finalField.checklistItems = checklistItems.map(i => i.trim()).filter(i => i);
-        }
-        if (type === 'webservice') {
-            finalField.webserviceUrl = webserviceUrl;
-            finalField.webserviceValueField = webserviceValueField;
-            finalField.webserviceLabelField = webserviceLabelField;
+            finalField.options = [label.trim()]; // Checkbox often has one option which is the label itself
         }
         onAddField(finalField);
         onClose();
@@ -893,11 +828,8 @@ function FieldBuilderDialog({ onAddField, onClose, existingFields = [] }: { onAd
 
     const needsOptions = ['select', 'radio'].includes(type);
 
-    // Get numeric fields for formula references
-    const numericFields = existingFields.filter(f => f.type === 'number');
-
     return (
-        <DialogContent className="max-h-[90vh] overflow-y-auto">
+        <DialogContent>
             <DialogHeader>
                 <DialogTitle>Añadir Nuevo Campo de Formulario</DialogTitle>
             </DialogHeader>
@@ -918,29 +850,17 @@ function FieldBuilderDialog({ onAddField, onClose, existingFields = [] }: { onAd
                             <SelectValue placeholder="Seleccione un tipo..." />
                         </SelectTrigger>
                         <SelectContent>
-                            <DropdownMenuLabel className="text-xs text-muted-foreground">Campos Básicos</DropdownMenuLabel>
                             <SelectItem value="text">Texto</SelectItem>
                             <SelectItem value="textarea">Área de texto</SelectItem>
                             <SelectItem value="number">Número</SelectItem>
                             <SelectItem value="date">Fecha</SelectItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuLabel className="text-xs text-muted-foreground">Campos de Selección</DropdownMenuLabel>
                             <SelectItem value="select">Lista desplegable</SelectItem>
                             <SelectItem value="radio">Botones de opción</SelectItem>
                             <SelectItem value="checkbox">Casilla de verificación</SelectItem>
-                            <SelectItem value="webservice">Combo por Web Service</SelectItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuLabel className="text-xs text-muted-foreground">Campos Avanzados</DropdownMenuLabel>
                             <SelectItem value="file">Carga de archivos</SelectItem>
-                            <SelectItem value="table">Tabla dinámica</SelectItem>
-                            <SelectItem value="autocalculated">Campo autocalculado</SelectItem>
-                            <SelectItem value="signature">Firma digital</SelectItem>
-                            <SelectItem value="checklist">Lista de verificación</SelectItem>
                         </SelectContent>
                     </Select>
                 </div>
-
-                {/* Options for select/radio */}
                 {needsOptions && (
                     <div className="space-y-2 rounded-md border p-4">
                         <Label>Opciones</Label>
@@ -963,126 +883,6 @@ function FieldBuilderDialog({ onAddField, onClose, existingFields = [] }: { onAd
                         </Button>
                     </div>
                 )}
-
-                {/* Autocalculated field configuration */}
-                {type === 'autocalculated' && (
-                    <div className="space-y-3 rounded-md border p-4 bg-muted/30">
-                        <Label>Fórmula de Cálculo</Label>
-                        <Textarea
-                            value={formula}
-                            onChange={(e) => setFormula(e.target.value)}
-                            placeholder="Ej: {subtotal} * 0.16 + {subtotal}"
-                            rows={2}
-                        />
-                        <p className="text-xs text-muted-foreground">
-                            Use llaves para referenciar campos numéricos. Ej: <code className="bg-muted px-1 rounded">{'{campo1}'} + {'{campo2}'}</code>
-                        </p>
-                        {numericFields.length > 0 && (
-                            <div className="text-xs">
-                                <span className="text-muted-foreground">Campos disponibles: </span>
-                                {numericFields.map(f => (
-                                    <Badge key={f.id} variant="outline" className="mr-1 cursor-pointer" onClick={() => setFormula(prev => prev + `{${f.id}}`)}>
-                                        {f.label}
-                                    </Badge>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-                )}
-
-                {/* Checklist configuration */}
-                {type === 'checklist' && (
-                    <div className="space-y-2 rounded-md border p-4 bg-muted/30">
-                        <Label>Elementos de la Lista</Label>
-                        <div className="space-y-2">
-                            {checklistItems.map((item, index) => (
-                                <div key={index} className="flex items-center gap-2">
-                                    <Checkbox disabled className="mt-0.5" />
-                                    <Input
-                                        value={item}
-                                        onChange={(e) => handleChecklistItemChange(index, e.target.value)}
-                                        placeholder={`Elemento ${index + 1}`}
-                                    />
-                                    <Button variant="ghost" size="icon" onClick={() => handleRemoveChecklistItem(index)} disabled={checklistItems.length <= 1}>
-                                        <X className="h-4 w-4" />
-                                    </Button>
-                                </div>
-                            ))}
-                        </div>
-                        <Button variant="outline" size="sm" onClick={handleAddChecklistItem} className="mt-2">
-                            <PlusCircle className="mr-2 h-4 w-4" /> Añadir Elemento
-                        </Button>
-                    </div>
-                )}
-
-                {/* Webservice configuration */}
-                {type === 'webservice' && (
-                    <div className="space-y-3 rounded-md border p-4 bg-muted/30">
-                        <div className="space-y-2">
-                            <Label>URL del Servicio Web</Label>
-                            <Input
-                                value={webserviceUrl}
-                                onChange={(e) => setWebserviceUrl(e.target.value)}
-                                placeholder="https://api.example.com/options"
-                            />
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                                <Label>Campo de Valor</Label>
-                                <Input
-                                    value={webserviceValueField}
-                                    onChange={(e) => setWebserviceValueField(e.target.value)}
-                                    placeholder="id"
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <Label>Campo de Etiqueta</Label>
-                                <Input
-                                    value={webserviceLabelField}
-                                    onChange={(e) => setWebserviceLabelField(e.target.value)}
-                                    placeholder="name"
-                                />
-                            </div>
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                            El servicio debe retornar un array JSON. Los campos indican qué propiedades usar para el valor y la etiqueta.
-                        </p>
-                    </div>
-                )}
-
-                {/* Table configuration placeholder */}
-                {type === 'table' && (
-                    <div className="rounded-md border p-4 bg-muted/30 text-center">
-                        <p className="text-sm text-muted-foreground">
-                            La configuración de columnas de la tabla estará disponible después de guardar el campo.
-                        </p>
-                    </div>
-                )}
-
-                {/* Signature info */}
-                {type === 'signature' && (
-                    <div className="rounded-md border p-4 bg-muted/30">
-                        <p className="text-sm text-muted-foreground">
-                            Este campo permitirá al usuario dibujar o subir su firma digital. La firma se almacenará como imagen.
-                        </p>
-                    </div>
-                )}
-
-                {/* Visibility configuration */}
-                <div className="space-y-2 pt-2 border-t">
-                    <Label>Comportamiento del Campo</Label>
-                    <Select value={visibility} onValueChange={(v) => setVisibility(v as typeof visibility)}>
-                        <SelectTrigger>
-                            <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="editable">Editable</SelectItem>
-                            <SelectItem value="required">Obligatorio</SelectItem>
-                            <SelectItem value="readonly">Solo lectura</SelectItem>
-                            <SelectItem value="hidden">Oculto</SelectItem>
-                        </SelectContent>
-                    </Select>
-                </div>
             </div>
             <DialogFooter>
                 <DialogClose asChild>
@@ -1095,41 +895,39 @@ function FieldBuilderDialog({ onAddField, onClose, existingFields = [] }: { onAd
 }
 
 function RuleConditionDisplay({ condition, fields, steps }: { condition: RuleCondition, fields: FormField[], steps: WorkflowStepDefinition[] }) {
-    const source = condition.type === 'form'
+    const source = condition.type === 'form' 
         ? fields.find(f => f.id === condition.fieldId)
         : steps.find(s => s.id === condition.fieldId);
-
+    
     const operatorLabels: Partial<Record<RuleOperator, string>> = {
-        '==': 'es igual a', '!=': 'no es igual a', '>': 'es mayor que', '<': 'es menor que', '>=': '≥', '<=': '≤',
+        '==': '=', '!=': '!=', '>': '>', '<': '<', '>=': '>=', '<=': '<=',
         'contains': 'contiene', 'not_contains': 'no contiene', 'is': 'es', 'is_not': 'no es',
     };
 
     const getSourceTypeIcon = (type: FormFieldType | 'outcome' | undefined) => {
         switch(type) {
-            case 'number': return <Hash className="h-4 w-4 text-blue-500"/>;
+            case 'number': return <Hash className="h-4 w-4 text-muted-foreground"/>;
             case 'text':
             case 'textarea':
-                return <CaseSensitive className="h-4 w-4 text-blue-500"/>;
+                return <CaseSensitive className="h-4 w-4 text-muted-foreground"/>;
             case 'select':
             case 'radio':
             case 'checkbox':
             case 'outcome':
-                return <GitBranch className="h-4 w-4 text-blue-500" />;
+                return <GitBranch className="h-4 w-4 text-muted-foreground" />;
             default: return null;
         }
     }
 
-    const sourceType = condition.type === 'form' ? 'Campo' : 'Resultado de Tarea';
-
     return (
-        <div className="flex flex-wrap items-center gap-2 text-sm">
-            <span className="text-xs text-muted-foreground">{sourceType}:</span>
+        <div className="flex items-center gap-2 text-sm">
+            <span className="font-semibold text-muted-foreground">SI</span>
             <div className="flex items-center gap-1">
                 {getSourceTypeIcon(source?.type || (condition.type === 'outcome' ? 'outcome' : undefined))}
-                <Badge variant="outline" className="bg-white dark:bg-background">{source?.name || source?.label || '??'}</Badge>
+                <Badge variant="outline">{source?.name || source?.label || '??'}</Badge>
             </div>
-            <span className="font-medium text-blue-600 dark:text-blue-400">{operatorLabels[condition.operator] || condition.operator}</span>
-            <Badge variant="secondary" className="font-mono bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">{condition.value}</Badge>
+            <span className="font-semibold text-muted-foreground">{operatorLabels[condition.operator] || condition.operator}</span>
+            <Badge variant="secondary" className="font-mono">{condition.value}</Badge>
         </div>
     );
 }
@@ -1140,49 +938,30 @@ function RuleActionDisplay({ action, steps, users }: { action: RuleAction, steps
         switch(type) {
             case 'REQUIRE_ADDITIONAL_STEP':
             case 'ROUTE_TO_STEP':
-                return <GitBranch className="h-5 w-5 text-green-500"/>;
+                return <GitBranch className="h-5 w-5 text-primary"/>;
             case 'ASSIGN_USER':
-                return <User className="h-5 w-5 text-green-500"/>;
+                return <User className="h-5 w-5 text-primary"/>;
             case 'SEND_NOTIFICATION':
-                return <Bell className="h-5 w-5 text-green-500"/>;
+                return <Bell className="h-5 w-5 text-primary"/>;
             case 'CHANGE_REQUEST_PRIORITY':
-                return <AlertTriangle className="h-5 w-5 text-green-500"/>;
+                return <AlertTriangle className="h-5 w-5 text-primary"/>;
         }
     }
-
-    const actionTypeLabels: Record<RuleAction['type'], string> = {
-        'REQUIRE_ADDITIONAL_STEP': 'Añadir paso requerido',
-        'ROUTE_TO_STEP': 'Enrutar a paso',
-        'ASSIGN_USER': 'Asignar usuario',
-        'SEND_NOTIFICATION': 'Enviar notificación',
-        'CHANGE_REQUEST_PRIORITY': 'Cambiar prioridad',
-    };
 
     const renderActionDetails = () => {
         switch (action.type) {
             case 'REQUIRE_ADDITIONAL_STEP':
             case 'ROUTE_TO_STEP':
                 const step = steps.find(s => s.id === action.stepId);
-                return <Badge className="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 border-green-200">{step?.name || '??'}</Badge>;
+                return <>{action.type === 'ROUTE_TO_STEP' ? 'Enrutar a' : 'Añadir paso'}: <Badge>{step?.name || '??'}</Badge></>;
             case 'ASSIGN_USER':
                 const assignUser = users.find(u => u.id === action.userId);
                 const assignStep = steps.find(s => s.id === action.stepId);
-                return (
-                    <span className="flex flex-wrap items-center gap-1">
-                        <Badge variant="secondary">{assignUser?.fullName || '??'}</Badge>
-                        <span className="text-muted-foreground">→</span>
-                        <Badge className="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 border-green-200">{assignStep?.name || '??'}</Badge>
-                    </span>
-                );
+                return <>Asignar <Badge variant="secondary">{assignUser?.fullName || '??'}</Badge> a <Badge>{assignStep?.name || '??'}</Badge></>;
             case 'SEND_NOTIFICATION':
-                return (
-                    <span className="flex flex-wrap items-center gap-1">
-                        <Badge variant="secondary">{action.target}</Badge>
-                        <span className="text-xs text-muted-foreground italic truncate max-w-[150px]">"{action.message}"</span>
-                    </span>
-                );
+                return <>Notificar a <Badge variant="secondary">{action.target}</Badge> con mensaje: <span className="italic">"{action.message}"</span></>;
             case 'CHANGE_REQUEST_PRIORITY':
-                return <Badge variant="destructive">{action.priority}</Badge>;
+                return <>Cambiar prioridad a <Badge variant="destructive">{action.priority}</Badge></>;
             default:
                 return null;
         }
@@ -1190,11 +969,8 @@ function RuleActionDisplay({ action, steps, users }: { action: RuleAction, steps
 
     return (
         <div className="flex items-center gap-3">
-            <div className="flex-shrink-0">{getActionIcon(action.type)}</div>
-            <div className="flex flex-col gap-1">
-                <span className="text-xs text-muted-foreground">{actionTypeLabels[action.type]}</span>
-                <div className="flex flex-wrap items-center gap-2 text-sm">{renderActionDetails()}</div>
-            </div>
+             <div className="flex-shrink-0">{getActionIcon(action.type)}</div>
+            <div className="flex flex-wrap items-center gap-2 text-sm">{renderActionDetails()}</div>
         </div>
     );
 }
@@ -1203,30 +979,18 @@ function RuleDisplay({ rule, fields, pools, users, onRemove }: { rule: Rule, fie
     const allSteps = pools.flatMap(p => p.lanes.flatMap(l => l.steps));
 
     return (
-        <div className="group relative rounded-lg border bg-card overflow-hidden transition-all hover:shadow-md">
-            <div className="flex">
-                {/* SI - Condition Side */}
-                <div className="flex-1 p-4 bg-blue-50/50 dark:bg-blue-950/20 border-r">
-                    <div className="flex items-center gap-2 mb-2">
-                        <span className="inline-flex items-center justify-center px-2 py-0.5 text-xs font-bold bg-blue-500 text-white rounded">SI</span>
-                        <span className="text-xs text-muted-foreground">Condición</span>
-                    </div>
-                    <RuleConditionDisplay condition={rule.condition} fields={fields} steps={allSteps} />
-                </div>
+        <div className="group relative rounded-lg border bg-card p-4 transition-all hover:shadow-md">
+            <div className="grid grid-cols-[1fr,auto,1fr] items-center gap-4">
+                {/* Condition */}
+                <RuleConditionDisplay condition={rule.condition} fields={fields} steps={allSteps} />
 
                 {/* Arrow */}
-                <div className="flex items-center justify-center px-3 bg-muted/30">
+                <div className="flex justify-center">
                     <ChevronsRight className="h-6 w-6 text-muted-foreground" />
                 </div>
 
-                {/* ENTONCES - Action Side */}
-                <div className="flex-1 p-4 bg-green-50/50 dark:bg-green-950/20">
-                    <div className="flex items-center gap-2 mb-2">
-                        <span className="inline-flex items-center justify-center px-2 py-0.5 text-xs font-bold bg-green-500 text-white rounded">ENTONCES</span>
-                        <span className="text-xs text-muted-foreground">Acción</span>
-                    </div>
-                    <RuleActionDisplay action={rule.action} steps={allSteps} users={users} />
-                </div>
+                {/* Action */}
+                <RuleActionDisplay action={rule.action} steps={allSteps} users={users} />
             </div>
 
             <Button
@@ -1280,42 +1044,15 @@ function RuleBuilderDialog({ fields, steps, users, onAddRule, onClose }: { field
         onClose();
     };
 
-    const hasDataForRules = formFieldsForRules.length > 0 || decisionTasks.length > 0;
-    const hasStepsForActions = steps.length > 0;
-
     return (
         <DialogContent className="sm:max-w-3xl">
             <DialogHeader>
                 <DialogTitle>Constructor de Reglas de Negocio</DialogTitle>
                 <DialogDescription>Cree una regla "SI-ENTONCES" para automatizar su flujo de trabajo.</DialogDescription>
             </DialogHeader>
-
-            {/* Warning if no data available */}
-            {(!hasDataForRules || !hasStepsForActions) && (
-                <div className="rounded-md border border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-900 p-4">
-                    <div className="flex items-start gap-3">
-                        <AlertTriangle className="h-5 w-5 text-amber-500 flex-shrink-0 mt-0.5" />
-                        <div className="space-y-1">
-                            <p className="font-medium text-amber-700 dark:text-amber-400">Datos insuficientes para crear reglas</p>
-                            <ul className="text-sm text-amber-600 dark:text-amber-500 list-disc list-inside">
-                                {!hasDataForRules && (
-                                    <li>Agregue campos al formulario (número, texto, desplegable) o tareas con resultados definidos</li>
-                                )}
-                                {!hasStepsForActions && (
-                                    <li>Agregue pasos al flujo de trabajo para poder enrutar o asignar</li>
-                                )}
-                            </ul>
-                        </div>
-                    </div>
-                </div>
-            )}
-
             <div className="grid gap-6 py-4">
-                <div className="p-4 rounded-md border border-blue-200 bg-blue-50/50 dark:bg-blue-950/20 dark:border-blue-900">
-                    <h3 className="mb-4 text-lg font-medium flex items-center">
-                        <span className="inline-flex items-center justify-center px-2 py-0.5 text-sm font-bold bg-blue-500 text-white rounded mr-2">SI</span>
-                        Condición
-                    </h3>
+                <div className="p-4 rounded-md border">
+                    <h3 className="mb-4 text-lg font-medium flex items-center"><ShieldCheck className="mr-2 h-5 w-5 text-primary"/> Condición (SI)</h3>
                     <div className="grid grid-cols-4 gap-4">
                         <div className="space-y-2 col-span-1">
                             <Label>Tipo de Condición</Label>
@@ -1362,11 +1099,8 @@ function RuleBuilderDialog({ fields, steps, users, onAddRule, onClose }: { field
                     </div>
                 </div>
 
-                <div className="p-4 rounded-md border border-green-200 bg-green-50/50 dark:bg-green-950/20 dark:border-green-900">
-                    <h3 className="mb-4 text-lg font-medium flex items-center">
-                        <span className="inline-flex items-center justify-center px-2 py-0.5 text-sm font-bold bg-green-500 text-white rounded mr-2">ENTONCES</span>
-                        Acción
-                    </h3>
+                <div className="p-4 rounded-md border">
+                    <h3 className="mb-4 text-lg font-medium flex items-center"><GitBranch className="mr-2 h-5 w-5 text-primary"/> Acción (ENTONCES)</h3>
                     <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
                             <Label>Tipo de Acción</Label>
@@ -1394,41 +1128,6 @@ function RuleBuilderDialog({ fields, steps, users, onAddRule, onClose }: { field
                              { action.type === 'CHANGE_REQUEST_PRIORITY' &&
                                 <><Label>Nueva Prioridad</Label><Select value={(action as any).priority} onValueChange={(v) => setAction(a => ({...a, priority: v}))}><SelectTrigger><SelectValue placeholder="Seleccione prioridad..."/></SelectTrigger><SelectContent><SelectItem value="Alta">Alta</SelectItem><SelectItem value="Media">Media</SelectItem><SelectItem value="Baja">Baja</SelectItem></SelectContent></Select></>
                             }
-                        </div>
-                    </div>
-                </div>
-
-                {/* Preview Section */}
-                <div className="p-4 rounded-md border bg-muted/30">
-                    <h3 className="mb-3 text-sm font-medium text-muted-foreground flex items-center gap-2">
-                        <span className="h-4 w-4 rounded-full bg-primary/20 flex items-center justify-center text-[10px]">👁</span>
-                        Vista Previa de la Regla
-                    </h3>
-                    <div className="rounded-md bg-card p-3 text-sm">
-                        <div className="flex flex-wrap items-center gap-2">
-                            <span className="inline-flex items-center justify-center px-1.5 py-0.5 text-xs font-bold bg-blue-500 text-white rounded">SI</span>
-                            {selectedSource ? (
-                                <span className="text-blue-600 dark:text-blue-400">
-                                    {condition.type === 'form' ? 'Campo' : 'Resultado'} "{selectedSource?.label || selectedSource?.name}"
-                                    {condition.operator && ` ${condition.operator}`}
-                                    {condition.value && ` "${condition.value}"`}
-                                </span>
-                            ) : (
-                                <span className="text-muted-foreground italic">seleccione una condición...</span>
-                            )}
-                            <ChevronsRight className="h-4 w-4 text-muted-foreground mx-1" />
-                            <span className="inline-flex items-center justify-center px-1.5 py-0.5 text-xs font-bold bg-green-500 text-white rounded">ENTONCES</span>
-                            {action.type ? (
-                                <span className="text-green-600 dark:text-green-400">
-                                    {action.type === 'REQUIRE_ADDITIONAL_STEP' && `Añadir paso "${steps.find(s => s.id === (action as any).stepId)?.name || '...'}"` }
-                                    {action.type === 'ROUTE_TO_STEP' && `Enrutar a "${steps.find(s => s.id === (action as any).stepId)?.name || '...'}"` }
-                                    {action.type === 'ASSIGN_USER' && `Asignar "${users.find(u => u.id === (action as any).userId)?.fullName || '...'}" a "${steps.find(s => s.id === (action as any).stepId)?.name || '...'}"` }
-                                    {action.type === 'SEND_NOTIFICATION' && `Notificar a "${(action as any).target || '...'}"` }
-                                    {action.type === 'CHANGE_REQUEST_PRIORITY' && `Cambiar prioridad a "${(action as any).priority || '...'}"` }
-                                </span>
-                            ) : (
-                                <span className="text-muted-foreground italic">seleccione una acción...</span>
-                            )}
                         </div>
                     </div>
                 </div>
