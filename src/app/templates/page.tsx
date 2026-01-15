@@ -51,7 +51,7 @@ export default function TemplatesPage() {
 
   // Seeding logic for pre-installed templates
   useEffect(() => {
-    if (isLoading || !firestore || !templates || !templatesRef) return;
+    if (isLoading || !firestore || !templates || !templatesRef || !canCreate) return;
 
     const seedData = async () => {
         const existingTemplateNames = new Set(templates.map(t => t.name));
@@ -77,12 +77,11 @@ export default function TemplatesPage() {
         }
     };
 
-    // Only run seeding if templates are loaded and the array is empty,
-    // or if some pre-installed templates are missing.
-    if (!isLoading) {
+    // Only run seeding if templates are loaded and the user has permission.
+    if (!isLoading && canCreate) {
       seedData();
     }
-  }, [templates, isLoading, firestore, templatesRef]);
+  }, [templates, isLoading, firestore, templatesRef, canCreate]);
 
   return (
     <SiteLayout>
