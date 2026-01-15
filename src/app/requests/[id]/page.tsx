@@ -181,7 +181,6 @@ export default function RequestDetailPage() {
             const tasksInRequestQuery = query(collection(firestore, 'tasks'), where('requestId', '==', id), where('assigneeId', 'in', myTeamIds));
             const tasksSnapshot = await getDocs(tasksInRequestQuery);
             if (!tasksSnapshot.empty) {
-                // Found a relevant task, now find the request document itself
                  const requestsCollectionGroup = collectionGroup(firestore, 'requests');
                  const q = query(requestsCollectionGroup, where('id', '==', id), limit(1));
                  const querySnapshot = await getDocs(q);
@@ -192,7 +191,6 @@ export default function RequestDetailPage() {
             }
         }
         
-        // If still not found after all checks, it's a true notFound situation for this user
         setRequestRef(null);
     }
     findRequestRef();
@@ -270,15 +268,12 @@ export default function RequestDetailPage() {
   const handleDeleteDocument = async (docToDelete: DocumentType) => {
     if (!request || !requestRef || !storage || !user) return;
     try {
-        // 1. Delete file from Storage
         const fileRef = ref(storage, docToDelete.storagePath);
         await deleteObject(fileRef);
 
-        // 2. Remove document from Firestore array
         const updatedDocuments = request.documents.filter(d => d.id !== docToDelete.id);
         await updateDoc(requestRef, { documents: updatedDocuments });
         
-        // 3. Add audit log
         addDocumentNonBlocking(collection(requestRef, 'audit_logs'), {
             requestId: requestRef.id,
             userId: user.uid,
@@ -311,7 +306,7 @@ export default function RequestDetailPage() {
               allUsers: users,
               outcome
           });
-          toast({ title: "¡Tarea Completada!", description: `La tarea "${task.name}" ha sido completada con resultado: ${outcome}.` });
+          toast({ title: "¡Tarea Completada!", description: `La tarea "${task.name}" ha sido completada.` });
       } catch (error) {
           console.error("Error completing task:", error);
           toast({ variant: 'destructive', title: 'Error', description: 'No se pudo completar la tarea.' });
@@ -331,7 +326,6 @@ export default function RequestDetailPage() {
 
   const activeStep = enrichedRequest.steps.find(s => s.status === 'Active');
   
-  // Find the full task object for the active step
   const activeTask = activeStep?.taskId ? { ...activeStep, id: activeStep.taskId, requestTitle: request.title, requestId: request.id, requestOwnerId: request.submittedBy, createdAt: "" } as Task : null;
   const activeStepDefinition = activeTask ? template.steps.find(s => s.id === activeTask.stepId) : null;
   

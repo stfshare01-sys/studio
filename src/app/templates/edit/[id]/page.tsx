@@ -38,7 +38,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useCollection, useDoc, useFirestore, useMemoFirebase, updateDocumentNonBlocking } from "@/firebase";
 import { collection, doc } from "firebase/firestore";
 import { useRouter, useParams } from "next/navigation";
-import type { FormField, WorkflowStepDefinition, Rule, RuleCondition, RuleAction, WorkflowStepType, FormFieldType, RuleOperator, User as UserType, RequestPriority, UserRole, EscalationPolicy, Template } from "@/lib/types";
+import type { FormField, WorkflowStepDefinition, Rule, RuleCondition, RuleAction, WorkflowStepType, FormFieldType, RuleOperator, User as UserType, RequestPriority, UserRole, EscalationPolicy } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { generateProcessFromDescription, GenerateProcessOutput } from "@/ai/flows/process-generation";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -400,11 +400,9 @@ export default function EditTemplatePage() {
         setTemplateDescription(templateData.description || "");
         setFields(templateData.fields || []);
         
-        // Handle backwards compatibility for templates without pools
         if (templateData.pools && templateData.pools.length > 0) {
             setPools(templateData.pools);
         } else {
-            // If no pools, create a default structure from the flat 'steps' array
             setPools([{
                 id: 'pool-default',
                 name: 'Proceso Principal',
@@ -603,7 +601,6 @@ export default function EditTemplatePage() {
         return;
     }
     
-    // Flatten steps from pools and lanes for saving
     const allSteps = pools.flatMap(pool => pool.lanes.flatMap(lane => lane.steps));
 
     const updatedTemplate = {
@@ -1200,5 +1197,3 @@ function RuleBuilderDialog({ fields, steps, users, onAddRule, onClose }: { field
         </DialogContent>
     )
 }
-
-    

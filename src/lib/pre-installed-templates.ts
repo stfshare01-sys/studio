@@ -14,7 +14,7 @@ export const preInstalledTemplates: Omit<Template, 'id'>[] = [
       { id: 'field-reason', label: 'Motivo del Permiso', type: 'textarea', options: [] }
     ],
     steps: [
-      { id: 'step-manager-approval', name: 'Aprobación del Gerente', type: 'task', assigneeRole: 'Manager', slaHours: 24 },
+      { id: 'step-manager-approval', name: 'Aprobación del Gerente', type: 'task', assigneeRole: 'Manager', slaHours: 24, outcomes: ['Aprobado', 'Rechazado'] },
       { id: 'step-hr-confirmation', name: 'Confirmación de RRHH', type: 'task', assigneeRole: 'Recursos Humanos', slaHours: 48 },
       { id: 'step-payroll-update', name: 'Actualización de Nómina', type: 'task', assigneeRole: 'Nómina', slaHours: 72 }
     ],
@@ -23,13 +23,19 @@ export const preInstalledTemplates: Omit<Template, 'id'>[] = [
       lanes: [{
         id: 'lane-main', name: 'Actores',
         steps: [
-          { id: 'step-manager-approval', name: 'Aprobación del Gerente', type: 'task', assigneeRole: 'Manager', slaHours: 24 },
+          { id: 'step-manager-approval', name: 'Aprobación del Gerente', type: 'task', assigneeRole: 'Manager', slaHours: 24, outcomes: ['Aprobado', 'Rechazado'] },
           { id: 'step-hr-confirmation', name: 'Confirmación de RRHH', type: 'task', assigneeRole: 'Recursos Humanos', slaHours: 48 },
           { id: 'step-payroll-update', name: 'Actualización de Nómina', type: 'task', assigneeRole: 'Nómina', slaHours: 72 }
         ]
       }]
     }],
-    rules: []
+    rules: [
+        {
+            id: 'rule-vacation-approved',
+            condition: { fieldId: 'step-manager-approval', operator: '==', value: 'Aprobado', type: 'outcome' },
+            action: { type: 'ROUTE_TO_STEP', stepId: 'step-hr-confirmation' }
+        }
+    ]
   },
   // 2. Intermediate Template: "Solicitud de Compra"
   {
@@ -42,7 +48,7 @@ export const preInstalledTemplates: Omit<Template, 'id'>[] = [
       { id: 'field-justification', label: 'Justificación', type: 'textarea', options: [] }
     ],
     steps: [
-      { id: 'step-dept-head-approval', name: 'Aprobación Jefe de Depto.', type: 'task', assigneeRole: 'Manager', slaHours: 24 },
+      { id: 'step-dept-head-approval', name: 'Aprobación Jefe de Depto.', type: 'task', assigneeRole: 'Manager', slaHours: 24, outcomes: ['Aprobado', 'Rechazado'] },
       { id: 'step-finance-review', name: 'Revisión Financiera', type: 'task', assigneeRole: 'Finanzas', slaHours: 48 },
       { id: 'step-procurement', name: 'Adquisición', type: 'task', assigneeRole: 'Compras', slaHours: 72 }
     ],
@@ -51,7 +57,7 @@ export const preInstalledTemplates: Omit<Template, 'id'>[] = [
       lanes: [{
         id: 'lane-proc', name: 'Aprobadores',
         steps: [
-          { id: 'step-dept-head-approval', name: 'Aprobación Jefe de Depto.', type: 'task', assigneeRole: 'Manager', slaHours: 24 },
+          { id: 'step-dept-head-approval', name: 'Aprobación Jefe de Depto.', type: 'task', assigneeRole: 'Manager', slaHours: 24, outcomes: ['Aprobado', 'Rechazado'] },
           { id: 'step-finance-review', name: 'Revisión Financiera', type: 'task', assigneeRole: 'Finanzas', slaHours: 48 },
           { id: 'step-procurement', name: 'Adquisición', type: 'task', assigneeRole: 'Compras', slaHours: 72 }
         ]
@@ -62,6 +68,11 @@ export const preInstalledTemplates: Omit<Template, 'id'>[] = [
         id: 'rule-cost-check',
         condition: { fieldId: 'field-cost', operator: '>', value: 5000, type: 'form' },
         action: { type: 'REQUIRE_ADDITIONAL_STEP', stepId: 'step-finance-review' }
+      },
+      {
+        id: 'rule-purchase-approved',
+        condition: { fieldId: 'step-dept-head-approval', operator: '==', value: 'Aprobado', type: 'outcome' },
+        action: { type: 'ROUTE_TO_STEP', stepId: 'step-procurement' }
       }
     ]
   },
