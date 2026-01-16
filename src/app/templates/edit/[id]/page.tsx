@@ -136,7 +136,7 @@ function CopilotDialog({ onApply }: { onApply: (data: GenerateProcessOutput) => 
     )
 }
 
-function SortableField({ field, onRemove }: { field: FormField, onRemove: (id: string) => void }) {
+function SortableField({ field, onRemove, onEdit }: { field: FormField, onRemove: (id: string) => void, onEdit: (field: FormField) => void }) {
     const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: field.id });
     const style = { transform: CSS.Transform.toString(transform), transition };
     const fieldTypeLabels: Record<FormFieldType, string> = {
@@ -152,6 +152,10 @@ function SortableField({ field, onRemove }: { field: FormField, onRemove: (id: s
             </button>
             <div className="flex-1 font-medium">{field.label}</div>
             <div className="text-sm text-muted-foreground">({fieldTypeLabels[field.type]})</div>
+            <Button variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100" onClick={() => onEdit(field)}>
+                <Pencil className="h-4 w-4 text-primary" />
+                <span className="sr-only">Editar campo</span>
+            </Button>
             <Button variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100" onClick={() => onRemove(field.id)}>
                 <Trash2 className="h-4 w-4 text-destructive" />
                 <span className="sr-only">Eliminar campo</span>
@@ -378,9 +382,13 @@ export default function EditTemplatePage() {
 
   const [templateName, setTemplateName] = useState("");
   const [templateDescription, setTemplateDescription] = useState("");
+  
   const [fields, setFields] = useState<FormField[]>([]);
+  const [editingField, setEditingField] = useState<FormField | null>(null);
   const [isFieldDialogOpen, setIsFieldDialogOpen] = useState(false);
+  
   const [rules, setRules] = useState<Rule[]>([]);
+  const [editingRule, setEditingRule] = useState<Rule | null>(null);
   const [isRuleDialogOpen, setIsRuleDialogOpen] = useState(false);
   const [visibilityRules, setVisibilityRules] = useState<VisibilityRule[]>([]);
   const [pools, setPools] = useState<Pool[]>([]);
@@ -391,7 +399,7 @@ export default function EditTemplatePage() {
     return doc(firestore, 'request_templates', templateId);
   }, [firestore, templateId]);
   
-  const { data: templateData, isLoading: isLoadingTemplate } = useDoc<Template>(templateRef);
+  const { data: templateData, isLoading: isLoadingTemplate } = useDoc<any>(templateRef);
   
   const usersQuery = useMemoFirebase(() => collection(firestore, 'users'), [firestore]);
   const { data: users } = useCollection<UserType>(usersQuery);
@@ -534,6 +542,17 @@ export default function EditTemplatePage() {
     }
   };
 
+  const handleUpdateField = (updatedField: FormField) => {
+    setFields(fields.map(f => f.id === updatedField.id ? updatedField : f));
+    setEditingField(null);
+    setIsFieldDialogOpen(false);
+  }
+
+  const handleOpenFieldDialog = (field: FormField | null) => {
+    setEditingField(field);
+    setIsFieldDialogOpen(true);
+  }
+
   const handleRemoveField = (id: string) => {
     setFields(fields.filter(field => field.id !== id));
   };
@@ -642,6 +661,17 @@ export default function EditTemplatePage() {
     setIsRuleDialogOpen(false);
   }
 
+  const handleUpdateRule = (updatedRule: Rule) => {
+    setRules(rules.map(r => r.id === updatedRule.id ? updatedRule : r));
+    setEditingRule(null);
+    setIsRuleDialogOpen(false);
+  }
+
+  const handleOpenRuleDialog = (rule: Rule | null) => {
+    setEditingRule(rule);
+    setIsRuleDialogOpen(true);
+  }
+
   const handleRemoveRule = (id: string) => {
     setRules(rules.filter((rule) => rule.id !== id));
   }
@@ -718,7 +748,7 @@ export default function EditTemplatePage() {
                                 ) : (
                                     <SortableContext items={fields.map(f => f.id)} strategy={verticalListSortingStrategy} id="form-fields">
                                         {fields.map((field) => (
-                                            <SortableField key={field.id} field={field} onRemove={handleRemoveField} />
+                                            <SortableField key={field.id} field={field} onRemove={handleRemoveField} onEdit={handleOpenFieldDialog} />
                                         ))}
                                     </SortableContext>
                                 )}
@@ -726,11 +756,16 @@ export default function EditTemplatePage() {
 
                         <Dialog open={isFieldDialogOpen} onOpenChange={setIsFieldDialogOpen}>
                             <DialogTrigger asChild>
-                                <Button variant="outline" className="w-full">
+                                <Button variant="outline" className="w-full" onClick={() => handleOpenFieldDialog(null)}>
                                     <PlusCircle className="mr-2 h-4 w-4" /> Añadir Campo
                                 </Button>
                             </DialogTrigger>
-                           <FieldBuilderDialog onAddField={handleAddField} onClose={() => setIsFieldDialogOpen(false)} />
+                           <FieldBuilderDialog 
+                                onAddField={handleAddField} 
+                                onUpdateField={handleUpdateField}
+                                fieldToEdit={editingField}
+                                onClose={() => setIsFieldDialogOpen(false)}
+                            />
                         </Dialog>
                         </CardContent>
                     </Card>
@@ -766,12 +801,12 @@ export default function EditTemplatePage() {
                                     </div>
                                 )}
                                 {rules.map((rule) => (
-                                    <RuleDisplay key={rule.id} rule={rule} fields={fields} pools={pools} users={users || []} onRemove={handleRemoveRule} />
+                                    <RuleDisplay key={rule.id} rule={rule} fields={fields} pools={pools} users={users || []} onRemove={handleRemoveRule} onEdit={handleOpenRuleDialog} />
                                 ))}
                             </div>
                             <Dialog open={isRuleDialogOpen} onOpenChange={setIsRuleDialogOpen}>
                                 <DialogTrigger asChild>
-                                    <Button variant="outline" className="w-full">
+                                    <Button variant="outline" className="w-full" onClick={() => handleOpenRuleDialog(null)}>
                                         <PlusCircle className="mr-2 h-4 w-4" /> Añadir Regla
                                     </Button>
                                 </DialogTrigger>
@@ -780,6 +815,8 @@ export default function EditTemplatePage() {
                                     steps={pools.flatMap(p => p.lanes.flatMap(l => l.steps))} 
                                     users={users || []}
                                     onAddRule={handleAddRule} 
+                                    onUpdateRule={handleUpdateRule}
+                                    ruleToEdit={editingRule}
                                     onClose={() => setIsRuleDialogOpen(false)} 
                                 />
                             </Dialog>
@@ -878,10 +915,23 @@ export default function EditTemplatePage() {
 }
 
 
-function FieldBuilderDialog({ onAddField, onClose }: { onAddField: (field: Omit<FormField, 'id'>) => void, onClose: () => void }) {
+function FieldBuilderDialog({ onAddField, onUpdateField, fieldToEdit, onClose }: { onAddField: (field: Omit<FormField, 'id'>) => void, onUpdateField: (field: FormField) => void, fieldToEdit: FormField | null, onClose: () => void }) {
     const [label, setLabel] = useState("");
     const [type, setType] = useState<FormFieldType>('text');
     const [options, setOptions] = useState<string[]>(['']);
+    const isEditing = !!fieldToEdit;
+
+    useEffect(() => {
+        if (fieldToEdit) {
+            setLabel(fieldToEdit.label);
+            setType(fieldToEdit.type);
+            setOptions(fieldToEdit.options && fieldToEdit.options.length > 0 ? fieldToEdit.options : ['']);
+        } else {
+            setLabel('');
+            setType('text');
+            setOptions(['']);
+        }
+    }, [fieldToEdit]);
 
     // Table configuration
     const [tableColumns, setTableColumns] = useState<TableColumnDefinition[]>([]);
@@ -1274,7 +1324,7 @@ function FieldBuilderDialog({ onAddField, onClose }: { onAddField: (field: Omit<
             </div>
             <DialogFooter>
                 <DialogClose asChild>
-                    <Button variant="ghost">Cancelar</Button>
+                    <Button variant="ghost" onClick={onClose}>Cancelar</Button>
                 </DialogClose>
                 <Button onClick={handleSubmit} disabled={!label.trim() || (type === 'table' && tableColumns.length === 0)}>
                     Añadir Campo
@@ -1365,7 +1415,7 @@ function RuleActionDisplay({ action, steps, users }: { action: RuleAction, steps
     );
 }
 
-function RuleDisplay({ rule, fields, pools, users, onRemove }: { rule: Rule, fields: FormField[], pools: Pool[], users: UserType[], onRemove: (id: string) => void }) {
+function RuleDisplay({ rule, fields, pools, users, onRemove, onEdit }: { rule: Rule, fields: FormField[], pools: Pool[], users: UserType[], onRemove: (id: string) => void, onEdit: (rule: Rule) => void }) {
     const allSteps = pools.flatMap(p => p.lanes.flatMap(l => l.steps));
 
     return (
@@ -1386,6 +1436,15 @@ function RuleDisplay({ rule, fields, pools, users, onRemove }: { rule: Rule, fie
             <Button
                 variant="ghost"
                 size="icon"
+                className="absolute right-8 top-1 h-6 w-6 opacity-0 group-hover:opacity-100"
+                onClick={() => onEdit(rule)}
+            >
+                <Pencil className="h-4 w-4 text-primary" />
+                <span className="sr-only">Editar regla</span>
+            </Button>
+            <Button
+                variant="ghost"
+                size="icon"
                 className="absolute right-1 top-1 h-6 w-6 opacity-0 group-hover:opacity-100"
                 onClick={() => onRemove(rule.id)}
             >
@@ -1397,10 +1456,21 @@ function RuleDisplay({ rule, fields, pools, users, onRemove }: { rule: Rule, fie
 }
 
 
-function RuleBuilderDialog({ fields, steps, users, onAddRule, onClose }: { fields: FormField[], steps: WorkflowStepDefinition[], users: UserType[], onAddRule: (rule: Omit<Rule, 'id'>) => void, onClose: () => void }) {
+function RuleBuilderDialog({ fields, steps, users, onAddRule, onUpdateRule, ruleToEdit, onClose }: { fields: FormField[], steps: WorkflowStepDefinition[], users: UserType[], onAddRule: (rule: Omit<Rule, 'id'>) => void, onUpdateRule: (rule: Rule) => void, ruleToEdit: Rule | null, onClose: () => void }) {
     const { toast } = useToast();
     const [condition, setCondition] = useState<Partial<RuleCondition>>({ type: 'form' });
     const [action, setAction] = useState<Partial<RuleAction>>({ type: 'REQUIRE_ADDITIONAL_STEP' });
+    const isEditing = !!ruleToEdit;
+
+    useEffect(() => {
+        if (ruleToEdit) {
+            setCondition(ruleToEdit.condition);
+            setAction(ruleToEdit.action);
+        } else {
+            setCondition({ type: 'form' });
+            setAction({ type: 'REQUIRE_ADDITIONAL_STEP' });
+        }
+    }, [ruleToEdit]);
 
     const decisionTasks = steps.filter(s => s.outcomes && s.outcomes.length > 0);
     const formFieldsForRules = fields.filter(f => ['number', 'select', 'radio', 'text', 'textarea'].includes(f.type));
@@ -1429,15 +1499,20 @@ function RuleBuilderDialog({ fields, steps, users, onAddRule, onClose }: { field
         }
 
         const newRule: Omit<Rule, 'id'> = { condition: condition as RuleCondition, action: action as RuleAction };
-        onAddRule(newRule);
-        toast({ title: "Regla agregada" });
+        
+        if (isEditing) {
+            onUpdateRule({ ...newRule, id: ruleToEdit.id });
+        } else {
+            onAddRule(newRule);
+        }
+        toast({ title: isEditing ? "Regla actualizada" : "Regla agregada" });
         onClose();
     };
 
     return (
         <DialogContent className="sm:max-w-3xl">
             <DialogHeader>
-                <DialogTitle>Constructor de Reglas de Negocio</DialogTitle>
+                <DialogTitle>{isEditing ? "Editar Regla de Negocio" : "Constructor de Reglas de Negocio"}</DialogTitle>
                 <DialogDescription>Cree una regla "SI-ENTONCES" para automatizar su flujo de trabajo.</DialogDescription>
             </DialogHeader>
             <div className="grid gap-6 py-4">
@@ -1523,8 +1598,8 @@ function RuleBuilderDialog({ fields, steps, users, onAddRule, onClose }: { field
                 </div>
             </div>
             <DialogFooter>
-                <DialogClose asChild><Button variant="ghost">Cancelar</Button></DialogClose>
-                <Button onClick={handleSubmit}>Añadir Regla</Button>
+                <DialogClose asChild><Button variant="ghost" onClick={onClose}>Cancelar</Button></DialogClose>
+                <Button onClick={handleSubmit}>{isEditing ? "Guardar Cambios" : "Añadir Regla"}</Button>
             </DialogFooter>
         </DialogContent>
     )
