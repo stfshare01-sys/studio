@@ -101,7 +101,124 @@ export type FormFieldType =
   | 'select'
   | 'checkbox'
   | 'radio'
-  | 'file';
+  | 'file'
+  // Advanced field types
+  | 'table'           // Interactive sub-table with multiple rows
+  | 'dynamic-select'  // Dropdown connected to Firestore collections/master lists
+  | 'user-identity'   // Auto-filled with logged-in user info (read-only)
+  | 'email';          // Email with format validation
+
+// -------------------------------------------------------------------------
+// Table Field Types
+// -------------------------------------------------------------------------
+
+export type TableColumnType = 'text' | 'number' | 'date' | 'select' | 'formula';
+
+export type TableColumnFormula = {
+  type: 'SUM' | 'AVG' | 'COUNT' | 'MIN' | 'MAX' | 'CUSTOM';
+  targetColumn?: string;      // Column ID for aggregation functions
+  expression?: string;        // Custom formula expression like "colA * colB"
+  referenceField?: string;    // Main form field reference using @fieldId syntax
+};
+
+export type TableColumnDefinition = {
+  id: string;
+  name: string;
+  type: TableColumnType;
+  options?: string[];           // For select columns
+  formula?: TableColumnFormula; // For formula columns
+  width?: number;               // Column width in pixels
+  required?: boolean;
+};
+
+export type TableRowData = {
+  _rowId: string;               // Internal row identifier
+  [columnId: string]: any;
+};
+
+// -------------------------------------------------------------------------
+// Dynamic Select Types
+// -------------------------------------------------------------------------
+
+export type DynamicSelectSourceType = 'master-list' | 'collection' | 'static';
+
+export type CascadeFilter = {
+  dependsOn: string;           // Field ID this dropdown depends on
+  filterField: string;         // Field in source data to filter by
+  operator: '==' | 'contains' | 'in';
+};
+
+export type DynamicSelectSource = {
+  type: DynamicSelectSourceType;
+  masterListId?: string;       // Reference to master_lists/{id}
+  collectionPath?: string;     // Direct Firestore collection path
+  labelField: string;          // Field to display as label
+  valueField: string;          // Field to use as value
+  filterConfig?: CascadeFilter;
+};
+
+// -------------------------------------------------------------------------
+// User Identity Field Types
+// -------------------------------------------------------------------------
+
+export type UserIdentityDisplayField = 'email' | 'fullName' | 'both';
+
+export type UserIdentityConfig = {
+  displayField: UserIdentityDisplayField;
+  includeTimestamp?: boolean;
+};
+
+export type UserIdentityValue = {
+  userId: string;
+  email: string;
+  fullName: string;
+  timestamp?: string;
+};
+
+// -------------------------------------------------------------------------
+// Visibility Rules Types
+// -------------------------------------------------------------------------
+
+export type VisibilityLogicalOperator = 'AND' | 'OR';
+
+export type VisibilityCondition = {
+  fieldId: string;
+  operator: RuleOperator;
+  value: any;
+};
+
+export type VisibilityRule = {
+  id: string;
+  targetFieldId: string;
+  logic: VisibilityLogicalOperator;
+  conditions: VisibilityCondition[];
+  action: 'show' | 'hide';     // What happens when condition is met
+};
+
+// -------------------------------------------------------------------------
+// Validation Rules Types
+// -------------------------------------------------------------------------
+
+export type ValidationType =
+  | 'required'
+  | 'min'
+  | 'max'
+  | 'minLength'
+  | 'maxLength'
+  | 'pattern'
+  | 'email'
+  | 'fileSize'
+  | 'fileType';
+
+export type ValidationRule = {
+  type: ValidationType;
+  value?: any;                  // The validation parameter (e.g., min value, pattern)
+  message?: string;             // Custom error message
+};
+
+// -------------------------------------------------------------------------
+// Legacy TableColumn (for master lists)
+// -------------------------------------------------------------------------
 
 export type TableColumn = {
   id: string;
@@ -110,11 +227,36 @@ export type TableColumn = {
   options?: string[]; // For select type columns
 };
 
+// -------------------------------------------------------------------------
+// Extended FormField Type
+// -------------------------------------------------------------------------
+
 export type FormField = {
   id: string;
   label: string;
   type: FormFieldType;
   options?: string[];
+
+  // Table configuration
+  tableColumns?: TableColumnDefinition[];
+  minRows?: number;
+  maxRows?: number;
+  showSummaryRow?: boolean;    // Show auto-calculated summary row
+
+  // Dynamic select configuration
+  dynamicSource?: DynamicSelectSource;
+
+  // User identity configuration
+  userIdentityConfig?: UserIdentityConfig;
+
+  // Validation rules
+  validations?: ValidationRule[];
+
+  // General properties
+  placeholder?: string;
+  helpText?: string;
+  defaultValue?: any;
+  readOnly?: boolean;
 };
 
 export type RuleOperator = 
@@ -173,6 +315,8 @@ export type Template = {
           steps: WorkflowStepDefinition[];
       }[];
   }[];
+  // Global visibility rules for conditional field display
+  visibilityRules?: VisibilityRule[];
 };
 
 export type Comment = {
