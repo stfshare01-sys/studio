@@ -17,7 +17,7 @@ export type User = {
 };
 
 // Represents a step within a template, before it becomes a live task
-export type WorkflowStepType = 'task' | 'gateway-exclusive' | 'gateway-parallel';
+export type WorkflowStepType = 'task' | 'gateway-exclusive' | 'gateway-parallel' | 'gateway-inclusive' | 'timer';
 
 export type EscalationPolicy = {
     action: 'NOTIFY' | 'REASSIGN';
@@ -25,15 +25,138 @@ export type EscalationPolicy = {
     notify: ('assignee' | 'manager' | 'submitter')[];
 };
 
+// -------------------------------------------------------------------------
+// Field State Override Types (for dynamic states per task)
+// -------------------------------------------------------------------------
+
+export type FieldStateOverride = {
+  fieldId: string;
+  readOnly?: boolean;
+  required?: boolean;
+  visible?: boolean;
+  defaultValue?: any;
+};
+
+// -------------------------------------------------------------------------
+// Timer Configuration Types
+// -------------------------------------------------------------------------
+
+export type TimerType = 'duration' | 'date';
+
+export type TimerConfig = {
+  type: TimerType;
+  durationHours?: number;       // For duration type: wait X hours
+  durationDays?: number;        // For duration type: wait X days
+  targetDate?: string;          // For date type: wait until specific date
+  targetDateFieldId?: string;   // For date type: get date from form field
+};
+
+// -------------------------------------------------------------------------
+// Assignee Source Types (for assignment by field)
+// -------------------------------------------------------------------------
+
+export type AssigneeSourceType = 'role' | 'field' | 'user' | 'submitter';
+
+export type AssigneeSource = {
+  type: AssigneeSourceType;
+  role?: string;              // For role-based assignment
+  fieldId?: string;           // For field-based assignment (email field)
+  userId?: string;            // For direct user assignment
+};
+
+// -------------------------------------------------------------------------
+// Lookup Field Configuration
+// -------------------------------------------------------------------------
+
+export type LookupMapping = {
+  sourceField: string;        // Field in source data
+  targetFieldId: string;      // Field in form to populate
+};
+
+export type LookupConfig = {
+  sourceType: 'master-list' | 'collection';
+  masterListId?: string;
+  collectionPath?: string;
+  lookupKeyField: string;     // Field in source to match against
+  mappings: LookupMapping[];  // Which fields to populate
+};
+
+// -------------------------------------------------------------------------
+// Default Value Rules (conditional defaults)
+// -------------------------------------------------------------------------
+
+export type DefaultValueRuleCondition = {
+  fieldId: string;
+  operator: RuleOperator;
+  value: any;
+};
+
+export type DefaultValueRule = {
+  id: string;
+  targetFieldId: string;
+  value: any;                 // Value to set (can be static or expression like "@fieldId")
+  conditions?: DefaultValueRuleCondition[];
+  logic?: VisibilityLogicalOperator;
+  triggerOnChange?: string[]; // Field IDs that trigger re-evaluation
+};
+
+// -------------------------------------------------------------------------
+// Field Layout Configuration (grid layout)
+// -------------------------------------------------------------------------
+
+export type FieldLayoutConfig = {
+  fieldId: string;
+  row: number;                // Row index (0-based)
+  column: number;             // Column position (1-5)
+  colspan?: number;           // Number of columns to span (1-5, default 5 = full width)
+};
+
+// -------------------------------------------------------------------------
+// Public Form / External Participants
+// -------------------------------------------------------------------------
+
+export type PublicFormToken = {
+  id: string;
+  templateId: string;
+  requestId?: string;         // If linked to existing request
+  stepId?: string;            // Specific step for external participation
+  createdAt: string;
+  expiresAt: string;
+  createdBy: string;          // User who created the link
+  email?: string;             // Optional: restrict to specific email
+  maxUses?: number;           // Optional: limit number of submissions
+  usedCount: number;
+  isActive: boolean;
+};
+
 export type WorkflowStepDefinition = {
   id: string;
   name: string;
   type: WorkflowStepType;
-  assigneeRole?: string; // e.g., 'Finance Approver', 'IT Support'
+  assigneeRole?: string; // e.g., 'Finance Approver', 'IT Support' (legacy)
   // For exclusive gateways, defines possible outcomes
   outcomes?: string[];
   slaHours?: number; // Service Level Agreement in hours
   escalationPolicy?: EscalationPolicy;
+
+  // NEW: Advanced assignee configuration
+  assigneeSource?: AssigneeSource;
+
+  // NEW: Field state overrides for this specific task
+  fieldOverrides?: FieldStateOverride[];
+
+  // NEW: Timer configuration (for timer steps)
+  timerConfig?: TimerConfig;
+
+  // NEW: Allow external participants without authentication
+  allowExternalParticipants?: boolean;
+  externalParticipantEmail?: string;  // Specific email for external participant
+
+  // NEW: For inclusive gateway - which conditions must be true
+  inclusiveConditions?: {
+    targetStepId: string;
+    condition: RuleCondition;
+  }[];
 };
 
 export type TaskStatus = 'Completed' | 'Pending' | 'Active';
@@ -257,6 +380,10 @@ export type FormField = {
   helpText?: string;
   defaultValue?: any;
   readOnly?: boolean;
+  required?: boolean;
+
+  // NEW: Lookup configuration - auto-populate other fields based on selection
+  lookupConfig?: LookupConfig;
 };
 
 export type RuleOperator = 
@@ -317,6 +444,15 @@ export type Template = {
   }[];
   // Global visibility rules for conditional field display
   visibilityRules?: VisibilityRule[];
+
+  // NEW: Field layout configuration for grid display
+  fieldLayout?: FieldLayoutConfig[];
+
+  // NEW: Default value rules with conditional logic
+  defaultValueRules?: DefaultValueRule[];
+
+  // NEW: Allow public form submissions (no authentication)
+  allowPublicSubmission?: boolean;
 };
 
 export type Comment = {
