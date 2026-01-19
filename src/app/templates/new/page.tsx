@@ -40,7 +40,8 @@ import { addDocumentNonBlocking, setDocumentNonBlocking } from "@/firebase/non-b
 import { collection, doc } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 import type { FormField, WorkflowStepDefinition, Rule, RuleCondition, RuleAction, WorkflowStepType, FormFieldType, RuleOperator, User as UserType, RequestPriority, UserRole, EscalationPolicy, VisibilityRule, TableColumnDefinition, DynamicSelectSource, UserIdentityConfig, ValidationRule } from "@/lib/types";
-import { VisibilityRulesBuilder, FieldValidationConfig, TableColumnDialog, useMasterLists } from "@/components/form-fields";
+import { VisibilityRulesBuilder, FieldValidationConfig, TableColumnDialog, useMasterLists, GatewayRoutingConfig, FieldLayoutEditor, DefaultValueRulesBuilder } from "@/components/form-fields";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { generateProcessFromDescription, GenerateProcessOutput } from "@/ai/flows/process-generation";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -56,6 +57,10 @@ const BpmnIcon = ({ type, className }: { type: WorkflowStepType, className?: str
             return <GitMerge className={cn("h-5 w-5 text-amber-500", className)} />;
         case 'gateway-parallel':
             return <GitFork className={cn("h-5 w-5 text-purple-500", className)} />;
+        case 'gateway-inclusive':
+            return <GitFork className={cn("h-5 w-5 text-green-500", className)} />;
+        case 'timer':
+            return <Timer className={cn("h-5 w-5 text-orange-500", className)} />;
         default:
             return null;
     }
@@ -172,13 +177,17 @@ function SortableStep({
     poolId,
     laneId,
     onUpdateStep,
-    onDeleteStep
+    onDeleteStep,
+    allSteps,
+    formFields
 }: {
     step: WorkflowStepDefinition,
     poolId: string,
     laneId: string,
     onUpdateStep: (poolId: string, laneId: string, stepId: string, updates: Partial<WorkflowStepDefinition>) => void,
-    onDeleteStep: (poolId: string, laneId: string, stepId: string) => void
+    onDeleteStep: (poolId: string, laneId: string, stepId: string) => void,
+    allSteps: WorkflowStepDefinition[],
+    formFields: FormField[]
 }) {
     const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ 
         id: step.id,
@@ -339,6 +348,41 @@ function SortableStep({
                             </PopoverContent>
                         </Popover>
                         </>
+                    )}
+
+                    {/* Gateway configuration */}
+                    {(step.type === 'gateway-exclusive' || step.type === 'gateway-parallel' || step.type === 'gateway-inclusive') && (
+                        <Dialog>
+                            <DialogTrigger asChild>
+                                <Button variant="ghost" size="sm" className="h-auto p-1">
+                                    <GitBranch className="h-3.5 w-3.5 mr-1" />
+                                    <span className="text-xs">Configurar Rutas</span>
+                                    <Pencil className="h-3 w-3 ml-1 opacity-0 group-hover:opacity-100" />
+                                </Button>
+                            </DialogTrigger>
+                            <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
+                                <DialogHeader>
+                                    <DialogTitle>
+                                        Configurar {step.type === 'gateway-exclusive' ? 'Gateway Exclusivo' :
+                                                    step.type === 'gateway-parallel' ? 'Gateway Paralelo' : 'Gateway Inclusivo'}
+                                    </DialogTitle>
+                                    <DialogDescription>
+                                        Configure las rutas de salida y condiciones para este gateway.
+                                    </DialogDescription>
+                                </DialogHeader>
+                                <GatewayRoutingConfig
+                                    gatewayType={step.type as 'gateway-exclusive' | 'gateway-parallel' | 'gateway-inclusive'}
+                                    routes={(step as any).routes || []}
+                                    onRoutesChange={(routes) => onUpdateStep(poolId, laneId, step.id, { routes } as any)}
+                                    availableSteps={allSteps.filter(s => s.id !== step.id)}
+                                    formFields={formFields}
+                                    precedingStep={allSteps.find((s, i) => {
+                                        const stepIndex = allSteps.findIndex(x => x.id === step.id);
+                                        return i === stepIndex - 1;
+                                    })}
+                                />
+                            </DialogContent>
+                        </Dialog>
                     )}
                 </div>
             </div>
@@ -630,8 +674,15 @@ export default function NewTemplatePage() {
         assigneeRole: ''
     };
     
-    if (stepType === 'gateway-exclusive' || stepType === 'gateway-parallel') {
-        newStep.name = stepType === 'gateway-exclusive' ? 'Decisión Exclusiva' : 'Gateway Paralelo';
+    // Set default names for special step types
+    const defaultNames: Partial<Record<WorkflowStepType, string>> = {
+        'gateway-exclusive': 'Decisión Exclusiva',
+        'gateway-parallel': 'Gateway Paralelo',
+        'gateway-inclusive': 'Gateway Inclusivo',
+        'timer': 'Temporizador',
+    };
+    if (defaultNames[stepType]) {
+        newStep.name = defaultNames[stepType]!;
     }
 
     setPools(prevPools => prevPools.map(pool => {
@@ -950,21 +1001,91 @@ export default function NewTemplatePage() {
                     </CardHeader>
                     <CardContent className="space-y-4">
                         <div className="space-y-4 rounded-md bg-muted/50 p-4 min-h-[300px]">
-                            <SortableContext items={pools.map(p => p.id)} strategy={verticalListSortingStrategy}>
-                                {pools.map((pool) => (
-                                    <SortablePoolItem
-                                        key={pool.id}
-                                        pool={pool}
-                                        handleUpdate={handleUpdate}
-                                        handleAddLaneToPool={handleAddLaneToPool}
-                                        handleDeletePool={handleDeletePool}
-                                        handleDeleteLane={handleDeleteLane}
-                                        handleDeleteStep={handleDeleteStep}
-                                        onUpdateStep={handleUpdateStep}
-                                        handleAddStepToLane={handleAddStepToLane}
-                                    />
-                                ))}
-                            </SortableContext>
+                            {pools.map((pool) => (
+                                <div key={pool.id} className="group/pool rounded-lg border bg-card p-4 space-y-4">
+                                    <div className="flex items-center gap-2">
+                                        <Input
+                                            value={pool.name}
+                                            onChange={(e) => handleUpdate('pool', { poolId: pool.id }, e.target.value)}
+                                            className="text-base font-semibold border-none focus-visible:ring-1 focus-visible:ring-ring bg-transparent p-0 flex-1"
+                                        />
+                                        <Button variant="ghost" size="sm" onClick={() => handleAddLaneToPool(pool.id)}>
+                                            <PlusCircle className="mr-2 h-4 w-4" /> Añadir Carril
+                                        </Button>
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-8 w-8 opacity-0 group-hover/pool:opacity-100 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                            onClick={() => handleDeletePool(pool.id)}
+                                        >
+                                            <Trash2 className="h-4 w-4" />
+                                            <span className="sr-only">Eliminar piscina</span>
+                                        </Button>
+                                    </div>
+                                    <div className="space-y-2 pl-6">
+                                        {pool.lanes.map((lane) => (
+                                            <div key={lane.id} className="group/lane rounded-md border bg-background">
+                                                <div className="flex items-center gap-2 p-2 border-b">
+                                                    <Input
+                                                        value={lane.name}
+                                                        onChange={(e) => handleUpdate('lane', { poolId: pool.id, laneId: lane.id }, e.target.value)}
+                                                        className="h-8 text-sm font-medium border-none focus-visible:ring-1 focus-visible:ring-ring bg-transparent p-0 flex-1"
+                                                    />
+                                                    <DropdownMenu>
+                                                        <DropdownMenuTrigger asChild>
+                                                            <Button variant="ghost" size="sm"><PlusCircle className="mr-2 h-4 w-4" />Añadir</Button>
+                                                        </DropdownMenuTrigger>
+                                                        <DropdownMenuContent>
+                                                            <DropdownMenuLabel>Elementos de BPMN</DropdownMenuLabel>
+                                                            <DropdownMenuItem onSelect={() => handleAddStepToLane(pool.id, lane.id, "Nueva Tarea", 'task')}>
+                                                                <BpmnIcon type="task" className="mr-2"/> Tarea
+                                                            </DropdownMenuItem>
+                                                            <DropdownMenuItem onSelect={() => handleAddStepToLane(pool.id, lane.id, "Gateway Exclusivo", 'gateway-exclusive')}>
+                                                                <BpmnIcon type="gateway-exclusive" className="mr-2"/> Gateway Exclusivo (XOR)
+                                                            </DropdownMenuItem>
+                                                            <DropdownMenuItem onSelect={() => handleAddStepToLane(pool.id, lane.id, "Gateway Paralelo", 'gateway-parallel')}>
+                                                                <BpmnIcon type="gateway-parallel" className="mr-2"/> Gateway Paralelo (AND)
+                                                            </DropdownMenuItem>
+                                                            <DropdownMenuItem onSelect={() => handleAddStepToLane(pool.id, lane.id, "Gateway Inclusivo", 'gateway-inclusive')}>
+                                                                <BpmnIcon type="gateway-inclusive" className="mr-2"/> Gateway Inclusivo (OR)
+                                                            </DropdownMenuItem>
+                                                            <DropdownMenuSeparator />
+                                                            <DropdownMenuItem onSelect={() => handleAddStepToLane(pool.id, lane.id, "Temporizador", 'timer')}>
+                                                                <BpmnIcon type="timer" className="mr-2"/> Temporizador
+                                                            </DropdownMenuItem>
+                                                        </DropdownMenuContent>
+                                                    </DropdownMenu>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="h-8 w-8 opacity-0 group-hover/lane:opacity-100 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                                        onClick={() => handleDeleteLane(pool.id, lane.id)}
+                                                    >
+                                                        <Trash2 className="h-4 w-4" />
+                                                        <span className="sr-only">Eliminar carril</span>
+                                                    </Button>
+                                                </div>
+                                                <div className="p-2 min-h-[50px] space-y-2">
+                                                    <SortableContext items={lane.steps.map(s => s.id)} strategy={verticalListSortingStrategy} id={`lane-${lane.id}`}>
+                                                        {lane.steps.map((step) => (
+                                                            <SortableStep
+                                                                key={step.id}
+                                                                step={step}
+                                                                poolId={pool.id}
+                                                                laneId={lane.id}
+                                                                onUpdateStep={handleUpdateStep}
+                                                                onDeleteStep={handleDeleteStep}
+                                                                allSteps={pools.flatMap(p => p.lanes.flatMap(l => l.steps))}
+                                                                formFields={fields}
+                                                            />
+                                                        ))}
+                                                    </SortableContext>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            ))}
                         </div>
                         <Button variant="outline" className="w-full mt-4" onClick={handleAddPool}>
                             <Library className="mr-2 h-4 w-4" /> Añadir Piscina
