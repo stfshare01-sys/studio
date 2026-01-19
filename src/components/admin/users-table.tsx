@@ -27,7 +27,7 @@ import {
 import { Label } from "../ui/label";
 import { Input } from "../ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
-import { useFirestore, useCollection } from "@/firebase";
+import { useFirestore, useCollection, useMemoFirebase } from "@/firebase";
 import { doc, collection, query, where, orderBy, limit, getDocs, startAfter, DocumentSnapshot } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
@@ -147,7 +147,11 @@ type SortOrder = "asc" | "desc";
 
 export function UsersTable() {
     const firestore = useFirestore();
-    const { data: allUsersData } = useCollection<User>(collection(firestore, 'users'));
+    const allUsersQuery = useMemoFirebase(() => {
+        if (!firestore) return null;
+        return collection(firestore, 'users');
+    }, [firestore]);
+    const { data: allUsersData } = useCollection<User>(allUsersQuery);
     const { toast } = useToast();
 
     // Dialog state

@@ -142,7 +142,10 @@ function CopilotDialog({ onApply }: { onApply: (data: GenerateProcessOutput) => 
 }
 
 function SortableField({ field, onRemove, onEdit }: { field: FormField, onRemove: (id: string) => void, onEdit: (field: FormField) => void }) {
-    const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: field.id });
+    const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ 
+        id: field.id,
+        data: { type: 'field' }
+    });
     const style = { transform: CSS.Transform.toString(transform), transition };
     const fieldTypeLabels: Record<FormFieldType, string> = {
         text: 'Texto', textarea: 'Área de texto', date: 'Fecha', number: 'Número',
@@ -186,7 +189,10 @@ function SortableStep({
     allSteps: WorkflowStepDefinition[],
     formFields: FormField[]
 }) {
-    const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: step.id });
+    const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ 
+        id: step.id,
+        data: { type: 'step' }
+    });
     const style = { transform: CSS.Transform.toString(transform), transition };
     
     const [newOutcome, setNewOutcome] = useState('');
@@ -393,6 +399,147 @@ function SortableStep({
     );
 }
 
+function SortableLaneItem({ 
+    poolId, 
+    lane, 
+    handleUpdate, 
+    handleAddStepToLane, 
+    handleDeleteLane, 
+    handleDeleteStep, 
+    onUpdateStep 
+}: {
+    poolId: string;
+    lane: Lane;
+    handleUpdate: (type: 'pool' | 'lane', ids: { poolId: string, laneId?: string }, value: string) => void;
+    handleAddStepToLane: (poolId: string, laneId: string, stepName: string, stepType: WorkflowStepType) => void;
+    handleDeleteLane: (poolId: string, laneId: string) => void;
+    handleDeleteStep: (poolId: string, laneId: string, stepId: string) => void;
+    onUpdateStep: (poolId: string, laneId: string, stepId: string, updates: Partial<WorkflowStepDefinition>) => void;
+}) {
+    const { attributes: laneAttrs, listeners: laneListeners, setNodeRef: laneRef, transform: laneTransform, transition: laneTransition } = useSortable({
+        id: lane.id,
+        data: { type: 'lane' }
+    });
+    const laneStyle = { transform: CSS.Transform.toString(laneTransform), transition: laneTransition };
+
+    return (
+        <div ref={laneRef} style={laneStyle} className="group/lane rounded-md border bg-background">
+            <div className="flex items-center gap-2 p-2 border-b">
+                <button {...laneAttrs} {...laneListeners} className="cursor-grab p-1">
+                    <GripVertical className="h-4 w-4 text-muted-foreground" />
+                </button>
+                <Input
+                    value={lane.name}
+                    onChange={(e) => handleUpdate('lane', { poolId: poolId, laneId: lane.id }, e.target.value)}
+                    className="h-8 text-sm font-medium border-none focus-visible:ring-1 focus-visible:ring-ring bg-transparent p-0 flex-1"
+                />
+                <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="sm"><PlusCircle className="mr-2 h-4 w-4" />Añadir</Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent>
+                        <DropdownMenuLabel>Elementos de BPMN</DropdownMenuLabel>
+                        <DropdownMenuItem onSelect={() => handleAddStepToLane(poolId, lane.id, "Nueva Tarea", 'task')}>
+                            <BpmnIcon type="task" className="mr-2"/> Tarea
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onSelect={() => handleAddStepToLane(poolId, lane.id, "Gateway Exclusivo", 'gateway-exclusive')}>
+                            <BpmnIcon type="gateway-exclusive" className="mr-2"/> Gateway Exclusivo
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onSelect={() => handleAddStepToLane(poolId, lane.id, "Gateway Paralelo", 'gateway-parallel')}>
+                            <BpmnIcon type="gateway-parallel" className="mr-2"/> Gateway Paralelo
+                        </DropdownMenuItem>
+                    </DropdownMenuContent>
+                </DropdownMenu>
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 opacity-0 group-hover/lane:opacity-100 text-destructive hover:text-destructive hover:bg-destructive/10"
+                    onClick={() => handleDeleteLane(poolId, lane.id)}
+                >
+                    <Trash2 className="h-4 w-4" />
+                    <span className="sr-only">Eliminar carril</span>
+                </Button>
+            </div>
+            <div className="p-2 min-h-[50px] space-y-2">
+                <SortableContext items={lane.steps.map(s => s.id)} strategy={verticalListSortingStrategy} id={lane.id}>
+                    {lane.steps.map((step) => (
+                        <SortableStep key={step.id} step={step} poolId={poolId} laneId={lane.id} onUpdateStep={onUpdateStep} onDeleteStep={handleDeleteStep}/>
+                    ))}
+                </SortableContext>
+            </div>
+        </div>
+    );
+}
+
+function SortablePoolItem({
+    pool,
+    handleUpdate,
+    handleAddLaneToPool,
+    handleDeletePool,
+    handleAddStepToLane,
+    handleDeleteLane,
+    handleDeleteStep,
+    onUpdateStep
+}: {
+    pool: Pool;
+    handleUpdate: (type: 'pool' | 'lane', ids: { poolId: string, laneId?: string }, value: string) => void;
+    handleAddLaneToPool: (poolId: string) => void;
+    handleDeletePool: (poolId: string) => void;
+    handleAddStepToLane: (poolId: string, laneId: string, stepName: string, stepType: WorkflowStepType) => void;
+    handleDeleteLane: (poolId: string, laneId: string) => void;
+    handleDeleteStep: (poolId: string, laneId: string, stepId: string) => void;
+    onUpdateStep: (poolId: string, laneId: string, stepId: string, updates: Partial<WorkflowStepDefinition>) => void;
+}) {
+    const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
+        id: pool.id,
+        data: { type: 'pool' }
+    });
+    const style = { transform: CSS.Transform.toString(transform), transition };
+
+    return (
+        <div ref={setNodeRef} style={style} className="group/pool rounded-lg border bg-card p-4 space-y-4">
+            <div className="flex items-center gap-2">
+                <button {...attributes} {...listeners} className="cursor-grab p-1">
+                    <GripVertical className="h-5 w-5 text-muted-foreground" />
+                </button>
+                <Input
+                    value={pool.name}
+                    onChange={(e) => handleUpdate('pool', { poolId: pool.id }, e.target.value)}
+                    className="text-base font-semibold border-none focus-visible:ring-1 focus-visible:ring-ring bg-transparent p-0 flex-1"
+                />
+                <Button variant="ghost" size="sm" onClick={() => handleAddLaneToPool(pool.id)}>
+                    <PlusCircle className="mr-2 h-4 w-4" /> Añadir Carril
+                </Button>
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 opacity-0 group-hover/pool:opacity-100 text-destructive hover:text-destructive hover:bg-destructive/10"
+                    onClick={() => handleDeletePool(pool.id)}
+                >
+                    <Trash2 className="h-4 w-4" />
+                    <span className="sr-only">Eliminar piscina</span>
+                </Button>
+            </div>
+            <div className="space-y-2 pl-6">
+                <SortableContext items={pool.lanes.map(l => l.id)} strategy={verticalListSortingStrategy} id={pool.id}>
+                    {pool.lanes.map((lane) => (
+                        <SortableLaneItem 
+                            key={lane.id}
+                            poolId={pool.id}
+                            lane={lane}
+                            handleUpdate={handleUpdate}
+                            handleAddStepToLane={handleAddStepToLane}
+                            handleDeleteLane={handleDeleteLane}
+                            handleDeleteStep={handleDeleteStep}
+                            onUpdateStep={onUpdateStep}
+                        />
+                    ))}
+                </SortableContext>
+            </div>
+        </div>
+    );
+}
+
 export default function NewTemplatePage() {
   const { toast } = useToast();
   const firestore = useFirestore();
@@ -420,30 +567,61 @@ export default function NewTemplatePage() {
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
+
+    if (!over || active.id === over.id) return;
+
+    const activeType = active.data.current?.type;
+    const overType = over.data.current?.type;
+    const activeContainer = active.data.current?.sortable.containerId;
+    const overContainer = over.data.current?.sortable.containerId;
+
+    if (activeType === 'pool' && overType === 'pool') {
+        setPools((items) => {
+            const oldIndex = items.findIndex(p => p.id === active.id);
+            const newIndex = items.findIndex(p => p.id === over.id);
+            if (oldIndex === -1 || newIndex === -1) return items;
+            return arrayMove(items, oldIndex, newIndex);
+        });
+        return;
+    }
+
+    if (activeType === 'lane' && overType === 'lane' && activeContainer === overContainer) {
+        setPools(prevPools => prevPools.map(pool => {
+            if (pool.id === activeContainer) {
+                const oldIndex = pool.lanes.findIndex(l => l.id === active.id);
+                const newIndex = pool.lanes.findIndex(l => l.id === over.id);
+                if (oldIndex === -1 || newIndex === -1) return pool;
+                return { ...pool, lanes: arrayMove(pool.lanes, oldIndex, newIndex) };
+            }
+            return pool;
+        }));
+        return;
+    }
     
-    if (over && active.id !== over.id) {
-        const activeContainer = (active.data.current as any)?.sortable.containerId;
-        const overContainer = (over?.data.current as any)?.sortable.containerId;
-        
-        if (activeContainer === 'form-fields' && overContainer === 'form-fields') {
-            setFields((items) => {
-                const oldIndex = items.findIndex(item => item.id === active.id);
-                const newIndex = items.findIndex(item => item.id === over.id);
-                return arrayMove(items, oldIndex, newIndex);
-            });
-        } else if (activeContainer?.startsWith('lane-') && activeContainer === overContainer) {
-            setPools(prevPools => prevPools.map(pool => ({
-                ...pool,
-                lanes: pool.lanes.map(lane => {
-                    if (`lane-${lane.id}` === activeContainer) {
-                        const oldIndex = lane.steps.findIndex(step => step.id === active.id);
-                        const newIndex = lane.steps.findIndex(step => step.id === over.id);
-                        return { ...lane, steps: arrayMove(lane.steps, oldIndex, newIndex) };
-                    }
-                    return lane;
-                })
-            })));
-        }
+    if (activeType === 'step' && overType === 'step' && activeContainer === overContainer) {
+        setPools(prevPools => prevPools.map(pool => ({
+            ...pool,
+            lanes: pool.lanes.map(lane => {
+                if (lane.id === activeContainer) {
+                    const oldIndex = lane.steps.findIndex(s => s.id === active.id);
+                    const newIndex = lane.steps.findIndex(s => s.id === over.id);
+                    if (oldIndex === -1 || newIndex === -1) return lane;
+                    return { ...lane, steps: arrayMove(lane.steps, oldIndex, newIndex) };
+                }
+                return lane;
+            })
+        })));
+        return;
+    }
+
+    if (activeType === 'field' && overType === 'field' && activeContainer === 'form-fields') {
+        setFields((items) => {
+            const oldIndex = items.findIndex(item => item.id === active.id);
+            const newIndex = items.findIndex(item => item.id === over.id);
+            if (oldIndex === -1 || newIndex === -1) return items;
+            return arrayMove(items, oldIndex, newIndex);
+        });
+        return;
     }
   };
 
