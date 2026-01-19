@@ -157,6 +157,22 @@ export type WorkflowStepDefinition = {
     targetStepId: string;
     condition: RuleCondition;
   }[];
+
+  // NEW: Gateway routing configuration
+  routes?: GatewayRoute[];
+};
+
+// Gateway route configuration
+export type GatewayRoute = {
+  id: string;
+  targetStepId: string;
+  condition?: {
+    sourceType: 'form' | 'outcome';
+    fieldId: string;
+    operator: RuleOperator;
+    value: string | number;
+  };
+  isDefault?: boolean;
 };
 
 export type TaskStatus = 'Completed' | 'Pending' | 'Active';

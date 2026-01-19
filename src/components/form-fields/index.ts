@@ -16,6 +16,7 @@ export { TimerStepConfig } from './TimerStepConfig';
 export { FieldLayoutEditor } from './FieldLayoutEditor';
 export { LookupFieldConfig } from './LookupFieldConfig';
 export { InclusiveGatewayConfig } from './InclusiveGatewayConfig';
+export { GatewayRoutingConfig } from './GatewayRoutingConfig';
 
 // Re-export hooks
 export * from './hooks';
