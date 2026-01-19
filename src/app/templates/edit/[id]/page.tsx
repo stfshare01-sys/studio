@@ -38,8 +38,8 @@ import { useToast } from "@/hooks/use-toast";
 import { useCollection, useDoc, useFirestore, useMemoFirebase, updateDocumentNonBlocking } from "@/firebase";
 import { collection, doc } from "firebase/firestore";
 import { useRouter, useParams } from "next/navigation";
-import type { FormField, WorkflowStepDefinition, Rule, RuleCondition, RuleAction, WorkflowStepType, FormFieldType, RuleOperator, User as UserType, RequestPriority, UserRole, EscalationPolicy, VisibilityRule, TableColumnDefinition, DynamicSelectSource, UserIdentityConfig, ValidationRule, Template } from "@/lib/types";
-import { VisibilityRulesBuilder, FieldValidationConfig, TableColumnDialog, useMasterLists } from "@/components/form-fields";
+import type { FormField, WorkflowStepDefinition, Rule, RuleCondition, RuleAction, WorkflowStepType, FormFieldType, RuleOperator, User as UserType, RequestPriority, UserRole, EscalationPolicy, VisibilityRule, TableColumnDefinition, DynamicSelectSource, UserIdentityConfig, ValidationRule, Template, FieldLayoutConfig } from "@/lib/types";
+import { VisibilityRulesBuilder, FieldValidationConfig, TableColumnDialog, useMasterLists, FieldLayoutEditor } from "@/components/form-fields";
 import { cn } from "@/lib/utils";
 import { generateProcessFromDescription, GenerateProcessOutput } from "@/ai/flows/process-generation";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -538,6 +538,7 @@ export default function EditTemplatePage() {
   const [editingRule, setEditingRule] = useState<Rule | null>(null);
   const [isRuleDialogOpen, setIsRuleDialogOpen] = useState(false);
   const [visibilityRules, setVisibilityRules] = useState<VisibilityRule[]>([]);
+  const [fieldLayout, setFieldLayout] = useState<FieldLayoutConfig[]>([]);
   const [pools, setPools] = useState<Pool[]>([]);
 
   // Fetching data
@@ -574,6 +575,7 @@ export default function EditTemplatePage() {
         
         setRules(templateData.rules || []);
         setVisibilityRules(templateData.visibilityRules || []);
+        setFieldLayout(templateData.fieldLayout || []);
     }
   }, [templateData]);
 
@@ -812,6 +814,7 @@ export default function EditTemplatePage() {
         rules,
         pools,
         visibilityRules,
+        fieldLayout,
     };
 
     try {
@@ -947,6 +950,25 @@ export default function EditTemplatePage() {
                         </Dialog>
                         </CardContent>
                     </Card>
+
+                    {fields.length > 0 && (
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>Diseño del Formulario</CardTitle>
+                                <CardDescription>
+                                    Arrastre y ajuste los campos en una grilla.
+                                </CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                <FieldLayoutEditor 
+                                    fields={fields} 
+                                    layout={fieldLayout} 
+                                    onLayoutChange={setFieldLayout} 
+                                />
+                            </CardContent>
+                        </Card>
+                    )}
+
                     {/* Visibility Rules Section */}
                     {fields.length > 0 && (
                         <Card>
@@ -1728,3 +1750,4 @@ function RuleBuilderDialog({ fields, steps, users, onAddRule, onUpdateRule, rule
         </DialogContent>
     )
 }
+
