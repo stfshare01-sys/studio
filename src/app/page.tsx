@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { RequestsTable } from "@/components/dashboard/requests-table";
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase";
-import { collection, query, where } from "firebase/firestore";
+import { collection, query, where, limit } from "firebase/firestore";
 import type { Request as RequestType, Task, User } from '@/lib/types';
 import { FilePlus, Hourglass, CheckCircle, Timer } from "lucide-react";
 import Link from "next/link";
@@ -64,7 +64,7 @@ export default function DashboardPage() {
   const allTasksQuery = useMemoFirebase(() => {
     // This query MUST wait for user loading to finish to ensure firestore is ready
     if (isUserLoading || !firestore) return null;
-    return query(collection(firestore, 'tasks'));
+    return query(collection(firestore, 'tasks'), limit(1000));
   }, [firestore, isUserLoading]);
 
   const { data: myRequests, isLoading: isLoadingMyRequests } = useCollection<RequestType>(myRequestsQuery);
