@@ -246,7 +246,22 @@ export type FormFieldType =
   | 'table'           // Interactive sub-table with multiple rows
   | 'dynamic-select'  // Dropdown connected to Firestore collections/master lists
   | 'user-identity'   // Auto-filled with logged-in user info (read-only)
-  | 'email';          // Email with format validation
+  | 'email'           // Email with format validation
+  | 'html';           // Custom HTML/script content for advanced layouts
+
+// -------------------------------------------------------------------------
+// Typography Configuration
+// -------------------------------------------------------------------------
+
+export type TypographyConfig = {
+  fontFamily?: 'default' | 'serif' | 'mono' | 'custom';
+  customFont?: string;           // Custom font name if fontFamily is 'custom'
+  fontSize?: 'xs' | 'sm' | 'base' | 'lg' | 'xl' | '2xl';
+  fontWeight?: 'normal' | 'medium' | 'semibold' | 'bold';
+  textColor?: string;            // Hex color or Tailwind class
+  textAlign?: 'left' | 'center' | 'right';
+  labelHidden?: boolean;         // Hide the field label
+};
 
 // -------------------------------------------------------------------------
 // Table Field Types
@@ -401,6 +416,12 @@ export type FormField = {
 
   // NEW: Lookup configuration - auto-populate other fields based on selection
   lookupConfig?: LookupConfig;
+
+  // NEW: Typography configuration for field styling
+  typography?: TypographyConfig;
+
+  // NEW: HTML content for 'html' field type
+  htmlContent?: string;          // Raw HTML/script content to render
 };
 
 export type RuleOperator = 

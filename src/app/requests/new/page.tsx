@@ -18,7 +18,7 @@ import { ref as storageRef, uploadBytesResumable, getDownloadURL } from "firebas
 import { Loader2, XCircle } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import React, { useCallback, useMemo } from "react";
+import React, { useCallback, useMemo, Suspense } from "react";
 import { Progress } from "@/components/ui/progress";
 import { intelligentTaskAssignment } from "@/ai/flows/intelligent-task-assignment";
 import { evaluateAndAddInitialSteps } from "@/lib/workflow-engine";
@@ -26,6 +26,7 @@ import {
     UserIdentityField,
     DynamicSelect,
     FormTableField,
+    HtmlField,
     evaluateFieldVisibility,
     validateFieldValue,
     isValidNumber,
@@ -112,7 +113,7 @@ async function assignInitialTask(
 }
 
 
-export default function NewRequestPage() {
+function NewRequestPageContent() {
     const searchParams = useSearchParams();
     const router = useRouter();
     const { toast } = useToast();
@@ -441,6 +442,14 @@ export default function NewRequestPage() {
                         onChange={(val) => handleInputChange(field.id, val)}
                     />
                 );
+            case 'html':
+                return (
+                    <HtmlField
+                        htmlContent={field.htmlContent || ''}
+                        label={field.label}
+                        showLabel={false}
+                    />
+                );
             case 'email':
                 return (
                     <div className="space-y-2">
@@ -593,5 +602,20 @@ export default function NewRequestPage() {
                 </main>
             </div>
         </SiteLayout>
+    );
+}
+
+// Wrapper component with Suspense boundary
+export default function NewRequestPage() {
+    return (
+        <Suspense fallback={
+            <SiteLayout>
+                <div className="flex items-center justify-center min-h-screen">
+                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                </div>
+            </SiteLayout>
+        }>
+            <NewRequestPageContent />
+        </Suspense>
     );
 }
