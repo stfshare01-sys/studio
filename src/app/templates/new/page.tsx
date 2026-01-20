@@ -39,8 +39,8 @@ import { useCollection, useFirestore, useMemoFirebase } from "@/firebase";
 import { addDocumentNonBlocking, setDocumentNonBlocking } from "@/firebase/non-blocking-updates";
 import { collection, doc } from "firebase/firestore";
 import { useRouter } from "next/navigation";
-import type { FormField, WorkflowStepDefinition, Rule, RuleCondition, RuleAction, WorkflowStepType, FormFieldType, RuleOperator, User as UserType, RequestPriority, UserRole, EscalationPolicy, VisibilityRule, TableColumnDefinition, DynamicSelectSource, UserIdentityConfig, ValidationRule, FieldLayoutConfig, DefaultValueRule } from "@/lib/types";
-import { VisibilityRulesBuilder, FieldValidationConfig, TableColumnDialog, useMasterLists, GatewayRoutingConfig, FieldLayoutEditor, DefaultValueRulesBuilder } from "@/components/form-fields";
+import type { FormField, WorkflowStepDefinition, Rule, RuleCondition, RuleAction, WorkflowStepType, FormFieldType, RuleOperator, User as UserType, RequestPriority, UserRole, EscalationPolicy, VisibilityRule, TableColumnDefinition, DynamicSelectSource, UserIdentityConfig, ValidationRule, FieldLayoutConfig, DefaultValueRule, TypographyConfig as TypographyConfigType } from "@/lib/types";
+import { VisibilityRulesBuilder, FieldValidationConfig, TableColumnDialog, useMasterLists, GatewayRoutingConfig, FieldLayoutEditor, DefaultValueRulesBuilder, TypographyConfig, HtmlFieldEditor, TimerStepConfig } from "@/components/form-fields";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { generateProcessFromDescription, GenerateProcessOutput } from "@/ai/flows/process-generation";
@@ -380,6 +380,32 @@ function SortableStep({
                                         const stepIndex = allSteps.findIndex(x => x.id === step.id);
                                         return i === stepIndex - 1;
                                     })}
+                                />
+                            </DialogContent>
+                        </Dialog>
+                    )}
+
+                    {/* Timer configuration */}
+                    {step.type === 'timer' && (
+                        <Dialog>
+                            <DialogTrigger asChild>
+                                <Button variant="ghost" size="sm" className="h-auto p-1">
+                                    <Timer className="h-3.5 w-3.5 mr-1" />
+                                    <span className="text-xs">Configurar Timer</span>
+                                    <Pencil className="h-3 w-3 ml-1 opacity-0 group-hover:opacity-100" />
+                                </Button>
+                            </DialogTrigger>
+                            <DialogContent className="sm:max-w-lg max-h-[80vh] overflow-y-auto">
+                                <DialogHeader>
+                                    <DialogTitle>Configurar Temporizador</DialogTitle>
+                                    <DialogDescription>
+                                        Configure cuándo debe activarse este paso del flujo.
+                                    </DialogDescription>
+                                </DialogHeader>
+                                <TimerStepConfig
+                                    config={(step as any).timerConfig}
+                                    onConfigChange={(config) => onUpdateStep(poolId, laneId, step.id, { timerConfig: config } as any)}
+                                    formFields={formFields}
                                 />
                             </DialogContent>
                         </Dialog>
@@ -1232,6 +1258,12 @@ function FieldBuilderDialog({ onAddField, onUpdateField, fieldToEdit, onClose }:
     const [placeholder, setPlaceholder] = useState('');
     const [helpText, setHelpText] = useState('');
 
+    // Typography configuration
+    const [typography, setTypography] = useState<TypographyConfigType | undefined>(undefined);
+
+    // HTML content
+    const [htmlContent, setHtmlContent] = useState('');
+
     // Load master lists
     const { masterLists } = useMasterLists();
 
@@ -1306,6 +1338,16 @@ function FieldBuilderDialog({ onAddField, onUpdateField, fieldToEdit, onClose }:
         if (placeholder) finalField.placeholder = placeholder;
         if (helpText) finalField.helpText = helpText;
 
+        // Typography configuration
+        if (typography && Object.keys(typography).length > 0) {
+            finalField.typography = typography;
+        }
+
+        // HTML content
+        if (type === 'html' && htmlContent) {
+            finalField.htmlContent = htmlContent;
+        }
+
         onAddField(finalField);
         onClose();
     };
@@ -1349,6 +1391,7 @@ function FieldBuilderDialog({ onAddField, onUpdateField, fieldToEdit, onClose }:
                                 <SelectItem value="file">Carga de archivos</SelectItem>
                                 <SelectItem value="table">Tabla interactiva</SelectItem>
                                 <SelectItem value="user-identity">Identidad del usuario</SelectItem>
+                                <SelectItem value="html">HTML personalizado</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
@@ -1583,8 +1626,29 @@ function FieldBuilderDialog({ onAddField, onUpdateField, fieldToEdit, onClose }:
                     </div>
                 )}
 
+                {/* HTML field configuration */}
+                {type === 'html' && (
+                    <div className="space-y-4 rounded-md border p-4">
+                        <HtmlFieldEditor
+                            value={htmlContent}
+                            onChange={setHtmlContent}
+                        />
+                    </div>
+                )}
+
+                {/* Typography configuration - for all visual field types */}
+                {!['user-identity', 'file', 'table'].includes(type) && (
+                    <div className="space-y-2 rounded-md border p-4">
+                        <Label className="text-base font-semibold">Tipografía y Estilo</Label>
+                        <TypographyConfig
+                            value={typography}
+                            onChange={setTypography}
+                        />
+                    </div>
+                )}
+
                 {/* Validation configuration */}
-                {type !== 'user-identity' && (
+                {!['user-identity', 'html'].includes(type) && (
                     <div className="space-y-2 rounded-md border p-4">
                         <Label className="text-base font-semibold">Validaciones</Label>
                         <FieldValidationConfig
