@@ -39,7 +39,7 @@ import { useCollection, useFirestore, useMemoFirebase } from "@/firebase";
 import { addDocumentNonBlocking, setDocumentNonBlocking } from "@/firebase/non-blocking-updates";
 import { collection, doc } from "firebase/firestore";
 import { useRouter } from "next/navigation";
-import type { FormField, WorkflowStepDefinition, Rule, RuleCondition, RuleAction, WorkflowStepType, FormFieldType, RuleOperator, User as UserType, RequestPriority, UserRole, EscalationPolicy, VisibilityRule, TableColumnDefinition, DynamicSelectSource, UserIdentityConfig, ValidationRule } from "@/lib/types";
+import type { FormField, WorkflowStepDefinition, Rule, RuleCondition, RuleAction, WorkflowStepType, FormFieldType, RuleOperator, User as UserType, RequestPriority, UserRole, EscalationPolicy, VisibilityRule, TableColumnDefinition, DynamicSelectSource, UserIdentityConfig, ValidationRule, FieldLayoutConfig, DefaultValueRule } from "@/lib/types";
 import { VisibilityRulesBuilder, FieldValidationConfig, TableColumnDialog, useMasterLists, GatewayRoutingConfig, FieldLayoutEditor, DefaultValueRulesBuilder } from "@/components/form-fields";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
@@ -557,6 +557,8 @@ export default function NewTemplatePage() {
   const [isRuleDialogOpen, setIsRuleDialogOpen] = useState(false);
 
   const [visibilityRules, setVisibilityRules] = useState<VisibilityRule[]>([]);
+  const [fieldLayout, setFieldLayout] = useState<FieldLayoutConfig[]>([]);
+  const [defaultValueRules, setDefaultValueRules] = useState<DefaultValueRule[]>([]);
 
   const [pools, setPools] = useState<Pool[]>([]);
 
@@ -807,6 +809,8 @@ export default function NewTemplatePage() {
         rules,
         pools,
         visibilityRules,
+        fieldLayout,
+        defaultValueRules,
     };
 
     try {
@@ -877,130 +881,198 @@ export default function NewTemplatePage() {
                     <Button onClick={handleSaveTemplate}>Guardar Plantilla</Button>
                 </div>
             </header>
-            <main className="grid flex-1 items-start gap-4 p-4 pt-0 sm:gap-8 sm:p-6 sm:pt-0 md:grid-cols-[1fr_2fr]">
-                <div className="grid auto-rows-max items-start gap-4 lg:gap-8">
-                    <Card>
-                        <CardContent className="p-6">
-                            <div className="space-y-4">
-                            <div>
-                                <Label htmlFor="template-name">Nombre de la Plantilla</Label>
-                                <Input 
-                                id="template-name" 
-                                placeholder="p.ej., Orden de Compra"
-                                value={templateName}
-                                onChange={(e) => setTemplateName(e.target.value)}
-                                />
-                            </div>
-                            <div>
-                                <Label htmlFor="template-description">Descripción</Label>
-                                <Textarea 
-                                id="template-description" 
-                                placeholder="Una breve descripción de para qué sirve este flujo de trabajo."
-                                value={templateDescription}
-                                onChange={(e) => setTemplateDescription(e.target.value)}
-                                />
-                            </div>
-                            </div>
-                        </CardContent>
-                    </Card>
-                    <Card>
-                        <CardHeader>
-                        <CardTitle>Campos del Formulario</CardTitle>
-                        <CardDescription>
-                            Defina los datos que se recopilarán para esta plantilla.
-                        </CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                            <div className="space-y-2 rounded-md border p-4 min-h-[120px]">
-                                {fields.length === 0 ? (
-                                    <p className="text-center text-sm text-muted-foreground py-4">Añada campos a su formulario.</p>
-                                ) : (
-                                    <SortableContext items={fields.map(f => f.id)} strategy={verticalListSortingStrategy} id="form-fields">
-                                        {fields.map((field) => (
-                                            <SortableField key={field.id} field={field} onRemove={handleRemoveField} onEdit={handleOpenFieldDialog} />
-                                        ))}
-                                    </SortableContext>
-                                )}
-                            </div>
-
-                        <Dialog open={isFieldDialogOpen} onOpenChange={setIsFieldDialogOpen}>
-                            <DialogTrigger asChild>
-                                <Button variant="outline" className="w-full" onClick={() => handleOpenFieldDialog(null)}>
-                                    <PlusCircle className="mr-2 h-4 w-4" /> Añadir Campo
-                                </Button>
-                            </DialogTrigger>
-                           <FieldBuilderDialog 
-                                onAddField={handleAddField}
-                                onUpdateField={handleUpdateField}
-                                fieldToEdit={editingField}
-                                onClose={() => setIsFieldDialogOpen(false)}
-                            />
-                        </Dialog>
-                        </CardContent>
-                    </Card>
-                    {/* Visibility Rules Section */}
-                    {fields.length > 0 && (
+            <main className="flex-1 p-4 pt-0 sm:p-6 sm:pt-0">
+                <div className="grid gap-4 md:grid-cols-[280px_1fr]">
+                    {/* Left sidebar - Basic Info */}
+                    <div className="space-y-4">
                         <Card>
-                            <CardHeader>
-                                <CardTitle>Reglas de Visibilidad</CardTitle>
-                                <CardDescription>
-                                    Configure cuándo mostrar u ocultar campos basándose en el valor de otros campos.
-                                </CardDescription>
-                            </CardHeader>
-                            <CardContent>
-                                <VisibilityRulesBuilder
-                                    fields={fields}
-                                    rules={visibilityRules}
-                                    onRulesChange={setVisibilityRules}
-                                />
+                            <CardContent className="p-4">
+                                <div className="space-y-4">
+                                    <div>
+                                        <Label htmlFor="template-name">Nombre de la Plantilla</Label>
+                                        <Input
+                                            id="template-name"
+                                            placeholder="p.ej., Orden de Compra"
+                                            value={templateName}
+                                            onChange={(e) => setTemplateName(e.target.value)}
+                                        />
+                                    </div>
+                                    <div>
+                                        <Label htmlFor="template-description">Descripción</Label>
+                                        <Textarea
+                                            id="template-description"
+                                            placeholder="Descripción del flujo de trabajo."
+                                            value={templateDescription}
+                                            onChange={(e) => setTemplateDescription(e.target.value)}
+                                            rows={3}
+                                        />
+                                    </div>
+                                </div>
                             </CardContent>
                         </Card>
-                    )}
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Motor de Reglas de Negocio</CardTitle>
-                            <CardDescription>Defina la lógica condicional para automatizar las decisiones.</CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                            <div className="space-y-3">
-                                {rules.length === 0 && (
-                                    <div className="text-center text-sm text-muted-foreground py-4 space-y-1">
-                                        <p>No hay reglas definidas.</p>
-                                        <p className="text-xs">Las reglas permiten enrutar el flujo basado en resultados o datos.</p>
-                                    </div>
-                                )}
-                                {rules.map((rule) => (
-                                    <RuleDisplay key={rule.id} rule={rule} fields={fields} pools={pools} users={users || []} onRemove={handleRemoveRule} onEdit={handleOpenRuleDialog} />
-                                ))}
+                        <Card className="p-4">
+                            <div className="text-sm text-muted-foreground space-y-2">
+                                <p><strong>Campos:</strong> {fields.length}</p>
+                                <p><strong>Pasos:</strong> {pools.flatMap(p => p.lanes.flatMap(l => l.steps)).length}</p>
+                                <p><strong>Reglas:</strong> {rules.length}</p>
                             </div>
-                            <Dialog open={isRuleDialogOpen} onOpenChange={setIsRuleDialogOpen}>
-                                <DialogTrigger asChild>
-                                    <Button variant="outline" className="w-full" onClick={() => handleOpenRuleDialog(null)}>
-                                        <PlusCircle className="mr-2 h-4 w-4" /> Añadir Regla
-                                    </Button>
-                                </DialogTrigger>
-                                <RuleBuilderDialog 
-                                    fields={fields} 
-                                    steps={pools.flatMap(p => p.lanes.flatMap(l => l.steps))} 
-                                    users={users || []}
-                                    onAddRule={handleAddRule}
-                                    onUpdateRule={handleUpdateRule}
-                                    ruleToEdit={editingRule}
-                                    onClose={() => setIsRuleDialogOpen(false)} 
-                                />
-                            </Dialog>
-                        </CardContent>
-                    </Card>
-                </div>
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Lienzo del Flujo de Trabajo (BPMN)</CardTitle>
-                        <CardDescription>
-                            Diseñe y ordene las etapas de su proceso usando Piscinas (Pools) y Carriles (Lanes).
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                        <div className="space-y-4 rounded-md bg-muted/50 p-4 min-h-[300px]">
+                        </Card>
+                    </div>
+
+                    {/* Right area - Tabs */}
+                    <Tabs defaultValue="formulario" className="w-full">
+                        <TabsList className="grid w-full grid-cols-3">
+                            <TabsTrigger value="formulario">Formulario</TabsTrigger>
+                            <TabsTrigger value="reglas">Reglas</TabsTrigger>
+                            <TabsTrigger value="flujo">Flujo de Trabajo</TabsTrigger>
+                        </TabsList>
+
+                        {/* Tab: Formulario */}
+                        <TabsContent value="formulario" className="space-y-4 mt-4">
+                            <Card>
+                                <CardHeader>
+                                    <CardTitle>Campos del Formulario</CardTitle>
+                                    <CardDescription>
+                                        Defina los datos que se recopilarán para esta plantilla.
+                                    </CardDescription>
+                                </CardHeader>
+                                <CardContent className="space-y-4">
+                                    <div className="space-y-2 rounded-md border p-4 min-h-[120px]">
+                                        {fields.length === 0 ? (
+                                            <p className="text-center text-sm text-muted-foreground py-4">Añada campos a su formulario.</p>
+                                        ) : (
+                                            <SortableContext items={fields.map(f => f.id)} strategy={verticalListSortingStrategy} id="form-fields">
+                                                {fields.map((field) => (
+                                                    <SortableField key={field.id} field={field} onRemove={handleRemoveField} onEdit={handleOpenFieldDialog} />
+                                                ))}
+                                            </SortableContext>
+                                        )}
+                                    </div>
+                                    <Dialog open={isFieldDialogOpen} onOpenChange={setIsFieldDialogOpen}>
+                                        <DialogTrigger asChild>
+                                            <Button variant="outline" className="w-full" onClick={() => handleOpenFieldDialog(null)}>
+                                                <PlusCircle className="mr-2 h-4 w-4" /> Añadir Campo
+                                            </Button>
+                                        </DialogTrigger>
+                                        <FieldBuilderDialog
+                                            onAddField={handleAddField}
+                                            onUpdateField={handleUpdateField}
+                                            fieldToEdit={editingField}
+                                            onClose={() => setIsFieldDialogOpen(false)}
+                                        />
+                                    </Dialog>
+                                </CardContent>
+                            </Card>
+
+                            {/* Field Layout Editor */}
+                            {fields.length > 1 && (
+                                <Card>
+                                    <CardHeader>
+                                        <CardTitle>Layout del Formulario</CardTitle>
+                                        <CardDescription>
+                                            Configure la disposición de los campos en filas y columnas.
+                                        </CardDescription>
+                                    </CardHeader>
+                                    <CardContent>
+                                        <FieldLayoutEditor
+                                            fields={fields}
+                                            layout={fieldLayout}
+                                            onLayoutChange={setFieldLayout}
+                                        />
+                                    </CardContent>
+                                </Card>
+                            )}
+                        </TabsContent>
+
+                        {/* Tab: Reglas */}
+                        <TabsContent value="reglas" className="space-y-4 mt-4">
+                            {/* Visibility Rules */}
+                            {fields.length > 0 && (
+                                <Card>
+                                    <CardHeader>
+                                        <CardTitle>Reglas de Visibilidad</CardTitle>
+                                        <CardDescription>
+                                            Configure cuándo mostrar u ocultar campos.
+                                        </CardDescription>
+                                    </CardHeader>
+                                    <CardContent>
+                                        <VisibilityRulesBuilder
+                                            fields={fields}
+                                            rules={visibilityRules}
+                                            onRulesChange={setVisibilityRules}
+                                        />
+                                    </CardContent>
+                                </Card>
+                            )}
+
+                            {/* Default Value Rules */}
+                            {fields.length > 0 && (
+                                <Card>
+                                    <CardHeader>
+                                        <CardTitle>Valores por Defecto Condicionales</CardTitle>
+                                        <CardDescription>
+                                            Configure valores que se asignan automáticamente basándose en condiciones.
+                                        </CardDescription>
+                                    </CardHeader>
+                                    <CardContent>
+                                        <DefaultValueRulesBuilder
+                                            fields={fields}
+                                            rules={defaultValueRules}
+                                            onRulesChange={setDefaultValueRules}
+                                        />
+                                    </CardContent>
+                                </Card>
+                            )}
+
+                            {/* Business Rules */}
+                            <Card>
+                                <CardHeader>
+                                    <CardTitle>Motor de Reglas de Negocio</CardTitle>
+                                    <CardDescription>Defina la lógica condicional para automatizar decisiones.</CardDescription>
+                                </CardHeader>
+                                <CardContent className="space-y-4">
+                                    <div className="space-y-3">
+                                        {rules.length === 0 && (
+                                            <div className="text-center text-sm text-muted-foreground py-4 space-y-1">
+                                                <p>No hay reglas definidas.</p>
+                                                <p className="text-xs">Las reglas permiten enrutar el flujo basado en resultados o datos.</p>
+                                            </div>
+                                        )}
+                                        {rules.map((rule) => (
+                                            <RuleDisplay key={rule.id} rule={rule} fields={fields} pools={pools} users={users || []} onRemove={handleRemoveRule} onEdit={handleOpenRuleDialog} />
+                                        ))}
+                                    </div>
+                                    <Dialog open={isRuleDialogOpen} onOpenChange={setIsRuleDialogOpen}>
+                                        <DialogTrigger asChild>
+                                            <Button variant="outline" className="w-full" onClick={() => handleOpenRuleDialog(null)}>
+                                                <PlusCircle className="mr-2 h-4 w-4" /> Añadir Regla
+                                            </Button>
+                                        </DialogTrigger>
+                                        <RuleBuilderDialog
+                                            fields={fields}
+                                            steps={pools.flatMap(p => p.lanes.flatMap(l => l.steps))}
+                                            users={users || []}
+                                            onAddRule={handleAddRule}
+                                            onUpdateRule={handleUpdateRule}
+                                            ruleToEdit={editingRule}
+                                            onClose={() => setIsRuleDialogOpen(false)}
+                                        />
+                                    </Dialog>
+                                </CardContent>
+                            </Card>
+                        </TabsContent>
+
+                        {/* Tab: Flujo de Trabajo */}
+                        <TabsContent value="flujo" className="mt-4">
+                            <Card>
+                                <CardHeader>
+                                    <CardTitle>Lienzo del Flujo de Trabajo (BPMN)</CardTitle>
+                                    <CardDescription>
+                                        Diseñe y ordene las etapas de su proceso usando Piscinas (Pools) y Carriles (Lanes).
+                                    </CardDescription>
+                                </CardHeader>
+                                <CardContent className="space-y-4">
+                                    <div className="space-y-4 rounded-md bg-muted/50 p-4 min-h-[300px]">
                             {pools.map((pool) => (
                                 <div key={pool.id} className="group/pool rounded-lg border bg-card p-4 space-y-4">
                                     <div className="flex items-center gap-2">
@@ -1087,12 +1159,15 @@ export default function NewTemplatePage() {
                                 </div>
                             ))}
                         </div>
-                        <Button variant="outline" className="w-full mt-4" onClick={handleAddPool}>
-                            <Library className="mr-2 h-4 w-4" /> Añadir Piscina
-                        </Button>
-                    </CardContent>
-                </Card>
-            </main>
+                                        <Button variant="outline" className="w-full mt-4" onClick={handleAddPool}>
+                                            <Library className="mr-2 h-4 w-4" /> Añadir Piscina
+                                        </Button>
+                                    </CardContent>
+                                </Card>
+                            </TabsContent>
+                        </Tabs>
+                    </div>
+                </main>
             </div>
         </DndContext>
     </SiteLayout>
