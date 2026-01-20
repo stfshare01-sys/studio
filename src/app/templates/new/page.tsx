@@ -463,7 +463,16 @@ function SortableLaneItem({
             <div className="p-2 min-h-[50px] space-y-2">
                 <SortableContext items={lane.steps.map(s => s.id)} strategy={verticalListSortingStrategy} id={lane.id}>
                     {lane.steps.map((step) => (
-                        <SortableStep key={step.id} step={step} poolId={poolId} laneId={lane.id} onUpdateStep={onUpdateStep} onDeleteStep={handleDeleteStep}/>
+                        <SortableStep
+                            key={step.id}
+                            step={step}
+                            poolId={poolId}
+                            laneId={lane.id}
+                            onUpdateStep={onUpdateStep}
+                            onDeleteStep={handleDeleteStep}
+                            allSteps={pools.flatMap(p => p.lanes.flatMap(l => l.steps))}
+                            formFields={fields}
+                        />
                     ))}
                 </SortableContext>
             </div>
@@ -479,7 +488,9 @@ function SortablePoolItem({
     handleAddStepToLane,
     handleDeleteLane,
     handleDeleteStep,
-    onUpdateStep
+    onUpdateStep,
+    allSteps,
+    formFields,
 }: {
     pool: Pool;
     handleUpdate: (type: 'pool' | 'lane', ids: { poolId: string, laneId?: string }, value: string) => void;
@@ -489,6 +500,8 @@ function SortablePoolItem({
     handleDeleteLane: (poolId: string, laneId: string) => void;
     handleDeleteStep: (poolId: string, laneId: string, stepId: string) => void;
     onUpdateStep: (poolId: string, laneId: string, stepId: string, updates: Partial<WorkflowStepDefinition>) => void;
+    allSteps: WorkflowStepDefinition[];
+    formFields: FormField[];
 }) {
     const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
         id: pool.id,
@@ -1865,3 +1878,4 @@ function RuleBuilderDialog({ fields, steps, users, onAddRule, onUpdateRule, rule
         </DialogContent>
     )
 }
+
