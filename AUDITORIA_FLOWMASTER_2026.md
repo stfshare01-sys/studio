@@ -30,7 +30,7 @@
 - **Riesgo:** Exposición de lógica sensible y posible mal funcionamiento
 
 ### 3. ALTO: Security Rules Incompletas
-**Ubicación:** `firestore.rules`, `storage.rules`
+**Ubicación:** `firestore.rules`
 - No hay validación de roles en algunas operaciones
 - Falta protección contra escrituras maliciosas en `tasks`
 - **Riesgo:** Escalación de privilegios y manipulación de datos
