@@ -150,7 +150,7 @@ function SortableField({ field, onRemove, onEdit }: { field: FormField, onRemove
     const fieldTypeLabels: Record<FormFieldType, string> = {
         text: 'Texto', textarea: 'Área de texto', date: 'Fecha', number: 'Número',
         select: 'Desplegable', checkbox: 'Casilla', radio: 'Opciones', file: 'Archivo',
-        table: 'Tabla', 'dynamic-select': 'Desplegable dinámico', 'user-identity': 'Identidad usuario', email: 'Email'
+        table: 'Tabla', 'dynamic-select': 'Desplegable dinámico', 'user-identity': 'Identidad usuario', email: 'Email', html: 'HTML',
     };
 
     return (
@@ -432,7 +432,9 @@ function SortableLaneItem({
     handleAddStepToLane, 
     handleDeleteLane, 
     handleDeleteStep, 
-    onUpdateStep 
+    onUpdateStep,
+    allSteps,
+    formFields
 }: {
     poolId: string;
     lane: Lane;
@@ -441,6 +443,8 @@ function SortableLaneItem({
     handleDeleteLane: (poolId: string, laneId: string) => void;
     handleDeleteStep: (poolId: string, laneId: string, stepId: string) => void;
     onUpdateStep: (poolId: string, laneId: string, stepId: string, updates: Partial<WorkflowStepDefinition>) => void;
+    allSteps: WorkflowStepDefinition[];
+    formFields: FormField[];
 }) {
     const { attributes: laneAttrs, listeners: laneListeners, setNodeRef: laneRef, transform: laneTransform, transition: laneTransition } = useSortable({
         id: lane.id,
@@ -496,8 +500,8 @@ function SortableLaneItem({
                             laneId={lane.id}
                             onUpdateStep={onUpdateStep}
                             onDeleteStep={handleDeleteStep}
-                            allSteps={pools.flatMap(p => p.lanes.flatMap(l => l.steps))}
-                            formFields={fields}
+                            allSteps={allSteps}
+                            formFields={formFields}
                         />
                     ))}
                 </SortableContext>
@@ -571,6 +575,8 @@ function SortablePoolItem({
                             handleDeleteLane={handleDeleteLane}
                             handleDeleteStep={handleDeleteStep}
                             onUpdateStep={onUpdateStep}
+                            allSteps={allSteps}
+                            formFields={formFields}
                         />
                     ))}
                 </SortableContext>
@@ -1003,11 +1009,10 @@ export default function NewTemplatePage() {
                                 </CardContent>
                             </Card>
 
-                            {/* Field Layout Editor */}
                             {fields.length > 1 && (
                                 <Card>
                                     <CardHeader>
-                                        <CardTitle>Layout del Formulario</CardTitle>
+                                        <CardTitle>Diseño del Formulario</CardTitle>
                                         <CardDescription>
                                             Configure la disposición de los campos en filas y columnas.
                                         </CardDescription>
@@ -1025,7 +1030,6 @@ export default function NewTemplatePage() {
 
                         {/* Tab: Reglas */}
                         <TabsContent value="reglas" className="space-y-4 mt-4">
-                            {/* Visibility Rules */}
                             {fields.length > 0 && (
                                 <Card>
                                     <CardHeader>
@@ -1044,7 +1048,6 @@ export default function NewTemplatePage() {
                                 </Card>
                             )}
 
-                            {/* Default Value Rules */}
                             {fields.length > 0 && (
                                 <Card>
                                     <CardHeader>
@@ -1063,7 +1066,6 @@ export default function NewTemplatePage() {
                                 </Card>
                             )}
 
-                            {/* Business Rules */}
                             <Card>
                                 <CardHeader>
                                     <CardTitle>Motor de Reglas de Negocio</CardTitle>
@@ -1112,101 +1114,33 @@ export default function NewTemplatePage() {
                                 </CardHeader>
                                 <CardContent className="space-y-4">
                                     <div className="space-y-4 rounded-md bg-muted/50 p-4 min-h-[300px]">
-                            {pools.map((pool) => (
-                                <div key={pool.id} className="group/pool rounded-lg border bg-card p-4 space-y-4">
-                                    <div className="flex items-center gap-2">
-                                        <Input
-                                            value={pool.name}
-                                            onChange={(e) => handleUpdate('pool', { poolId: pool.id }, e.target.value)}
-                                            className="text-base font-semibold border-none focus-visible:ring-1 focus-visible:ring-ring bg-transparent p-0 flex-1"
-                                        />
-                                        <Button variant="ghost" size="sm" onClick={() => handleAddLaneToPool(pool.id)}>
-                                            <PlusCircle className="mr-2 h-4 w-4" /> Añadir Carril
-                                        </Button>
-                                        <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            className="h-8 w-8 opacity-0 group-hover/pool:opacity-100 text-destructive hover:text-destructive hover:bg-destructive/10"
-                                            onClick={() => handleDeletePool(pool.id)}
-                                        >
-                                            <Trash2 className="h-4 w-4" />
-                                            <span className="sr-only">Eliminar piscina</span>
-                                        </Button>
+                                        <SortableContext items={pools.map(p => p.id)} strategy={verticalListSortingStrategy}>
+                                            {pools.map((pool) => (
+                                                <SortablePoolItem
+                                                    key={pool.id}
+                                                    pool={pool}
+                                                    handleUpdate={handleUpdate}
+                                                    handleAddLaneToPool={handleAddLaneToPool}
+                                                    handleDeletePool={handleDeletePool}
+                                                    handleDeleteLane={handleDeleteLane}
+                                                    handleDeleteStep={handleDeleteStep}
+                                                    onUpdateStep={handleUpdateStep}
+                                                    allSteps={pools.flatMap(p => p.lanes.flatMap(l => l.steps))}
+                                                    formFields={fields}
+                                                    handleAddStepToLane={handleAddStepToLane}
+                                                />
+                                            ))}
+                                        </SortableContext>
                                     </div>
-                                    <div className="space-y-2 pl-6">
-                                        {pool.lanes.map((lane) => (
-                                            <div key={lane.id} className="group/lane rounded-md border bg-background">
-                                                <div className="flex items-center gap-2 p-2 border-b">
-                                                    <Input
-                                                        value={lane.name}
-                                                        onChange={(e) => handleUpdate('lane', { poolId: pool.id, laneId: lane.id }, e.target.value)}
-                                                        className="h-8 text-sm font-medium border-none focus-visible:ring-1 focus-visible:ring-ring bg-transparent p-0 flex-1"
-                                                    />
-                                                    <DropdownMenu>
-                                                        <DropdownMenuTrigger asChild>
-                                                            <Button variant="ghost" size="sm"><PlusCircle className="mr-2 h-4 w-4" />Añadir</Button>
-                                                        </DropdownMenuTrigger>
-                                                        <DropdownMenuContent>
-                                                            <DropdownMenuLabel>Elementos de BPMN</DropdownMenuLabel>
-                                                            <DropdownMenuItem onSelect={() => handleAddStepToLane(pool.id, lane.id, "Nueva Tarea", 'task')}>
-                                                                <BpmnIcon type="task" className="mr-2"/> Tarea
-                                                            </DropdownMenuItem>
-                                                            <DropdownMenuItem onSelect={() => handleAddStepToLane(pool.id, lane.id, "Gateway Exclusivo", 'gateway-exclusive')}>
-                                                                <BpmnIcon type="gateway-exclusive" className="mr-2"/> Gateway Exclusivo (XOR)
-                                                            </DropdownMenuItem>
-                                                            <DropdownMenuItem onSelect={() => handleAddStepToLane(pool.id, lane.id, "Gateway Paralelo", 'gateway-parallel')}>
-                                                                <BpmnIcon type="gateway-parallel" className="mr-2"/> Gateway Paralelo (AND)
-                                                            </DropdownMenuItem>
-                                                            <DropdownMenuItem onSelect={() => handleAddStepToLane(pool.id, lane.id, "Gateway Inclusivo", 'gateway-inclusive')}>
-                                                                <BpmnIcon type="gateway-inclusive" className="mr-2"/> Gateway Inclusivo (OR)
-                                                            </DropdownMenuItem>
-                                                            <DropdownMenuSeparator />
-                                                            <DropdownMenuItem onSelect={() => handleAddStepToLane(pool.id, lane.id, "Temporizador", 'timer')}>
-                                                                <BpmnIcon type="timer" className="mr-2"/> Temporizador
-                                                            </DropdownMenuItem>
-                                                        </DropdownMenuContent>
-                                                    </DropdownMenu>
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        className="h-8 w-8 opacity-0 group-hover/lane:opacity-100 text-destructive hover:text-destructive hover:bg-destructive/10"
-                                                        onClick={() => handleDeleteLane(pool.id, lane.id)}
-                                                    >
-                                                        <Trash2 className="h-4 w-4" />
-                                                        <span className="sr-only">Eliminar carril</span>
-                                                    </Button>
-                                                </div>
-                                                <div className="p-2 min-h-[50px] space-y-2">
-                                                    <SortableContext items={lane.steps.map(s => s.id)} strategy={verticalListSortingStrategy} id={`lane-${lane.id}`}>
-                                                        {lane.steps.map((step) => (
-                                                            <SortableStep
-                                                                key={step.id}
-                                                                step={step}
-                                                                poolId={pool.id}
-                                                                laneId={lane.id}
-                                                                onUpdateStep={handleUpdateStep}
-                                                                onDeleteStep={handleDeleteStep}
-                                                                allSteps={pools.flatMap(p => p.lanes.flatMap(l => l.steps))}
-                                                                formFields={fields}
-                                                            />
-                                                        ))}
-                                                    </SortableContext>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                                        <Button variant="outline" className="w-full mt-4" onClick={handleAddPool}>
-                                            <Library className="mr-2 h-4 w-4" /> Añadir Piscina
-                                        </Button>
-                                    </CardContent>
-                                </Card>
-                            </TabsContent>
-                        </Tabs>
-                    </div>
-                </main>
+                                    <Button variant="outline" className="w-full mt-4" onClick={handleAddPool}>
+                                        <Library className="mr-2 h-4 w-4" /> Añadir Piscina
+                                    </Button>
+                                </CardContent>
+                            </Card>
+                        </TabsContent>
+                    </Tabs>
+                </div>
+            </main>
             </div>
         </DndContext>
     </SiteLayout>
@@ -1942,4 +1876,5 @@ function RuleBuilderDialog({ fields, steps, users, onAddRule, onUpdateRule, rule
         </DialogContent>
     )
 }
+
 

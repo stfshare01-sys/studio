@@ -145,7 +145,7 @@ function SortableField({ field, onRemove, onEdit }: { field: FormField, onRemove
     const fieldTypeLabels: Record<FormFieldType, string> = {
         text: 'Texto', textarea: 'Área de texto', date: 'Fecha', number: 'Número',
         select: 'Desplegable', checkbox: 'Casilla', radio: 'Opciones', file: 'Archivo',
-        table: 'Tabla', 'dynamic-select': 'Desplegable dinámico', 'user-identity': 'Identidad usuario', email: 'Email'
+        table: 'Tabla', 'dynamic-select': 'Desplegable dinámico', 'user-identity': 'Identidad usuario', email: 'Email', html: 'HTML'
     };
 
     return (
@@ -951,7 +951,7 @@ export default function EditTemplatePage() {
                         </CardContent>
                     </Card>
 
-                    {fields.length > 0 && (
+                    {fields.length > 1 && (
                         <Card>
                             <CardHeader>
                                 <CardTitle>Diseño del Formulario</CardTitle>
@@ -1750,4 +1750,5 @@ function RuleBuilderDialog({ fields, steps, users, onAddRule, onUpdateRule, rule
         </DialogContent>
     )
 }
+
 
