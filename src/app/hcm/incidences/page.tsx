@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState } from 'react';
@@ -74,23 +75,27 @@ export default function IncidencesPage() {
         isPaid: true
     });
 
-    // Fetch incidences
+    // Fetch incidences based on user role
     const incidencesQuery = useMemoFirebase(() => {
-        if (!firestore) return null;
+        if (!firestore || !user) return null;
 
-        if (statusFilter !== 'all') {
-            return query(
-                collection(firestore, 'incidences'),
-                where('status', '==', statusFilter),
-                orderBy('createdAt', 'desc')
-            );
+        const isManager = user.role === 'Admin' || user.role === 'HRManager' || user.role === 'Manager';
+        const baseQuery = collection(firestore, 'incidences');
+        const conditions = [];
+        let sortField = 'createdAt';
+        let sortDirection: "asc" | "desc" = 'desc';
+
+        if (!isManager) {
+            conditions.push(where('employeeId', '==', user.uid));
+            sortField = 'startDate'; // Use a different sort for members to align with existing indexes
         }
 
-        return query(
-            collection(firestore, 'incidences'),
-            orderBy('createdAt', 'desc')
-        );
-    }, [firestore, statusFilter]);
+        if (statusFilter !== 'all') {
+            conditions.push(where('status', '==', statusFilter));
+        }
+
+        return query(baseQuery, ...conditions, orderBy(sortField, sortDirection));
+    }, [firestore, user, statusFilter]);
 
     const { data: incidences, isLoading } = useCollection<Incidence>(incidencesQuery);
 
