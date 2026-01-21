@@ -1,3 +1,4 @@
+
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -260,9 +261,8 @@ service cloud.firestore {
       // Employees can read their own incidences, or managers/HR can read any.
       allow get: if isSignedIn() && (resource.data.employeeId == request.auth.uid || isManagerOrHR());
       
-      // Allow any signed in user to perform list queries.
-      // Firestore will enforce that the query constraints match the 'get' rule for non-managers.
-      allow list: if isSignedIn();
+      // Allow managers to list all, and members to list only their own.
+      allow list: if isSignedIn() && (isManagerOrHR() || request.query.where.employeeId == request.auth.uid);
       
       // Employees can create requests for themselves
       allow create: if isSignedIn() && request.resource.data.employeeId == request.auth.uid;
