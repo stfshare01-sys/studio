@@ -62,10 +62,10 @@ export default function DashboardPage() {
   }, [firestore, user, isUserLoading]);
 
   const allTasksQuery = useMemoFirebase(() => {
-    // This query MUST wait for user loading to finish to ensure firestore is ready
-    if (isUserLoading || !firestore) return null;
+    // This query MUST wait for user loading AND authentication to finish
+    if (isUserLoading || !firestore || !user) return null;
     return query(collection(firestore, 'tasks'), limit(1000));
-  }, [firestore, isUserLoading]);
+  }, [firestore, isUserLoading, user]);
 
   const { data: myRequests, isLoading: isLoadingMyRequests } = useCollection<RequestType>(myRequestsQuery);
   const { data: tasks, isLoading: isLoadingTasks } = useCollection<Task>(tasksQuery);
