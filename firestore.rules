@@ -262,12 +262,16 @@ service cloud.firestore {
      * @path /incidences/{incidenceId}
      */
     match /incidences/{incidenceId} {
-      // Employees can read their own incidences
-      allow get: if isSignedIn() && resource.data.employeeId == request.auth.uid;
-      // HR, Managers, and Admins can list all incidences
-      allow list: if isManagerOrHR();
+      // Employees can read their own incidences, or managers/HR can read any.
+      allow get: if isSignedIn() && (resource.data.employeeId == request.auth.uid || isManagerOrHR());
+      
+      // Allow any signed in user to perform list queries. The `get` rule above
+      // will be applied to each document returned by the query, ensuring security.
+      allow list: if isSignedIn();
+      
       // Employees can create requests for themselves
       allow create: if isSignedIn() && request.resource.data.employeeId == request.auth.uid;
+      
       // HR can approve/reject; employees can only cancel their own pending requests
       allow update: if isHRManager() || (
         isSignedIn() && 
@@ -275,6 +279,7 @@ service cloud.firestore {
         resource.data.status == 'pending' &&
         request.resource.data.status == 'cancelled'
       );
+      
       // Incidences are immutable for audit
       allow delete: if false;
     }

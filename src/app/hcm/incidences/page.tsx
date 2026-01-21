@@ -81,33 +81,46 @@ export default function IncidencesPage() {
 
         const isManager = user.role === 'Admin' || user.role === 'HRManager' || user.role === 'Manager';
         const baseQuery = collection(firestore, 'incidences');
+        
         const conditions = [];
-        let sortField = 'createdAt';
-        let sortDirection: "asc" | "desc" = 'desc';
 
         if (!isManager) {
             conditions.push(where('employeeId', '==', user.uid));
-            sortField = 'startDate'; // Use a different sort for members to align with existing indexes
         }
 
         if (statusFilter !== 'all') {
             conditions.push(where('status', '==', statusFilter));
         }
+        
+        // Due to Firestore limitations, we can't have an inequality filter on one field
+        // and an orderBy on another. We will handle type filtering on the client.
+        // We also need different orderBy clauses depending on the query to match existing indexes.
+        if (!isManager && statusFilter !== 'all') {
+             return query(baseQuery, ...conditions, orderBy('startDate', 'desc'));
+        } else if (!isManager) {
+             return query(baseQuery, ...conditions, orderBy('status', 'asc'), orderBy('startDate', 'desc'));
+        } else if (statusFilter !== 'all') {
+            return query(baseQuery, ...conditions, orderBy('createdAt', 'desc'));
+        }
 
-        return query(baseQuery, ...conditions, orderBy(sortField, sortDirection));
+        return query(baseQuery, orderBy('createdAt', 'desc'));
+
     }, [firestore, user, statusFilter]);
 
     const { data: incidences, isLoading } = useCollection<Incidence>(incidencesQuery);
 
     // Filter incidences client-side for type and search
-    const filteredIncidences = incidences?.filter(inc => {
-        const matchesType = typeFilter === 'all' || inc.type === typeFilter;
-        const matchesSearch = searchTerm === '' ||
-            inc.employeeName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            inc.employeeId.toLowerCase().includes(searchTerm.toLowerCase());
+    const filteredIncidences = useMemo(() => {
+        return incidences?.filter(inc => {
+            const matchesType = typeFilter === 'all' || inc.type === typeFilter;
+            const matchesSearch = searchTerm === '' ||
+                inc.employeeName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                inc.employeeId.toLowerCase().includes(searchTerm.toLowerCase());
 
-        return matchesType && matchesSearch;
-    }) ?? [];
+            return matchesType && matchesSearch;
+        }) ?? [];
+    }, [incidences, typeFilter, searchTerm]);
+
 
     // Get incidence type label
     const getTypeLabel = (type: IncidenceType): string => {
