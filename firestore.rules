@@ -51,6 +51,16 @@ service cloud.firestore {
         && data.requestId is string;
     }
 
+    // HCM Module: Check if user has HR Manager or Admin privileges
+    function isHRManager() {
+      return isSignedIn() && userDocExists() && getUserData().role in ['Admin', 'HRManager'];
+    }
+
+    // HCM Module: Check if user is a manager (can approve incidences for their team)
+    function isManagerOrHR() {
+      return isSignedIn() && userDocExists() && getUserData().role in ['Admin', 'HRManager', 'Manager'];
+    }
+
     // -------------------------------------------------------------------------
     // Collection Rules
     // -------------------------------------------------------------------------
@@ -195,6 +205,144 @@ service cloud.firestore {
      */
     match /integrations/{integrationId} {
       allow read, write: if hasRole('Admin');
+    }
+
+    // -------------------------------------------------------------------------
+    // HCM MODULE RULES - Sistema de Gestión de Capital Humano
+    // -------------------------------------------------------------------------
+
+    /**
+     * @description Employee extended data with sensitive PII (RFC, CURP, NSS, CLABE)
+     * Read: HR Managers, Admins, or the employee themselves
+     * Write: HR Managers and Admins only
+     * @path /employees/{employeeId}
+     */
+    match /employees/{employeeId} {
+      // Employees can read their own data, HR/Admin can read any
+      allow get: if isHRManager() || isOwner(employeeId);
+      // Only HR and Admin can list all employees
+      allow list: if isHRManager();
+      // Only HR and Admin can create/update employee records
+      allow create, update: if isHRManager();
+      // Only Admins can delete employee records
+      allow delete: if hasRole('Admin');
+    }
+
+    /**
+     * @description Compensation records (highly sensitive salary data)
+     * Read/Write: Only HR Managers and Admins
+     * @path /compensation/{compensationId}
+     */
+    match /compensation/{compensationId} {
+      allow read, write: if isHRManager();
+    }
+
+    /**
+     * @description Attendance records imported from external system
+     * Read: Employees can read their own, HR/Admin can read all
+     * Write: HR Managers and Admins only (immutable for audit)
+     * @path /attendance/{attendanceId}
+     */
+    match /attendance/{attendanceId} {
+      // Employees can read their own attendance records
+      allow get: if isSignedIn() && resource.data.employeeId == request.auth.uid;
+      // HR and Admin can list all attendance records
+      allow list: if isHRManager();
+      // Only HR and Admin can create/update attendance records
+      allow create, update: if isHRManager();
+      // Attendance records are immutable for audit purposes
+      allow delete: if false;
+    }
+
+    /**
+     * @description Incidences and leave requests (vacations, sick leave, etc.)
+     * Read: Employee owns, or managers/HR
+     * Create: Employees can create their own requests
+     * Update: HR can approve/reject, employees can only cancel
+     * @path /incidences/{incidenceId}
+     */
+    match /incidences/{incidenceId} {
+      // Employees can read their own incidences
+      allow get: if isSignedIn() && resource.data.employeeId == request.auth.uid;
+      // HR, Managers, and Admins can list all incidences
+      allow list: if isManagerOrHR();
+      // Employees can create requests for themselves
+      allow create: if isSignedIn() && request.resource.data.employeeId == request.auth.uid;
+      // HR can approve/reject; employees can only cancel their own pending requests
+      allow update: if isHRManager() || (
+        isSignedIn() && 
+        resource.data.employeeId == request.auth.uid && 
+        resource.data.status == 'pending' &&
+        request.resource.data.status == 'cancelled'
+      );
+      // Incidences are immutable for audit
+      allow delete: if false;
+    }
+
+    /**
+     * @description Pre-nomina consolidated records
+     * Read/Write: Only HR Managers and Admins
+     * @path /prenomina/{prenominaId}
+     */
+    match /prenomina/{prenominaId} {
+      allow read, write: if isHRManager();
+      
+      // Audit logs for prenomina changes (immutable)
+      match /audit_logs/{auditLogId} {
+        allow read: if isHRManager();
+        allow create: if isSignedIn();
+        allow update, delete: if false;
+      }
+    }
+
+    /**
+     * @description Time bank for compensatory hours
+     * Read: Employee can read their own, HR can read all
+     * Write: HR only
+     * @path /time_bank/{employeeId}
+     */
+    match /time_bank/{employeeId} {
+      allow get: if isOwner(employeeId) || isHRManager();
+      allow list: if isHRManager();
+      allow write: if isHRManager();
+    }
+
+    /**
+     * @description Attendance import batches (Excel/CSV uploads)
+     * Read/Write: Only HR Managers and Admins
+     * @path /attendance_imports/{batchId}
+     */
+    match /attendance_imports/{batchId} {
+      allow read, write: if isHRManager();
+    }
+
+    /**
+     * @description Official holiday calendar
+     * Read: All authenticated users
+     * Write: Only Admins
+     * @path /holiday_calendar/{calendarId}
+     */
+    match /holiday_calendar/{calendarId} {
+      allow read: if isSignedIn();
+      allow write: if hasRole('Admin');
+    }
+
+    /**
+     * @description Settlement/termination calculations
+     * Read/Write: Only HR Managers and Admins
+     * @path /settlements/{settlementId}
+     */
+    match /settlements/{settlementId} {
+      allow read, write: if isHRManager();
+    }
+
+    /**
+     * @description Accounting policies generated from prenomina
+     * Read/Write: Only HR Managers and Admins
+     * @path /accounting_policies/{policyId}
+     */
+    match /accounting_policies/{policyId} {
+      allow read, write: if isHRManager();
     }
   }
 }

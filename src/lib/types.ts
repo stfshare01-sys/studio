@@ -21,9 +21,9 @@ export type User = {
 export type WorkflowStepType = 'task' | 'gateway-exclusive' | 'gateway-parallel' | 'gateway-inclusive' | 'timer';
 
 export type EscalationPolicy = {
-    action: 'NOTIFY' | 'REASSIGN';
-    targetRole?: string; // For REASSIGN action
-    notify: ('assignee' | 'manager' | 'submitter')[];
+  action: 'NOTIFY' | 'REASSIGN';
+  targetRole?: string; // For REASSIGN action
+  notify: ('assignee' | 'manager' | 'submitter')[];
 };
 
 // -------------------------------------------------------------------------
@@ -424,11 +424,11 @@ export type FormField = {
   htmlContent?: string;          // Raw HTML/script content to render
 };
 
-export type RuleOperator = 
-    | '==' | '!=' // Generic equality
-    | '>' | '<' | '>=' | '<=' // For numbers
-    | 'contains' | 'not_contains' // For text
-    | 'is' | 'is_not'; // For selects/radios
+export type RuleOperator =
+  | '==' | '!=' // Generic equality
+  | '>' | '<' | '>=' | '<=' // For numbers
+  | 'contains' | 'not_contains' // For text
+  | 'is' | 'is_not'; // For selects/radios
 
 export type RuleCondition = {
   fieldId: string; // Can be a form field ID or a step ID for outcome-based rules
@@ -437,7 +437,7 @@ export type RuleCondition = {
   type: 'form' | 'outcome'; // Distinguish between form data rules and workflow outcome rules
 };
 
-export type RuleAction = 
+export type RuleAction =
   | { type: 'REQUIRE_ADDITIONAL_STEP'; stepId: string; }
   | { type: 'ROUTE_TO_STEP'; stepId: string; }
   | { type: 'ASSIGN_USER'; stepId: string; userId: string; }
@@ -451,17 +451,17 @@ export type Rule = {
 };
 
 export type MasterListField = {
-    id: string;
-    label: string;
-    type: 'text' | 'number' | 'boolean' | 'date';
+  id: string;
+  label: string;
+  type: 'text' | 'number' | 'boolean' | 'date';
 }
 
 export type MasterList = {
-    id: string;
-    name: string;
-    description: string;
-    primaryKey: string;
-    fields: MasterListField[];
+  id: string;
+  name: string;
+  description: string;
+  primaryKey: string;
+  fields: MasterListField[];
 }
 
 export type Template = {
@@ -472,13 +472,13 @@ export type Template = {
   steps: WorkflowStepDefinition[];
   rules: Rule[];
   pools?: {
+    id: string;
+    name: string;
+    lanes: {
       id: string;
       name: string;
-      lanes: {
-          id: string;
-          name: string;
-          steps: WorkflowStepDefinition[];
-      }[];
+      steps: WorkflowStepDefinition[];
+    }[];
   }[];
   // Global visibility rules for conditional field display
   visibilityRules?: VisibilityRule[];
@@ -494,24 +494,24 @@ export type Template = {
 };
 
 export type Comment = {
-    id: string;
-    requestId: string;
-    authorId: string;
-    text: string;
-    createdAt: string;
+  id: string;
+  requestId: string;
+  authorId: string;
+  text: string;
+  createdAt: string;
 };
 
 export type AuditLogAction = 'REQUEST_SUBMITTED' | 'STEP_ASSIGNEE_CHANGED' | 'COMMENT_ADDED' | 'STEP_COMPLETED' | 'DOCUMENT_DELETED';
 
 export type AuditLog = {
-    id: string;
-    requestId: string;
-    userId: string;
-    userFullName: string; // Denormalized for display
-    userAvatarUrl?: string; // Denormalized for display
-    timestamp: string;
-    action: AuditLogAction;
-    details: Record<string, any>;
+  id: string;
+  requestId: string;
+  userId: string;
+  userFullName: string; // Denormalized for display
+  userAvatarUrl?: string; // Denormalized for display
+  timestamp: string;
+  action: AuditLogAction;
+  details: Record<string, any>;
 };
 
 
@@ -527,11 +527,414 @@ export type EnrichedRequest = Omit<Request, 'submittedBy' | 'steps'> & {
 };
 
 export type EnrichedComment = Omit<Comment, 'authorId'> & {
-    author?: User;
+  author?: User;
 };
 
 // Analytics types
 export type TaskDuration = {
   name: string;
   duration: number;
+};
+
+// =========================================================================
+// HCM MODULE TYPES - Sistema de Gestión de Capital Humano
+// =========================================================================
+
+// Extend UserRole to include HRManager
+export type ExtendedUserRole = UserRole | 'HRManager' | 'Manager';
+
+export type EmploymentType = 'full_time' | 'part_time' | 'contractor' | 'intern';
+export type ShiftType = 'diurnal' | 'nocturnal' | 'mixed';
+export type IncidenceType = 'vacation' | 'sick_leave' | 'personal_leave' | 'maternity' | 'paternity' | 'bereavement' | 'unjustified_absence';
+export type IncidenceStatus = 'pending' | 'approved' | 'rejected' | 'cancelled';
+export type OnboardingPhase = 'day_0' | 'day_30' | 'day_60' | 'day_90' | 'completed';
+
+/**
+ * Expediente Digital del Empleado
+ * Extiende el tipo User existente con datos laborales según LFT
+ */
+export type Employee = User & {
+  // Datos fiscales y legales (LFT compliance)
+  rfc_curp?: string;           // RFC con homoclave + CURP
+  nss?: string;                // Número de Seguridad Social (IMSS)
+
+  // Datos laborales
+  employmentType: EmploymentType;
+  shiftType: ShiftType;
+  hireDate: string;            // Fecha de ingreso (ISO 8601)
+  terminationDate?: string;    // Fecha de baja (si aplica)
+  costCenter?: string;         // Centro de costos contable
+  positionTitle: string;       // Puesto / cargo
+
+  // Datos financieros (sensibles)
+  clabe?: string;              // Cuenta bancaria CLABE 18 dígitos
+
+  // Onboarding
+  onboardingStatus?: OnboardingPhase;
+  mentorId?: string;           // ID del mentor asignado
+  onboardingObjectives?: OnboardingObjective[];
+
+  // Evaluación 9-Box Grid
+  performanceRating?: 1 | 2 | 3 | 4 | 5;
+  potentialRating?: 1 | 2 | 3 | 4 | 5;
+  lastEvaluationDate?: string;
+
+  // Lista negra (offboarding)
+  isBlacklisted?: boolean;
+  blacklistReason?: string;
+  blacklistDate?: string;
+};
+
+/**
+ * Objetivo SMART para Onboarding
+ */
+export type OnboardingObjective = {
+  id: string;
+  phase: OnboardingPhase;
+  description: string;
+  isCompleted: boolean;
+  completedAt?: string;
+  notes?: string;
+};
+
+/**
+ * Registro de Compensación
+ * Contiene información salarial y factores de integración según LFT
+ */
+export type Compensation = {
+  id: string;
+  employeeId: string;
+
+  // Salario base
+  salaryDaily: number;          // Salario diario base
+  salaryMonthly?: number;       // Salario mensual (calculado)
+
+  // Salario Diario Integrado (SDI)
+  sdiBase: number;              // SDI calculado
+  sdiFactor: number;            // Factor de integración (típicamente 1.0452 - 1.0493)
+
+  // Prestaciones LFT
+  vacationDays: number;         // Días de vacaciones según antigüedad (Art. 76 LFT)
+  vacationPremium: number;      // Prima vacacional (25% mínimo según Art. 80 LFT)
+  aguinaldoDays: number;        // Días de aguinaldo (15 mínimo según Art. 87 LFT)
+
+  // Prestaciones superiores a la ley
+  savingsFundPercentage?: number;  // Fondo de ahorro (%)
+  foodVouchersDaily?: number;      // Vales de despensa diarios
+
+  // Vigencia
+  effectiveDate: string;        // Fecha de vigencia
+  endDate?: string;             // Fecha fin (si hay cambio de tabulador)
+
+  // Auditoría
+  createdAt: string;
+  updatedAt: string;
+  createdById: string;
+};
+
+/**
+ * Registro de Asistencia
+ * Importado de sistema externo (biométrico, reloj checador, etc.)
+ */
+export type AttendanceRecord = {
+  id: string;
+  employeeId: string;
+
+  // Fecha y hora
+  date: string;                 // YYYY-MM-DD
+  checkIn?: string;             // HH:mm:ss (hora de entrada)
+  checkOut?: string;            // HH:mm:ss (hora de salida)
+
+  // Cálculos automáticos
+  hoursWorked: number;          // Total horas trabajadas
+  regularHours: number;         // Horas dentro de jornada normal
+  overtimeHours: number;        // Horas extra totales
+  overtimeType?: 'double' | 'triple'; // Tipo según "Ley de los 9s"
+
+  // Estado y validación
+  isValid: boolean;             // Validación de jornada según turno
+  validationNotes?: string;     // Notas de validación (ej: "Excede jornada diurna")
+
+  // Incidencia relacionada (si aplica)
+  linkedIncidenceId?: string;   // Si hay permiso/incapacidad que justifica
+
+  // Lote de importación
+  importBatchId: string;        // ID del lote de importación
+
+  // Auditoría
+  createdAt: string;
+};
+
+/**
+ * Incidencias y Permisos
+ * Gestiona ausencias, vacaciones, incapacidades según LFT
+ */
+export type Incidence = {
+  id: string;
+  employeeId: string;
+  employeeName?: string;        // Denormalizado para consultas rápidas
+
+  // Tipo y fechas
+  type: IncidenceType;
+  startDate: string;            // Fecha inicio
+  endDate: string;              // Fecha fin
+  totalDays: number;            // Días totales
+
+  // Estado del flujo
+  status: IncidenceStatus;
+  isPaid: boolean;              // Con o sin goce de sueldo
+
+  // Datos específicos según tipo
+  imssReference?: string;       // Folio IMSS para incapacidades
+  imssPercentage?: number;      // % que cubre IMSS (40% o 60%)
+
+  // Flujo de aprobación
+  requestId?: string;           // Referencia al Request del workflow
+  approvedById?: string;
+  approvedByName?: string;      // Denormalizado
+  approvedAt?: string;
+  rejectionReason?: string;
+
+  // Información adicional
+  notes?: string;
+  attachmentUrls?: string[];    // Documentos adjuntos (constancias médicas, etc.)
+
+  // Auditoría
+  createdAt: string;
+  updatedAt: string;
+};
+
+/**
+ * Registro de Pre-Nómina Consolidada
+ * Resumen por empleado por período de pago
+ */
+export type PrenominaRecord = {
+  id: string;
+  employeeId: string;
+  employeeName?: string;        // Denormalizado
+  employeeRfc?: string;         // Denormalizado para exportación
+
+  // Período
+  periodStart: string;          // Inicio del período (YYYY-MM-DD)
+  periodEnd: string;            // Fin del período (YYYY-MM-DD)
+  periodType: 'weekly' | 'biweekly' | 'monthly';
+
+  // Percepciones
+  salaryBase: number;           // Salario base del período
+  daysWorked: number;           // Días trabajados
+
+  // Horas extra (según "Ley de los 9s")
+  overtimeDoubleHours: number;  // Horas dobles (primeras 9 semanales)
+  overtimeDoubleAmount: number; // Monto horas dobles
+  overtimeTripleHours: number;  // Horas triples (excedente de 9)
+  overtimeTripleAmount: number; // Monto horas triples
+
+  // Prima dominical (si aplica)
+  sundayPremiumDays: number;
+  sundayPremiumAmount: number;  // 25% adicional según Art. 71 LFT
+
+  // Deducciones
+  absenceDays: number;          // Días de falta
+  absenceDeductions: number;    // Deducciones por faltas no justificadas
+
+  // Incidencias del período
+  vacationDaysTaken: number;
+  sickLeaveDays: number;
+  paidLeaveDays: number;
+  unpaidLeaveDays: number;
+
+  // Totales
+  grossPay: number;             // Total percepciones
+  totalDeductions: number;      // Total deducciones (sin ISR, solo prenómina)
+  netPay: number;               // Neto a pagar
+
+  // Salario bajo demanda (Liquidity)
+  earnedWage: number;           // Salario neto generado disponible para retiro
+
+  // Estado y exportación
+  status: 'draft' | 'reviewed' | 'exported' | 'locked';
+  reviewedById?: string;
+  reviewedAt?: string;
+  exportedAt?: string;
+  exportedById?: string;
+  exportFormat?: 'nomipaq' | 'excel' | 'json';
+
+  // Contabilidad
+  costCenter?: string;          // Centro de costos
+  accountingPolicyId?: string;  // ID de póliza contable generada
+
+  // Auditoría
+  createdAt: string;
+  updatedAt: string;
+};
+
+/**
+ * Bolsa de Horas Compensatorias
+ * "Tiempo por tiempo" según mutuo acuerdo
+ */
+export type TimeBank = {
+  id: string;
+  employeeId: string;
+
+  // Saldos
+  hoursEarned: number;          // Horas acumuladas por trabajo extra
+  hoursUsed: number;            // Horas compensadas/usadas
+  hoursBalance: number;         // Saldo disponible (earned - used)
+  hoursExpired: number;         // Horas expiradas (si aplica política)
+
+  // Política
+  expirationMonths?: number;    // Meses para expiración (null = no expira)
+
+  // Auditoría
+  lastUpdated: string;
+  movements: TimeBankMovement[];
+};
+
+/**
+ * Movimiento en Bolsa de Horas
+ */
+export type TimeBankMovement = {
+  id: string;
+  type: 'earn' | 'use' | 'expire' | 'adjustment';
+  hours: number;
+  date: string;
+  description: string;
+  approvedById?: string;
+};
+
+/**
+ * Lote de Importación de Asistencia
+ * Metadata de archivos Excel/CSV cargados
+ */
+export type AttendanceImportBatch = {
+  id: string;
+  filename: string;
+  fileSize: number;
+  mimeType: string;
+
+  // Procesamiento
+  uploadedById: string;
+  uploadedByName?: string;
+  uploadedAt: string;
+
+  // Resultados
+  recordCount: number;          // Total registros procesados
+  successCount: number;         // Registros exitosos
+  errorCount: number;           // Registros con error
+
+  // Estado
+  status: 'uploading' | 'processing' | 'completed' | 'failed' | 'partial';
+  errors?: ImportError[];
+
+  // Período cubierto
+  dateRangeStart?: string;
+  dateRangeEnd?: string;
+};
+
+/**
+ * Error de Importación
+ */
+export type ImportError = {
+  row: number;
+  column?: string;
+  employeeId?: string;
+  message: string;
+  severity: 'warning' | 'error';
+};
+
+/**
+ * Póliza Contable de Nómina
+ */
+export type AccountingPolicy = {
+  id: string;
+  prenominalPeriodStart: string;
+  prenominalPeriodEnd: string;
+
+  // Cuentas contables
+  entries: AccountingEntry[];
+
+  // Totales
+  totalDebit: number;
+  totalCredit: number;
+  isBalanced: boolean;
+
+  // Estado
+  status: 'draft' | 'posted' | 'cancelled';
+  postedAt?: string;
+  postedById?: string;
+
+  // Auditoría
+  createdAt: string;
+  createdById: string;
+};
+
+/**
+ * Entrada de Póliza Contable
+ */
+export type AccountingEntry = {
+  accountCode: string;          // Código de cuenta contable
+  accountName: string;          // Nombre de cuenta
+  costCenter?: string;          // Centro de costos
+  debit: number;                // Cargo
+  credit: number;               // Abono
+  concept: string;              // Concepto
+};
+
+/**
+ * Configuración de Calendario Laboral
+ * Días festivos oficiales según LFT
+ */
+export type HolidayCalendar = {
+  id: string;
+  year: number;
+  holidays: OfficialHoliday[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+/**
+ * Día Festivo Oficial
+ */
+export type OfficialHoliday = {
+  date: string;                 // YYYY-MM-DD
+  name: string;                 // Nombre del día festivo
+  isObligatory: boolean;        // Descanso obligatorio según Art. 74 LFT
+  premiumRequired: boolean;     // Requiere pago de prima (200%)
+};
+
+/**
+ * Datos de Liquidación/Finiquito
+ */
+export type SettlementCalculation = {
+  id: string;
+  employeeId: string;
+  employeeName?: string;
+
+  // Tipo
+  type: 'resignation' | 'dismissal_justified' | 'dismissal_unjustified' | 'mutual_agreement';
+  terminationDate: string;
+
+  // Cálculos
+  proportionalVacation: number;
+  proportionalVacationPremium: number;
+  proportionalAguinaldo: number;
+  salaryPending: number;
+
+  // Indemnizaciones (según tipo)
+  severancePay?: number;        // 3 meses de salario (Art. 48 LFT)
+  seniorityPremium?: number;    // Prima de antigüedad (12 días/año, Art. 162 LFT)
+  twentyDaysPerYear?: number;   // 20 días por año (despido injustificado)
+
+  // Totales
+  totalPerceptions: number;
+  totalDeductions: number;
+  netSettlement: number;
+
+  // Estado
+  status: 'preliminary' | 'final' | 'paid';
+  paidAt?: string;
+
+  // Auditoría
+  calculatedAt: string;
+  calculatedById: string;
 };
