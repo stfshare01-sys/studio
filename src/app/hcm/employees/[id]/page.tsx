@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useFirebase, useMemoFirebase } from '@/firebase/provider';
-import { useDocument } from '@/firebase/firestore/use-document';
+import { useDoc } from '@/firebase/firestore/use-doc';
 import { useCollection } from '@/firebase/firestore/use-collection';
 import { doc, collection, query, where, orderBy, limit } from 'firebase/firestore';
 import { format } from 'date-fns';
@@ -42,7 +42,7 @@ export default function EmployeeDetailPage({ params }: { params: { id: string } 
         return firestore ? doc(firestore, 'employees', employeeId) : null;
     }, [firestore, employeeId]);
 
-    const { data: employee, isLoading: isLoadingEmployee } = useDocument<Employee>(employeeRef);
+    const { data: employee, isLoading: isLoadingEmployee } = useDoc<Employee>(employeeRef);
 
     // 2. Fetch Compensation History
     const compensationQuery = useMemoFirebase(() => {
