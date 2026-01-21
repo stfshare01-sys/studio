@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, use } from 'react';
 import { useRouter } from 'next/navigation';
 import { useFirebase, useMemoFirebase } from '@/firebase/provider';
 import { useDoc } from '@/firebase/firestore/use-doc';
@@ -32,10 +32,10 @@ import { Skeleton } from '@/components/ui/skeleton';
 import type { Employee, Compensation, AttendanceRecord, Incidence } from '@/lib/types';
 import { formatCurrency } from '@/lib/hcm-utils';
 
-export default function EmployeeDetailPage({ params }: { params: { id: string } }) {
+export default function EmployeeDetailPage({ params }: { params: Promise<{ id: string }> }) {
     const router = useRouter();
+    const { id: employeeId } = use(params);
     const { firestore } = useFirebase();
-    const employeeId = params.id;
 
     // 1. Fetch Employee Details
     const employeeRef = useMemoFirebase(() => {
