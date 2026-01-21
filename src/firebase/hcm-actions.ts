@@ -474,7 +474,7 @@ export async function consolidatePrenomina(
         }
 
         const employeesSnap = await getDocs(employeesQuery);
-        const employees = employeesSnap.docs.map((d: { id: string; data: () => Record<string, unknown> }) => ({ id: d.id, ...d.data() } as Employee));
+        const employees = employeesSnap.docs.map(d => ({ id: d.id, ...d.data() } as Employee));
 
         const recordIds: string[] = [];
 
@@ -508,7 +508,7 @@ export async function consolidatePrenomina(
                 where('date', '<=', params.periodEnd)
             );
             const attendanceSnap = await getDocs(attendanceQuery);
-            const attendanceRecords = attendanceSnap.docs.map((d: { data: () => Record<string, unknown> }) => d.data() as AttendanceRecord);
+            const attendanceRecords = attendanceSnap.docs.map(d => d.data() as AttendanceRecord);
 
             // Get approved incidences for the period
             const incidencesQuery = query(
@@ -519,11 +519,11 @@ export async function consolidatePrenomina(
                 where('endDate', '>=', params.periodStart)
             );
             const incidencesSnap = await getDocs(incidencesQuery);
-            const incidences = incidencesSnap.docs.map((d: { data: () => Record<string, unknown> }) => d.data() as Incidence);
+            const incidences = incidencesSnap.docs.map(d => d.data() as Incidence);
 
             // Calculate totals
             let daysWorked = attendanceRecords.length;
-            let totalOvertimeHours = attendanceRecords.reduce((sum: number, a: AttendanceRecord) => sum + a.overtimeHours, 0);
+            let totalOvertimeHours = attendanceRecords.reduce((sum, a) => sum + a.overtimeHours, 0);
             let absenceDays = 0;
             let vacationDaysTaken = 0;
             let sickLeaveDays = 0;

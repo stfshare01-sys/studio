@@ -338,7 +338,7 @@ export default function HCMPage() {
                                                 </p>
                                             </div>
                                             <Button asChild size="sm">
-                                                <Link href={`/hcm/incidences/${incidence.id}`}>
+                                                <Link href={`/hcm/incidences`}>
                                                     Revisar
                                                 </Link>
                                             </Button>
@@ -415,5 +415,3 @@ export default function HCMPage() {
         </div>
     );
 }
-
-    

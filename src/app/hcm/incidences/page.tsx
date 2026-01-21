@@ -82,7 +82,7 @@ export default function IncidencesPage() {
         const isManager = user.role === 'Admin' || user.role === 'HRManager' || user.role === 'Manager';
         const baseQuery = collection(firestore, 'incidences');
         
-        const conditions = [];
+        let conditions = [];
 
         if (!isManager) {
             conditions.push(where('employeeId', '==', user.uid));
@@ -91,20 +91,12 @@ export default function IncidencesPage() {
         if (statusFilter !== 'all') {
             conditions.push(where('status', '==', statusFilter));
         }
-        
-        // Due to Firestore limitations, we can't have an inequality filter on one field
-        // and an orderBy on another. We will handle type filtering on the client.
-        // We also need different orderBy clauses depending on the query to match existing indexes.
-        if (!isManager && statusFilter !== 'all') {
-             return query(baseQuery, ...conditions, orderBy('startDate', 'desc'));
-        } else if (!isManager) {
-             // This query for a member without status filter needs an index on (employeeId, status, startDate DESC)
-             // or similar. Let's use a simpler one for now.
-             return query(baseQuery, ...conditions, orderBy('createdAt', 'desc'));
-        } else if (statusFilter !== 'all') {
+
+        // Return a valid query based on conditions
+        if (conditions.length > 0) {
             return query(baseQuery, ...conditions, orderBy('createdAt', 'desc'));
         }
-
+        
         return query(baseQuery, orderBy('createdAt', 'desc'));
 
     }, [firestore, user, statusFilter]);
@@ -114,6 +106,13 @@ export default function IncidencesPage() {
     // Filter incidences client-side for type and search
     const filteredIncidences = useMemo(() => {
         return incidences?.filter(inc => {
+            const isManager = user?.role === 'Admin' || user?.role === 'HRManager' || user?.role === 'Manager';
+            
+            // If user is not manager, they should only see their own
+            if (!isManager && inc.employeeId !== user?.uid) {
+                return false;
+            }
+
             const matchesType = typeFilter === 'all' || inc.type === typeFilter;
             const matchesSearch = searchTerm === '' ||
                 inc.employeeName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -121,7 +120,7 @@ export default function IncidencesPage() {
 
             return matchesType && matchesSearch;
         }) ?? [];
-    }, [incidences, typeFilter, searchTerm]);
+    }, [incidences, typeFilter, searchTerm, user]);
 
 
     // Get incidence type label
@@ -635,5 +634,3 @@ export default function IncidencesPage() {
         </div>
     );
 }
-
-    

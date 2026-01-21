@@ -1,4 +1,3 @@
-
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -157,25 +156,21 @@ service cloud.firestore {
       );
 
       // List: Users can list tasks where they are assignee or request owner
-      // Note: Requires compound index on assigneeId and requestOwnerId
       allow list: if isSignedIn();
 
-      // Create: Only request owner can create tasks with proper validation
+      // Create: Only request owner can create tasks for one of their own requests
       allow create: if isSignedIn()
         && request.auth.uid == request.resource.data.requestOwnerId
-        && hasRequiredTaskFields();
+        && hasRequiredTaskFields()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid)/requests/$(request.resource.data.requestId));
 
-      // Update: Assignee, request owner, or Admin can update
-      // Validates that critical fields cannot be changed
+      // Update: Assignee, request owner, or Admin can update specific fields
       allow update: if isSignedIn() && (
         request.auth.uid == resource.data.assigneeId ||
         request.auth.uid == resource.data.requestOwnerId ||
         hasRole('Admin')
-      ) && (
-        // Prevent changing the request association
-        request.resource.data.requestId == resource.data.requestId &&
-        request.resource.data.requestOwnerId == resource.data.requestOwnerId
-      );
+      ) && request.resource.data.diff(resource.data).affectedKeys()
+        .hasOnly(['status', 'completedAt', 'assigneeId', 'isEscalated', 'activatedAt', 'slaExpiresAt']);
 
       // Delete: Only admins can delete tasks
       allow delete: if hasRole('Admin');
@@ -351,5 +346,3 @@ service cloud.firestore {
     }
   }
 }
-
-    

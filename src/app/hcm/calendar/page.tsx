@@ -104,7 +104,7 @@ export default function TeamCalendarPage() {
 
     const isLoading = isUserLoading || (isManagerOrAdmin && (employeesLoading || incidencesLoading));
 
-    if (isLoading) {
+    if (isUserLoading) {
         return <CalendarSkeleton />;
     }
 
@@ -265,5 +265,3 @@ export default function TeamCalendarPage() {
         </div>
     );
 }
-
-    
