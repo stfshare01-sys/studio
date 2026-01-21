@@ -38,8 +38,9 @@ import { useToast } from "@/hooks/use-toast";
 import { useCollection, useDoc, useFirestore, useMemoFirebase, updateDocumentNonBlocking } from "@/firebase";
 import { collection, doc } from "firebase/firestore";
 import { useRouter, useParams } from "next/navigation";
-import type { FormField, WorkflowStepDefinition, Rule, RuleCondition, RuleAction, WorkflowStepType, FormFieldType, RuleOperator, User as UserType, RequestPriority, UserRole, EscalationPolicy, VisibilityRule, TableColumnDefinition, DynamicSelectSource, UserIdentityConfig, ValidationRule, Template, FieldLayoutConfig } from "@/lib/types";
-import { VisibilityRulesBuilder, FieldValidationConfig, TableColumnDialog, useMasterLists, FieldLayoutEditor } from "@/components/form-fields";
+import type { FormField, WorkflowStepDefinition, Rule, RuleCondition, RuleAction, WorkflowStepType, FormFieldType, RuleOperator, User as UserType, RequestPriority, UserRole, EscalationPolicy, VisibilityRule, TableColumnDefinition, DynamicSelectSource, UserIdentityConfig, ValidationRule, Template, FieldLayoutConfig, DefaultValueRule, TypographyConfig as TypographyConfigType } from "@/lib/types";
+import { VisibilityRulesBuilder, FieldValidationConfig, TableColumnDialog, useMasterLists, FieldLayoutEditor, GatewayRoutingConfig, DefaultValueRulesBuilder, TypographyConfig, HtmlFieldEditor, TimerStepConfig } from "@/components/form-fields";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { generateProcessFromDescription, GenerateProcessOutput } from "@/ai/flows/process-generation";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -56,6 +57,10 @@ const BpmnIcon = ({ type, className }: { type: WorkflowStepType, className?: str
             return <GitMerge className={cn("h-5 w-5 text-amber-500", className)} />;
         case 'gateway-parallel':
             return <GitFork className={cn("h-5 w-5 text-purple-500", className)} />;
+        case 'gateway-inclusive':
+            return <GitFork className={cn("h-5 w-5 text-green-500", className)} />;
+        case 'timer':
+            return <Timer className={cn("h-5 w-5 text-orange-500", className)} />;
         default:
             return null;
     }
@@ -167,18 +172,22 @@ function SortableField({ field, onRemove, onEdit }: { field: FormField, onRemove
     );
 }
 
-function SortableStep({ 
-    step, 
-    poolId, 
-    laneId, 
+function SortableStep({
+    step,
+    poolId,
+    laneId,
     onUpdateStep,
-    onDeleteStep
-}: { 
-    step: WorkflowStepDefinition, 
-    poolId: string, 
-    laneId: string, 
+    onDeleteStep,
+    allSteps,
+    formFields
+}: {
+    step: WorkflowStepDefinition,
+    poolId: string,
+    laneId: string,
     onUpdateStep: (poolId: string, laneId: string, stepId: string, updates: Partial<WorkflowStepDefinition>) => void,
-    onDeleteStep: (poolId: string, laneId: string, stepId: string) => void
+    onDeleteStep: (poolId: string, laneId: string, stepId: string) => void,
+    allSteps: WorkflowStepDefinition[],
+    formFields: FormField[]
 }) {
     const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ 
         id: step.id,
@@ -340,6 +349,67 @@ function SortableStep({
                         </Popover>
                         </>
                     )}
+
+                    {/* Gateway configuration */}
+                    {(step.type === 'gateway-exclusive' || step.type === 'gateway-parallel' || step.type === 'gateway-inclusive') && (
+                        <Dialog>
+                            <DialogTrigger asChild>
+                                <Button variant="ghost" size="sm" className="h-auto p-1">
+                                    <GitBranch className="h-3.5 w-3.5 mr-1" />
+                                    <span className="text-xs">Configurar Rutas</span>
+                                    <Pencil className="h-3 w-3 ml-1 opacity-0 group-hover:opacity-100" />
+                                </Button>
+                            </DialogTrigger>
+                            <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
+                                <DialogHeader>
+                                    <DialogTitle>
+                                        Configurar {step.type === 'gateway-exclusive' ? 'Gateway Exclusivo' :
+                                                    step.type === 'gateway-parallel' ? 'Gateway Paralelo' : 'Gateway Inclusivo'}
+                                    </DialogTitle>
+                                    <DialogDescription>
+                                        Configure las rutas de salida y condiciones para este gateway.
+                                    </DialogDescription>
+                                </DialogHeader>
+                                <GatewayRoutingConfig
+                                    gatewayType={step.type as 'gateway-exclusive' | 'gateway-parallel' | 'gateway-inclusive'}
+                                    routes={(step as any).routes || []}
+                                    onRoutesChange={(routes) => onUpdateStep(poolId, laneId, step.id, { routes } as any)}
+                                    availableSteps={allSteps.filter(s => s.id !== step.id)}
+                                    formFields={formFields}
+                                    precedingStep={allSteps.find((s, i) => {
+                                        const stepIndex = allSteps.findIndex(x => x.id === step.id);
+                                        return i === stepIndex - 1;
+                                    })}
+                                />
+                            </DialogContent>
+                        </Dialog>
+                    )}
+
+                    {/* Timer configuration */}
+                    {step.type === 'timer' && (
+                        <Dialog>
+                            <DialogTrigger asChild>
+                                <Button variant="ghost" size="sm" className="h-auto p-1">
+                                    <Timer className="h-3.5 w-3.5 mr-1" />
+                                    <span className="text-xs">Configurar Timer</span>
+                                    <Pencil className="h-3 w-3 ml-1 opacity-0 group-hover:opacity-100" />
+                                </Button>
+                            </DialogTrigger>
+                            <DialogContent className="sm:max-w-lg max-h-[80vh] overflow-y-auto">
+                                <DialogHeader>
+                                    <DialogTitle>Configurar Temporizador</DialogTitle>
+                                    <DialogDescription>
+                                        Configure cuándo debe activarse este paso del flujo.
+                                    </DialogDescription>
+                                </DialogHeader>
+                                <TimerStepConfig
+                                    config={(step as any).timerConfig}
+                                    onConfigChange={(config) => onUpdateStep(poolId, laneId, step.id, { timerConfig: config } as any)}
+                                    formFields={formFields}
+                                />
+                            </DialogContent>
+                        </Dialog>
+                    )}
                 </div>
             </div>
             <Button
@@ -379,14 +449,16 @@ function PageSkeleton() {
     )
 }
 
-function SortableLaneItem({ 
-    poolId, 
-    lane, 
-    handleUpdate, 
-    handleAddStepToLane, 
-    handleDeleteLane, 
-    handleDeleteStep, 
-    onUpdateStep 
+function SortableLaneItem({
+    poolId,
+    lane,
+    handleUpdate,
+    handleAddStepToLane,
+    handleDeleteLane,
+    handleDeleteStep,
+    onUpdateStep,
+    allSteps,
+    formFields
 }: {
     poolId: string;
     lane: Lane;
@@ -395,6 +467,8 @@ function SortableLaneItem({
     handleDeleteLane: (poolId: string, laneId: string) => void;
     handleDeleteStep: (poolId: string, laneId: string, stepId: string) => void;
     onUpdateStep: (poolId: string, laneId: string, stepId: string, updates: Partial<WorkflowStepDefinition>) => void;
+    allSteps: WorkflowStepDefinition[];
+    formFields: FormField[];
 }) {
     const { attributes: laneAttrs, listeners: laneListeners, setNodeRef: laneRef, transform: laneTransform, transition: laneTransition } = useSortable({
         id: lane.id,
@@ -423,10 +497,17 @@ function SortableLaneItem({
                             <BpmnIcon type="task" className="mr-2"/> Tarea
                         </DropdownMenuItem>
                         <DropdownMenuItem onSelect={() => handleAddStepToLane(poolId, lane.id, "Gateway Exclusivo", 'gateway-exclusive')}>
-                            <BpmnIcon type="gateway-exclusive" className="mr-2"/> Gateway Exclusivo
+                            <BpmnIcon type="gateway-exclusive" className="mr-2"/> Gateway Exclusivo (XOR)
                         </DropdownMenuItem>
                         <DropdownMenuItem onSelect={() => handleAddStepToLane(poolId, lane.id, "Gateway Paralelo", 'gateway-parallel')}>
-                            <BpmnIcon type="gateway-parallel" className="mr-2"/> Gateway Paralelo
+                            <BpmnIcon type="gateway-parallel" className="mr-2"/> Gateway Paralelo (AND)
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onSelect={() => handleAddStepToLane(poolId, lane.id, "Gateway Inclusivo", 'gateway-inclusive')}>
+                            <BpmnIcon type="gateway-inclusive" className="mr-2"/> Gateway Inclusivo (OR)
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onSelect={() => handleAddStepToLane(poolId, lane.id, "Temporizador", 'timer')}>
+                            <BpmnIcon type="timer" className="mr-2"/> Temporizador
                         </DropdownMenuItem>
                     </DropdownMenuContent>
                 </DropdownMenu>
@@ -443,7 +524,16 @@ function SortableLaneItem({
             <div className="p-2 min-h-[50px] space-y-2">
                 <SortableContext items={lane.steps.map(s => s.id)} strategy={verticalListSortingStrategy} id={lane.id}>
                     {lane.steps.map((step) => (
-                        <SortableStep key={step.id} step={step} poolId={poolId} laneId={lane.id} onUpdateStep={onUpdateStep} onDeleteStep={handleDeleteStep}/>
+                        <SortableStep
+                            key={step.id}
+                            step={step}
+                            poolId={poolId}
+                            laneId={lane.id}
+                            onUpdateStep={onUpdateStep}
+                            onDeleteStep={handleDeleteStep}
+                            allSteps={allSteps}
+                            formFields={formFields}
+                        />
                     ))}
                 </SortableContext>
             </div>
@@ -459,7 +549,9 @@ function SortablePoolItem({
     handleAddStepToLane,
     handleDeleteLane,
     handleDeleteStep,
-    onUpdateStep
+    onUpdateStep,
+    allSteps,
+    formFields
 }: {
     pool: Pool;
     handleUpdate: (type: 'pool' | 'lane', ids: { poolId: string, laneId?: string }, value: string) => void;
@@ -469,6 +561,8 @@ function SortablePoolItem({
     handleDeleteLane: (poolId: string, laneId: string) => void;
     handleDeleteStep: (poolId: string, laneId: string, stepId: string) => void;
     onUpdateStep: (poolId: string, laneId: string, stepId: string, updates: Partial<WorkflowStepDefinition>) => void;
+    allSteps: WorkflowStepDefinition[];
+    formFields: FormField[];
 }) {
     const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
         id: pool.id,
@@ -503,7 +597,7 @@ function SortablePoolItem({
             <div className="space-y-2 pl-6">
                 <SortableContext items={pool.lanes.map(l => l.id)} strategy={verticalListSortingStrategy} id={pool.id}>
                     {pool.lanes.map((lane) => (
-                        <SortableLaneItem 
+                        <SortableLaneItem
                             key={lane.id}
                             poolId={pool.id}
                             lane={lane}
@@ -512,6 +606,8 @@ function SortablePoolItem({
                             handleDeleteLane={handleDeleteLane}
                             handleDeleteStep={handleDeleteStep}
                             onUpdateStep={onUpdateStep}
+                            allSteps={allSteps}
+                            formFields={formFields}
                         />
                     ))}
                 </SortableContext>
@@ -539,6 +635,7 @@ export default function EditTemplatePage() {
   const [isRuleDialogOpen, setIsRuleDialogOpen] = useState(false);
   const [visibilityRules, setVisibilityRules] = useState<VisibilityRule[]>([]);
   const [fieldLayout, setFieldLayout] = useState<FieldLayoutConfig[]>([]);
+  const [defaultValueRules, setDefaultValueRules] = useState<DefaultValueRule[]>([]);
   const [pools, setPools] = useState<Pool[]>([]);
 
   // Fetching data
@@ -576,6 +673,7 @@ export default function EditTemplatePage() {
         setRules(templateData.rules || []);
         setVisibilityRules(templateData.visibilityRules || []);
         setFieldLayout(templateData.fieldLayout || []);
+        setDefaultValueRules(templateData.defaultValueRules || []);
     }
   }, [templateData]);
 
@@ -815,6 +913,7 @@ export default function EditTemplatePage() {
         pools,
         visibilityRules,
         fieldLayout,
+        defaultValueRules,
     };
 
     try {
@@ -1044,6 +1143,8 @@ export default function EditTemplatePage() {
                                         handleDeleteStep={handleDeleteStep}
                                         onUpdateStep={handleUpdateStep}
                                         handleAddStepToLane={handleAddStepToLane}
+                                        allSteps={pools.flatMap(p => p.lanes.flatMap(l => l.steps))}
+                                        formFields={fields}
                                     />
                                 ))}
                             </SortableContext>
@@ -1104,6 +1205,12 @@ function FieldBuilderDialog({ onAddField, onUpdateField, fieldToEdit, onClose }:
     // Field metadata
     const [placeholder, setPlaceholder] = useState('');
     const [helpText, setHelpText] = useState('');
+
+    // Typography configuration
+    const [typography, setTypography] = useState<TypographyConfigType | undefined>(undefined);
+
+    // HTML content
+    const [htmlContent, setHtmlContent] = useState('');
 
     // Load master lists
     const { masterLists } = useMasterLists();
@@ -1179,6 +1286,16 @@ function FieldBuilderDialog({ onAddField, onUpdateField, fieldToEdit, onClose }:
         if (placeholder) finalField.placeholder = placeholder;
         if (helpText) finalField.helpText = helpText;
 
+        // Typography configuration
+        if (typography && Object.keys(typography).length > 0) {
+            finalField.typography = typography;
+        }
+
+        // HTML content
+        if (type === 'html' && htmlContent) {
+            finalField.htmlContent = htmlContent;
+        }
+
         onAddField(finalField);
         onClose();
     };
@@ -1222,6 +1339,7 @@ function FieldBuilderDialog({ onAddField, onUpdateField, fieldToEdit, onClose }:
                                 <SelectItem value="file">Carga de archivos</SelectItem>
                                 <SelectItem value="table">Tabla interactiva</SelectItem>
                                 <SelectItem value="user-identity">Identidad del usuario</SelectItem>
+                                <SelectItem value="html">HTML personalizado</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
@@ -1456,8 +1574,29 @@ function FieldBuilderDialog({ onAddField, onUpdateField, fieldToEdit, onClose }:
                     </div>
                 )}
 
+                {/* HTML field configuration */}
+                {type === 'html' && (
+                    <div className="space-y-4 rounded-md border p-4">
+                        <HtmlFieldEditor
+                            value={htmlContent}
+                            onChange={setHtmlContent}
+                        />
+                    </div>
+                )}
+
+                {/* Typography configuration - for all visual field types */}
+                {!['user-identity', 'file', 'table'].includes(type) && (
+                    <div className="space-y-2 rounded-md border p-4">
+                        <Label className="text-base font-semibold">Tipografía y Estilo</Label>
+                        <TypographyConfig
+                            value={typography}
+                            onChange={setTypography}
+                        />
+                    </div>
+                )}
+
                 {/* Validation configuration */}
-                {type !== 'user-identity' && (
+                {!['user-identity', 'html'].includes(type) && (
                     <div className="space-y-2 rounded-md border p-4">
                         <Label className="text-base font-semibold">Validaciones</Label>
                         <FieldValidationConfig
