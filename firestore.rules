@@ -265,8 +265,8 @@ service cloud.firestore {
       // Employees can read their own incidences, or managers/HR can read any.
       allow get: if isSignedIn() && (resource.data.employeeId == request.auth.uid || isManagerOrHR());
       
-      // Allow any signed in user to perform list queries. The `get` rule above
-      // will be applied to each document returned by the query, ensuring security.
+      // Allow any signed in user to perform list queries.
+      // Firestore will enforce that the query constraints match the 'get' rule for non-managers.
       allow list: if isSignedIn();
       
       // Employees can create requests for themselves

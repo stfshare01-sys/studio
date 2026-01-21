@@ -41,16 +41,33 @@ export default function HCMPage() {
 
     const { data: employees, isLoading: employeesLoading } = useCollection<Employee>(employeesQuery);
 
-    // Fetch pending incidences
+    // Fetch pending incidences - now role-aware
     const incidencesQuery = useMemoFirebase(() => {
-        if (!firestore) return null;
-        return query(
-            collection(firestore, 'incidences'),
-            where('status', '==', 'pending'),
-            orderBy('createdAt', 'desc'),
-            limit(10)
-        );
-    }, [firestore]);
+        if (!firestore || !user) return null;
+
+        const isManager = user.role === 'Admin' || user.role === 'HRManager' || user.role === 'Manager';
+        const baseQuery = collection(firestore, 'incidences');
+
+        if (isManager) {
+            // Managers can see all pending incidences
+            return query(
+                baseQuery,
+                where('status', '==', 'pending'),
+                orderBy('createdAt', 'desc'),
+                limit(10)
+            );
+        } else {
+            // Members can only see their own pending incidences
+            return query(
+                baseQuery,
+                where('employeeId', '==', user.uid),
+                where('status', '==', 'pending'),
+                orderBy('createdAt', 'desc'),
+                limit(10)
+            );
+        }
+    }, [firestore, user]);
+
 
     const { data: pendingIncidences, isLoading: incidencesLoading } = useCollection<Incidence>(incidencesQuery);
 
