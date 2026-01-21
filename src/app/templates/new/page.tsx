@@ -483,6 +483,12 @@ function LaneItem({
                         <DropdownMenuItem onSelect={() => handleAddStepToLane(poolId, lane.id, "Gateway Paralelo", 'gateway-parallel')}>
                             <BpmnIcon type="gateway-parallel" className="mr-2"/> Gateway Paralelo
                         </DropdownMenuItem>
+                        <DropdownMenuItem onSelect={() => handleAddStepToLane(poolId, lane.id, "Gateway Inclusivo", 'gateway-inclusive')}>
+                            <BpmnIcon type="gateway-inclusive" className="mr-2"/> Gateway Inclusivo
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onSelect={() => handleAddStepToLane(poolId, lane.id, "Temporizador", 'timer')}>
+                            <BpmnIcon type="timer" className="mr-2"/> Temporizador
+                        </DropdownMenuItem>
                     </DropdownMenuContent>
                 </DropdownMenu>
                 <Button
@@ -1892,6 +1898,7 @@ function RuleBuilderDialog({ fields, steps, users, onAddRule, onUpdateRule, rule
         </DialogContent>
     )
 }
+
 
 
 
