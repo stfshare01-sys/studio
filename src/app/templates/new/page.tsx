@@ -478,14 +478,15 @@ function LaneItem({
                             <BpmnIcon type="task" className="mr-2"/> Tarea
                         </DropdownMenuItem>
                         <DropdownMenuItem onSelect={() => handleAddStepToLane(poolId, lane.id, "Gateway Exclusivo", 'gateway-exclusive')}>
-                            <BpmnIcon type="gateway-exclusive" className="mr-2"/> Gateway Exclusivo
+                            <BpmnIcon type="gateway-exclusive" className="mr-2"/> Gateway Exclusivo (XOR)
                         </DropdownMenuItem>
                         <DropdownMenuItem onSelect={() => handleAddStepToLane(poolId, lane.id, "Gateway Paralelo", 'gateway-parallel')}>
-                            <BpmnIcon type="gateway-parallel" className="mr-2"/> Gateway Paralelo
+                            <BpmnIcon type="gateway-parallel" className="mr-2"/> Gateway Paralelo (AND)
                         </DropdownMenuItem>
                         <DropdownMenuItem onSelect={() => handleAddStepToLane(poolId, lane.id, "Gateway Inclusivo", 'gateway-inclusive')}>
-                            <BpmnIcon type="gateway-inclusive" className="mr-2"/> Gateway Inclusivo
+                            <BpmnIcon type="gateway-inclusive" className="mr-2"/> Gateway Inclusivo (OR)
                         </DropdownMenuItem>
+                        <DropdownMenuSeparator />
                         <DropdownMenuItem onSelect={() => handleAddStepToLane(poolId, lane.id, "Temporizador", 'timer')}>
                             <BpmnIcon type="timer" className="mr-2"/> Temporizador
                         </DropdownMenuItem>
@@ -930,6 +931,8 @@ export default function NewTemplatePage() {
       setRules(data.rules.map(r => ({...r, id: `rule-ai-${Date.now()}-${Math.random()}`})));
   };
   
+  const allSteps = pools.flatMap(p => p.lanes.flatMap(l => l.steps));
+
   return (
     <SiteLayout>
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
@@ -976,7 +979,7 @@ export default function NewTemplatePage() {
                         <Card className="p-4">
                             <div className="text-sm text-muted-foreground space-y-2">
                                 <p><strong>Campos:</strong> {fields.length}</p>
-                                <p><strong>Pasos:</strong> {pools.flatMap(p => p.lanes.flatMap(l => l.steps)).length}</p>
+                                <p><strong>Pasos:</strong> {allSteps.length}</p>
                                 <p><strong>Reglas:</strong> {rules.length}</p>
                             </div>
                         </Card>
@@ -1027,20 +1030,27 @@ export default function NewTemplatePage() {
                                 </CardContent>
                             </Card>
 
-                            {fields.length > 1 && (
+                            {/* Field Layout Editor */}
+                            {fields.length > 0 && (
                                 <Card>
                                     <CardHeader>
                                         <CardTitle>Diseño del Formulario</CardTitle>
                                         <CardDescription>
-                                            Configure la disposición de los campos en filas y columnas.
+                                            Configure la disposición de los campos en filas y columnas para mostrarlos lado a lado.
                                         </CardDescription>
                                     </CardHeader>
                                     <CardContent>
-                                        <FieldLayoutEditor
-                                            fields={fields}
-                                            layout={fieldLayout}
-                                            onLayoutChange={setFieldLayout}
-                                        />
+                                        {fields.length === 1 ? (
+                                            <p className="text-sm text-muted-foreground py-4 text-center">
+                                                Agregue más campos para configurar el layout. Con múltiples campos puede colocarlos lado a lado.
+                                            </p>
+                                        ) : (
+                                            <FieldLayoutEditor
+                                                fields={fields}
+                                                layout={fieldLayout}
+                                                onLayoutChange={setFieldLayout}
+                                            />
+                                        )}
                                     </CardContent>
                                 </Card>
                             )}
@@ -1109,7 +1119,7 @@ export default function NewTemplatePage() {
                                         </DialogTrigger>
                                         <RuleBuilderDialog
                                             fields={fields}
-                                            steps={pools.flatMap(p => p.lanes.flatMap(l => l.steps))}
+                                            steps={allSteps}
                                             users={users || []}
                                             onAddRule={handleAddRule}
                                             onUpdateRule={handleUpdateRule}
@@ -1132,7 +1142,7 @@ export default function NewTemplatePage() {
                                 </CardHeader>
                                 <CardContent className="space-y-4">
                                     <div className="space-y-4 rounded-md bg-muted/50 p-4 min-h-[300px]">
-                                        <div className="space-y-4">
+                                        <SortableContext items={pools.map(p => p.id)} strategy={verticalListSortingStrategy} id="pools">
                                             {pools.map((pool, index) => (
                                                 <PoolItem
                                                     key={pool.id}
@@ -1142,27 +1152,27 @@ export default function NewTemplatePage() {
                                                     handleUpdate={handleUpdate}
                                                     handleAddLaneToPool={handleAddLaneToPool}
                                                     handleDeletePool={handleDeletePool}
+                                                    handleAddStepToLane={handleAddStepToLane}
                                                     handleDeleteLane={handleDeleteLane}
                                                     handleDeleteStep={handleDeleteStep}
                                                     onUpdateStep={handleUpdateStep}
-                                                    allSteps={pools.flatMap(p => p.lanes.flatMap(l => l.steps))}
+                                                    allSteps={allSteps}
                                                     formFields={fields}
                                                     handleMovePool={handleMovePool}
                                                     handleMoveLane={handleMoveLane}
-                                                    handleAddStepToLane={handleAddStepToLane}
                                                 />
                                             ))}
-                                        </div>
+                                        </SortableContext>
                                     </div>
-                                    <Button variant="outline" className="w-full mt-4" onClick={handleAddPool}>
-                                        <Library className="mr-2 h-4 w-4" /> Añadir Piscina
-                                    </Button>
-                                </CardContent>
-                            </Card>
-                        </TabsContent>
-                    </Tabs>
-                </div>
-            </main>
+                                        <Button variant="outline" className="w-full mt-4" onClick={handleAddPool}>
+                                            <Library className="mr-2 h-4 w-4" /> Añadir Piscina
+                                        </Button>
+                                    </CardContent>
+                                </Card>
+                            </TabsContent>
+                        </Tabs>
+                    </div>
+                </main>
             </div>
         </DndContext>
     </SiteLayout>
@@ -1898,6 +1908,7 @@ function RuleBuilderDialog({ fields, steps, users, onAddRule, onUpdateRule, rule
         </DialogContent>
     )
 }
+
 
 
 
