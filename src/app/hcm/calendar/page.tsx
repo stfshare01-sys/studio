@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState } from 'react';
@@ -9,7 +10,7 @@ import { TeamCalendar } from '@/components/hcm/team-calendar';
 import type { Employee, Incidence } from '@/lib/types';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Calendar, Users } from 'lucide-react';
+import { ArrowLeft, Calendar, Users, ShieldAlert } from 'lucide-react';
 import {
     Dialog,
     DialogContent,
@@ -21,41 +22,95 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { Skeleton } from '@/components/ui/skeleton';
+
+function AccessDenied() {
+    return (
+        <div className="container mx-auto py-6">
+            <Card className="flex flex-1 items-center justify-center rounded-lg border border-dashed shadow-sm p-8 mt-8">
+                <div className="flex flex-col items-center gap-2 text-center">
+                    <ShieldAlert className="h-12 w-12 text-destructive" />
+                    <h3 className="text-2xl font-bold tracking-tight">Acceso Denegado</h3>
+                    <p className="text-sm text-muted-foreground max-w-md">
+                        Esta página solo está disponible para usuarios con roles de Manager, HRManager o Admin.
+                    </p>
+                    <Button className="mt-4" asChild>
+                        <Link href="/hcm">Volver al Módulo HCM</Link>
+                    </Button>
+                </div>
+            </Card>
+        </div>
+    );
+}
+
+function CalendarSkeleton() {
+    return (
+        <div className="container mx-auto py-6 space-y-6">
+            <div className="flex items-center gap-4">
+                <Skeleton className="h-10 w-10" />
+                <div className="space-y-2">
+                    <Skeleton className="h-8 w-64" />
+                    <Skeleton className="h-4 w-48" />
+                </div>
+            </div>
+            <Card>
+                <CardHeader>
+                    <Skeleton className="h-6 w-48" />
+                    <Skeleton className="h-4 w-64" />
+                </CardHeader>
+                <CardContent>
+                    <Skeleton className="h-[400px] w-full" />
+                </CardContent>
+            </Card>
+        </div>
+    );
+}
+
 
 /**
  * Team Calendar Page
  */
 export default function TeamCalendarPage() {
-    const { firestore, isUserLoading } = useFirebase();
+    const { firestore, user, isUserLoading } = useFirebase();
     const [selectedDate, setSelectedDate] = useState<Date | null>(null);
     const [selectedEmployees, setSelectedEmployees] = useState<Employee[]>([]);
     const [isDialogOpen, setIsDialogOpen] = useState(false);
 
+    const isManagerOrAdmin = user?.role === 'Admin' || user?.role === 'HRManager' || user?.role === 'Manager';
+
     // Fetch active employees
     const employeesQuery = useMemoFirebase(() => {
-        if (!firestore) return null;
+        if (!firestore || !isManagerOrAdmin) return null;
         return query(
             collection(firestore, 'employees'),
             where('status', '==', 'active'),
             orderBy('fullName', 'asc')
         );
-    }, [firestore]);
+    }, [firestore, isManagerOrAdmin]);
 
     const { data: employees, isLoading: employeesLoading } = useCollection<Employee>(employeesQuery);
 
     // Fetch approved incidences
     const incidencesQuery = useMemoFirebase(() => {
-        if (!firestore) return null;
+        if (!firestore || !isManagerOrAdmin) return null;
         return query(
             collection(firestore, 'incidences'),
             where('status', '==', 'approved'),
             orderBy('startDate', 'desc')
         );
-    }, [firestore]);
+    }, [firestore, isManagerOrAdmin]);
 
     const { data: incidences, isLoading: incidencesLoading } = useCollection<Incidence>(incidencesQuery);
 
-    const isLoading = employeesLoading || incidencesLoading;
+    const isLoading = isUserLoading || (isManagerOrAdmin && (employeesLoading || incidencesLoading));
+
+    if (isLoading) {
+        return <CalendarSkeleton />;
+    }
+
+    if (!isManagerOrAdmin) {
+        return <AccessDenied />;
+    }
 
     const handleDayClick = (date: Date, employeesOff: Employee[]) => {
         setSelectedDate(date);
@@ -210,3 +265,5 @@ export default function TeamCalendarPage() {
         </div>
     );
 }
+
+    

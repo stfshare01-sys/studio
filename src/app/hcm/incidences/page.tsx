@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useFirebase, useMemoFirebase } from '@/firebase/provider';
 import { useCollection } from '@/firebase/firestore/use-collection';
 import { collection, query, where, orderBy } from 'firebase/firestore';
@@ -98,7 +98,9 @@ export default function IncidencesPage() {
         if (!isManager && statusFilter !== 'all') {
              return query(baseQuery, ...conditions, orderBy('startDate', 'desc'));
         } else if (!isManager) {
-             return query(baseQuery, ...conditions, orderBy('status', 'asc'), orderBy('startDate', 'desc'));
+             // This query for a member without status filter needs an index on (employeeId, status, startDate DESC)
+             // or similar. Let's use a simpler one for now.
+             return query(baseQuery, ...conditions, orderBy('createdAt', 'desc'));
         } else if (statusFilter !== 'all') {
             return query(baseQuery, ...conditions, orderBy('createdAt', 'desc'));
         }
@@ -633,3 +635,5 @@ export default function IncidencesPage() {
         </div>
     );
 }
+
+    
