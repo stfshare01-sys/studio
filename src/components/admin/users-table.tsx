@@ -1,28 +1,20 @@
 
 "use client";
 
-import React, { useState, useMemo } from "react";
-import type { User, UserRole } from "@/lib/types";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
+import type { User, UserRole, UserStatus } from "@/lib/types";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
-import { MoreHorizontal, Trash2, Edit, Search, ArrowUpDown, ChevronDown } from "lucide-react";
+import { MoreHorizontal, Trash2, Edit, Search, ArrowUpDown, ChevronDown, UserCheck, UserX, Ban, Palette, Loader2 } from "lucide-react";
 import { Button } from "../ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "../ui/dropdown-menu";
 import {
     Dialog,
     DialogContent,
@@ -35,55 +27,54 @@ import {
 import { Label } from "../ui/label";
 import { Input } from "../ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
-import { useFirestore } from "@/firebase";
-import { doc } from "firebase/firestore";
-import { updateDocumentNonBlocking, deleteDocumentNonBlocking } from "@/firebase/non-blocking-updates";
+import { useFirestore, useCollection, useMemoFirebase } from "@/firebase";
+import { doc, collection, query, where, orderBy, limit, getDocs, startAfter, DocumentSnapshot } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
-import {
-    AlertDialog,
-    AlertDialogAction,
-    AlertDialogCancel,
-    AlertDialogContent,
-    AlertDialogDescription,
-    AlertDialogFooter,
-    AlertDialogHeader,
-    AlertDialogTitle,
-    AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
+import { cn } from "@/lib/utils";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
+import { toggleUserStatus, updateUserRole } from "@/firebase/admin-actions";
+import { TableSkeleton } from "../ui/table-skeleton";
 
-
-function EditUserDialog({ user, isOpen, onOpenChange, onUserUpdate }: { user: User, isOpen: boolean, onOpenChange: (open: boolean) => void, onUserUpdate: () => void }) {
-    const firestore = useFirestore();
+function EditUserDialog({ user, allUsers, isOpen, onOpenChange }: { user: User | null, allUsers: User[], isOpen: boolean, onOpenChange: (open: boolean) => void }) {
     const { toast } = useToast();
     const [formData, setFormData] = useState({
-        fullName: user.fullName,
-        department: user.department,
-        role: user.role || 'Member',
+        fullName: user?.fullName || '',
+        department: user?.department || '',
+        role: user?.role || 'Member',
+        managerId: user?.managerId || '',
     });
 
     React.useEffect(() => {
-        setFormData({
-            fullName: user.fullName,
-            department: user.department,
-            role: user.role || 'Member',
-        });
+        if (user) {
+            setFormData({
+                fullName: user.fullName,
+                department: user.department,
+                role: user.role || 'Member',
+                managerId: user.managerId || '',
+            });
+        }
     }, [user]);
 
+    if (!user) return null;
+
     const handleInputChange = (id: string, value: string) => {
-        setFormData(prev => ({...prev, [id]: value}));
+        setFormData(prev => ({ ...prev, [id]: value }));
     };
 
-    const handleSave = () => {
-        if (!firestore) return;
-        const userRef = doc(firestore, 'users', user.id);
-        updateDocumentNonBlocking(userRef, formData);
+    const handleSave = async () => {
+        if (!user) return;
+
+        // Use the new admin action to update the role, which simulates setting custom claims
+        await updateUserRole(user.id, formData.role as UserRole);
+
         toast({
             title: "Usuario actualizado",
-            description: `Los datos de ${user.fullName} han sido actualizados.`,
+            description: `Los datos de ${user.fullName} han sido actualizados. Los cambios de rol pueden requerir que el usuario cierre y vuelva a iniciar sesión.`,
         });
-        onUserUpdate();
         onOpenChange(false);
     };
+
+    const potentialManagers = allUsers.filter(u => u.id !== user.id && u.role === 'Admin');
 
     return (
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
@@ -99,25 +90,42 @@ function EditUserDialog({ user, isOpen, onOpenChange, onUserUpdate }: { user: Us
                         <Label htmlFor="fullName" className="sm:text-right">
                             Nombre
                         </Label>
-                        <Input id="fullName" value={formData.fullName} onChange={(e) => handleInputChange('fullName', e.target.value)} className="sm:col-span-3" />
+                        <Input disabled id="fullName" value={formData.fullName} onChange={(e) => handleInputChange('fullName', e.target.value)} className="sm:col-span-3" />
                     </div>
                     <div className="grid gap-2 sm:grid-cols-4 sm:items-center sm:gap-4">
                         <Label htmlFor="department" className="sm:text-right">
                             Departamento
                         </Label>
-                        <Input id="department" value={formData.department} onChange={(e) => handleInputChange('department', e.target.value)} className="sm:col-span-3" />
+                        <Input disabled id="department" value={formData.department} onChange={(e) => handleInputChange('department', e.target.value)} className="sm:col-span-3" />
                     </div>
                     <div className="grid gap-2 sm:grid-cols-4 sm:items-center sm:gap-4">
                         <Label htmlFor="role" className="sm:text-right">
                             Rol
                         </Label>
-                         <Select value={formData.role} onValueChange={(value) => handleInputChange('role', value as UserRole)}>
+                        <Select value={formData.role} onValueChange={(value) => handleInputChange('role', value as UserRole)}>
                             <SelectTrigger className="sm:col-span-3">
                                 <SelectValue placeholder="Seleccionar rol" />
                             </SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="Admin">Admin</SelectItem>
+                                <SelectItem value="Designer">Diseñador de Procesos</SelectItem>
                                 <SelectItem value="Member">Miembro</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <div className="grid gap-2 sm:grid-cols-4 sm:items-center sm:gap-4">
+                        <Label htmlFor="manager" className="sm:text-right">
+                            Gerente
+                        </Label>
+                        <Select disabled value={formData.managerId || "none"} onValueChange={(value) => handleInputChange('managerId', value === "none" ? '' : value)}>
+                            <SelectTrigger className="sm:col-span-3">
+                                <SelectValue placeholder="Seleccionar gerente..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="none">Sin Gerente</SelectItem>
+                                {potentialManagers.map(manager => (
+                                    <SelectItem key={manager.id} value={manager.id}>{manager.fullName}</SelectItem>
+                                ))}
                             </SelectContent>
                         </Select>
                     </div>
@@ -134,96 +142,98 @@ function EditUserDialog({ user, isOpen, onOpenChange, onUserUpdate }: { user: Us
 }
 
 const PAGE_SIZE = 10;
-
-type SortField = "fullName" | "department" | "role";
+type SortField = "fullName" | "department" | "role" | "status";
 type SortOrder = "asc" | "desc";
 
-export function UsersTable({ users }: { users: User[] }) {
+export function UsersTable() {
     const firestore = useFirestore();
+    const allUsersQuery = useMemoFirebase(() => {
+        if (!firestore) return null;
+        return collection(firestore, 'users');
+    }, [firestore]);
+    const { data: allUsersData } = useCollection<User>(allUsersQuery);
     const { toast } = useToast();
+
+    // Dialog state
     const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
     const [selectedUser, setSelectedUser] = useState<User | null>(null);
 
-    // Filtros
+    // Data state
+    const [users, setUsers] = useState<User[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [lastDoc, setLastDoc] = useState<DocumentSnapshot | null>(null);
+    const [hasMore, setHasMore] = useState(true);
+
+    // Filters and sorting state
     const [searchTerm, setSearchTerm] = useState("");
+    const [statusFilter, setStatusFilter] = useState<string>("all");
     const [roleFilter, setRoleFilter] = useState<string>("all");
-    const [departmentFilter, setDepartmentFilter] = useState<string>("all");
     const [sortField, setSortField] = useState<SortField>("fullName");
     const [sortOrder, setSortOrder] = useState<SortOrder>("asc");
-    const [displayCount, setDisplayCount] = useState(PAGE_SIZE);
 
-    // Obtener departamentos únicos
-    const departments = useMemo(() => {
-        const depts = new Set(users.map(u => u.department));
-        return Array.from(depts).sort();
-    }, [users]);
+    // Memoized search results (client-side search on top of server-side data)
+    const filteredUsers = useMemo(() => {
+        if (!searchTerm) return users;
+        const term = searchTerm.toLowerCase();
+        return users.filter(u =>
+            u.fullName.toLowerCase().includes(term) ||
+            u.email.toLowerCase().includes(term)
+        );
+    }, [users, searchTerm]);
 
-    // Filtrar y ordenar
-    const filteredAndSortedUsers = useMemo(() => {
-        let result = [...users];
+    const fetchUsers = useCallback(async (loadMore = false) => {
+        if (!firestore) return;
+        setIsLoading(true);
 
-        // Filtrar por búsqueda
-        if (searchTerm) {
-            const term = searchTerm.toLowerCase();
-            result = result.filter(u =>
-                u.fullName.toLowerCase().includes(term) ||
-                u.email.toLowerCase().includes(term)
-            );
+        const usersCollection = collection(firestore, 'users');
+        let q = query(usersCollection, orderBy(sortField, sortOrder));
+
+        if (statusFilter !== "all") {
+            q = query(q, where('status', '==', statusFilter));
         }
-
-        // Filtrar por rol
         if (roleFilter !== "all") {
-            result = result.filter(u => u.role === roleFilter);
+            q = query(q, where('role', '==', roleFilter));
         }
 
-        // Filtrar por departamento
-        if (departmentFilter !== "all") {
-            result = result.filter(u => u.department === departmentFilter);
+        if (loadMore && lastDoc) {
+            q = query(q, startAfter(lastDoc), limit(PAGE_SIZE));
+        } else {
+            q = query(q, limit(PAGE_SIZE));
         }
 
-        // Ordenar
-        result.sort((a, b) => {
-            let comparison = 0;
+        try {
+            const querySnapshot = await getDocs(q);
+            const newUsers = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User));
+            const lastVisible = querySnapshot.docs[querySnapshot.docs.length - 1];
 
-            if (sortField === "fullName") {
-                comparison = a.fullName.localeCompare(b.fullName);
-            } else if (sortField === "department") {
-                comparison = a.department.localeCompare(b.department);
-            } else if (sortField === "role") {
-                comparison = (a.role || 'Member').localeCompare(b.role || 'Member');
+            setLastDoc(lastVisible);
+            setHasMore(querySnapshot.docs.length === PAGE_SIZE);
+
+            if (loadMore) {
+                setUsers(prev => [...prev, ...newUsers]);
+            } else {
+                setUsers(newUsers);
             }
+        } catch (error) {
+            console.error("Error fetching users:", error);
+            toast({ variant: 'destructive', title: 'Error', description: 'No se pudieron cargar los usuarios.' });
+        } finally {
+            setIsLoading(false);
+        }
+    }, [firestore, sortField, sortOrder, statusFilter, roleFilter, lastDoc, toast]);
 
-            return sortOrder === "asc" ? comparison : -comparison;
-        });
 
-        return result;
-    }, [users, searchTerm, roleFilter, departmentFilter, sortField, sortOrder]);
+    useEffect(() => {
+        setUsers([]); // Reset users on filter/sort change
+        setLastDoc(null);
+        setHasMore(true);
+        fetchUsers(false);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [sortField, sortOrder, statusFilter, roleFilter]); // `fetchUsers` is memoized, so we list dependencies here
 
-    // Paginated results
-    const paginatedUsers = useMemo(() => {
-        return filteredAndSortedUsers.slice(0, displayCount);
-    }, [filteredAndSortedUsers, displayCount]);
 
-    const hasMore = displayCount < filteredAndSortedUsers.length;
-
-    const loadMore = () => {
-        setDisplayCount(prev => prev + PAGE_SIZE);
-    };
-
-    // Reset pagination when filters change
-    const handleSearchChange = (value: string) => {
-        setSearchTerm(value);
-        setDisplayCount(PAGE_SIZE);
-    };
-
-    const handleRoleFilterChange = (value: string) => {
-        setRoleFilter(value);
-        setDisplayCount(PAGE_SIZE);
-    };
-
-    const handleDepartmentFilterChange = (value: string) => {
-        setDepartmentFilter(value);
-        setDisplayCount(PAGE_SIZE);
+    const handleFilterChange = (setter: React.Dispatch<React.SetStateAction<string>>) => (value: string) => {
+        setter(value);
     };
 
     const toggleSort = (field: SortField) => {
@@ -240,208 +250,174 @@ export function UsersTable({ users }: { users: User[] }) {
         setIsEditDialogOpen(true);
     };
 
-    const handleDeleteUser = (userId: string) => {
-        if (!firestore) return;
-        const userRef = doc(firestore, 'users', userId);
-        deleteDocumentNonBlocking(userRef);
-        toast({
-            variant: "destructive",
-            title: "Usuario Eliminado",
-            description: "El usuario ha sido eliminado del sistema.",
-        })
+    const handleToggleStatus = async (user: User) => {
+        const newStatus = (user.status || 'active') === 'active' ? 'disabled' : 'active';
+        try {
+            await toggleUserStatus(user.id, newStatus === 'active');
+            // Update local state for immediate feedback
+            setUsers(prev => prev.map(u => u.id === user.id ? { ...u, status: newStatus } : u));
+            toast({
+                title: `Usuario ${newStatus === 'active' ? 'Habilitado' : 'Deshabilitado'}`,
+                description: `${user.fullName} ha sido ${newStatus === 'active' ? 'habilitado' : 'deshabilitado'}.`,
+            });
+        } catch (error: any) {
+            toast({
+                variant: "destructive",
+                title: "Error al actualizar estado",
+                description: error.message || "No se pudo cambiar el estado del usuario.",
+            })
+        }
     }
 
-  return (
-    <>
-    <div className="space-y-4">
-      {/* Filtros */}
-      <div className="flex flex-col sm:flex-row gap-4">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Buscar por nombre o email..."
-            value={searchTerm}
-            onChange={(e) => handleSearchChange(e.target.value)}
-            className="pl-9"
-          />
-        </div>
-        <Select value={roleFilter} onValueChange={handleRoleFilterChange}>
-          <SelectTrigger className="w-full sm:w-[150px]">
-            <SelectValue placeholder="Filtrar por rol" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todos los roles</SelectItem>
-            <SelectItem value="Admin">Admin</SelectItem>
-            <SelectItem value="Member">Miembro</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select value={departmentFilter} onValueChange={handleDepartmentFilterChange}>
-          <SelectTrigger className="w-full sm:w-[180px]">
-            <SelectValue placeholder="Filtrar por depto" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todos los deptos</SelectItem>
-            {departments.map(dept => (
-              <SelectItem key={dept} value={dept}>{dept}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      {/* Resultados */}
-      {filteredAndSortedUsers.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-8">
-          <p className="text-muted-foreground">No se encontraron usuarios</p>
-          {(searchTerm || roleFilter !== "all" || departmentFilter !== "all") && (
-            <Button
-              variant="link"
-              onClick={() => { setSearchTerm(""); setRoleFilter("all"); setDepartmentFilter("all"); }}
-            >
-              Limpiar filtros
-            </Button>
-          )}
-        </div>
-      ) : (
-        <div className="rounded-md border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="-ml-3 h-8"
-                    onClick={() => toggleSort("fullName")}
-                  >
-                    Usuario
-                    <ArrowUpDown className="ml-2 h-4 w-4" />
-                  </Button>
-                </TableHead>
-                <TableHead className="hidden sm:table-cell">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="-ml-3 h-8"
-                    onClick={() => toggleSort("department")}
-                  >
-                    Departamento
-                    <ArrowUpDown className="ml-2 h-4 w-4" />
-                  </Button>
-                </TableHead>
-                <TableHead className="hidden md:table-cell">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="-ml-3 h-8"
-                    onClick={() => toggleSort("role")}
-                  >
-                    Rol
-                    <ArrowUpDown className="ml-2 h-4 w-4" />
-                  </Button>
-                </TableHead>
-                <TableHead>
-                  <span className="sr-only">Acciones</span>
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {paginatedUsers.map((user) => (
-                <TableRow key={user.id}>
-                  <TableCell>
-                    <div className="flex items-center gap-3">
-                        <Avatar className="h-9 w-9">
-                            <AvatarImage src={user.avatarUrl} alt={user.fullName} />
-                            <AvatarFallback>{user.fullName.charAt(0)}</AvatarFallback>
-                        </Avatar>
-                        <div className="grid">
-                            <div className="font-medium">{user.fullName}</div>
-                            <div className="text-sm text-muted-foreground">{user.email}</div>
-                        </div>
+    return (
+        <TooltipProvider>
+            <div className="space-y-4">
+                <div className="flex flex-col sm:flex-row gap-4">
+                    <div className="relative flex-1">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input placeholder="Buscar por nombre o email..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-9" />
                     </div>
-                  </TableCell>
-                  <TableCell className="hidden sm:table-cell">
-                    {user.department}
-                  </TableCell>
-                  <TableCell className="hidden md:table-cell">
-                    <Badge variant={user.role === 'Admin' ? 'destructive' : 'secondary'}>
-                      {user.role || 'Member'}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button aria-haspopup="true" size="icon" variant="ghost">
-                          <MoreHorizontal className="h-4 w-4" />
-                          <span className="sr-only">Toggle menu</span>
+                    <Select value={statusFilter} onValueChange={handleFilterChange(setStatusFilter)}>
+                        <SelectTrigger className="w-full sm:w-[150px]"><SelectValue placeholder="Filtrar por estado" /></SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">Todos los estados</SelectItem>
+                            <SelectItem value="active">Activo</SelectItem>
+                            <SelectItem value="disabled">Deshabilitado</SelectItem>
+                        </SelectContent>
+                    </Select>
+                    <Select value={roleFilter} onValueChange={handleFilterChange(setRoleFilter)}>
+                        <SelectTrigger className="w-full sm:w-[150px]"><SelectValue placeholder="Filtrar por rol" /></SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">Todos los roles</SelectItem>
+                            <SelectItem value="Admin">Admin</SelectItem>
+                            <SelectItem value="Designer">Diseñador</SelectItem>
+                            <SelectItem value="Member">Miembro</SelectItem>
+                        </SelectContent>
+                    </Select>
+                </div>
+
+                {isLoading && users.length === 0 ? (
+                    <TableSkeleton columns={4} rows={5} />
+                ) : filteredUsers.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-8">
+                        <p className="text-muted-foreground">No se encontraron usuarios</p>
+                        {(searchTerm || roleFilter !== "all" || statusFilter !== "all") && (
+                            <Button variant="link" onClick={() => { setSearchTerm(""); setRoleFilter("all"); setStatusFilter("all"); }}>
+                                Limpiar filtros
+                            </Button>
+                        )}
+                    </div>
+                ) : (
+                    <div className="rounded-md border">
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead>
+                                        <Button variant="ghost" size="sm" className="-ml-3 h-8" onClick={() => toggleSort("fullName")}>
+                                            Usuario <ArrowUpDown className="ml-2 h-4 w-4" />
+                                        </Button>
+                                    </TableHead>
+                                    <TableHead className="hidden sm:table-cell">
+                                        <Button variant="ghost" size="sm" className="-ml-3 h-8" onClick={() => toggleSort("department")}>
+                                            Departamento <ArrowUpDown className="ml-2 h-4 w-4" />
+                                        </Button>
+                                    </TableHead>
+                                    <TableHead className="hidden md:table-cell">
+                                        <Button variant="ghost" size="sm" className="-ml-3 h-8" onClick={() => toggleSort("status")}>
+                                            Estado <ArrowUpDown className="ml-2 h-4 w-4" />
+                                        </Button>
+                                    </TableHead>
+                                    <TableHead className="text-right">Acciones</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {filteredUsers.map((user) => (
+                                    <TableRow key={user.id} className={cn((user.status || 'active') === 'disabled' && 'opacity-50')}>
+                                        <TableCell>
+                                            <div className="flex items-center gap-3">
+                                                <Avatar className="h-9 w-9">
+                                                    <AvatarImage src={user.avatarUrl} alt={user.fullName} />
+                                                    <AvatarFallback>{user.fullName.charAt(0)}</AvatarFallback>
+                                                </Avatar>
+                                                <div className="grid">
+                                                    <div className="font-medium">{user.fullName}</div>
+                                                    <div className="text-sm text-muted-foreground">{user.email}</div>
+                                                </div>
+                                            </div>
+                                        </TableCell>
+                                        <TableCell className="hidden sm:table-cell">
+                                            {user.department}
+                                        </TableCell>
+                                        <TableCell className="hidden md:table-cell">
+                                            <div className="flex items-center gap-2">
+                                                <Badge variant={(user.status || 'active') === 'active' ? 'secondary' : 'outline'} className={cn((user.status || 'active') === 'active' ? 'bg-green-100 text-green-800' : 'text-muted-foreground')}>
+                                                    {(user.status || 'active') === 'active' ? 'Activo' : 'Deshabilitado'}
+                                                </Badge>
+                                                {user.role === 'Admin' && <Badge variant={'destructive'}>Admin</Badge>}
+                                                {user.role === 'Designer' && <Badge className="bg-blue-100 text-blue-800" variant={'secondary'}>Diseñador</Badge>}
+                                            </div>
+                                        </TableCell>
+                                        <TableCell className="text-right">
+                                            <div className="flex justify-end items-center gap-1">
+                                                <Tooltip>
+                                                    <TooltipTrigger asChild>
+                                                        <Button variant="ghost" size="icon" onClick={() => handleEditClick(user)} className="h-8 w-8">
+                                                            <Edit className="h-4 w-4" />
+                                                            <span className="sr-only">Editar</span>
+                                                        </Button>
+                                                    </TooltipTrigger>
+                                                    <TooltipContent><p>Editar Usuario</p></TooltipContent>
+                                                </Tooltip>
+                                                {(user.status || 'active') === 'active' ? (
+                                                    <Tooltip>
+                                                        <TooltipTrigger asChild>
+                                                            <Button variant="ghost" size="icon" onClick={() => handleToggleStatus(user)} className="h-8 w-8 text-yellow-600 hover:text-yellow-700">
+                                                                <UserX className="h-4 w-4" />
+                                                                <span className="sr-only">Desactivar</span>
+                                                            </Button>
+                                                        </TooltipTrigger>
+                                                        <TooltipContent><p>Desactivar Usuario</p></TooltipContent>
+                                                    </Tooltip>
+                                                ) : (
+                                                    <Tooltip>
+                                                        <TooltipTrigger asChild>
+                                                            <Button variant="ghost" size="icon" onClick={() => handleToggleStatus(user)} className="h-8 w-8 text-green-600 hover:text-green-700">
+                                                                <UserCheck className="h-4 w-4" />
+                                                                <span className="sr-only">Activar</span>
+                                                            </Button>
+                                                        </TooltipTrigger>
+                                                        <TooltipContent><p>Activar Usuario</p></TooltipContent>
+                                                    </Tooltip>
+                                                )}
+                                                <Tooltip>
+                                                    <TooltipTrigger asChild>
+                                                        <Button disabled variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive">
+                                                            <Trash2 className="h-4 w-4" />
+                                                            <span className="sr-only">Eliminar (deshabilitado)</span>
+                                                        </Button>
+                                                    </TooltipTrigger>
+                                                    <TooltipContent><p>La eliminación permanente está deshabilitada por seguridad.</p></TooltipContent>
+                                                </Tooltip>
+                                            </div>
+                                        </TableCell>
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    </div>
+                )}
+
+                {hasMore && (
+                    <div className="flex justify-center">
+                        <Button variant="outline" onClick={() => fetchUsers(true)} disabled={isLoading} className="gap-2">
+                            {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            <ChevronDown className="h-4 w-4" /> Cargar más
                         </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuLabel>Acciones</DropdownMenuLabel>
-                        <DropdownMenuItem onSelect={() => handleEditClick(user)}>
-                            <Edit className="mr-2 h-4 w-4"/>
-                            Editar
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                         <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                                <Button variant="ghost" className="w-full justify-start text-sm text-red-500 hover:text-red-500 hover:bg-red-500/10 font-normal px-2 py-1.5 relative flex cursor-default select-none items-center rounded-sm outline-none transition-colors data-[disabled]:pointer-events-none data-[disabled]:opacity-50">
-                                    <Trash2 className="mr-2 h-4 w-4"/>
-                                    Eliminar
-                                </Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                                <AlertDialogHeader>
-                                <AlertDialogTitle>¿Estás absolutamente seguro?</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                    Esta acción no se puede deshacer. Esto eliminará permanentemente
-                                    la cuenta del usuario y sus datos de nuestros servidores.
-                                </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                                <AlertDialogAction onClick={() => handleDeleteUser(user.id)} className="bg-destructive hover:bg-destructive/90">
-                                    Sí, eliminar usuario
-                                </AlertDialogAction>
-                                </AlertDialogFooter>
-                            </AlertDialogContent>
-                        </AlertDialog>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      )}
-
-      {/* Cargar más */}
-      {hasMore && (
-        <div className="flex justify-center">
-          <Button variant="outline" onClick={loadMore} className="gap-2">
-            <ChevronDown className="h-4 w-4" />
-            Cargar más
-          </Button>
-        </div>
-      )}
-
-      {/* Contador de resultados */}
-      <p className="text-sm text-muted-foreground">
-        Mostrando {paginatedUsers.length} de {filteredAndSortedUsers.length} usuarios
-        {filteredAndSortedUsers.length !== users.length && ` (${users.length} total)`}
-      </p>
-    </div>
-    {selectedUser && (
-        <EditUserDialog
-            user={selectedUser}
-            isOpen={isEditDialogOpen}
-            onOpenChange={setIsEditDialogOpen}
-            onUserUpdate={() => {
-                // This is a placeholder to trigger a re-fetch if needed.
-                // For now, local state updates immediately.
-            }}
-        />
-    )}
-    </>
-  );
+                    </div>
+                )}
+                <p className="text-sm text-muted-foreground">Mostrando {filteredUsers.length} usuarios.</p>
+            </div>
+            <EditUserDialog user={selectedUser} allUsers={allUsersData || []} isOpen={isEditDialogOpen} onOpenChange={setIsEditDialogOpen} />
+        </TooltipProvider>
+    );
 }

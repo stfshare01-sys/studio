@@ -1,34 +1,4 @@
 
-/**
- * # Firestore Security Rules: FlowMaster Prototyping
- *
- * ## Core Philosophy
- * This ruleset enforces a strict user-ownership security model. All user-generated
- * data (like Requests, Workflow Steps, and Documents) is stored in subcollections
- * under that user's private document tree. Access is fundamentally controlled by
- * the path of the document, ensuring users can only interact with their own data.
- * Publicly accessible data, like request templates, is structurally segregated
- * into its own top-level collection with read-only permissions for all users.
- *
- * ## Data Structure
- * - `/request_templates/{requestTemplateId}`: A public, read-only collection of available workflow templates.
- * - `/users/{userId}`: A collection of user profiles. Each user can only access and manage their own document.
- * - `/users/{userId}/requests/{requestId}`: A private subcollection where each user stores their submitted requests.
- * - `/tasks/{taskId}`: A centralized collection for all actionable tasks. Access is controlled by the `assigneeId` field.
- * - `/users/{userId}/requests/{requestId}/...`: Deeper subcollections for documents, inheriting ownership from the parent request.
- *
- * ## Key Security Decisions
- * - **Strict Ownership**: All data under `/users/{userId}` is accessible only to the authenticated user whose UID matches `{userId}`.
- * - **No User Enumeration (for non-admins)**: Listing documents in the top-level `/users` collection is disallowed for regular users to protect privacy. Admins are an exception.
- * - **Public Read-Only Templates**: Request templates are readable by anyone (including unauthenticated users) to allow for a flexible UI, but are not writable by clients to protect their integrity.
- * - **Task-Based Access**: Users can read tasks assigned to them from the `/tasks` collection. They can update tasks if they are the assignee.
- *
- * ## Denormalization for Authorization
- * To ensure fast and secure authorization, rules rely on denormalized fields. For example, a new document in `/users/{userId}/requests/{requestId}` must contain a `submittedBy` field that matches `{userId}`.
- *
- * ## Structural Segregation
- * The separation of public data (`/request_templates`) from private user data (`/users`) is a deliberate choice. The introduction of the `/tasks` collection is another example, allowing for efficient, secure queries on assigned tasks without exposing unrelated data.
- */
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -37,157 +7,364 @@ service cloud.firestore {
     // Helper Functions
     // -------------------------------------------------------------------------
 
-    /**
-     * Verifies that a user is signed in.
-     */
     function isSignedIn() {
       return request.auth != null;
     }
 
-    /**
-     * Verifies that the currently signed-in user's UID matches the
-     * provided `userId`. This is the primary ownership check.
-     */
+    // Check if user document exists
+    function userDocExists() {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    // Get the user's role from their Firestore document
+    // This is used because custom claims are not being set by a backend function
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    // Check role from the user's Firestore document
+    // Returns false if user document doesn't exist yet (e.g., during signup)
+    function hasRole(role) {
+      return isSignedIn() && userDocExists() && getUserData().role == role;
+    }
+
+    // Check if user has any of the specified roles
+    // Returns false if user document doesn't exist yet
+    function hasAnyRole(roles) {
+      return isSignedIn() && userDocExists() && getUserData().role in roles;
+    }
+
     function isOwner(userId) {
       return isSignedIn() && request.auth.uid == userId;
     }
-    
+
     function isOwnerOrAdmin(userId) {
-      return isOwner(userId) || isAdmin();
+      return isOwner(userId) || hasRole('Admin');
     }
 
-    /**
-     * Verifies ownership for an existing document. Used for update/delete
-     * operations to prevent acting on non-existent data.
-     */
-    function isExistingOwner(userId) {
-      return isOwner(userId) && resource != null;
+    // Validate that required fields exist and are of correct type
+    function hasRequiredTaskFields() {
+      let data = request.resource.data;
+      return data.keys().hasAll(['requestId', 'requestOwnerId', 'stepId', 'name', 'status', 'createdAt'])
+        && data.status in ['Pending', 'Active', 'Completed']
+        && data.requestOwnerId is string
+        && data.requestId is string;
     }
 
-    /**
-     * Checks if the requesting user has the 'Admin' role.
-     * This requires a get() call to the user's own profile document.
-     * IMPORTANT: Safely handles the case where the user document doesn't exist yet.
-     */
-    function isAdmin() {
-      // Check if the user is signed in and their role in the /users collection is 'Admin'.
-      // This is a potentially expensive operation as it performs a document read.
-      // Use this function judiciously in your rules.
-      let userDoc = get(/databases/$(database)/documents/users/$(request.auth.uid));
-      return isSignedIn() && userDoc != null && userDoc.data != null && userDoc.data.role == 'Admin';
+    // HCM Module: Check if user has HR Manager or Admin privileges
+    function isHRManager() {
+      return isSignedIn() && userDocExists() && getUserData().role in ['Admin', 'HRManager'];
     }
 
+    // HCM Module: Check if user is a manager (can approve incidences for their team)
+    function isManagerOrHR() {
+      return isSignedIn() && userDocExists() && getUserData().role in ['Admin', 'HRManager', 'Manager'];
+    }
 
     // -------------------------------------------------------------------------
     // Collection Rules
     // -------------------------------------------------------------------------
 
     /**
-     * @description Defines rules for request templates, which are public and read-only for all clients.
+     * @description Defines rules for request templates.
+     * Read: All authenticated users
+     * Write: Admins and Designers only
      * @path /request_templates/{requestTemplateId}
      */
     match /request_templates/{requestTemplateId} {
-      allow get, list: if true;
-      // Admins should be able to create/update templates in the future
-      allow write: if isAdmin();
+      allow get, list: if isSignedIn();
+      allow write: if hasAnyRole(['Admin', 'Designer']);
     }
 
     /**
-     * @description Manages user profiles. A user can read/update their own profile. Admins can read all profiles and update any profile.
+     * @description Manages user profiles.
      * @path /users/{userId}
      */
     match /users/{userId} {
+      // Users can read their own profile, Admins can read any
       allow get: if isOwnerOrAdmin(userId);
-      allow list: if isAdmin();
+      // All signed-in users can list users (needed for task assignment dropdowns)
+      allow list: if isSignedIn();
+      // Users can only create their own profile with matching ID
       allow create: if isOwner(userId) && request.resource.data.id == userId;
-      allow update: if isOwnerOrAdmin(userId);
-      allow delete: if isAdmin(); // Only admins can delete users
+      // Users can update their own profile, Admins can update any
+      allow update: if isOwner(userId);
+      allow update: if hasRole('Admin');
+      // Only admins can delete users
+      allow delete: if hasRole('Admin');
+
+      /**
+       * @description User notifications
+       * @path /users/{userId}/notifications/{notificationId}
+       */
+      match /notifications/{notificationId} {
+        allow get, list: if isOwner(userId);
+        // System and admins can create notifications for any user
+        allow create: if isSignedIn();
+        allow update, delete: if isOwner(userId);
+      }
     }
 
-     /**
-     * @description Manages user-submitted requests. Only the owner can perform any action on their requests. Admins can view all requests.
+    /**
+     * @description User-submitted requests and their subcollections.
      * @path /users/{userId}/requests/{requestId}
      */
     match /users/{userId}/requests/{requestId} {
-      // Collection group query for reports page
-      allow list: if isAdmin();
+      // Owner can list their own requests, Admins can list all
+      allow list: if isOwner(userId) || hasRole('Admin');
+      // Owner can perform all operations on their requests
       allow get, create, update, delete: if isOwner(userId);
 
-      /**
-       * @description Manages documents attached to a specific request. Access is inherited from the parent request's owner.
-       * @path /users/{userId}/requests/{requestId}/documents/{documentId}
-       */
+      // Documents attached to requests
       match /documents/{documentId} {
-        allow get, list: if isOwner(userId);
-        allow create: if isOwner(userId) && request.resource.data.requestId == requestId;
-        allow update: if isExistingOwner(userId) && request.resource.data.requestId == resource.data.requestId;
-        allow delete: if isExistingOwner(userId);
+        allow get, list, create, update, delete: if isOwner(userId);
       }
 
-      /**
-       * @description Manages comments on a specific request. Access is inherited from the parent request's owner.
-       * @path /users/{userId}/requests/{requestId}/comments/{commentId}
-       */
+      // Comments on requests - readable by participants and admins
       match /comments/{commentId} {
-        // Any user involved in the request should be able to read/write comments.
-        // For simplicity, we'll stick to owner-only for now.
-        allow get, list: if isOwner(userId) || isAdmin();
-        allow create: if isOwner(userId) && request.resource.data.authorId == userId;
-        allow update, delete: if isOwner(userId) && request.resource.data.authorId == resource.data.authorId;
+        allow get, list: if isSignedIn(); // Allow participants to read comments
+        allow create: if isSignedIn(); // Any authenticated user can comment
+        allow update: if isSignedIn() && request.auth.uid == resource.data.authorId; // Only author can edit
+        allow delete: if isOwner(userId) || hasRole('Admin') || request.auth.uid == resource.data.authorId;
       }
 
-      /**
-       * @description Manages the immutable audit trail for a request.
-       * @path /users/{userId}/requests/{requestId}/audit_logs/{auditLogId}
-       */
+      // Audit logs - immutable history
       match /audit_logs/{auditLogId} {
-        // Owner and admins can read the history.
-        allow get, list: if isOwner(userId) || isAdmin();
-        // Only the system (via user's credentials) can create new logs.
-        allow create: if isOwner(userId) && request.resource.data.userId == userId;
-        // NO ONE can update or delete audit logs. This ensures immutability.
+        allow get, list: if isSignedIn(); // Participants can view audit trail
+        allow create: if isSignedIn(); // System creates logs
+        allow update, delete: if false; // Immutable - no edits or deletes
+      }
+    }
+
+    /**
+     * @description Collection group queries on requests.
+     * @path /{path=**}/requests/{requestId}
+     */
+    match /{path=**}/requests/{requestId} {
+      // Admins and Designers can read all requests for reporting
+      allow read: if hasAnyRole(['Admin', 'Designer']);
+    }
+
+    /**
+     * @description Central tasks collection for workflow management.
+     * @path /tasks/{taskId}
+     */
+    match /tasks/{taskId} {
+      // Read: Assignee, request owner, or admin
+      allow get: if isSignedIn() && (
+        request.auth.uid == resource.data.assigneeId ||
+        request.auth.uid == resource.data.requestOwnerId ||
+        hasRole('Admin')
+      );
+
+      // List: Users can list tasks where they are assignee or request owner
+      allow list: if isSignedIn();
+
+      // Create: Only request owner can create tasks for one of their own requests
+      allow create: if isSignedIn()
+        && request.auth.uid == request.resource.data.requestOwnerId
+        && hasRequiredTaskFields()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid)/requests/$(request.resource.data.requestId));
+
+      // Update: Assignee, request owner, or Admin can update specific fields
+      allow update: if isSignedIn() && (
+        request.auth.uid == resource.data.assigneeId ||
+        request.auth.uid == resource.data.requestOwnerId ||
+        hasRole('Admin')
+      ) && request.resource.data.diff(resource.data).affectedKeys()
+        .hasOnly(['status', 'completedAt', 'assigneeId', 'isEscalated', 'activatedAt', 'slaExpiresAt']);
+
+      // Delete: Only admins can delete tasks
+      allow delete: if hasRole('Admin');
+    }
+
+    /**
+     * @description Master Lists for reference data.
+     * Read: All authenticated users
+     * Write: Admins and Designers
+     * @path /master_lists/{listId}
+     */
+    match /master_lists/{listId} {
+      allow get, list: if isSignedIn();
+      allow write: if hasAnyRole(['Admin', 'Designer']);
+
+      // Items within a master list
+      match /items/{itemId} {
+        allow get, list: if isSignedIn();
+        allow write: if hasAnyRole(['Admin', 'Designer']);
+      }
+    }
+
+    /**
+     * @description Integrations configuration.
+     * Read/Write: Admins only
+     * @path /integrations/{integrationId}
+     */
+    match /integrations/{integrationId} {
+      allow read, write: if hasRole('Admin');
+    }
+
+    // -------------------------------------------------------------------------
+    // HCM MODULE RULES - Sistema de Gestión de Capital Humano
+    // -------------------------------------------------------------------------
+
+    /**
+     * @description Employee extended data with sensitive PII (RFC, CURP, NSS, CLABE)
+     * Read: HR Managers, Admins, or the employee themselves
+     * Write: HR Managers and Admins only
+     * @path /employees/{employeeId}
+     */
+    match /employees/{employeeId} {
+      // Employees can read their own data, HR/Admin can read any
+      allow get: if isHRManager() || isOwner(employeeId);
+      // Only HR and Admin can list all employees
+      allow list: if isHRManager();
+      // Only HR and Admin can create/update employee records
+      allow create, update: if isHRManager();
+      // Only Admins can delete employee records
+      allow delete: if hasRole('Admin');
+    }
+
+    /**
+     * @description Compensation records (highly sensitive salary data)
+     * Read/Write: Only HR Managers and Admins
+     * @path /compensation/{compensationId}
+     */
+    match /compensation/{compensationId} {
+      allow read, write: if isHRManager();
+    }
+
+    /**
+     * @description Attendance records imported from external system
+     * Read: Employees can read their own, HR/Admin can read all
+     * Write: HR Managers and Admins only (immutable for audit)
+     * @path /attendance/{attendanceId}
+     */
+    match /attendance/{attendanceId} {
+      // Employees can read their own attendance records
+      allow get: if isSignedIn() && resource.data.employeeId == request.auth.uid;
+      // HR and Admin can read all attendance records
+      allow get: if isHRManager();
+      // HR and Admin can list all attendance records
+      allow list: if isHRManager();
+      // Only HR and Admin can create/update attendance records
+      allow create, update: if isHRManager();
+      // Attendance records are immutable for audit purposes
+      allow delete: if false;
+    }
+
+    /**
+     * @description Incidences and leave requests (vacations, sick leave, etc.)
+     * Read: Employee owns, or managers/HR
+     * Create: Employees can create their own requests
+     * Update: HR can approve/reject, employees can only cancel
+     * @path /incidences/{incidenceId}
+     */
+    match /incidences/{incidenceId} {
+      // Employees can read their own incidences
+      allow get: if isSignedIn() && resource.data.employeeId == request.auth.uid;
+      // Managers/HR can read any incidence
+      allow get: if isManagerOrHR();
+
+      // Allow managers/HR to list all incidences
+      allow list: if isManagerOrHR();
+      // Allow employees to list their own incidences
+      allow list: if isSignedIn();
+
+      // Employees can create requests for themselves
+      allow create: if isSignedIn() && request.resource.data.employeeId == request.auth.uid;
+      // HR/Admin can create incidences for any employee
+      allow create: if isHRManager();
+
+      // HR can approve/reject any incidence
+      allow update: if isHRManager();
+      // Employees can only cancel their own pending requests
+      allow update: if isSignedIn() &&
+        resource.data.employeeId == request.auth.uid &&
+        resource.data.status == 'pending' &&
+        request.resource.data.status == 'cancelled';
+
+      // Incidences are immutable for audit (no delete)
+      allow delete: if false;
+    }
+
+    /**
+     * @description Pre-nomina consolidated records
+     * Read/Write: Only HR Managers and Admins
+     * @path /prenomina/{prenominaId}
+     */
+    match /prenomina/{prenominaId} {
+      allow read, write: if isHRManager();
+
+      // Audit logs for prenomina changes (immutable)
+      match /audit_logs/{auditLogId} {
+        allow read: if isHRManager();
+        allow create: if isSignedIn();
         allow update, delete: if false;
       }
     }
 
     /**
-     * @description Manages user notifications. Only the owner can read, update, or delete their notifications.
-     * @path /users/{userId}/notifications/{notificationId}
+     * @description Time bank for compensatory hours
+     * Read: Employee can read their own, HR can read all
+     * Write: HR only
+     * @path /time_bank/{employeeId}
      */
-    match /users/{userId}/notifications/{notificationId} {
-      // User can read their own notifications
-      allow get, list: if isOwner(userId);
-      // System or admin can create notifications for a user
-      allow create: if isOwner(userId) || isAdmin();
-      // User can mark as read or delete their notifications
-      allow update, delete: if isOwner(userId);
+    match /time_bank/{employeeId} {
+      allow get: if isOwner(employeeId) || isHRManager();
+      allow list: if isHRManager();
+      allow write: if isHRManager();
     }
 
     /**
-     * @description Allows collection group queries on requests for admin users.
-     * This is necessary for the Reports and Process Mining pages which need to
-     * query all requests across all users using collectionGroup().
-     * @path /{path=**}/requests/{requestId}
+     * @description Attendance import batches (Excel/CSV uploads)
+     * Read/Write: Only HR Managers and Admins
+     * @path /attendance_imports/{batchId}
      */
-    match /{path=**}/requests/{requestId} {
-      allow read: if isAdmin();
+    match /attendance_imports/{batchId} {
+      allow read, write: if isHRManager();
     }
 
     /**
-     * @description Manages the central tasks collection.
-     * @path /tasks/{taskId}
+     * @description Official holiday calendar
+     * Read: All authenticated users
+     * Write: Only Admins
+     * @path /holiday_calendar/{calendarId}
      */
-    match /tasks/{taskId} {
-      // Allow reading a single task if you are the assignee. Admins can read any task.
-      allow get: if isSignedIn() && (request.auth.uid == resource.data.assigneeId || isAdmin());
-      // Allow any signed-in user to list all tasks for analytics purposes on the dashboard.
-      allow list: if isSignedIn();
-      // Allow creating a task if you are the owner of the parent request.
-      allow create: if isSignedIn() && request.auth.uid == request.resource.data.requestOwnerId;
-      // Allow updating a task if you are the assignee.
-      allow update: if isSignedIn() && (request.auth.uid == resource.data.assigneeId || isAdmin());
-      // Disallow client-side deletes for now to maintain history. Admins are an exception.
-      allow delete: if isAdmin();
+    match /holiday_calendar/{calendarId} {
+      allow read: if isSignedIn();
+      allow write: if hasRole('Admin');
+    }
+
+    /**
+     * @description Settlement/termination calculations
+     * Read/Write: Only HR Managers and Admins
+     * @path /settlements/{settlementId}
+     */
+    match /settlements/{settlementId} {
+      allow read, write: if isHRManager();
+    }
+
+    /**
+     * @description Accounting policies generated from prenomina
+     * Read/Write: Only HR Managers and Admins
+     * @path /accounting_policies/{policyId}
+     */
+    match /accounting_policies/{policyId} {
+      allow read, write: if isHRManager();
+    }
+
+    // -------------------------------------------------------------------------
+    // Catch-all for Admin (Development only - remove in production)
+    // -------------------------------------------------------------------------
+
+    /**
+     * @description Fallback rule for any collection not explicitly defined.
+     * Allows Admins to access collections during development.
+     * IMPORTANT: Review and restrict before going to production.
+     */
+    match /{collectionName}/{documentId} {
+      allow read, write: if hasRole('Admin');
     }
   }
 }

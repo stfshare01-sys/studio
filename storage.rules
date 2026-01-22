@@ -1,0 +1,28 @@
+
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // Helper function to check if the user is the owner of the request
+    function isRequestOwner(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Helper function to check if the user has an admin role
+    function isAdmin() {
+      // Assumes user roles are stored in Firestore at /users/{userId}
+      return request.auth != null && get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'Admin';
+    }
+
+    // Requests: Only the request owner or an admin can access files.
+    // The path is structured as `requests/{requestId}/{filename}`.
+    // The `userId` of the owner is part of the request document in Firestore, not in the Storage path.
+    // This rule requires a Firestore read to check ownership.
+    match /requests/{requestId}/{allPaths=**} {
+      allow read: if resource.metadata.ownerId == request.auth.uid || isAdmin();
+      allow create: if request.auth != null; // Allow any authenticated user to upload. Ownership is set in metadata.
+      allow delete: if resource.metadata.ownerId == request.auth.uid || isAdmin();
+    }
+  }
+}

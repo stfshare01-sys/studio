@@ -1,3 +1,4 @@
+
 "use client";
 
 import SiteLayout from "@/components/site-layout";
@@ -152,6 +153,26 @@ export default function ProcessMiningPage() {
     };
   }, [filteredData]);
 
+  if (isAuthLoading) {
+    return (
+        <SiteLayout>
+            <div className="flex flex-1 flex-col gap-6 p-4 pt-6 sm:p-6">
+                <ProcessMiningSkeleton />
+            </div>
+        </SiteLayout>
+    );
+  }
+
+  if (!isAdmin) {
+      return (
+          <SiteLayout>
+            <div className="flex flex-1 flex-col gap-6 p-4 pt-6 sm:p-6">
+                <AccessDenied />
+            </div>
+          </SiteLayout>
+      )
+  }
+
   return (
     <SiteLayout>
       <div className="flex flex-1 flex-col">
@@ -171,9 +192,6 @@ export default function ProcessMiningPage() {
         </header>
 
         <main className="flex flex-1 flex-col gap-6 p-4 pt-0 sm:p-6 sm:pt-0">
-          {isAuthLoading && <ProcessMiningSkeleton />}
-          {!isAuthLoading && !isAdmin && <AccessDenied />}
-          {!isAuthLoading && isAdmin && (
             <>
               {isLoading ? (
                 <ProcessMiningSkeleton />
@@ -391,7 +409,6 @@ export default function ProcessMiningPage() {
                 </>
               )}
             </>
-          )}
         </main>
       </div>
     </SiteLayout>

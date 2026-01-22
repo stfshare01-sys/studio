@@ -49,7 +49,7 @@ export function SimulateChangeDialog({ template, isOpen, onOpenChange }: Simulat
                 steps: template.steps,
                 rules: template.rules?.map(r => ({
                     condition: `field ${r.condition.fieldId} ${r.condition.operator} ${r.condition.value}`,
-                    action: `require step ${r.action.stepId}`
+                    action: `require step ${(r.action as any).stepId}`
                 })) || []
             },
             proposedChange,

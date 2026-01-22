@@ -1,5 +1,30 @@
+
 {
   "entities": {
+    "MasterList": {
+      "title": "Master List",
+      "type": "object",
+      "description": "Defines the schema and metadata for a master data list.",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "primaryKey": { "type": "string", "description": "The field ID to be used as the primary key for upserts." },
+        "fields": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "label": { "type": "string" },
+              "type": { "type": "string", "enum": ["text", "number", "boolean", "date"] }
+            },
+            "required": ["id", "label", "type"]
+          }
+        }
+      },
+      "required": ["id", "name", "fields", "primaryKey"]
+    },
     "RequestTemplate": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "RequestTemplate",
@@ -269,6 +294,22 @@
             "details": { "type": "object", "description": "A map of additional data relevant to the action.", "properties": {} }
         },
         "required": ["id", "requestId", "userId", "timestamp", "action"]
+    },
+    "Notification": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "title": "Notification",
+        "type": "object",
+        "description": "Represents a notification for a user.",
+        "properties": {
+          "id": { "type": "string" },
+          "title": { "type": "string" },
+          "message": { "type": "string" },
+          "type": { "type": "string", "enum": ["info", "success", "warning", "task"] },
+          "read": { "type": "boolean" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "link": { "type": "string" }
+        },
+        "required": ["id", "title", "message", "type", "read", "createdAt"]
     }
   },
   "auth": {
@@ -278,6 +319,27 @@
   },
   "firestore": {
     "structure": [
+      {
+        "path": "/master_lists/{listId}",
+        "definition": {
+          "entityName": "MasterList",
+          "schema": { "$ref": "#/backend/entities/MasterList" },
+          "description": "Stores the definitions/schemas of master data lists.",
+          "params": [{ "name": "listId", "description": "The unique ID for the master list definition." }]
+        }
+      },
+      {
+        "path": "/master_data/{listId}/{documentId}",
+        "definition": {
+          "entityName": "DynamicDocument",
+          "schema": { "type": "object", "properties": {} },
+          "description": "Stores the actual data for a master list. The schema is dynamic, based on the definition in /master_lists/{listId}.",
+          "params": [
+            { "name": "listId", "description": "The ID of the master list this data belongs to." },
+            { "name": "documentId", "description": "The unique ID for the data record, potentially based on the list's primary key." }
+          ]
+        }
+      },
       {
         "path": "/request_templates/{requestTemplateId}",
         "definition": {
@@ -390,10 +452,20 @@
                 { "name": "auditLogId", "description": "The unique ID for the audit log entry." }
             ]
         }
+      },
+      {
+          "path": "/users/{userId}/notifications/{notificationId}",
+          "definition": {
+              "entityName": "Notification",
+              "schema": { "$ref": "#/backend/entities/Notification" },
+              "description": "Stores notifications for a specific user.",
+              "params": [
+                  { "name": "userId", "description": "The user to whom the notification belongs." },
+                  { "name": "notificationId", "description": "The unique ID for the notification." }
+              ]
+          }
       }
     ],
     "reasoning": "The Firestore structure is designed to manage request workflows, templates, requests, steps, users, and documents, focusing on security, scalability, and debuggability. A key change is the introduction of a top-level `/tasks` collection. This denormalizes workflow steps into a centralized, flat list of actionable tasks, which is critical for efficient querying. For example, fetching all tasks assigned to a specific user (`where('assigneeId', '==', userId)`) is now a simple, scalable query on a single collection. This avoids costly and complex collection group queries. Each task document contains denormalized data from its parent request (like `requestTitle` and `requestOwnerId`) to provide sufficient context for display in a user's task list without requiring additional lookups. The original request documents under `/users/{userId}/requests/{requestId}` still maintain a record of their steps, but now include a `taskId` to link back to the primary task document in the `/tasks` collection. This hybrid approach provides both a query-efficient task management system and a clear, hierarchical record of the entire request process."
   }
 }
-
-    

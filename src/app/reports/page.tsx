@@ -7,7 +7,7 @@ import { collection, query, collectionGroup, limit, orderBy } from "firebase/fir
 import type { Request as RequestType, Task, User } from '@/lib/types';
 import React, { useMemo, useState } from "react";
 import { DateRange } from "react-day-picker";
-import { addDays, format, startOfDay, isValid } from 'date-fns';
+import { addDays, format, isValid } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { DateRangePicker } from "@/components/reports/date-range-picker";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -63,37 +63,35 @@ function AccessDenied() {
     )
 }
 
-
-export default function ReportsPage() {
-    const { user, isUserLoading: isAuthLoading } = useUser();
-    const isAdmin = user?.role === 'Admin';
+function ReportsView() {
     const { toast } = useToast();
+    const { user, isUserLoading } = useUser();
+    const isAdmin = user?.role === 'Admin';
+    const firestore = useFirestore();
 
     const [dateRange, setDateRange] = useState<DateRange | undefined>({
         from: addDays(new Date(), -29),
         to: new Date(),
     });
 
-    const firestore = useFirestore();
-
     // Optimized queries with limits to prevent loading too much data
     const requestsQuery = useMemoFirebase(() => {
-        if (isAuthLoading || !firestore || !isAdmin) return null;
+        if (isUserLoading || !firestore || !isAdmin) return null;
         return query(
             collectionGroup(firestore, 'requests'),
             orderBy('createdAt', 'desc'),
             limit(MAX_RECORDS)
         );
-    }, [firestore, isAdmin, isAuthLoading]);
+    }, [firestore, isAdmin, isUserLoading]);
 
     const tasksQuery = useMemoFirebase(() => {
-        if (isAuthLoading || !firestore || !isAdmin) return null;
+        if (isUserLoading || !firestore || !isAdmin) return null;
         return query(
             collection(firestore, 'tasks'),
             orderBy('createdAt', 'desc'),
             limit(MAX_RECORDS)
         );
-    }, [firestore, isAdmin, isAuthLoading]);
+    }, [firestore, isAdmin, isUserLoading]);
 
     const usersQuery = useMemoFirebase(() => {
         if (!firestore) return null;
@@ -104,21 +102,23 @@ export default function ReportsPage() {
     const { data: tasks, isLoading: isLoadingTasks } = useCollection<Task>(tasksQuery);
     const { data: users, isLoading: isLoadingUsers } = useCollection<User>(usersQuery);
 
+    const isLoading = isLoadingRequests || isLoadingTasks || isLoadingUsers;
+
     const filteredData = useMemo(() => {
         if (!dateRange?.from || !dateRange?.to || !isValid(dateRange.from) || !isValid(dateRange.to)) {
             return { requests: [], tasks: [] };
         }
-        const from = startOfDay(dateRange.from).getTime();
-        const to = startOfDay(addDays(dateRange.to, 1)).getTime();
+        const from = new Date(dateRange.from).getTime();
+        const to = new Date(dateRange.to).getTime();
 
         const filteredRequests = requests?.filter(r => {
             const createdAt = new Date(r.createdAt).getTime();
-            return createdAt >= from && createdAt < to;
+            return createdAt >= from && createdAt <= to;
         }) ?? [];
 
         const filteredTasks = tasks?.filter(t => {
             const createdAt = new Date(t.createdAt).getTime();
-            return createdAt >= from && createdAt < to;
+            return createdAt >= from && createdAt <= to;
         }) ?? [];
 
         return { requests: filteredRequests, tasks: filteredTasks };
@@ -226,10 +226,6 @@ export default function ReportsPage() {
         URL.revokeObjectURL(link.href);
     };
 
-    if (isLoadingData) {
-        return <ReportsSkeleton />;
-    }
-
     // Calculate summary stats
     const stats = useMemo(() => {
         const completedRequests = filteredData.requests.filter(r => r.status === 'Completed').length;
@@ -250,161 +246,137 @@ export default function ReportsPage() {
         };
     }, [filteredData]);
 
-    return (
-        <>
-            <Card>
-                <CardHeader>
-                    <CardTitle>Volumen de Solicitudes</CardTitle>
-                    <CardDescription>Número de solicitudes creadas y completadas a lo largo del tiempo.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                    <RequestVolumeChart requests={filteredData.requests} dateRange={dateRange} />
-                </CardContent>
-            </Card>
+    if (isLoading) {
+        return <ReportsSkeleton />;
+    }
 
-            <Card>
-                <CardHeader>
-                    <CardTitle>Rendimiento por Usuario</CardTitle>
-                    <CardDescription>Métricas de finalización de tareas para cada usuario.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                    <UserPerformanceTable users={users ?? []} tasks={filteredData.tasks} />
-                </CardContent>
-            </Card>
-        </>
+    return (
+        <div className="flex flex-1 flex-col gap-8">
+            <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <div>
+                    <h1 className="text-2xl font-bold tracking-tight">Informes de Rendimiento</h1>
+                    <p className="text-muted-foreground">Analice las tendencias históricas del rendimiento de los procesos.</p>
+                </div>
+                {isAdmin && (
+                    <div className="flex flex-col sm:flex-row gap-2">
+                        <DateRangePicker dateRange={dateRange} onDateChange={setDateRange} />
+                    </div>
+                )}
+            </header>
+            <main className="flex flex-1 flex-col gap-8">
+                {/* Summary Stats */}
+                <div className="grid gap-4 md:grid-cols-4">
+                    <Card>
+                        <CardHeader className="pb-2">
+                            <CardDescription>Total Solicitudes</CardDescription>
+                            <CardTitle className="text-3xl">{stats.totalRequests}</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <p className="text-xs text-muted-foreground">
+                                {stats.completedRequests} completadas ({stats.completionRate}%)
+                            </p>
+                        </CardContent>
+                    </Card>
+                    <Card>
+                        <CardHeader className="pb-2">
+                            <CardDescription>Total Tareas</CardDescription>
+                            <CardTitle className="text-3xl">{stats.totalTasks}</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <p className="text-xs text-muted-foreground">
+                                {stats.completedTasks} completadas
+                            </p>
+                        </CardContent>
+                    </Card>
+                    <Card>
+                        <CardHeader className="pb-2">
+                            <CardDescription>Promedio Tareas/Solicitud</CardDescription>
+                            <CardTitle className="text-3xl">{stats.avgTasksPerRequest}</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <p className="text-xs text-muted-foreground">
+                                tareas por solicitud
+                            </p>
+                        </CardContent>
+                    </Card>
+                    <Card>
+                        <CardHeader className="pb-2">
+                            <CardDescription>Usuarios Activos</CardDescription>
+                            <CardTitle className="text-3xl">{users?.length ?? 0}</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <p className="text-xs text-muted-foreground">
+                                en el sistema
+                            </p>
+                        </CardContent>
+                    </Card>
+                </div>
+
+                <Card>
+                    <CardHeader className="flex flex-row items-center justify-between">
+                        <div>
+                            <CardTitle>Volumen de Solicitudes</CardTitle>
+                            <CardDescription>Número de solicitudes creadas y completadas a lo largo del tiempo.</CardDescription>
+                        </div>
+                        <Button variant="outline" size="sm" onClick={exportRequestsToCSV}>
+                            <Download className="mr-2 h-4 w-4" />
+                            Exportar CSV
+                        </Button>
+                    </CardHeader>
+                    <CardContent>
+                        <RequestVolumeChart requests={filteredData.requests} dateRange={dateRange} />
+                    </CardContent>
+                </Card>
+
+                <Card>
+                    <CardHeader className="flex flex-row items-center justify-between">
+                        <div>
+                            <CardTitle>Rendimiento por Usuario</CardTitle>
+                            <CardDescription>Métricas de finalización de tareas para cada usuario.</CardDescription>
+                        </div>
+                        <div className="flex gap-2">
+                            <Button variant="outline" size="sm" onClick={exportTasksToCSV}>
+                                <FileSpreadsheet className="mr-2 h-4 w-4" />
+                                Tareas CSV
+                            </Button>
+                            <Button variant="outline" size="sm" onClick={exportUserPerformanceToCSV}>
+                                <Download className="mr-2 h-4 w-4" />
+                                Rendimiento CSV
+                            </Button>
+                        </div>
+                    </CardHeader>
+                    <CardContent>
+                        <UserPerformanceTable users={users ?? []} tasks={filteredData.tasks} />
+                    </CardContent>
+                </Card>
+
+                {(requests?.length === MAX_RECORDS || tasks?.length === MAX_RECORDS) && (
+                    <p className="text-sm text-muted-foreground text-center">
+                        ⚠️ Se muestran los últimos {MAX_RECORDS} registros. Use el filtro de fechas para ver datos específicos.
+                    </p>
+                )}
+            </main>
+        </div>
     );
 }
-
 
 export default function ReportsPage() {
     const { user, isUserLoading: isAuthLoading } = useUser();
     const isAdmin = user?.role === 'Admin';
-
-    const [dateRange, setDateRange] = useState<DateRange | undefined>({
-        from: addDays(new Date(), -29),
-        to: new Date(),
-    });
     
     return (
         <SiteLayout>
-            <div className="flex flex-1 flex-col">
-                <header className="flex flex-col gap-4 p-4 sm:p-6 md:flex-row md:items-center md:justify-between">
-                    <div>
-                        <h1 className="text-2xl font-bold tracking-tight">Informes de Rendimiento</h1>
-                        <p className="text-muted-foreground">Analice las tendencias históricas del rendimiento de los procesos.</p>
-                    </div>
-                    {isAdmin && (
-                        <div className="flex flex-col sm:flex-row gap-2">
-                            <DateRangePicker dateRange={dateRange} onDateChange={setDateRange} />
-                        </div>
-                    )}
-                </header>
-                <main className="flex flex-1 flex-col gap-8 p-4 pt-0 sm:p-6 sm:pt-0">
-                    {isAuthLoading && <ReportsSkeleton />}
-                    {!isAuthLoading && !isAdmin && <AccessDenied />}
-                    {!isAuthLoading && isAdmin && (
-                        <>
-                         {isLoading && <ReportsSkeleton />}
-                         {!isLoading && (
-                            <>
-                                {/* Summary Stats */}
-                                <div className="grid gap-4 md:grid-cols-4">
-                                    <Card>
-                                        <CardHeader className="pb-2">
-                                            <CardDescription>Total Solicitudes</CardDescription>
-                                            <CardTitle className="text-3xl">{stats.totalRequests}</CardTitle>
-                                        </CardHeader>
-                                        <CardContent>
-                                            <p className="text-xs text-muted-foreground">
-                                                {stats.completedRequests} completadas ({stats.completionRate}%)
-                                            </p>
-                                        </CardContent>
-                                    </Card>
-                                    <Card>
-                                        <CardHeader className="pb-2">
-                                            <CardDescription>Total Tareas</CardDescription>
-                                            <CardTitle className="text-3xl">{stats.totalTasks}</CardTitle>
-                                        </CardHeader>
-                                        <CardContent>
-                                            <p className="text-xs text-muted-foreground">
-                                                {stats.completedTasks} completadas
-                                            </p>
-                                        </CardContent>
-                                    </Card>
-                                    <Card>
-                                        <CardHeader className="pb-2">
-                                            <CardDescription>Promedio Tareas/Solicitud</CardDescription>
-                                            <CardTitle className="text-3xl">{stats.avgTasksPerRequest}</CardTitle>
-                                        </CardHeader>
-                                        <CardContent>
-                                            <p className="text-xs text-muted-foreground">
-                                                tareas por solicitud
-                                            </p>
-                                        </CardContent>
-                                    </Card>
-                                    <Card>
-                                        <CardHeader className="pb-2">
-                                            <CardDescription>Usuarios Activos</CardDescription>
-                                            <CardTitle className="text-3xl">{users?.length ?? 0}</CardTitle>
-                                        </CardHeader>
-                                        <CardContent>
-                                            <p className="text-xs text-muted-foreground">
-                                                en el sistema
-                                            </p>
-                                        </CardContent>
-                                    </Card>
-                                </div>
-
-                                <Card>
-                                    <CardHeader className="flex flex-row items-center justify-between">
-                                        <div>
-                                            <CardTitle>Volumen de Solicitudes</CardTitle>
-                                            <CardDescription>Número de solicitudes creadas y completadas a lo largo del tiempo.</CardDescription>
-                                        </div>
-                                        <Button variant="outline" size="sm" onClick={exportRequestsToCSV}>
-                                            <Download className="mr-2 h-4 w-4" />
-                                            Exportar CSV
-                                        </Button>
-                                    </CardHeader>
-                                    <CardContent>
-                                        <RequestVolumeChart requests={filteredData.requests} dateRange={dateRange} />
-                                    </CardContent>
-                                </Card>
-
-                                <Card>
-                                    <CardHeader className="flex flex-row items-center justify-between">
-                                        <div>
-                                            <CardTitle>Rendimiento por Usuario</CardTitle>
-                                            <CardDescription>Métricas de finalización de tareas para cada usuario.</CardDescription>
-                                        </div>
-                                        <div className="flex gap-2">
-                                            <Button variant="outline" size="sm" onClick={exportTasksToCSV}>
-                                                <FileSpreadsheet className="mr-2 h-4 w-4" />
-                                                Tareas CSV
-                                            </Button>
-                                            <Button variant="outline" size="sm" onClick={exportUserPerformanceToCSV}>
-                                                <Download className="mr-2 h-4 w-4" />
-                                                Rendimiento CSV
-                                            </Button>
-                                        </div>
-                                    </CardHeader>
-                                    <CardContent>
-                                        <UserPerformanceTable users={users ?? []} tasks={filteredData.tasks} />
-                                    </CardContent>
-                                </Card>
-
-                                {/* Data limit warning */}
-                                {(requests?.length === MAX_RECORDS || tasks?.length === MAX_RECORDS) && (
-                                    <p className="text-sm text-muted-foreground text-center">
-                                        ⚠️ Se muestran los últimos {MAX_RECORDS} registros. Use el filtro de fechas para ver datos específicos.
-                                    </p>
-                                )}
-                            </>
-                         )}
-                        </>
-                    )}
-                </main>
+            <div className="flex flex-1 flex-col p-4 pt-6 sm:p-6">
+                {isAuthLoading ? (
+                    <ReportsSkeleton />
+                ) : isAdmin ? (
+                    <ReportsView />
+                ) : (
+                    <AccessDenied />
+                )}
             </div>
         </SiteLayout>
     );
 }
+
+    

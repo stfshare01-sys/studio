@@ -1,14 +1,135 @@
 
+
 "use client";
 
-import type { EnrichedWorkflowStep } from "@/lib/types";
+import { useState } from "react";
+import type { EnrichedWorkflowStep, User, Request as RequestType, Task } from "@/lib/types";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { CheckCircle2, Circle, CircleDot } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogFooter,
+  DialogDescription,
+  DialogClose,
+} from "@/components/ui/dialog";
+import { CheckCircle2, Circle, CircleDot, Replace } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
+import { useUser, useFirestore, useCollection, useMemoFirebase } from "@/firebase";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
+import { useToast } from "@/hooks/use-toast";
+import { doc, collection } from "firebase/firestore";
+import { updateDocumentNonBlocking, addDocumentNonBlocking } from "@/firebase/non-blocking-updates";
 
-export function WorkflowStepper({ steps }: { steps: EnrichedWorkflowStep[] }) {
+
+function ReassignTaskDialog({ task, request, allUsers, onReassign }: { task: Task, request: RequestType, allUsers: User[], onReassign: () => void }) {
+    const [newAssigneeId, setNewAssigneeId] = useState<string | undefined>(undefined);
+    const [isOpen, setIsOpen] = useState(false);
+    const { toast } = useToast();
+    const firestore = useFirestore();
+    const { user: currentUser } = useUser();
+
+    const handleConfirmReassignment = () => {
+        if (!newAssigneeId || !firestore || !currentUser) {
+            toast({ variant: 'destructive', title: 'Error', description: 'Por favor, seleccione un nuevo asignado.' });
+            return;
+        }
+
+        const newAssignee = allUsers.find(u => u.id === newAssigneeId);
+        if (!newAssignee) return;
+
+        const taskRef = doc(firestore, 'tasks', task.id);
+        const requestRef = doc(firestore, 'users', request.submittedBy, 'requests', request.id);
+        const auditLogCollection = collection(requestRef, 'audit_logs');
+        const now = new Date().toISOString();
+
+        // 1. Update task document
+        updateDocumentNonBlocking(taskRef, { assigneeId: newAssigneeId });
+
+        // 2. Update request steps array
+        const updatedSteps = request.steps.map(s => s.id === task.stepId ? { ...s, assigneeId: newAssigneeId } : s);
+        updateDocumentNonBlocking(requestRef, { steps: updatedSteps });
+
+        // 3. Add audit log
+        addDocumentNonBlocking(auditLogCollection, {
+            requestId: request.id,
+            userId: currentUser.id,
+            userFullName: currentUser.fullName,
+            timestamp: now,
+            action: 'STEP_ASSIGNEE_CHANGED',
+            details: {
+                stepName: task.name,
+                assigneeName: newAssignee.fullName,
+                reason: 'Reasignación manual.'
+            }
+        });
+
+        // 4. Notify new assignee
+        const notificationRef = collection(firestore, 'users', newAssigneeId, 'notifications');
+        addDocumentNonBlocking(notificationRef, {
+            title: 'Tarea Reasignada',
+            message: `Se te ha reasignado la tarea "${task.name}" de la solicitud "${request.title}".`,
+            type: 'task',
+            read: false,
+            createdAt: now,
+            link: `/requests/${request.id}`
+        });
+
+        toast({ title: '¡Tarea Reasignada!', description: `"${task.name}" ha sido asignada a ${newAssignee.fullName}.` });
+        setIsOpen(false);
+        onReassign(); // Callback to trigger data refresh if needed
+    };
+
+    return (
+        <Dialog open={isOpen} onOpenChange={setIsOpen}>
+            <DialogTrigger asChild>
+                <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs">
+                    <Replace className="h-3 w-3" />
+                    Reasignar
+                </Button>
+            </DialogTrigger>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Reasignar Tarea: {task.name}</DialogTitle>
+                    <DialogDescription>Seleccione un nuevo usuario para esta tarea. El usuario actual es {allUsers.find(u => u.id === task.assigneeId)?.fullName || 'Nadie'}.</DialogDescription>
+                </DialogHeader>
+                <div className="py-4 space-y-2">
+                    <Label htmlFor="new-assignee">Nuevo Asignado</Label>
+                    <Select value={newAssigneeId} onValueChange={setNewAssigneeId}>
+                        <SelectTrigger id="new-assignee">
+                            <SelectValue placeholder="Seleccionar un usuario..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {allUsers.map(user => (
+                                <SelectItem key={user.id} value={user.id} disabled={user.id === task.assigneeId}>
+                                    {user.fullName} ({user.department})
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </div>
+                <DialogFooter>
+                    <DialogClose asChild><Button variant="ghost">Cancelar</Button></DialogClose>
+                    <Button onClick={handleConfirmReassignment} disabled={!newAssigneeId}>Confirmar Reasignación</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
+export function WorkflowStepper({ steps, request, allUsers, onDataChange }: { steps: EnrichedWorkflowStep[], request: RequestType, allUsers: User[], onDataChange: () => void }) {
+  const { user: currentUser } = useUser();
+  const firestore = useFirestore();
+  const usersQuery = useMemoFirebase(() => collection(firestore, 'users'), [firestore]);
+  const { data: allUsersData } = useCollection<User>(usersQuery);
+  const users = allUsersData || allUsers;
+  
   const getStatusIcon = (status: EnrichedWorkflowStep['status']) => {
     switch (status) {
       case 'Completed':
@@ -23,28 +144,51 @@ export function WorkflowStepper({ steps }: { steps: EnrichedWorkflowStep[] }) {
   };
 
   const getStatusText = (step: EnrichedWorkflowStep) => {
+    const task: Task | null = step.taskId ? { 
+        id: step.taskId,
+        requestTitle: request.title,
+        requestId: request.id,
+        requestOwnerId: request.submittedBy,
+        stepId: step.id,
+        name: step.name,
+        status: step.status,
+        assigneeId: step.assignee?.id || null,
+        completedAt: step.completedAt,
+        createdAt: request.createdAt, // This is an approximation
+    } : null;
+
+    const assignee = users.find(u => u.id === step.assignee?.id);
+    const isManager = currentUser?.id === assignee?.managerId;
+    const isAdmin = currentUser?.role === 'Admin';
+    const canReassign = (isAdmin || isManager) && step.status === 'Active';
+
     switch (step.status) {
       case 'Completed':
         return (
           <div className="flex items-center gap-2">
             <Avatar className="h-5 w-5">
-              {step.assignee?.avatarUrl && <AvatarImage src={step.assignee.avatarUrl} alt={step.assignee.fullName} />}
-              <AvatarFallback>{step.assignee?.fullName.charAt(0)}</AvatarFallback>
+              {assignee?.avatarUrl && <AvatarImage src={assignee.avatarUrl} alt={assignee.fullName} />}
+              <AvatarFallback>{assignee?.fullName.charAt(0)}</AvatarFallback>
             </Avatar>
-            <span>Completado por {step.assignee?.fullName} el {format(new Date(step.completedAt!), "d 'de' MMMM 'de' yyyy", { locale: es })}</span>
+            <span>Completado por {assignee?.fullName} el {format(new Date(step.completedAt!), "d 'de' MMMM 'de' yyyy", { locale: es })}</span>
           </div>
         );
       case 'Active':
-        return step.assignee ? (
+        return (
           <div className="flex items-center gap-2">
-            <Avatar className="h-5 w-5">
-              {step.assignee?.avatarUrl && <AvatarImage src={step.assignee.avatarUrl} alt={step.assignee.fullName} />}
-              <AvatarFallback>{step.assignee?.fullName.charAt(0)}</AvatarFallback>
-            </Avatar>
-            <span>Asignado a {step.assignee.fullName}</span>
+            {assignee ? (
+              <>
+                <Avatar className="h-5 w-5">
+                  {assignee?.avatarUrl && <AvatarImage src={assignee.avatarUrl} alt={assignee.fullName} />}
+                  <AvatarFallback>{assignee?.fullName.charAt(0)}</AvatarFallback>
+                </Avatar>
+                <span>Asignado a {assignee.fullName}</span>
+                {canReassign && task && <ReassignTaskDialog task={task} request={request} allUsers={users} onReassign={onDataChange} />}
+              </>
+            ) : (
+                <span>Pendiente de asignación</span>
+            )}
           </div>
-        ) : (
-          <span>Pendiente de asignación</span>
         );
       case 'Pending':
         return <span>No iniciado</span>;
