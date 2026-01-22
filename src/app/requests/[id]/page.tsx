@@ -7,7 +7,9 @@ import { notFound, useParams } from "next/navigation";
 import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser, useStorage } from "@/firebase";
 import { doc, collection, query, serverTimestamp, orderBy, updateDoc, collectionGroup, where, getDocs, limit, getDoc } from "firebase/firestore";
 import { ref, deleteObject } from "firebase/storage";
-import type { Request as RequestType, EnrichedRequest, User, EnrichedWorkflowStep, Template, Comment as CommentType, EnrichedComment, AuditLog, FormField, Document as DocumentType, Task, WorkflowStepDefinition } from "@/lib/types";
+import type { Request as RequestType, EnrichedRequest, User, EnrichedWorkflowStep, Template, Comment as CommentType, EnrichedComment, AuditLog, FormField, Document as DocumentType, Task, WorkflowStepDefinition, TableColumnDefinition } from "@/lib/types";
+import DOMPurify from 'dompurify';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ArrowLeft, User as UserIcon, Paperclip, Send, Trash2, CheckCircle, AlertTriangle } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -333,7 +335,9 @@ export default function RequestDetailPage() {
   const isCurrentUserAssignee = activeStep?.assigneeId === user?.uid;
 
   const getDisplayValue = (value: any, fieldId: string) => {
-    const field = request.template?.fields.find((f: FormField) => f.id === fieldId);
+    const field = template?.fields.find((f: FormField) => f.id === fieldId);
+
+    // Handle file type
     if (field?.type === 'file') {
         const document = request.documents.find(d => d.id === value);
         return document ? (
@@ -343,7 +347,65 @@ export default function RequestDetailPage() {
             </a>
         ) : 'Archivo no encontrado';
     }
+
+    // Handle table type
+    if (field?.type === 'table' && Array.isArray(value)) {
+        const columns = (field.tableColumns || []) as TableColumnDefinition[];
+        if (value.length === 0) return <span className="text-muted-foreground text-sm">Sin datos</span>;
+        return (
+            <div className="w-full overflow-auto">
+                <Table>
+                    <TableHeader>
+                        <TableRow>
+                            {columns.map(col => (
+                                <TableHead key={col.id}>{col.label}</TableHead>
+                            ))}
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {value.map((row: Record<string, any>, idx: number) => (
+                            <TableRow key={idx}>
+                                {columns.map(col => (
+                                    <TableCell key={col.id}>{row[col.id] ?? '-'}</TableCell>
+                                ))}
+                            </TableRow>
+                        ))}
+                    </TableBody>
+                </Table>
+            </div>
+        );
+    }
+
+    // Handle user-identity type
+    if (field?.type === 'user-identity' && typeof value === 'object' && value !== null) {
+        return (
+            <div className="space-y-1 text-sm">
+                {value.fullName && <div><span className="text-muted-foreground">Nombre:</span> {value.fullName}</div>}
+                {value.email && <div><span className="text-muted-foreground">Email:</span> {value.email}</div>}
+                {value.phone && <div><span className="text-muted-foreground">Teléfono:</span> {value.phone}</div>}
+                {value.department && <div><span className="text-muted-foreground">Departamento:</span> {value.department}</div>}
+            </div>
+        );
+    }
+
+    // Handle html type
+    if (field?.type === 'html' && typeof value === 'string') {
+        const sanitizedHtml = DOMPurify.sanitize(value);
+        return (
+            <div
+                className="prose prose-sm max-w-none"
+                dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
+            />
+        );
+    }
+
+    // Handle boolean
     if (typeof value === 'boolean') return value ? 'Sí' : 'No';
+
+    // Handle arrays (for select multiple, etc.)
+    if (Array.isArray(value)) return value.join(', ');
+
+    // Default: convert to string
     return String(value);
   }
 
@@ -465,9 +527,21 @@ export default function RequestDetailPage() {
                             <SubmittedBy userId={enrichedRequest.submittedBy.id} />
                         </div>
                         <Separator />
-                        <dl className="grid gap-2">
+                        <dl className="grid gap-3">
                             {Object.entries(enrichedRequest.formData).map(([key, value]) => {
-                               const fieldLabel = request.template?.fields.find((f: FormField) => f.id === key)?.label || key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
+                               const field = template?.fields.find((f: FormField) => f.id === key);
+                               const fieldLabel = field?.label || key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
+                               const isComplexType = field?.type === 'table' || field?.type === 'html' || field?.type === 'user-identity';
+
+                               if (isComplexType) {
+                                   return (
+                                       <div key={key} className="space-y-2">
+                                           <dt className="text-muted-foreground font-medium">{fieldLabel}</dt>
+                                           <dd>{getDisplayValue(value, key)}</dd>
+                                       </div>
+                                   );
+                               }
+
                                return (
                                 <div key={key} className="flex justify-between items-start">
                                     <dt className="text-muted-foreground">{fieldLabel}</dt>

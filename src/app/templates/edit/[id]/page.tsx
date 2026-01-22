@@ -1100,6 +1100,26 @@ export default function EditTemplatePage() {
                             </CardContent>
                         </Card>
                     )}
+
+                    {/* Default Value Rules Section */}
+                    {fields.length > 0 && (
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>Valores por Defecto Condicionales</CardTitle>
+                                <CardDescription>
+                                    Configure valores que se asignan automáticamente basándose en condiciones.
+                                </CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                <DefaultValueRulesBuilder
+                                    fields={fields}
+                                    rules={defaultValueRules}
+                                    onRulesChange={setDefaultValueRules}
+                                />
+                            </CardContent>
+                        </Card>
+                    )}
+
                     <Card>
                         <CardHeader>
                             <CardTitle>Motor de Reglas de Negocio</CardTitle>

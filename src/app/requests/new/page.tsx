@@ -12,7 +12,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { addDocumentNonBlocking, setDocumentNonBlocking, useCollection, useFirestore, useMemoFirebase, useUser, useStorage, updateDocumentNonBlocking } from "@/firebase";
 import { useToast } from "@/hooks/use-toast";
-import { Template, User, FormField } from "@/lib/types";
+import { Template, User, FormField, FieldLayoutConfig } from "@/lib/types";
 import { collection, doc } from "firebase/firestore";
 import { ref as storageRef, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import { Loader2, XCircle } from "lucide-react";
@@ -570,33 +570,108 @@ function NewRequestPageContent() {
                                 </Select>
                             </div>
 
-                            {selectedTemplate && (
-                                <div className="space-y-4 border-t pt-6">
-                                    {selectedTemplate.fields.map(field => {
-                                        // Check visibility rules
-                                        const isVisible = evaluateFieldVisibility(
-                                            field,
-                                            formData,
-                                            selectedTemplate.visibilityRules
-                                        );
-                                        if (!isVisible) return null;
+                            {selectedTemplate && (() => {
+                                const fieldLayout = selectedTemplate.fieldLayout || [];
+                                const hasLayout = fieldLayout.length > 0;
 
-                                        return (
-                                            <div key={field.id} className="space-y-2">
-                                                {field.type !== 'checkbox' && field.type !== 'user-identity' && (
-                                                    <Label htmlFor={field.id}>
-                                                        {field.label}
-                                                        {field.validations?.some(v => v.type === 'required') && (
-                                                            <span className="text-destructive ml-1">*</span>
-                                                        )}
-                                                    </Label>
-                                                )}
-                                                {renderField(field)}
+                                // Helper to render a single field
+                                const renderFieldWithLabel = (field: FormField) => {
+                                    const isVisible = evaluateFieldVisibility(
+                                        field,
+                                        formData,
+                                        selectedTemplate.visibilityRules
+                                    );
+                                    if (!isVisible) return null;
+
+                                    return (
+                                        <div key={field.id} className="space-y-2">
+                                            {field.type !== 'checkbox' && field.type !== 'user-identity' && (
+                                                <Label htmlFor={field.id}>
+                                                    {field.label}
+                                                    {field.validations?.some(v => v.type === 'required') && (
+                                                        <span className="text-destructive ml-1">*</span>
+                                                    )}
+                                                </Label>
+                                            )}
+                                            {renderField(field)}
+                                        </div>
+                                    );
+                                };
+
+                                // If no layout defined, render fields linearly
+                                if (!hasLayout) {
+                                    return (
+                                        <div className="space-y-4 border-t pt-6">
+                                            {selectedTemplate.fields.map(renderFieldWithLabel)}
+                                        </div>
+                                    );
+                                }
+
+                                // Render with grid layout
+                                // Group fields by row
+                                const rowsMap = new Map<number, { field: FormField; config: FieldLayoutConfig }[]>();
+                                const fieldsWithLayout = new Set<string>();
+
+                                fieldLayout.forEach(config => {
+                                    const field = selectedTemplate.fields.find(f => f.id === config.fieldId);
+                                    if (field) {
+                                        fieldsWithLayout.add(field.id);
+                                        const rowItems = rowsMap.get(config.row) || [];
+                                        rowItems.push({ field, config });
+                                        rowsMap.set(config.row, rowItems);
+                                    }
+                                });
+
+                                // Fields not in layout go at the end
+                                const fieldsNotInLayout = selectedTemplate.fields.filter(
+                                    f => !fieldsWithLayout.has(f.id)
+                                );
+
+                                // Sort rows and items within rows
+                                const sortedRows = Array.from(rowsMap.entries())
+                                    .sort(([a], [b]) => a - b)
+                                    .map(([_, items]) => items.sort((a, b) => a.config.column - b.config.column));
+
+                                return (
+                                    <div className="space-y-4 border-t pt-6">
+                                        {sortedRows.map((rowItems, rowIdx) => (
+                                            <div key={rowIdx} className="grid grid-cols-5 gap-4">
+                                                {rowItems.map(({ field, config }) => {
+                                                    const colspan = config.colspan || 5;
+                                                    const isVisible = evaluateFieldVisibility(
+                                                        field,
+                                                        formData,
+                                                        selectedTemplate.visibilityRules
+                                                    );
+                                                    if (!isVisible) return null;
+
+                                                    return (
+                                                        <div
+                                                            key={field.id}
+                                                            className="space-y-2"
+                                                            style={{
+                                                                gridColumn: `${config.column} / span ${colspan}`
+                                                            }}
+                                                        >
+                                                            {field.type !== 'checkbox' && field.type !== 'user-identity' && (
+                                                                <Label htmlFor={field.id}>
+                                                                    {field.label}
+                                                                    {field.validations?.some(v => v.type === 'required') && (
+                                                                        <span className="text-destructive ml-1">*</span>
+                                                                    )}
+                                                                </Label>
+                                                            )}
+                                                            {renderField(field)}
+                                                        </div>
+                                                    );
+                                                })}
                                             </div>
-                                        );
-                                    })}
-                                </div>
-                            )}
+                                        ))}
+                                        {/* Fields not in layout */}
+                                        {fieldsNotInLayout.map(renderFieldWithLabel)}
+                                    </div>
+                                );
+                            })()}
                         </CardContent>
                     </Card>
                 </main>
