@@ -88,7 +88,8 @@ service cloud.firestore {
       // Users can only create their own profile with matching ID
       allow create: if isOwner(userId) && request.resource.data.id == userId;
       // Users can update their own profile, Admins can update any
-      allow update: if isOwnerOrAdmin(userId);
+      allow update: if isOwner(userId);
+      allow update: if hasRole('Admin');
       // Only admins can delete users
       allow delete: if hasRole('Admin');
 
@@ -259,21 +260,23 @@ service cloud.firestore {
      */
     match /incidences/{incidenceId} {
       // Employees can read their own incidences, or managers/HR can read any.
-      allow get: if isSignedIn() && (resource.data.employeeId == request.auth.uid || isManagerOrHR());
+      allow get: if isSignedIn() && resource.data.employeeId == request.auth.uid;
+      allow get: if isManagerOrHR();
       
-      // Allow managers to list all, and members to list only their own.
-      allow list: if isSignedIn() && (isManagerOrHR() || request.query.where.employeeId == request.auth.uid);
+      // Allow managers to list all
+      allow list: if isManagerOrHR();
+      // Allow members to list only their own
+      allow list: if isSignedIn() && request.query.where.employeeId == request.auth.uid;
       
       // Employees can create requests for themselves
       allow create: if isSignedIn() && request.resource.data.employeeId == request.auth.uid;
       
       // HR can approve/reject; employees can only cancel their own pending requests
-      allow update: if isHRManager() || (
-        isSignedIn() && 
+      allow update: if isHRManager();
+      allow update: if isSignedIn() && 
         resource.data.employeeId == request.auth.uid && 
         resource.data.status == 'pending' &&
-        request.resource.data.status == 'cancelled'
-      );
+        request.resource.data.status == 'cancelled';
       
       // Incidences are immutable for audit
       allow delete: if false;

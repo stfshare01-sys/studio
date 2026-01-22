@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
+import { useToast } from "@/hooks/use-toast";
 
 /**
  * An invisible component that listens for globally emitted 'permission-error' events.
@@ -10,13 +11,18 @@ import { FirestorePermissionError } from '@/firebase/errors';
  */
 export function FirebaseErrorListener() {
   // Use the specific error type for the state for type safety.
-  const [error, setError] = useState<FirestorePermissionError | null>(null);
+  const { toast } = useToast();
 
   useEffect(() => {
     // The callback now expects a strongly-typed error, matching the event payload.
     const handleError = (error: FirestorePermissionError) => {
-      // Set error in state to trigger a re-render.
-      setError(error);
+      // Instead of setting state to throw, we simply show a toast.
+      toast({
+        variant: "destructive",
+        title: "Permisos Insuficientes",
+        description: `No tienes permisos para realizar esta operación: ${error.request.method} en ${error.request.path}`,
+      });
+      console.error("FirebasePermissionError captured:", error);
     };
 
     // The typed emitter will enforce that the callback for 'permission-error'
@@ -27,12 +33,10 @@ export function FirebaseErrorListener() {
     return () => {
       errorEmitter.off('permission-error', handleError);
     };
-  }, []);
+  }, [toast]);
 
-  // On re-render, if an error exists in state, throw it.
-  if (error) {
-    throw error;
-  }
+  // This component renders nothing and no longer throws.
+  return null;
 
   // This component renders nothing.
   return null;
