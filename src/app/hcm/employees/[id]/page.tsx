@@ -35,50 +35,51 @@ import { formatCurrency } from '@/lib/hcm-utils';
 export default function EmployeeDetailPage({ params }: { params: Promise<{ id: string }> }) {
     const router = useRouter();
     const { id: employeeId } = use(params);
-    const { firestore } = useFirebase();
+    // 0. Auth state
+    const { firestore, user, isUserLoading } = useFirebase();
 
     // 1. Fetch Employee Details
     const employeeRef = useMemoFirebase(() => {
-        return firestore ? doc(firestore, 'employees', employeeId) : null;
-    }, [firestore, employeeId]);
+        return firestore && !isUserLoading ? doc(firestore, 'employees', employeeId) : null;
+    }, [firestore, isUserLoading, employeeId]);
 
     const { data: employee, isLoading: isLoadingEmployee } = useDoc<Employee>(employeeRef);
 
     // 2. Fetch Compensation History
     const compensationQuery = useMemoFirebase(() => {
-        if (!firestore) return null;
+        if (!firestore || isUserLoading) return null;
         return query(
             collection(firestore, 'compensation'),
             where('employeeId', '==', employeeId),
             orderBy('effectiveDate', 'desc')
         );
-    }, [firestore, employeeId]);
+    }, [firestore, isUserLoading, employeeId]);
 
     const { data: compensations, isLoading: isLoadingComp } = useCollection<Compensation>(compensationQuery);
 
     // 3. Fetch Recent Attendance
     const attendanceQuery = useMemoFirebase(() => {
-        if (!firestore) return null;
+        if (!firestore || isUserLoading) return null;
         return query(
             collection(firestore, 'attendance'),
             where('employeeId', '==', employeeId),
             orderBy('date', 'desc'),
             limit(10)
         );
-    }, [firestore, employeeId]);
+    }, [firestore, isUserLoading, employeeId]);
 
     const { data: attendance, isLoading: isLoadingAttendance } = useCollection<AttendanceRecord>(attendanceQuery);
 
     // 4. Fetch Incidences
     const incidencesQuery = useMemoFirebase(() => {
-        if (!firestore) return null;
+        if (!firestore || isUserLoading) return null;
         return query(
             collection(firestore, 'incidences'),
             where('employeeId', '==', employeeId),
             orderBy('startDate', 'desc'),
             limit(20)
         );
-    }, [firestore, employeeId]);
+    }, [firestore, isUserLoading, employeeId]);
 
     const { data: incidences, isLoading: isLoadingIncidences } = useCollection<Incidence>(incidencesQuery);
 

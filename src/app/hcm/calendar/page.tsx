@@ -79,27 +79,27 @@ export default function TeamCalendarPage() {
     // Check if user has Admin permissions (only Admin role exists in current UserRole type)
     const isManagerOrAdmin = user?.role === 'Admin';
 
-    // Fetch active employees
+    // Fetch active employees - only if user is loaded and has permissions
     const employeesQuery = useMemoFirebase(() => {
-        if (!firestore || !isManagerOrAdmin) return null;
+        if (!firestore || isUserLoading || !isManagerOrAdmin) return null;
         return query(
             collection(firestore, 'employees'),
             where('status', '==', 'active'),
             orderBy('fullName', 'asc')
         );
-    }, [firestore, isManagerOrAdmin]);
+    }, [firestore, isUserLoading, isManagerOrAdmin]);
 
     const { data: employees, isLoading: employeesLoading } = useCollection<Employee>(employeesQuery);
 
-    // Fetch approved incidences
+    // Fetch approved incidences - only if user is loaded and has permissions
     const incidencesQuery = useMemoFirebase(() => {
-        if (!firestore || !isManagerOrAdmin) return null;
+        if (!firestore || isUserLoading || !isManagerOrAdmin) return null;
         return query(
             collection(firestore, 'incidences'),
             where('status', '==', 'approved'),
             orderBy('startDate', 'desc')
         );
-    }, [firestore, isManagerOrAdmin]);
+    }, [firestore, isUserLoading, isManagerOrAdmin]);
 
     const { data: incidences, isLoading: incidencesLoading } = useCollection<Incidence>(incidencesQuery);
 
