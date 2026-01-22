@@ -51,6 +51,16 @@ service cloud.firestore {
         && data.requestId is string;
     }
 
+    // HCM Module: Check if user has HR Manager or Admin privileges
+    function isHRManager() {
+      return isSignedIn() && userDocExists() && getUserData().role in ['Admin', 'HRManager'];
+    }
+
+    // HCM Module: Check if user is a manager (can approve incidences for their team)
+    function isManagerOrHR() {
+      return isSignedIn() && userDocExists() && getUserData().role in ['Admin', 'HRManager', 'Manager'];
+    }
+
     // -------------------------------------------------------------------------
     // Collection Rules
     // -------------------------------------------------------------------------
@@ -78,7 +88,8 @@ service cloud.firestore {
       // Users can only create their own profile with matching ID
       allow create: if isOwner(userId) && request.resource.data.id == userId;
       // Users can update their own profile, Admins can update any
-      allow update: if isOwnerOrAdmin(userId);
+      allow update: if isOwner(userId);
+      allow update: if hasRole('Admin');
       // Only admins can delete users
       allow delete: if hasRole('Admin');
 
@@ -147,25 +158,21 @@ service cloud.firestore {
       );
 
       // List: Users can list tasks where they are assignee or request owner
-      // Note: Requires compound index on assigneeId and requestOwnerId
       allow list: if isSignedIn();
 
-      // Create: Only request owner can create tasks with proper validation
+      // Create: Only request owner can create tasks for one of their own requests
       allow create: if isSignedIn()
         && request.auth.uid == request.resource.data.requestOwnerId
-        && hasRequiredTaskFields();
+        && hasRequiredTaskFields()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid)/requests/$(request.resource.data.requestId));
 
-      // Update: Assignee, request owner, or Admin can update
-      // Validates that critical fields cannot be changed
+      // Update: Assignee, request owner, or Admin can update specific fields
       allow update: if isSignedIn() && (
         request.auth.uid == resource.data.assigneeId ||
         request.auth.uid == resource.data.requestOwnerId ||
         hasRole('Admin')
-      ) && (
-        // Prevent changing the request association
-        request.resource.data.requestId == resource.data.requestId &&
-        request.resource.data.requestOwnerId == resource.data.requestOwnerId
-      );
+      ) && request.resource.data.diff(resource.data).affectedKeys()
+        .hasOnly(['status', 'completedAt', 'assigneeId', 'isEscalated', 'activatedAt', 'slaExpiresAt']);
 
       // Delete: Only admins can delete tasks
       allow delete: if hasRole('Admin');
@@ -198,95 +205,163 @@ service cloud.firestore {
     }
 
     // -------------------------------------------------------------------------
-    // Capital Humano / HR Module Collections
+    // HCM MODULE RULES - Sistema de Gestión de Capital Humano
     // -------------------------------------------------------------------------
 
     /**
-     * @description Incidences/HR incidents for employee management.
-     * Read: Admins and the employee themselves
-     * Write: Admins only
-     * @path /incidences/{incidenceId}
-     */
-    match /incidences/{incidenceId} {
-      allow get: if isSignedIn() && (
-        hasRole('Admin') ||
-        request.auth.uid == resource.data.employeeId
-      );
-      allow list: if hasRole('Admin');
-      allow create, update: if hasRole('Admin');
-      allow delete: if hasRole('Admin');
-    }
-
-    /**
-     * @description Employees collection for HR management.
-     * Read: Admins and HR roles
-     * Write: Admins only
+     * @description Employee extended data with sensitive PII (RFC, CURP, NSS, CLABE)
+     * Read: HR Managers, Admins, or the employee themselves
+     * Write: HR Managers and Admins only
      * @path /employees/{employeeId}
      */
     match /employees/{employeeId} {
-      allow read: if hasAnyRole(['Admin', 'HR']);
-      allow write: if hasRole('Admin');
+      // Employees can read their own data, HR/Admin can read any
+      allow get: if isHRManager() || isOwner(employeeId);
+      // Only HR and Admin can list all employees
+      allow list: if isHRManager();
+      // Only HR and Admin can create/update employee records
+      allow create, update: if isHRManager();
+      // Only Admins can delete employee records
+      allow delete: if hasRole('Admin');
     }
 
     /**
-     * @description Attendance records.
-     * Read: Admins, HR, and the employee themselves
-     * Write: Admins and HR
+     * @description Compensation records (highly sensitive salary data)
+     * Read/Write: Only HR Managers and Admins
+     * @path /compensation/{compensationId}
+     */
+    match /compensation/{compensationId} {
+      allow read, write: if isHRManager();
+    }
+
+    /**
+     * @description Attendance records imported from external system
+     * Read: Employees can read their own, HR/Admin can read all
+     * Write: HR Managers and Admins only (immutable for audit)
      * @path /attendance/{attendanceId}
      */
     match /attendance/{attendanceId} {
-      allow get: if isSignedIn() && (
-        hasAnyRole(['Admin', 'HR']) ||
-        request.auth.uid == resource.data.employeeId
-      );
-      allow list: if hasAnyRole(['Admin', 'HR']);
-      allow create, update: if hasAnyRole(['Admin', 'HR']);
-      allow delete: if hasRole('Admin');
+      // Employees can read their own attendance records
+      allow get: if isSignedIn() && resource.data.employeeId == request.auth.uid;
+      // HR and Admin can read all attendance records
+      allow get: if isHRManager();
+      // HR and Admin can list all attendance records
+      allow list: if isHRManager();
+      // Only HR and Admin can create/update attendance records
+      allow create, update: if isHRManager();
+      // Attendance records are immutable for audit purposes
+      allow delete: if false;
     }
 
     /**
-     * @description Payroll records.
-     * Read: Admins and the employee themselves
-     * Write: Admins only
-     * @path /payroll/{payrollId}
+     * @description Incidences and leave requests (vacations, sick leave, etc.)
+     * Read: Employee owns, or managers/HR
+     * Create: Employees can create their own requests
+     * Update: HR can approve/reject, employees can only cancel
+     * @path /incidences/{incidenceId}
      */
-    match /payroll/{payrollId} {
-      allow get: if isSignedIn() && (
-        hasRole('Admin') ||
-        request.auth.uid == resource.data.employeeId
-      );
-      allow list: if hasRole('Admin');
+    match /incidences/{incidenceId} {
+      // Employees can read their own incidences
+      allow get: if isSignedIn() && resource.data.employeeId == request.auth.uid;
+      // Managers/HR can read any incidence
+      allow get: if isManagerOrHR();
+
+      // Allow managers/HR to list all incidences
+      allow list: if isManagerOrHR();
+      // Allow employees to list their own incidences
+      allow list: if isSignedIn();
+
+      // Employees can create requests for themselves
+      allow create: if isSignedIn() && request.resource.data.employeeId == request.auth.uid;
+      // HR/Admin can create incidences for any employee
+      allow create: if isHRManager();
+
+      // HR can approve/reject any incidence
+      allow update: if isHRManager();
+      // Employees can only cancel their own pending requests
+      allow update: if isSignedIn() &&
+        resource.data.employeeId == request.auth.uid &&
+        resource.data.status == 'pending' &&
+        request.resource.data.status == 'cancelled';
+
+      // Incidences are immutable for audit (no delete)
+      allow delete: if false;
+    }
+
+    /**
+     * @description Pre-nomina consolidated records
+     * Read/Write: Only HR Managers and Admins
+     * @path /prenomina/{prenominaId}
+     */
+    match /prenomina/{prenominaId} {
+      allow read, write: if isHRManager();
+
+      // Audit logs for prenomina changes (immutable)
+      match /audit_logs/{auditLogId} {
+        allow read: if isHRManager();
+        allow create: if isSignedIn();
+        allow update, delete: if false;
+      }
+    }
+
+    /**
+     * @description Time bank for compensatory hours
+     * Read: Employee can read their own, HR can read all
+     * Write: HR only
+     * @path /time_bank/{employeeId}
+     */
+    match /time_bank/{employeeId} {
+      allow get: if isOwner(employeeId) || isHRManager();
+      allow list: if isHRManager();
+      allow write: if isHRManager();
+    }
+
+    /**
+     * @description Attendance import batches (Excel/CSV uploads)
+     * Read/Write: Only HR Managers and Admins
+     * @path /attendance_imports/{batchId}
+     */
+    match /attendance_imports/{batchId} {
+      allow read, write: if isHRManager();
+    }
+
+    /**
+     * @description Official holiday calendar
+     * Read: All authenticated users
+     * Write: Only Admins
+     * @path /holiday_calendar/{calendarId}
+     */
+    match /holiday_calendar/{calendarId} {
+      allow read: if isSignedIn();
       allow write: if hasRole('Admin');
     }
 
     /**
-     * @description Leave/vacation requests.
-     * Read: Admins, HR, and the employee themselves
-     * Write: Admins, HR, and the employee for their own requests
-     * @path /leave_requests/{leaveRequestId}
+     * @description Settlement/termination calculations
+     * Read/Write: Only HR Managers and Admins
+     * @path /settlements/{settlementId}
      */
-    match /leave_requests/{leaveRequestId} {
-      allow get: if isSignedIn() && (
-        hasAnyRole(['Admin', 'HR']) ||
-        request.auth.uid == resource.data.employeeId
-      );
-      allow list: if hasAnyRole(['Admin', 'HR']) ||
-        (isSignedIn() && request.auth.uid == resource.data.employeeId);
-      allow create: if isSignedIn();
-      allow update: if hasAnyRole(['Admin', 'HR']) ||
-        (isSignedIn() && request.auth.uid == resource.data.employeeId);
-      allow delete: if hasRole('Admin');
+    match /settlements/{settlementId} {
+      allow read, write: if isHRManager();
+    }
+
+    /**
+     * @description Accounting policies generated from prenomina
+     * Read/Write: Only HR Managers and Admins
+     * @path /accounting_policies/{policyId}
+     */
+    match /accounting_policies/{policyId} {
+      allow read, write: if isHRManager();
     }
 
     // -------------------------------------------------------------------------
-    // Generic Catch-all for Development (Remove in Production)
+    // Catch-all for Admin (Development only - remove in production)
     // -------------------------------------------------------------------------
 
     /**
      * @description Fallback rule for any collection not explicitly defined.
-     * This allows Admins to access any collection during development.
+     * Allows Admins to access collections during development.
      * IMPORTANT: Review and restrict before going to production.
-     * @path /{collectionName}/{documentId}
      */
     match /{collectionName}/{documentId} {
       allow read, write: if hasRole('Admin');

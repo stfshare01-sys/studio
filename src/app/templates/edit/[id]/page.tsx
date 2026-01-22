@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { PlusCircle, Trash2, GitBranch, ShieldCheck, CheckCircle, GitMerge, GitFork, Library, WandSparkles, Loader2, UserSquare, Pencil, GripVertical, X, AlertTriangle, User, Bell, ChevronsRight, Hash, CaseSensitive, Timer, Siren } from "lucide-react";
+import { PlusCircle, Trash2, GitBranch, ShieldCheck, CheckCircle, GitMerge, GitFork, Library, WandSparkles, Loader2, UserSquare, Pencil, GripVertical, X, AlertTriangle, User, Bell, ChevronsRight, Hash, CaseSensitive, Timer, Siren, ArrowUp, ArrowDown } from "lucide-react";
 import Link from "next/link";
 import {
   Dialog,
@@ -150,7 +150,7 @@ function SortableField({ field, onRemove, onEdit }: { field: FormField, onRemove
     const fieldTypeLabels: Record<FormFieldType, string> = {
         text: 'Texto', textarea: 'Área de texto', date: 'Fecha', number: 'Número',
         select: 'Desplegable', checkbox: 'Casilla', radio: 'Opciones', file: 'Archivo',
-        table: 'Tabla', 'dynamic-select': 'Desplegable dinámico', 'user-identity': 'Identidad usuario', email: 'Email'
+        table: 'Tabla', 'dynamic-select': 'Desplegable dinámico', 'user-identity': 'Identidad usuario', email: 'Email', html: 'HTML'
     };
 
     return (
@@ -449,19 +449,24 @@ function PageSkeleton() {
     )
 }
 
-function SortableLaneItem({
+function LaneItem({
     poolId,
     lane,
+    laneIndex,
+    totalLanes,
     handleUpdate,
     handleAddStepToLane,
     handleDeleteLane,
     handleDeleteStep,
     onUpdateStep,
     allSteps,
-    formFields
+    formFields,
+    handleMoveLane
 }: {
     poolId: string;
     lane: Lane;
+    laneIndex: number;
+    totalLanes: number;
     handleUpdate: (type: 'pool' | 'lane', ids: { poolId: string, laneId?: string }, value: string) => void;
     handleAddStepToLane: (poolId: string, laneId: string, stepName: string, stepType: WorkflowStepType) => void;
     handleDeleteLane: (poolId: string, laneId: string) => void;
@@ -469,19 +474,19 @@ function SortableLaneItem({
     onUpdateStep: (poolId: string, laneId: string, stepId: string, updates: Partial<WorkflowStepDefinition>) => void;
     allSteps: WorkflowStepDefinition[];
     formFields: FormField[];
+    handleMoveLane: (poolId: string, laneIndex: number, direction: 'up' | 'down') => void;
 }) {
-    const { attributes: laneAttrs, listeners: laneListeners, setNodeRef: laneRef, transform: laneTransform, transition: laneTransition } = useSortable({
-        id: lane.id,
-        data: { type: 'lane' }
-    });
-    const laneStyle = { transform: CSS.Transform.toString(laneTransform), transition: laneTransition };
-
     return (
-        <div ref={laneRef} style={laneStyle} className="group/lane rounded-md border bg-background">
+        <div className="group/lane rounded-md border bg-background">
             <div className="flex items-center gap-2 p-2 border-b">
-                <button {...laneAttrs} {...laneListeners} className="cursor-grab p-1">
-                    <GripVertical className="h-4 w-4 text-muted-foreground" />
-                </button>
+                <div className="flex flex-col">
+                    <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => handleMoveLane(poolId, laneIndex, 'up')} disabled={laneIndex === 0}>
+                        <ArrowUp className="h-3 w-3" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => handleMoveLane(poolId, laneIndex, 'down')} disabled={laneIndex === totalLanes - 1}>
+                        <ArrowDown className="h-3 w-3" />
+                    </Button>
+                </div>
                 <Input
                     value={lane.name}
                     onChange={(e) => handleUpdate('lane', { poolId: poolId, laneId: lane.id }, e.target.value)}
@@ -541,8 +546,10 @@ function SortableLaneItem({
     );
 }
 
-function SortablePoolItem({
+function PoolItem({
     pool,
+    index,
+    totalPools,
     handleUpdate,
     handleAddLaneToPool,
     handleDeletePool,
@@ -551,9 +558,13 @@ function SortablePoolItem({
     handleDeleteStep,
     onUpdateStep,
     allSteps,
-    formFields
+    formFields,
+    handleMovePool,
+    handleMoveLane
 }: {
     pool: Pool;
+    index: number;
+    totalPools: number;
     handleUpdate: (type: 'pool' | 'lane', ids: { poolId: string, laneId?: string }, value: string) => void;
     handleAddLaneToPool: (poolId: string) => void;
     handleDeletePool: (poolId: string) => void;
@@ -563,19 +574,20 @@ function SortablePoolItem({
     onUpdateStep: (poolId: string, laneId: string, stepId: string, updates: Partial<WorkflowStepDefinition>) => void;
     allSteps: WorkflowStepDefinition[];
     formFields: FormField[];
+    handleMovePool: (index: number, direction: 'up' | 'down') => void;
+    handleMoveLane: (poolId: string, laneIndex: number, direction: 'up' | 'down') => void;
 }) {
-    const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
-        id: pool.id,
-        data: { type: 'pool' }
-    });
-    const style = { transform: CSS.Transform.toString(transform), transition };
-
     return (
-        <div ref={setNodeRef} style={style} className="group/pool rounded-lg border bg-card p-4 space-y-4">
+        <div className="group/pool rounded-lg border bg-card p-4 space-y-4">
             <div className="flex items-center gap-2">
-                <button {...attributes} {...listeners} className="cursor-grab p-1">
-                    <GripVertical className="h-5 w-5 text-muted-foreground" />
-                </button>
+                 <div className="flex flex-col">
+                    <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => handleMovePool(index, 'up')} disabled={index === 0}>
+                        <ArrowUp className="h-3 w-3" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => handleMovePool(index, 'down')} disabled={index === totalPools - 1}>
+                        <ArrowDown className="h-3 w-3" />
+                    </Button>
+                </div>
                 <Input
                     value={pool.name}
                     onChange={(e) => handleUpdate('pool', { poolId: pool.id }, e.target.value)}
@@ -596,16 +608,19 @@ function SortablePoolItem({
             </div>
             <div className="space-y-2 pl-6">
                 <SortableContext items={pool.lanes.map(l => l.id)} strategy={verticalListSortingStrategy} id={pool.id}>
-                    {pool.lanes.map((lane) => (
-                        <SortableLaneItem
+                    {pool.lanes.map((lane, laneIndex) => (
+                        <LaneItem
                             key={lane.id}
                             poolId={pool.id}
                             lane={lane}
+                            laneIndex={laneIndex}
+                            totalLanes={pool.lanes.length}
                             handleUpdate={handleUpdate}
                             handleAddStepToLane={handleAddStepToLane}
                             handleDeleteLane={handleDeleteLane}
                             handleDeleteStep={handleDeleteStep}
                             onUpdateStep={onUpdateStep}
+                            handleMoveLane={handleMoveLane}
                             allSteps={allSteps}
                             formFields={formFields}
                         />
@@ -682,38 +697,13 @@ export default function EditTemplatePage() {
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
-
     if (!over || active.id === over.id) return;
 
-    const activeType = active.data.current?.type;
-    const overType = over.data.current?.type;
     const activeContainer = active.data.current?.sortable.containerId;
-    const overContainer = over.data.current?.sortable.containerId;
-
-    if (activeType === 'pool' && overType === 'pool') {
-        setPools((items) => {
-            const oldIndex = items.findIndex(p => p.id === active.id);
-            const newIndex = items.findIndex(p => p.id === over.id);
-            if (oldIndex === -1 || newIndex === -1) return items;
-            return arrayMove(items, oldIndex, newIndex);
-        });
-        return;
-    }
-
-    if (activeType === 'lane' && overType === 'lane' && activeContainer === overContainer) {
-        setPools(prevPools => prevPools.map(pool => {
-            if (pool.id === activeContainer) {
-                const oldIndex = pool.lanes.findIndex(l => l.id === active.id);
-                const newIndex = pool.lanes.findIndex(l => l.id === over.id);
-                if (oldIndex === -1 || newIndex === -1) return pool;
-                return { ...pool, lanes: arrayMove(pool.lanes, oldIndex, newIndex) };
-            }
-            return pool;
-        }));
-        return;
-    }
     
-    if (activeType === 'step' && overType === 'step' && activeContainer === overContainer) {
+    if (active.data.current?.type === 'step' && over.data.current?.type === 'step') {
+        const overContainer = over.data.current?.sortable.containerId;
+        if (activeContainer !== overContainer) return;
         setPools(prevPools => prevPools.map(pool => ({
             ...pool,
             lanes: pool.lanes.map(lane => {
@@ -728,16 +718,38 @@ export default function EditTemplatePage() {
         })));
         return;
     }
-
-    if (activeType === 'field' && overType === 'field' && activeContainer === 'form-fields') {
+    
+    if (active.data.current?.type === 'field' && over.data.current?.type === 'field') {
         setFields((items) => {
             const oldIndex = items.findIndex(item => item.id === active.id);
             const newIndex = items.findIndex(item => item.id === over.id);
             if (oldIndex === -1 || newIndex === -1) return items;
             return arrayMove(items, oldIndex, newIndex);
         });
-        return;
     }
+  };
+
+  const handleMovePool = (index: number, direction: 'up' | 'down') => {
+    if ((direction === 'up' && index === 0) || (direction === 'down' && index === pools.length - 1)) return;
+    const newPools = [...pools];
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    [newPools[index], newPools[targetIndex]] = [newPools[targetIndex], newPools[index]];
+    setPools(newPools);
+  };
+
+  const handleMoveLane = (poolId: string, laneIndex: number, direction: 'up' | 'down') => {
+      setPools(prevPools => prevPools.map(pool => {
+          if (pool.id === poolId) {
+              if ((direction === 'up' && laneIndex === 0) || (direction === 'down' && laneIndex === pool.lanes.length - 1)) {
+                  return pool;
+              }
+              const newLanes = [...pool.lanes];
+              const targetIndex = direction === 'up' ? laneIndex - 1 : laneIndex + 1;
+              [newLanes[laneIndex], newLanes[targetIndex]] = [newLanes[targetIndex], newLanes[laneIndex]];
+              return { ...pool, lanes: newLanes };
+          }
+          return pool;
+      }));
   };
 
   const handleUpdate = (type: 'pool' | 'lane', ids: { poolId: string, laneId?: string }, value: string) => {
@@ -974,6 +986,8 @@ export default function EditTemplatePage() {
       return <PageSkeleton />;
   }
   
+  const allSteps = pools.flatMap(p => p.lanes.flatMap(l => l.steps));
+  
   return (
     <SiteLayout>
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
@@ -1050,7 +1064,7 @@ export default function EditTemplatePage() {
                         </CardContent>
                     </Card>
 
-                    {fields.length > 0 && (
+                    {fields.length > 1 && (
                         <Card>
                             <CardHeader>
                                 <CardTitle>Diseño del Formulario</CardTitle>
@@ -1131,7 +1145,7 @@ export default function EditTemplatePage() {
                                 </DialogTrigger>
                                 <RuleBuilderDialog 
                                     fields={fields} 
-                                    steps={pools.flatMap(p => p.lanes.flatMap(l => l.steps))} 
+                                    steps={allSteps} 
                                     users={users || []}
                                     onAddRule={handleAddRule} 
                                     onUpdateRule={handleUpdateRule}
@@ -1151,23 +1165,27 @@ export default function EditTemplatePage() {
                     </CardHeader>
                     <CardContent className="space-y-4">
                         <div className="space-y-4 rounded-md bg-muted/50 p-4 min-h-[300px]">
-                            <SortableContext items={pools.map(p => p.id)} strategy={verticalListSortingStrategy}>
-                                {pools.map((pool) => (
-                                    <SortablePoolItem
+                            <div className="space-y-4">
+                                {pools.map((pool, index) => (
+                                    <PoolItem
                                         key={pool.id}
                                         pool={pool}
+                                        index={index}
+                                        totalPools={pools.length}
                                         handleUpdate={handleUpdate}
                                         handleAddLaneToPool={handleAddLaneToPool}
                                         handleDeletePool={handleDeletePool}
                                         handleDeleteLane={handleDeleteLane}
                                         handleDeleteStep={handleDeleteStep}
                                         onUpdateStep={handleUpdateStep}
+                                        handleMovePool={handleMovePool}
+                                        handleMoveLane={handleMoveLane}
                                         handleAddStepToLane={handleAddStepToLane}
-                                        allSteps={pools.flatMap(p => p.lanes.flatMap(l => l.steps))}
+                                        allSteps={allSteps}
                                         formFields={fields}
                                     />
                                 ))}
-                            </SortableContext>
+                            </div>
                         </div>
                         <Button variant="outline" className="w-full mt-4" onClick={handleAddPool}>
                             <Library className="mr-2 h-4 w-4" /> Añadir Piscina
@@ -1909,4 +1927,8 @@ function RuleBuilderDialog({ fields, steps, users, onAddRule, onUpdateRule, rule
         </DialogContent>
     )
 }
+
+
+
+
 

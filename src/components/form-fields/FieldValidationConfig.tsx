@@ -1,7 +1,10 @@
+
 'use client';
 
 import { useState } from 'react';
+import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -279,8 +282,8 @@ export function FieldValidationConfig({
             value=""
             onValueChange={(value) => handleAddValidation(value as ValidationType)}
           >
-            <SelectTrigger className="w-full">
-              <div className="flex items-center gap-2 text-muted-foreground">
+            <SelectTrigger className={cn(buttonVariants({ variant: 'outline' }), "w-full justify-start font-normal")}>
+              <div className="flex items-center gap-2">
                 <Plus className="h-4 w-4" />
                 <span>Agregar validación</span>
               </div>

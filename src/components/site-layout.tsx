@@ -27,6 +27,7 @@ import {
   Activity,
   Palette,
   Database,
+  Briefcase,
 } from "lucide-react";
 import { Logo } from "@/components/icons";
 import { Button } from "./ui/button";
@@ -40,22 +41,23 @@ import { GlobalSearch } from "@/components/global-search";
 const memberNavItems = [
   { href: "/", icon: LayoutDashboard, label: "Panel" },
   { href: "/templates", icon: FolderKanban, label: "Plantillas" },
-  { href: "/requests/new", icon: FilePlus, label: "Nueva Solicitud"},
+  { href: "/requests/new", icon: FilePlus, label: "Nueva Solicitud" },
 ];
 
 const designerNavItems = [
-    { href: "/", icon: LayoutDashboard, label: "Panel" },
-    { href: "/templates", icon: FolderKanban, label: "Plantillas" },
-    { href: "/master-lists", icon: Database, label: "Listas Maestras"},
+  { href: "/", icon: LayoutDashboard, label: "Panel" },
+  { href: "/templates", icon: FolderKanban, label: "Plantillas" },
+  { href: "/master-lists", icon: Database, label: "Listas Maestras" },
 ];
 
 const adminNavItems = [
   { href: "/", icon: LayoutDashboard, label: "Panel" },
+  { href: "/hcm", icon: Briefcase, label: "Capital Humano" },
   { href: "/reports", icon: BarChart3, label: "Informes" },
   { href: "/process-mining", icon: Activity, label: "Minería de Procesos" },
   { href: "/templates", icon: FolderKanban, label: "Plantillas" },
-  { href: "/master-lists", icon: Database, label: "Listas Maestras"},
-  { href: "/requests/new", icon: FilePlus, label: "Nueva Solicitud"},
+  { href: "/master-lists", icon: Database, label: "Listas Maestras" },
+  { href: "/requests/new", icon: FilePlus, label: "Nueva Solicitud" },
   { href: "/integrations", icon: Plug, label: "Integraciones" },
   { href: "/admin/users", icon: Users, label: "Usuarios (Admin)" },
 ];
@@ -76,11 +78,11 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
 
   const handleSignOut = async () => {
     if (auth) {
-        await signOut(auth);
-        router.replace('/login');
+      await signOut(auth);
+      router.replace('/login');
     }
   };
-  
+
   if (isUserLoading || !user) {
     return (
       <div className="flex h-screen w-full items-center justify-center">
@@ -92,15 +94,15 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
   const displayName = user?.fullName || user?.email || 'Usuario';
   const displayEmail = user?.email || '';
   const userRole = user?.role || 'Member';
-  
+
   const getNavItems = () => {
-      switch(userRole) {
-          case 'Admin': return adminNavItems;
-          case 'Designer': return designerNavItems;
-          default: return memberNavItems;
-      }
+    switch (userRole) {
+      case 'Admin': return adminNavItems;
+      case 'Designer': return designerNavItems;
+      default: return memberNavItems;
+    }
   }
-  
+
   const navItems = getNavItems();
 
 
@@ -110,7 +112,7 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
         <SidebarHeader className="p-4">
           <div className="flex items-center gap-2">
             <Button variant="ghost" size="icon" className="shrink-0" asChild>
-                <Link href="/"><Logo className="size-5" /></Link>
+              <Link href="/"><Logo className="size-5" /></Link>
             </Button>
             <h2 className="text-lg font-semibold tracking-tight">FlowMaster</h2>
           </div>
@@ -152,14 +154,14 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
       </Sidebar>
       <SidebarInset>
         <div className="flex items-center justify-between p-2 border-b md:border-b-0">
-            <div className="md:hidden">
-                <SidebarTrigger />
-            </div>
-            <div className="flex items-center gap-1 ml-auto">
-                <GlobalSearch />
-                <ThemeToggle />
-                <NotificationCenter />
-            </div>
+          <div className="md:hidden">
+            <SidebarTrigger />
+          </div>
+          <div className="flex items-center gap-1 ml-auto">
+            <GlobalSearch />
+            <ThemeToggle />
+            <NotificationCenter />
+          </div>
         </div>
         {children}
       </SidebarInset>
