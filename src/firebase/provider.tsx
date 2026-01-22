@@ -95,12 +95,12 @@ export const FirebaseProvider: React.FC<FirebaseProviderProps> = ({
                     });
                 } else {
                     // Profile doesn't exist yet (e.g., during sign-up)
-                    setUserAuthState({ user: firebaseUser, isUserLoading: false, userError: null });
+                    setUserAuthState({ user: firebaseUser as unknown as User & Partial<AppUser>, isUserLoading: false, userError: null });
                 }
             }, (error) => {
                 console.error("FirebaseProvider: Profile snapshot error:", error);
                 // Still provide the basic user object even if profile fails
-                setUserAuthState({ user: firebaseUser, isUserLoading: false, userError: error });
+                setUserAuthState({ user: firebaseUser as unknown as User & Partial<AppUser>, isUserLoading: false, userError: error });
             });
             // Return a function to cleanup both listeners
             return () => {

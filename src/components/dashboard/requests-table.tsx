@@ -21,10 +21,25 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Search, ArrowUpDown, ChevronDown } from "lucide-react";
 import { Button } from "../ui/button";
 import { TableSkeleton } from "../ui/table-skeleton";
+import { useDoc, useFirestore, useMemoFirebase } from "@/firebase";
+import { doc } from "firebase/firestore";
+import { Skeleton } from "../ui/skeleton";
 
 const PAGE_SIZE = 10;
 
-function SubmittedBy({ user }: { user: User | undefined }) {
+function SubmittedBy({ userId }: { userId: string }) {
+    const firestore = useFirestore();
+    const userRef = useMemoFirebase(() => {
+        if (!firestore || !userId) return null;
+        return doc(firestore, 'users', userId);
+    }, [firestore, userId]);
+    
+    const { data: user, isLoading } = useDoc<User>(userRef);
+
+    if (isLoading) {
+        return <div className="flex items-center gap-2"><Skeleton className="h-8 w-8 rounded-full" /><Skeleton className="h-4 w-24" /></div>;
+    }
+    
     if (!user) {
         return <span className="text-muted-foreground">Usuario desconocido</span>;
     }
@@ -45,11 +60,10 @@ type SortOrder = "asc" | "desc";
 
 interface RequestsTableProps {
   requests: Request[];
-  users?: User[];
   isLoading?: boolean;
 }
 
-export function RequestsTable({ requests, users = [], isLoading = false }: RequestsTableProps) {
+export function RequestsTable({ requests, isLoading = false }: RequestsTableProps) {
   // Show skeleton while loading
   if (isLoading) {
     return <TableSkeleton columns={4} rows={5} />;
@@ -60,13 +74,6 @@ export function RequestsTable({ requests, users = [], isLoading = false }: Reque
   const [sortField, setSortField] = useState<SortField>("updatedAt");
   const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
   const [displayCount, setDisplayCount] = useState(PAGE_SIZE);
-
-  // Create a map of users for O(1) lookup
-  const usersMap = useMemo(() => {
-    const map = new Map<string, User>();
-    users.forEach(user => map.set(user.id, user));
-    return map;
-  }, [users]);
 
   const filteredAndSortedRequests = useMemo(() => {
     let result = [...requests];
@@ -251,7 +258,7 @@ export function RequestsTable({ requests, users = [], isLoading = false }: Reque
                     </div>
                   </TableCell>
                   <TableCell className="hidden sm:table-cell">
-                    <SubmittedBy user={usersMap.get(request.submittedBy)} />
+                    <SubmittedBy userId={request.submittedBy} />
                   </TableCell>
                   <TableCell className="hidden md:table-cell">
                     <Badge

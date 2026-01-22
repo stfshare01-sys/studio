@@ -12,16 +12,26 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { addDocumentNonBlocking, setDocumentNonBlocking, useCollection, useFirestore, useMemoFirebase, useUser, useStorage, updateDocumentNonBlocking } from "@/firebase";
 import { useToast } from "@/hooks/use-toast";
-import { Template, User } from "@/lib/types";
+import { Template, User, FormField, FieldLayoutConfig } from "@/lib/types";
 import { collection, doc } from "firebase/firestore";
 import { ref as storageRef, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import { Loader2, XCircle } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import React from "react";
+import React, { useCallback, useMemo, Suspense } from "react";
 import { Progress } from "@/components/ui/progress";
 import { intelligentTaskAssignment } from "@/ai/flows/intelligent-task-assignment";
 import { evaluateAndAddInitialSteps } from "@/lib/workflow-engine";
+import {
+    UserIdentityField,
+    DynamicSelect,
+    FormTableField,
+    HtmlField,
+    evaluateFieldVisibility,
+    validateFieldValue,
+    isValidNumber,
+    isValidEmail,
+} from "@/components/form-fields";
 
 const ALLOWED_FILE_TYPES = [
     'image/jpeg',
@@ -103,7 +113,7 @@ async function assignInitialTask(
 }
 
 
-export default function NewRequestPage() {
+function NewRequestPageContent() {
     const searchParams = useSearchParams();
     const router = useRouter();
     const { toast } = useToast();
@@ -117,6 +127,7 @@ export default function NewRequestPage() {
     const [formData, setFormData] = React.useState<Record<string, any>>({});
     const [fileErrors, setFileErrors] = React.useState<Record<string, string>>({});
     const [uploadProgress, setUploadProgress] = React.useState<Record<string, number>>({});
+    const [validationErrors, setValidationErrors] = React.useState<Record<string, string | null>>({});
 
     const firestore = useFirestore();
     const templatesRef = useMemoFirebase(() => collection(firestore, 'request_templates'), [firestore]);
@@ -149,9 +160,39 @@ export default function NewRequestPage() {
         handleInputChange(fieldId, file);
     }
 
-    const handleInputChange = (fieldId: string, value: any) => {
+    const handleInputChange = useCallback((fieldId: string, value: any) => {
         setFormData(prev => ({...prev, [fieldId]: value}));
-    }
+        // Clear validation error when user changes value
+        setValidationErrors(prev => ({...prev, [fieldId]: null}));
+    }, []);
+
+    // Validate a single field
+    const validateField = useCallback((field: FormField, value: any): string | null => {
+        const error = validateFieldValue(field, value);
+        setValidationErrors(prev => ({...prev, [field.id]: error}));
+        return error;
+    }, []);
+
+    // Validate all fields before submission
+    const validateAllFields = useCallback((): boolean => {
+        if (!selectedTemplate) return false;
+
+        let isValid = true;
+        const newErrors: Record<string, string | null> = {};
+
+        for (const field of selectedTemplate.fields) {
+            // Skip hidden fields
+            if (!evaluateFieldVisibility(field, formData, selectedTemplate.visibilityRules)) {
+                continue;
+            }
+            const error = validateFieldValue(field, formData[field.id]);
+            newErrors[field.id] = error;
+            if (error) isValid = false;
+        }
+
+        setValidationErrors(newErrors);
+        return isValid;
+    }, [selectedTemplate, formData]);
 
     const handleSubmit = async () => {
         if (!selectedTemplate || !user || !firestore || !storage || !users) {
@@ -167,6 +208,15 @@ export default function NewRequestPage() {
                 variant: 'destructive',
                 title: 'Errores en archivos',
                 description: 'Por favor, corrija los errores en los archivos adjuntos antes de enviar.',
+            });
+            return;
+        }
+        // Validate all fields
+        if (!validateAllFields()) {
+            toast({
+                variant: 'destructive',
+                title: 'Errores de validación',
+                description: 'Por favor, corrija los errores en el formulario antes de enviar.',
             });
             return;
         }
@@ -287,55 +337,193 @@ export default function NewRequestPage() {
         }
     };
 
-    const renderField = (field: Template['fields'][0]) => {
+    const renderField = (field: FormField) => {
         const value = formData[field.id];
         const progress = uploadProgress[field.id];
-        const error = fileErrors[field.id];
+        const fileError = fileErrors[field.id];
+        const validationError = validationErrors[field.id];
 
         switch (field.type) {
             case 'textarea':
-                return <Textarea id={field.id} value={value || ''} onChange={(e) => handleInputChange(field.id, e.target.value)} placeholder={`Introduzca ${field.label.toLowerCase()}`} disabled={isSubmitting}/>;
+                return (
+                    <div className="space-y-2">
+                        <Textarea
+                            id={field.id}
+                            value={value || ''}
+                            onChange={(e) => handleInputChange(field.id, e.target.value)}
+                            onBlur={() => validateField(field, value)}
+                            placeholder={field.placeholder || `Introduzca ${field.label.toLowerCase()}`}
+                            disabled={isSubmitting}
+                            className={validationError ? 'border-destructive' : ''}
+                        />
+                        {validationError && <p className="text-sm text-destructive">{validationError}</p>}
+                        {field.helpText && <p className="text-xs text-muted-foreground">{field.helpText}</p>}
+                    </div>
+                );
             case 'select':
                 return (
-                    <Select value={value} onValueChange={(val) => handleInputChange(field.id, val)} disabled={isSubmitting}>
-                        <SelectTrigger id={field.id}><SelectValue placeholder={`Seleccione ${field.label.toLowerCase()}`} /></SelectTrigger>
-                        <SelectContent>
-                            {field.options?.map(option => <SelectItem key={option} value={option}>{option}</SelectItem>)}
-                        </SelectContent>
-                    </Select>
+                    <div className="space-y-2">
+                        <Select value={value} onValueChange={(val) => handleInputChange(field.id, val)} disabled={isSubmitting}>
+                            <SelectTrigger id={field.id} className={validationError ? 'border-destructive' : ''}>
+                                <SelectValue placeholder={field.placeholder || `Seleccione ${field.label.toLowerCase()}`} />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {field.options?.map(option => <SelectItem key={option} value={option}>{option}</SelectItem>)}
+                            </SelectContent>
+                        </Select>
+                        {validationError && <p className="text-sm text-destructive">{validationError}</p>}
+                        {field.helpText && <p className="text-xs text-muted-foreground">{field.helpText}</p>}
+                    </div>
+                );
+            case 'dynamic-select':
+                return (
+                    <DynamicSelect
+                        field={field}
+                        value={value}
+                        onChange={(val) => handleInputChange(field.id, val)}
+                        formData={formData}
+                        disabled={isSubmitting}
+                        error={validationError}
+                    />
                 );
             case 'radio':
                 return (
-                    <RadioGroup id={field.id} value={value} onValueChange={(val) => handleInputChange(field.id, val)} className="flex items-center gap-4" disabled={isSubmitting}>
-                        {field.options?.map(option => (
-                            <div key={option} className="flex items-center space-x-2">
-                                <RadioGroupItem value={option} id={`${field.id}-${option}`} />
-                                <Label htmlFor={`${field.id}-${option}`}>{option}</Label>
-                            </div>
-                        ))}
-                    </RadioGroup>
+                    <div className="space-y-2">
+                        <RadioGroup id={field.id} value={value} onValueChange={(val) => handleInputChange(field.id, val)} className="flex flex-wrap items-center gap-4" disabled={isSubmitting}>
+                            {field.options?.map(option => (
+                                <div key={option} className="flex items-center space-x-2">
+                                    <RadioGroupItem value={option} id={`${field.id}-${option}`} />
+                                    <Label htmlFor={`${field.id}-${option}`}>{option}</Label>
+                                </div>
+                            ))}
+                        </RadioGroup>
+                        {validationError && <p className="text-sm text-destructive">{validationError}</p>}
+                        {field.helpText && <p className="text-xs text-muted-foreground">{field.helpText}</p>}
+                    </div>
                 );
             case 'checkbox':
                 return (
-                    <div className="flex items-center space-x-2">
-                        <Checkbox id={field.id} checked={!!value} onCheckedChange={(checked) => handleInputChange(field.id, checked)} disabled={isSubmitting} />
-                        <Label htmlFor={field.id} className="font-normal">{field.label}</Label>
+                    <div className="space-y-2">
+                        <div className="flex items-center space-x-2">
+                            <Checkbox id={field.id} checked={!!value} onCheckedChange={(checked) => handleInputChange(field.id, checked)} disabled={isSubmitting} />
+                            <Label htmlFor={field.id} className="font-normal">{field.label}</Label>
+                        </div>
+                        {validationError && <p className="text-sm text-destructive">{validationError}</p>}
+                        {field.helpText && <p className="text-xs text-muted-foreground">{field.helpText}</p>}
                     </div>
                 );
             case 'file':
                 return (
                     <div className="space-y-2">
                         <Input id={field.id} type="file" onChange={(e) => handleFileChange(field.id, e.target.files?.[0])} disabled={isSubmitting} />
-                        {error && <p className="text-sm text-destructive flex items-center gap-1"><XCircle className="h-4 w-4"/> {error}</p>}
+                        {fileError && <p className="text-sm text-destructive flex items-center gap-1"><XCircle className="h-4 w-4"/> {fileError}</p>}
+                        {validationError && <p className="text-sm text-destructive">{validationError}</p>}
                         {progress > 0 && progress < 100 && <Progress value={progress} className="w-full" />}
-                         {progress === 100 && <p className="text-sm text-green-600">Carga completa.</p>}
+                        {progress === 100 && <p className="text-sm text-green-600">Carga completa.</p>}
+                        {field.helpText && <p className="text-xs text-muted-foreground">{field.helpText}</p>}
+                    </div>
+                );
+            case 'table':
+                return (
+                    <FormTableField
+                        field={field}
+                        value={value || []}
+                        onChange={(rows) => handleInputChange(field.id, rows)}
+                        formData={formData}
+                        disabled={isSubmitting}
+                        error={validationError}
+                    />
+                );
+            case 'user-identity':
+                return (
+                    <UserIdentityField
+                        field={field}
+                        value={value}
+                        onChange={(val) => handleInputChange(field.id, val)}
+                    />
+                );
+            case 'html':
+                return (
+                    <HtmlField
+                        htmlContent={field.htmlContent || ''}
+                        label={field.label}
+                        showLabel={false}
+                    />
+                );
+            case 'email':
+                return (
+                    <div className="space-y-2">
+                        <Input
+                            id={field.id}
+                            type="email"
+                            value={value || ''}
+                            onChange={(e) => handleInputChange(field.id, e.target.value)}
+                            onBlur={() => validateField(field, value)}
+                            placeholder={field.placeholder || `Introduzca ${field.label.toLowerCase()}`}
+                            disabled={isSubmitting}
+                            className={validationError ? 'border-destructive' : ''}
+                        />
+                        {validationError && <p className="text-sm text-destructive">{validationError}</p>}
+                        {field.helpText && <p className="text-xs text-muted-foreground">{field.helpText}</p>}
+                    </div>
+                );
+            case 'number':
+                return (
+                    <div className="space-y-2">
+                        <Input
+                            id={field.id}
+                            type="number"
+                            value={value ?? ''}
+                            onChange={(e) => {
+                                const val = e.target.value;
+                                // Only update if it's a valid number or empty
+                                if (val === '' || isValidNumber(val)) {
+                                    handleInputChange(field.id, val === '' ? '' : parseFloat(val));
+                                }
+                            }}
+                            onBlur={() => validateField(field, value)}
+                            placeholder={field.placeholder || `Introduzca ${field.label.toLowerCase()}`}
+                            disabled={isSubmitting}
+                            className={validationError ? 'border-destructive' : ''}
+                        />
+                        {validationError && <p className="text-sm text-destructive">{validationError}</p>}
+                        {field.helpText && <p className="text-xs text-muted-foreground">{field.helpText}</p>}
                     </div>
                 );
             case 'date':
-            case 'number':
+                return (
+                    <div className="space-y-2">
+                        <Input
+                            id={field.id}
+                            type="date"
+                            value={value || ''}
+                            onChange={(e) => handleInputChange(field.id, e.target.value)}
+                            onBlur={() => validateField(field, value)}
+                            disabled={isSubmitting}
+                            className={validationError ? 'border-destructive' : ''}
+                        />
+                        {validationError && <p className="text-sm text-destructive">{validationError}</p>}
+                        {field.helpText && <p className="text-xs text-muted-foreground">{field.helpText}</p>}
+                    </div>
+                );
             case 'text':
             default:
-                return <Input id={field.id} type={field.type} value={value || ''} onChange={(e) => handleInputChange(field.id, e.target.value)} placeholder={`Introduzca ${field.label.toLowerCase()}`} disabled={isSubmitting}/>;
+                return (
+                    <div className="space-y-2">
+                        <Input
+                            id={field.id}
+                            type="text"
+                            value={value || ''}
+                            onChange={(e) => handleInputChange(field.id, e.target.value)}
+                            onBlur={() => validateField(field, value)}
+                            placeholder={field.placeholder || `Introduzca ${field.label.toLowerCase()}`}
+                            disabled={isSubmitting}
+                            className={validationError ? 'border-destructive' : ''}
+                        />
+                        {validationError && <p className="text-sm text-destructive">{validationError}</p>}
+                        {field.helpText && <p className="text-xs text-muted-foreground">{field.helpText}</p>}
+                    </div>
+                );
         }
     }
 
@@ -382,20 +570,127 @@ export default function NewRequestPage() {
                                 </Select>
                             </div>
 
-                            {selectedTemplate && (
-                                <div className="space-y-4 border-t pt-6">
-                                    {selectedTemplate.fields.map(field => (
+                            {selectedTemplate && (() => {
+                                const fieldLayout = selectedTemplate.fieldLayout || [];
+                                const hasLayout = fieldLayout.length > 0;
+
+                                // Helper to render a single field
+                                const renderFieldWithLabel = (field: FormField) => {
+                                    const isVisible = evaluateFieldVisibility(
+                                        field,
+                                        formData,
+                                        selectedTemplate.visibilityRules
+                                    );
+                                    if (!isVisible) return null;
+
+                                    return (
                                         <div key={field.id} className="space-y-2">
-                                            {field.type !== 'checkbox' && <Label htmlFor={field.id}>{field.label}</Label>}
+                                            {field.type !== 'checkbox' && field.type !== 'user-identity' && (
+                                                <Label htmlFor={field.id}>
+                                                    {field.label}
+                                                    {field.validations?.some(v => v.type === 'required') && (
+                                                        <span className="text-destructive ml-1">*</span>
+                                                    )}
+                                                </Label>
+                                            )}
                                             {renderField(field)}
                                         </div>
-                                    ))}
-                                </div>
-                            )}
+                                    );
+                                };
+
+                                // If no layout defined, render fields linearly
+                                if (!hasLayout) {
+                                    return (
+                                        <div className="space-y-4 border-t pt-6">
+                                            {selectedTemplate.fields.map(renderFieldWithLabel)}
+                                        </div>
+                                    );
+                                }
+
+                                // Render with grid layout
+                                // Group fields by row
+                                const rowsMap = new Map<number, { field: FormField; config: FieldLayoutConfig }[]>();
+                                const fieldsWithLayout = new Set<string>();
+
+                                fieldLayout.forEach(config => {
+                                    const field = selectedTemplate.fields.find(f => f.id === config.fieldId);
+                                    if (field) {
+                                        fieldsWithLayout.add(field.id);
+                                        const rowItems = rowsMap.get(config.row) || [];
+                                        rowItems.push({ field, config });
+                                        rowsMap.set(config.row, rowItems);
+                                    }
+                                });
+
+                                // Fields not in layout go at the end
+                                const fieldsNotInLayout = selectedTemplate.fields.filter(
+                                    f => !fieldsWithLayout.has(f.id)
+                                );
+
+                                // Sort rows and items within rows
+                                const sortedRows = Array.from(rowsMap.entries())
+                                    .sort(([a], [b]) => a - b)
+                                    .map(([_, items]) => items.sort((a, b) => a.config.column - b.config.column));
+
+                                return (
+                                    <div className="space-y-4 border-t pt-6">
+                                        {sortedRows.map((rowItems, rowIdx) => (
+                                            <div key={rowIdx} className="grid grid-cols-5 gap-4">
+                                                {rowItems.map(({ field, config }) => {
+                                                    const colspan = config.colspan || 5;
+                                                    const isVisible = evaluateFieldVisibility(
+                                                        field,
+                                                        formData,
+                                                        selectedTemplate.visibilityRules
+                                                    );
+                                                    if (!isVisible) return null;
+
+                                                    return (
+                                                        <div
+                                                            key={field.id}
+                                                            className="space-y-2"
+                                                            style={{
+                                                                gridColumn: `${config.column} / span ${colspan}`
+                                                            }}
+                                                        >
+                                                            {field.type !== 'checkbox' && field.type !== 'user-identity' && (
+                                                                <Label htmlFor={field.id}>
+                                                                    {field.label}
+                                                                    {field.validations?.some(v => v.type === 'required') && (
+                                                                        <span className="text-destructive ml-1">*</span>
+                                                                    )}
+                                                                </Label>
+                                                            )}
+                                                            {renderField(field)}
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        ))}
+                                        {/* Fields not in layout */}
+                                        {fieldsNotInLayout.map(renderFieldWithLabel)}
+                                    </div>
+                                );
+                            })()}
                         </CardContent>
                     </Card>
                 </main>
             </div>
         </SiteLayout>
+    );
+}
+
+// Wrapper component with Suspense boundary
+export default function NewRequestPage() {
+    return (
+        <Suspense fallback={
+            <SiteLayout>
+                <div className="flex items-center justify-center min-h-screen">
+                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                </div>
+            </SiteLayout>
+        }>
+            <NewRequestPageContent />
+        </Suspense>
     );
 }

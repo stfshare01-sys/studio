@@ -157,7 +157,7 @@ export function WorkflowStepper({ steps, request, allUsers, onDataChange }: { st
         createdAt: request.createdAt, // This is an approximation
     } : null;
 
-    const assignee = users.find(u => u.id === step.assigneeId);
+    const assignee = users.find(u => u.id === step.assignee?.id);
     const isManager = currentUser?.id === assignee?.managerId;
     const isAdmin = currentUser?.role === 'Admin';
     const canReassign = (isAdmin || isManager) && step.status === 'Active';

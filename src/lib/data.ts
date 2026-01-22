@@ -1,17 +1,17 @@
-import type { User, EnrichedRequest as Request } from './types';
+import type { User } from './types';
 import { PlaceHolderImages } from './placeholder-images';
 
 const findImage = (id: string) => PlaceHolderImages.find(img => img.id === id)?.imageUrl || '';
 
 export const users: User[] = [
-  { id: 'user-1', fullName: 'Ava Johnson', avatarUrl: findImage('user-1'), email: 'ava.johnson@example.com', skills: ['React', 'Node.js', 'Análisis Financiero'], currentWorkload: 3, role: 'Member' },
-  { id: 'user-2', fullName: 'Liam Smith', avatarUrl: findImage('user-2'), email: 'liam.smith@example.com', skills: ['Python', 'Ciencia de Datos', 'Gestión de Proyectos'], currentWorkload: 2, role: 'Member' },
-  { id: 'user-3', fullName: 'Noah Brown', avatarUrl: findImage('user-3'), email: 'noah.brown@example.com', skills: ['Java', 'Spring Boot', 'Arquitectura de Sistemas'], currentWorkload: 5, role: 'Admin' },
-  { id: 'user-4', fullName: 'Olivia Davis', avatarUrl: findImage('user-4'), email: 'olivia.davis@example.com', skills: ['Go', 'Kubernetes', 'DevOps'], currentWorkload: 1, role: 'Member' },
-  { id: 'user-5', fullName: 'Emma Wilson', avatarUrl: findImage('user-5'), email: 'emma.wilson@example.com', skills: ['Recursos Humanos', 'Reclutamiento', 'Relaciones con Empleados'], currentWorkload: 4, role: 'Member' },
+  { id: 'user-1', fullName: 'Ava Johnson', avatarUrl: findImage('user-1'), email: 'ava.johnson@example.com', skills: ['React', 'Node.js', 'Análisis Financiero'], currentWorkload: 3, role: 'Member', department: 'Tecnología', status: 'active' },
+  { id: 'user-2', fullName: 'Liam Smith', avatarUrl: findImage('user-2'), email: 'liam.smith@example.com', skills: ['Python', 'Ciencia de Datos', 'Gestión de Proyectos'], currentWorkload: 2, role: 'Member', department: 'Datos', status: 'active' },
+  { id: 'user-3', fullName: 'Noah Brown', avatarUrl: findImage('user-3'), email: 'noah.brown@example.com', skills: ['Java', 'Spring Boot', 'Arquitectura de Sistemas'], currentWorkload: 5, role: 'Admin', department: 'Tecnología', status: 'active' },
+  { id: 'user-4', fullName: 'Olivia Davis', avatarUrl: findImage('user-4'), email: 'olivia.davis@example.com', skills: ['Go', 'Kubernetes', 'DevOps'], currentWorkload: 1, role: 'Member', department: 'Infraestructura', status: 'active' },
+  { id: 'user-5', fullName: 'Emma Wilson', avatarUrl: findImage('user-5'), email: 'emma.wilson@example.com', skills: ['Recursos Humanos', 'Reclutamiento', 'Relaciones con Empleados'], currentWorkload: 4, role: 'Member', department: 'Recursos Humanos', status: 'active' },
 ];
 
-export const requests: Request[] = [
+export const requests = [
   {
     id: 'req-001',
     title: 'Solicitud de Vacaciones - T3',
@@ -30,7 +30,7 @@ export const requests: Request[] = [
       'Fecha de Fin': '2024-08-10',
       'Motivo del Permiso': 'Vacaciones familiares al Gran Cañón.',
     },
-    documents: [{ name: 'Itinerario-Viaje.pdf', url: '#' }],
+    documents: [{ id: 'doc-1', requestId: 'req-001', filename: 'Itinerario-Viaje.pdf', contentType: 'application/pdf', size: 102400, uploadDate: '2024-07-15T09:00:00Z', url: '#', storagePath: 'documents/req-001/Itinerario-Viaje.pdf' }],
   },
   {
     id: 'req-002',

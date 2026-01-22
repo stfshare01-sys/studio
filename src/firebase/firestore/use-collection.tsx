@@ -13,6 +13,46 @@ import {
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
 
+/**
+ * Extracts the path from a Firestore reference or query.
+ * Uses multiple strategies to handle different Firebase SDK versions.
+ */
+function extractPath(refOrQuery: CollectionReference<DocumentData> | Query<DocumentData>): string {
+  try {
+    // Strategy 1: Direct path property (CollectionReference)
+    if ('path' in refOrQuery && typeof (refOrQuery as CollectionReference).path === 'string') {
+      return (refOrQuery as CollectionReference).path;
+    }
+
+    // Strategy 2: Access through _query (Query objects in some SDK versions)
+    const queryObj = refOrQuery as any;
+    if (queryObj._query?.path?.segments) {
+      return queryObj._query.path.segments.join('/');
+    }
+
+    // Strategy 3: Try canonicalString method
+    if (queryObj._query?.path?.canonicalString) {
+      return queryObj._query.path.canonicalString();
+    }
+
+    // Strategy 4: Try to get from query converter
+    if (queryObj.query?.path) {
+      return queryObj.query.path;
+    }
+
+    // Strategy 5: Convert to string and extract path
+    const str = refOrQuery.toString();
+    const pathMatch = str.match(/path=([^,)]+)/);
+    if (pathMatch) {
+      return pathMatch[1];
+    }
+  } catch (e) {
+    console.warn("Could not extract path from Firestore reference:", e);
+  }
+
+  return 'ruta_desconocida';
+}
+
 /** Utility type to add an 'id' field to a given type T. */
 export type WithId<T> = T & { id: string };
 
@@ -74,24 +114,12 @@ export function useCollection<T = any>(
         setIsLoading(false);
       },
       (error: FirestoreError) => {
-        let path: string | undefined;
-        try {
-            // This logic extracts the path from either a ref or a query
-            if ('path' in memoizedTargetRefOrQuery) {
-                path = (memoizedTargetRefOrQuery as CollectionReference).path;
-            } else if ('_query' in memoizedTargetRefOrQuery && (memoizedTargetRefOrQuery as any)._query?.path?.toString) {
-                path = (memoizedTargetRefOrQuery as any)._query.path.toString();
-            } else if (memoizedTargetRefOrQuery.converter) {
-                // Fallback for some query types, might not be perfect
-                path = (memoizedTargetRefOrQuery as any)._query.path.canonicalString();
-            }
-        } catch(e) {
-            console.error("Could not determine path for Firestore error", e);
-        }
-       
+        // Extract path using robust extraction function
+        const path = extractPath(memoizedTargetRefOrQuery);
+
         const contextualError = new FirestorePermissionError({
           operation: 'list',
-          path: path || 'desconocida',
+          path: path,
         })
 
         setError(contextualError)

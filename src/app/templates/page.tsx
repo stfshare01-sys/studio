@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import SiteLayout from "@/components/site-layout";
@@ -8,11 +7,12 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { FilePlus, FolderKanban, WandSparkles, Pencil } from "lucide-react";
 import Link from "next/link";
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase";
-import { collection } from "firebase/firestore";
+import { collection, doc, setDoc } from "firebase/firestore";
 import type { Template } from "@/lib/types";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SimulateChangeDialog } from "@/components/templates/simulate-change-dialog";
-import React from "react";
+import React, { useEffect } from "react";
+import { preInstalledTemplates } from "@/lib/pre-installed-templates";
 
 function TemplateSkeleton() {
   return (
@@ -49,6 +49,40 @@ export default function TemplatesPage() {
 
   const [simulationTemplate, setSimulationTemplate] = React.useState<Template | null>(null);
 
+  // Seeding logic for pre-installed templates
+  useEffect(() => {
+    if (isLoading || !firestore || !templates || !templatesRef || !canCreate) return;
+
+    const seedData = async () => {
+        const existingTemplateNames = new Set(templates.map(t => t.name));
+        const templatesToCreate = preInstalledTemplates.filter(
+            p => !existingTemplateNames.has(p.name)
+        );
+
+        if (templatesToCreate.length > 0) {
+            console.log(`Seeding ${templatesToCreate.length} new templates...`);
+            try {
+                for (const templateData of templatesToCreate) {
+                    const newTemplateRef = doc(templatesRef);
+                    const newTemplate = {
+                        ...templateData,
+                        id: newTemplateRef.id,
+                    };
+                    await setDoc(newTemplateRef, newTemplate);
+                }
+                console.log("Seeding complete.");
+            } catch (error) {
+                console.error("Error seeding pre-installed templates:", error);
+            }
+        }
+    };
+
+    // Only run seeding if templates are loaded and the user has permission.
+    if (!isLoading && canCreate) {
+      seedData();
+    }
+  }, [templates, isLoading, firestore, templatesRef, canCreate]);
+
   return (
     <SiteLayout>
         <div className="flex flex-1 flex-col">
@@ -84,7 +118,7 @@ export default function TemplatesPage() {
                 </CardHeader>
                 <CardContent className="flex-grow">
                     <div className="text-sm font-medium">
-                    {template.steps.length} campos, {template.steps.length} pasos
+                    {template.fields.length} campos, {template.steps.length} pasos
                     </div>
                 </CardContent>
                 <CardFooter className="grid grid-cols-2 gap-2">
@@ -112,7 +146,7 @@ export default function TemplatesPage() {
             ))}
             </div>
             {!isLoading && templates?.length === 0 && (
-                <div className="flex flex-1 items-center justify-center rounded-lg border border-dashed shadow-sm">
+                <div className="flex flex-1 items-center justify-center rounded-lg border border-dashed shadow-sm p-8">
                     <div className="flex flex-col items-center gap-1 text-center">
                         <h3 className="text-2xl font-bold tracking-tight">No tienes plantillas</h3>
                         <p className="text-sm text-muted-foreground">Crea una nueva plantilla para empezar.</p>
