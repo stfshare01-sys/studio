@@ -76,34 +76,35 @@ export async function evaluateAndExecuteRules({
             const auditLogCollection = collection(requestRef, 'audit_logs');
             const now = new Date().toISOString();
 
-            switch (rule.action.type) {
+            const action = rule.action;
+            switch (action.type) {
                 case 'REQUIRE_ADDITIONAL_STEP':
-                    const stepToAdd = template.steps.find(s => s.id === rule.action.stepId);
+                    const stepToAdd = template.steps.find(s => s.id === action.stepId);
                     if (stepToAdd) {
                         stepsToAdd.push(stepToAdd);
                     }
                     break;
                 case 'CHANGE_REQUEST_PRIORITY':
-                    updateDocumentNonBlocking(requestRef, { priority: rule.action.priority });
+                    updateDocumentNonBlocking(requestRef, { priority: action.priority });
                      addDocumentNonBlocking(auditLogCollection, {
                         requestId: request.id, userId: 'system', userFullName: 'FlowMaster AI', timestamp: now, action: 'REQUEST_SUBMITTED' as any, // This should be a valid action
-                        details: { message: `La prioridad de la solicitud cambió a "${rule.action.priority}" por una regla de negocio.` }
+                        details: { message: `La prioridad de la solicitud cambió a "${action.priority}" por una regla de negocio.` }
                     });
                     break;
                 case 'SEND_NOTIFICATION':
                     let targetUsers: User[] = [];
-                    if (rule.action.target === 'submitter') {
+                    if (action.target === 'submitter') {
                         const submitter = allUsers.find(u => u.id === request.submittedBy);
                         if (submitter) targetUsers.push(submitter);
                     } else {
-                        targetUsers = allUsers.filter(u => u.role === rule.action.target);
+                        targetUsers = allUsers.filter(u => u.role === action.target);
                     }
 
                     for (const targetUser of targetUsers) {
                         const notificationRef = collection(firestore, 'users', targetUser.id, 'notifications');
                         addDocumentNonBlocking(notificationRef, {
                             title: 'Notificación de Proceso',
-                            message: rule.action.message.replace('{{request.title}}', request.title),
+                            message: action.message.replace('{{request.title}}', request.title),
                             type: 'info', read: false, createdAt: now, link: `/requests/${request.id}`,
                         });
                     }
@@ -276,7 +277,7 @@ export async function completeTaskAndProgressWorkflow({
     const auditLogCollection = collection(requestRef, 'audit_logs');
     
     let updatedSteps = request.steps.map(s =>
-        s.id === task.stepId ? { ...s, status: 'Completed', completedAt: now, outcome: outcome || null } : s
+        s.id === task.stepId ? { ...s, status: 'Completed' as const, completedAt: now, outcome: outcome || null } : s
     );
 
     updateDocumentNonBlocking(taskRef, { status: 'Completed', completedAt: now });
@@ -323,7 +324,7 @@ export async function completeTaskAndProgressWorkflow({
                 r.condition.value === outcome
             );
             if (rule && rule.action.type === 'ROUTE_TO_STEP') {
-                const nextStep = template.steps.find(s => s.id === rule.action.stepId);
+                const nextStep = template.steps.find(s => s.id === (rule.action as any).stepId);
                 return nextStep ? [nextStep] : [];
             }
         }
@@ -403,8 +404,10 @@ export async function handleTaskEscalation({ firestore, task, currentUser, allUs
     }
 
     if (!requestData || !templateData) return;
-    
-    const stepDef = templateData.steps.find(s => s.id === task.stepId);
+    const reqData = requestData as Request;
+    const tmplData = templateData as Template;
+
+    const stepDef = tmplData.steps.find(s => s.id === task.stepId);
     const policy = stepDef?.escalationPolicy;
     const now = new Date().toISOString();
     const auditLogCollection = collection(requestRef, 'audit_logs');
@@ -420,22 +423,22 @@ export async function handleTaskEscalation({ firestore, task, currentUser, allUs
             
             if (suggestion.suggestedUserId) {
                 const newAssignee = allUsers.find(u => u.id === suggestion.suggestedUserId);
-                const updatedSteps = requestData.steps.map(s => s.id === task.stepId ? { ...s, assigneeId: suggestion.suggestedUserId } : s);
-                
+                const updatedSteps = reqData.steps.map(s => s.id === task.stepId ? { ...s, assigneeId: suggestion.suggestedUserId } : s);
+
                 const batch = writeBatch(firestore);
                 batch.update(taskRef, { assigneeId: suggestion.suggestedUserId });
                 batch.update(requestRef, { steps: updatedSteps });
 
                 const auditLogRef = doc(auditLogCollection);
                 batch.set(auditLogRef, {
-                    requestId: requestData.id, userId: 'system', userFullName: 'FlowMaster AI', timestamp: now, action: 'STEP_ASSIGNEE_CHANGED',
+                    requestId: reqData.id, userId: 'system', userFullName: 'FlowMaster AI', timestamp: now, action: 'STEP_ASSIGNEE_CHANGED',
                     details: { message: `Tarea "${task.name}" reasignada a ${newAssignee?.fullName} debido a vencimiento de SLA.` }
                 });
 
                 const notificationRef = doc(collection(firestore, 'users', suggestion.suggestedUserId, 'notifications'));
                 batch.set(notificationRef, {
                     title: 'Tarea Urgente Reasignada', message: `Se te ha reasignado la tarea vencida "${task.name}".`,
-                    type: 'warning', read: false, createdAt: now, link: `/requests/${requestData.id}`,
+                    type: 'warning', read: false, createdAt: now, link: `/requests/${reqData.id}`,
                 });
 
                 await batch.commit();
@@ -461,7 +464,7 @@ export async function handleTaskEscalation({ firestore, task, currentUser, allUs
                 batch.set(notificationRef, {
                     title: 'Tarea Vencida',
                     message: `La tarea "${task.name}" para la solicitud "${task.requestTitle}" ha superado su SLA.`,
-                    type: 'warning', read: false, createdAt: now, link: `/requests/${requestData.id}`,
+                    type: 'warning', read: false, createdAt: now, link: `/requests/${reqData.id}`,
                 });
             }
         }

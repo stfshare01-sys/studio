@@ -333,8 +333,8 @@ function SortableStep({
                                         <div className="space-y-2 pl-2 border-l-2 ml-1">
                                             <Label className="text-xs font-normal">Notificar a</Label>
                                             <div className="space-y-1">
-                                                <div className="flex items-center gap-2"><Checkbox id={`esc-notify-assignee-${step.id}`} checked={step.escalationPolicy.notify?.includes('assignee')} onCheckedChange={(checked) => updateEscalationPolicy({ notify: checked ? [...(step.escalationPolicy.notify || []), 'assignee'] : (step.escalationPolicy.notify || []).filter(n => n !== 'assignee') })} /><Label htmlFor={`esc-notify-assignee-${step.id}`} className="text-xs font-normal">Asignado Actual</Label></div>
-                                                <div className="flex items-center gap-2"><Checkbox id={`esc-notify-manager-${step.id}`} checked={step.escalationPolicy.notify?.includes('manager')} onCheckedChange={(checked) => updateEscalationPolicy({ notify: checked ? [...(step.escalationPolicy.notify || []), 'manager'] : (step.escalationPolicy.notify || []).filter(n => n !== 'manager') })} /><Label htmlFor={`esc-notify-manager-${step.id}`} className="text-xs font-normal">Gerente del Asignado</Label></div>
+                                                <div className="flex items-center gap-2"><Checkbox id={`esc-notify-assignee-${step.id}`} checked={step.escalationPolicy?.notify?.includes('assignee')} onCheckedChange={(checked) => updateEscalationPolicy({ notify: checked ? [...(step.escalationPolicy?.notify || []), 'assignee'] : (step.escalationPolicy?.notify || []).filter(n => n !== 'assignee') })} /><Label htmlFor={`esc-notify-assignee-${step.id}`} className="text-xs font-normal">Asignado Actual</Label></div>
+                                                <div className="flex items-center gap-2"><Checkbox id={`esc-notify-manager-${step.id}`} checked={step.escalationPolicy?.notify?.includes('manager')} onCheckedChange={(checked) => updateEscalationPolicy({ notify: checked ? [...(step.escalationPolicy?.notify || []), 'manager'] : (step.escalationPolicy?.notify || []).filter(n => n !== 'manager') })} /><Label htmlFor={`esc-notify-manager-${step.id}`} className="text-xs font-normal">Gerente del Asignado</Label></div>
                                             </div>
                                         </div>
                                     )}
@@ -403,8 +403,8 @@ function SortableStep({
                                     </DialogDescription>
                                 </DialogHeader>
                                 <TimerStepConfig
-                                    config={(step as any).timerConfig}
-                                    onConfigChange={(config) => onUpdateStep(poolId, laneId, step.id, { timerConfig: config } as any)}
+                                    value={(step as any).timerConfig}
+                                    onChange={(config) => onUpdateStep(poolId, laneId, step.id, { timerConfig: config } as any)}
                                     formFields={formFields}
                                 />
                             </DialogContent>
@@ -979,7 +979,7 @@ export default function EditTemplatePage() {
               steps: l.steps.map(s => ({...s, assigneeRole: ''}))
           }))
       })));
-      setRules(data.rules.map(r => ({...r, id: `rule-ai-${Date.now()}-${Math.random()}`})));
+      setRules(data.rules.map(r => ({...r, id: `rule-ai-${Date.now()}-${Math.random()}`, condition: { ...r.condition, type: 'form' as const }})));
   };
 
   if (isLoadingTemplate) {
@@ -1686,8 +1686,8 @@ function RuleConditionDisplay({ condition, fields, steps }: { condition: RuleCon
         <div className="flex items-center gap-2 text-sm">
             <span className="font-semibold text-muted-foreground">SI</span>
             <div className="flex items-center gap-1">
-                {getSourceTypeIcon(source?.type || (condition.type === 'outcome' ? 'outcome' : undefined))}
-                <Badge variant="outline">{source?.name || source?.label || '??'}</Badge>
+                {getSourceTypeIcon((source?.type || (condition.type === 'outcome' ? 'outcome' : undefined)) as FormFieldType | 'outcome' | undefined)}
+                <Badge variant="outline">{(source as any)?.name || (source as any)?.label || '??'}</Badge>
             </div>
             <span className="font-semibold text-muted-foreground">{operatorLabels[condition.operator] || condition.operator}</span>
             <Badge variant="secondary" className="font-mono">{condition.value}</Badge>
@@ -1814,7 +1814,7 @@ function RuleBuilderDialog({ fields, steps, users, onAddRule, onUpdateRule, rule
         }
     };
     
-    const availableOperators = getOperatorsForType(selectedSource?.type || (condition.type === 'outcome' ? 'outcome' : undefined));
+    const availableOperators = getOperatorsForType((selectedSource?.type || (condition.type === 'outcome' ? 'outcome' : undefined)) as FormFieldType | 'outcome' | undefined);
 
     const handleSubmit = () => {
         if (!condition.fieldId || !condition.operator || (condition.value === undefined || condition.value === '')) {
@@ -1878,7 +1878,7 @@ function RuleBuilderDialog({ fields, steps, users, onAddRule, onUpdateRule, rule
                                      <Select value={condition.value} onValueChange={(v) => setCondition(c => ({...c, value: v}))} disabled={!selectedSource}>
                                         <SelectTrigger><SelectValue placeholder="Seleccione valor..."/></SelectTrigger>
                                         <SelectContent>
-                                            {(selectedSource?.options || selectedSource?.outcomes)?.map(opt => <SelectItem key={opt} value={opt}>{opt}</SelectItem>)}
+                                            {((selectedSource as any)?.options || (selectedSource as any)?.outcomes)?.map((opt: string) => <SelectItem key={opt} value={opt}>{opt}</SelectItem>)}
                                         </SelectContent>
                                     </Select>
                                 )}
@@ -1911,10 +1911,10 @@ function RuleBuilderDialog({ fields, steps, users, onAddRule, onUpdateRule, rule
                                 <div className="grid grid-cols-2 gap-2"><div className="space-y-2"><Label>Tarea</Label><Select value={(action as any).stepId} onValueChange={(v) => setAction(a => ({...a, stepId: v}))}><SelectTrigger><SelectValue placeholder="Seleccione tarea..."/></SelectTrigger><SelectContent>{steps.map(step => <SelectItem key={step.id} value={step.id}>{step.name}</SelectItem>)}</SelectContent></Select></div><div className="space-y-2"><Label>Usuario</Label><Select value={(action as any).userId} onValueChange={(v) => setAction(a => ({...a, userId: v}))}><SelectTrigger><SelectValue placeholder="Seleccione usuario..."/></SelectTrigger><SelectContent>{users.map(user => <SelectItem key={user.id} value={user.id}>{user.fullName}</SelectItem>)}</SelectContent></Select></div></div>
                             }
                             { action.type === 'SEND_NOTIFICATION' &&
-                                <div className="grid grid-cols-2 gap-2"><div className="space-y-2"><Label>Destinatario</Label><Select value={(action as any).target} onValueChange={(v) => setAction(a => ({...a, target: v}))}><SelectTrigger><SelectValue placeholder="Seleccione..."/></SelectTrigger><SelectContent><SelectItem value="submitter">Creador de la solicitud</SelectItem><SelectItem value="Admin">Admin</SelectItem><SelectItem value="Member">Miembro</SelectItem></SelectContent></Select></div><div className="space-y-2"><Label>Mensaje</Label><Input placeholder="Tu mensaje aquí" value={(action as any).message || ''} onChange={(e) => setAction(a => ({...a, message: e.target.value}))}/></div></div>
+                                <div className="grid grid-cols-2 gap-2"><div className="space-y-2"><Label>Destinatario</Label><Select value={(action as any).target} onValueChange={(v) => setAction(a => ({...a, target: v}) as Partial<RuleAction>)}><SelectTrigger><SelectValue placeholder="Seleccione..."/></SelectTrigger><SelectContent><SelectItem value="submitter">Creador de la solicitud</SelectItem><SelectItem value="Admin">Admin</SelectItem><SelectItem value="Member">Miembro</SelectItem></SelectContent></Select></div><div className="space-y-2"><Label>Mensaje</Label><Input placeholder="Tu mensaje aquí" value={(action as any).message || ''} onChange={(e) => setAction(a => ({...a, message: e.target.value}) as Partial<RuleAction>)}/></div></div>
                             }
                              { action.type === 'CHANGE_REQUEST_PRIORITY' &&
-                                <><Label>Nueva Prioridad</Label><Select value={(action as any).priority} onValueChange={(v) => setAction(a => ({...a, priority: v}))}><SelectTrigger><SelectValue placeholder="Seleccione prioridad..."/></SelectTrigger><SelectContent><SelectItem value="Alta">Alta</SelectItem><SelectItem value="Media">Media</SelectItem><SelectItem value="Baja">Baja</SelectItem></SelectContent></Select></>
+                                <><Label>Nueva Prioridad</Label><Select value={(action as any).priority} onValueChange={(v) => setAction(a => ({...a, priority: v}) as Partial<RuleAction>)}><SelectTrigger><SelectValue placeholder="Seleccione prioridad..."/></SelectTrigger><SelectContent><SelectItem value="Alta">Alta</SelectItem><SelectItem value="Media">Media</SelectItem><SelectItem value="Baja">Baja</SelectItem></SelectContent></Select></>
                             }
                         </div>
                     </div>

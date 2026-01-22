@@ -52,7 +52,7 @@ export function TasksTable({ tasks, isLoading = false }: TasksTableProps) {
       tasks.forEach(task => {
         if (task.status === 'Active' && task.slaExpiresAt && isPast(new Date(task.slaExpiresAt)) && !task.isEscalated) {
           console.log(`Task ${task.id} is overdue. Initiating escalation check.`);
-          handleTaskEscalation({ firestore, task, currentUser, allUsers });
+          handleTaskEscalation({ firestore, task, currentUser: currentUser as User, allUsers });
         }
       });
     }
