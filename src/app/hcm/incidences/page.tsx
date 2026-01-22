@@ -75,41 +75,33 @@ export default function IncidencesPage() {
         isPaid: true
     });
 
-    // Fetch incidences based on user role
+    // Fetch incidences - only if user is loaded and has Admin role
+    const hasHRPermissions = user?.role === 'Admin';
+
     const incidencesQuery = useMemoFirebase(() => {
-        if (!firestore || !user) return null;
+        if (!firestore || isUserLoading || !user || !hasHRPermissions) return null;
 
-        const isManager = user.role === 'Admin' || user.role === 'HRManager' || user.role === 'Manager';
         const baseQuery = collection(firestore, 'incidences');
-        
-        let conditions = [];
 
-        if (!isManager) {
-            conditions.push(where('employeeId', '==', user.uid));
-        }
-
+        // Admin users can see all incidences
         if (statusFilter !== 'all') {
-            conditions.push(where('status', '==', statusFilter));
+            return query(baseQuery, where('status', '==', statusFilter), orderBy('createdAt', 'desc'));
         }
 
-        // Return a valid query based on conditions
-        if (conditions.length > 0) {
-            return query(baseQuery, ...conditions, orderBy('createdAt', 'desc'));
-        }
-        
         return query(baseQuery, orderBy('createdAt', 'desc'));
 
-    }, [firestore, user, statusFilter]);
+    }, [firestore, isUserLoading, user, hasHRPermissions, statusFilter]);
 
     const { data: incidences, isLoading } = useCollection<Incidence>(incidencesQuery);
 
     // Filter incidences client-side for type and search
     const filteredIncidences = useMemo(() => {
         return incidences?.filter(inc => {
-            const isManager = user?.role === 'Admin' || user?.role === 'HRManager' || user?.role === 'Manager';
-            
-            // If user is not manager, they should only see their own
-            if (!isManager && inc.employeeId !== user?.uid) {
+            // Admin users can see all incidences
+            const isAdmin = user?.role === 'Admin';
+
+            // If user is not admin, they should only see their own
+            if (!isAdmin && inc.employeeId !== user?.uid) {
                 return false;
             }
 
