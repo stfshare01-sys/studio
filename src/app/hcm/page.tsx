@@ -34,59 +34,43 @@ export default function HCMPage() {
     // Note: Currently only Admin role has access. HRManager role would need to be added to UserRole type.
     const hasHRPermissions = user?.role === 'Admin';
 
-    // Fetch active employees count - only if user has HR permissions
+    // Fetch active employees count - only if user is loaded and has HR permissions
     const employeesQuery = useMemoFirebase(() => {
-        if (!firestore || !user || !hasHRPermissions) return null;
+        if (!firestore || isUserLoading || !user || !hasHRPermissions) return null;
         return query(
             collection(firestore, 'employees'),
             where('status', '==', 'active'),
             limit(100)
         );
-    }, [firestore, user, hasHRPermissions]);
+    }, [firestore, isUserLoading, user, hasHRPermissions]);
 
     const { data: employees, isLoading: employeesLoading } = useCollection<Employee>(employeesQuery);
 
-    // Fetch pending incidences - now role-aware
+    // Fetch pending incidences - only if user is loaded and has HR permissions
     const incidencesQuery = useMemoFirebase(() => {
-        if (!firestore || !user) return null;
+        if (!firestore || isUserLoading || !user || !hasHRPermissions) return null;
 
-        // Currently only Admin has manager-level permissions
-        // TODO: Add HRManager and Manager roles to UserRole type when needed
-        const isManager = user.role === 'Admin';
-        const baseQuery = collection(firestore, 'incidences');
-
-        if (isManager) {
-            // Managers can see all pending incidences
-            return query(
-                baseQuery,
-                where('status', '==', 'pending'),
-                orderBy('createdAt', 'desc'),
-                limit(10)
-            );
-        } else {
-            // Members can only see their own pending incidences
-            return query(
-                baseQuery,
-                where('employeeId', '==', user.uid),
-                where('status', '==', 'pending'),
-                orderBy('createdAt', 'desc'),
-                limit(10)
-            );
-        }
-    }, [firestore, user]);
+        // Admin users can see all pending incidences
+        return query(
+            collection(firestore, 'incidences'),
+            where('status', '==', 'pending'),
+            orderBy('createdAt', 'desc'),
+            limit(10)
+        );
+    }, [firestore, isUserLoading, user, hasHRPermissions]);
 
 
     const { data: pendingIncidences, isLoading: incidencesLoading } = useCollection<Incidence>(incidencesQuery);
 
-    // Fetch recent imports
+    // Fetch recent imports - only if user is loaded and has HR permissions
     const importsQuery = useMemoFirebase(() => {
-        if (!firestore) return null;
+        if (!firestore || isUserLoading || !user || !hasHRPermissions) return null;
         return query(
             collection(firestore, 'attendance_imports'),
             orderBy('uploadedAt', 'desc'),
             limit(5)
         );
-    }, [firestore]);
+    }, [firestore, isUserLoading, user, hasHRPermissions]);
 
     const { data: recentImports, isLoading: importsLoading } = useCollection<AttendanceImportBatch>(importsQuery);
 
