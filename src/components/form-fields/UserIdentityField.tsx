@@ -20,7 +20,7 @@ export function UserIdentityField({ field, value, onChange }: UserIdentityFieldP
   useEffect(() => {
     if (user && !value) {
       const identityValue: UserIdentityValue = {
-        userId: user.uid || user.id,
+        userId: user.uid || user.id || '',
         email: user.email || '',
         fullName: user.fullName || '',
       };

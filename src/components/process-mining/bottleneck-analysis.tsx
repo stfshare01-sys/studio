@@ -122,11 +122,11 @@ export function BottleneckAnalysisComponent({ tasks, previousPeriodTasks }: Bott
                     borderRadius: 'var(--radius)',
                   }}
                   labelStyle={{ color: 'hsl(var(--foreground))' }}
-                  labelFormatter={(label, payload) => payload[0]?.payload?.fullName || label}
-                  formatter={(value: number, name: string) => [
+                  labelFormatter={((label: any, payload: any[]) => payload[0]?.payload?.fullName || label) as any}
+                  formatter={((value: number, name: string) => [
                     `${value}h`,
                     name === 'avgDuration' ? 'Promedio' : 'Mediana'
-                  ]}
+                  ]) as any}
                 />
                 <Legend
                   wrapperStyle={{ fontSize: '0.75rem' }}
