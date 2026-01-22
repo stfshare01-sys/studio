@@ -679,8 +679,19 @@ export async function calculateEmployeeSettlement(
         const termDate = new Date(params.terminationDate);
         const daysWorkedInYear = Math.ceil((termDate.getTime() - yearStart.getTime()) / (1000 * 60 * 60 * 24));
 
-        // Get vacation days used this year (approximation - would need actual incidence query)
-        const vacationDaysUsed = 0; // TODO: Query actual vacation incidences
+        // Get vacation days used this year
+        const startOfYear = new Date(new Date().getFullYear(), 0, 1).toISOString();
+        const incidencesQuery = query(
+            collection(firestore, 'incidences'),
+            where('employeeId', '==', params.employeeId),
+            where('type', '==', 'vacation'),
+            where('status', '==', 'approved'),
+            where('startDate', '>=', startOfYear)
+        );
+        const incidencesSnap = await getDocs(incidencesQuery);
+        const vacationDaysUsed = incidencesSnap.docs.reduce((total, doc) => {
+            return total + (doc.data() as Incidence).totalDays;
+        }, 0);
 
         // Calculate pending salary days (approximation)
         const lastPayDate = new Date(params.terminationDate);
