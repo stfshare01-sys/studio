@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
-import { MoreHorizontal, Trash2, Edit, Search, ArrowUpDown, ChevronDown, UserCheck, UserX, Ban, Palette } from "lucide-react";
+import { MoreHorizontal, Trash2, Edit, Search, ArrowUpDown, ChevronDown, UserCheck, UserX, Ban, Palette, Loader2 } from "lucide-react";
 import { Button } from "../ui/button";
 import {
   Dialog,

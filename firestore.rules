@@ -196,5 +196,100 @@ service cloud.firestore {
     match /integrations/{integrationId} {
       allow read, write: if hasRole('Admin');
     }
+
+    // -------------------------------------------------------------------------
+    // Capital Humano / HR Module Collections
+    // -------------------------------------------------------------------------
+
+    /**
+     * @description Incidences/HR incidents for employee management.
+     * Read: Admins and the employee themselves
+     * Write: Admins only
+     * @path /incidences/{incidenceId}
+     */
+    match /incidences/{incidenceId} {
+      allow get: if isSignedIn() && (
+        hasRole('Admin') ||
+        request.auth.uid == resource.data.employeeId
+      );
+      allow list: if hasRole('Admin');
+      allow create, update: if hasRole('Admin');
+      allow delete: if hasRole('Admin');
+    }
+
+    /**
+     * @description Employees collection for HR management.
+     * Read: Admins and HR roles
+     * Write: Admins only
+     * @path /employees/{employeeId}
+     */
+    match /employees/{employeeId} {
+      allow read: if hasAnyRole(['Admin', 'HR']);
+      allow write: if hasRole('Admin');
+    }
+
+    /**
+     * @description Attendance records.
+     * Read: Admins, HR, and the employee themselves
+     * Write: Admins and HR
+     * @path /attendance/{attendanceId}
+     */
+    match /attendance/{attendanceId} {
+      allow get: if isSignedIn() && (
+        hasAnyRole(['Admin', 'HR']) ||
+        request.auth.uid == resource.data.employeeId
+      );
+      allow list: if hasAnyRole(['Admin', 'HR']);
+      allow create, update: if hasAnyRole(['Admin', 'HR']);
+      allow delete: if hasRole('Admin');
+    }
+
+    /**
+     * @description Payroll records.
+     * Read: Admins and the employee themselves
+     * Write: Admins only
+     * @path /payroll/{payrollId}
+     */
+    match /payroll/{payrollId} {
+      allow get: if isSignedIn() && (
+        hasRole('Admin') ||
+        request.auth.uid == resource.data.employeeId
+      );
+      allow list: if hasRole('Admin');
+      allow write: if hasRole('Admin');
+    }
+
+    /**
+     * @description Leave/vacation requests.
+     * Read: Admins, HR, and the employee themselves
+     * Write: Admins, HR, and the employee for their own requests
+     * @path /leave_requests/{leaveRequestId}
+     */
+    match /leave_requests/{leaveRequestId} {
+      allow get: if isSignedIn() && (
+        hasAnyRole(['Admin', 'HR']) ||
+        request.auth.uid == resource.data.employeeId
+      );
+      allow list: if hasAnyRole(['Admin', 'HR']) ||
+        (isSignedIn() && request.auth.uid == resource.data.employeeId);
+      allow create: if isSignedIn();
+      allow update: if hasAnyRole(['Admin', 'HR']) ||
+        (isSignedIn() && request.auth.uid == resource.data.employeeId);
+      allow delete: if hasRole('Admin');
+    }
+
+    // -------------------------------------------------------------------------
+    // Generic Catch-all for Development (Remove in Production)
+    // -------------------------------------------------------------------------
+
+    /**
+     * @description Fallback rule for any collection not explicitly defined.
+     * This allows Admins to access any collection during development.
+     * IMPORTANT: Review and restrict before going to production.
+     * @path /{collectionName}/{documentId}
+     */
+    match /{collectionName}/{documentId} {
+      allow read, write: if hasRole('Admin');
+    }
   }
 }
