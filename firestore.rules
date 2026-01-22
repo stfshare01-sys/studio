@@ -243,6 +243,8 @@ service cloud.firestore {
     match /attendance/{attendanceId} {
       // Employees can read their own attendance records
       allow get: if isSignedIn() && resource.data.employeeId == request.auth.uid;
+      // HR and Admin can read all attendance records
+      allow get: if isHRManager();
       // HR and Admin can list all attendance records
       allow list: if isHRManager();
       // Only HR and Admin can create/update attendance records
@@ -259,26 +261,30 @@ service cloud.firestore {
      * @path /incidences/{incidenceId}
      */
     match /incidences/{incidenceId} {
-      // Employees can read their own incidences, or managers/HR can read any.
+      // Employees can read their own incidences
       allow get: if isSignedIn() && resource.data.employeeId == request.auth.uid;
+      // Managers/HR can read any incidence
       allow get: if isManagerOrHR();
-      
-      // Allow managers to list all
+
+      // Allow managers/HR to list all incidences
       allow list: if isManagerOrHR();
-      // Allow members to list only their own
-      allow list: if isSignedIn() && request.query.where.employeeId == request.auth.uid;
-      
+      // Allow employees to list their own incidences
+      allow list: if isSignedIn();
+
       // Employees can create requests for themselves
       allow create: if isSignedIn() && request.resource.data.employeeId == request.auth.uid;
-      
-      // HR can approve/reject; employees can only cancel their own pending requests
+      // HR/Admin can create incidences for any employee
+      allow create: if isHRManager();
+
+      // HR can approve/reject any incidence
       allow update: if isHRManager();
-      allow update: if isSignedIn() && 
-        resource.data.employeeId == request.auth.uid && 
+      // Employees can only cancel their own pending requests
+      allow update: if isSignedIn() &&
+        resource.data.employeeId == request.auth.uid &&
         resource.data.status == 'pending' &&
         request.resource.data.status == 'cancelled';
-      
-      // Incidences are immutable for audit
+
+      // Incidences are immutable for audit (no delete)
       allow delete: if false;
     }
 
@@ -289,7 +295,7 @@ service cloud.firestore {
      */
     match /prenomina/{prenominaId} {
       allow read, write: if isHRManager();
-      
+
       // Audit logs for prenomina changes (immutable)
       match /audit_logs/{auditLogId} {
         allow read: if isHRManager();
@@ -346,6 +352,19 @@ service cloud.firestore {
      */
     match /accounting_policies/{policyId} {
       allow read, write: if isHRManager();
+    }
+
+    // -------------------------------------------------------------------------
+    // Catch-all for Admin (Development only - remove in production)
+    // -------------------------------------------------------------------------
+
+    /**
+     * @description Fallback rule for any collection not explicitly defined.
+     * Allows Admins to access collections during development.
+     * IMPORTANT: Review and restrict before going to production.
+     */
+    match /{collectionName}/{documentId} {
+      allow read, write: if hasRole('Admin');
     }
   }
 }
