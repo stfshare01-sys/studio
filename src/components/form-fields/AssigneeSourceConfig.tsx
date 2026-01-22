@@ -101,11 +101,10 @@ export function AssigneeSourceConfig({
           {SOURCE_TYPES.map(type => (
             <Card
               key={type.value}
-              className={`cursor-pointer transition-colors ${
-                sourceType === type.value
+              className={`cursor-pointer transition-colors ${sourceType === type.value
                   ? 'border-primary bg-primary/5'
                   : 'hover:bg-muted/50'
-              }`}
+                }`}
               onClick={() => handleTypeChange(type.value)}
             >
               <CardContent className="p-3">
@@ -196,7 +195,7 @@ export function AssigneeSourceConfig({
                   </SelectItem>
                 ))
               ) : (
-                <SelectItem value="" disabled>
+                <SelectItem value="__empty__" disabled>
                   No hay campos de email o identidad
                 </SelectItem>
               )}

@@ -117,12 +117,12 @@ function EditUserDialog({ user, allUsers, isOpen, onOpenChange }: { user: User |
                         <Label htmlFor="manager" className="sm:text-right">
                             Gerente
                         </Label>
-                        <Select disabled value={formData.managerId} onValueChange={(value) => handleInputChange('managerId', value)}>
+                        <Select disabled value={formData.managerId || "none"} onValueChange={(value) => handleInputChange('managerId', value === "none" ? '' : value)}>
                             <SelectTrigger className="sm:col-span-3">
                                 <SelectValue placeholder="Seleccionar gerente..." />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="">Sin Gerente</SelectItem>
+                                <SelectItem value="none">Sin Gerente</SelectItem>
                                 {potentialManagers.map(manager => (
                                     <SelectItem key={manager.id} value={manager.id}>{manager.fullName}</SelectItem>
                                 ))}

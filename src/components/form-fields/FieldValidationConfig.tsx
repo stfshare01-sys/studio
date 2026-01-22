@@ -279,7 +279,7 @@ export function FieldValidationConfig({
         {/* Add validation button */}
         {unaddedTypes.filter(t => t.value !== 'required').length > 0 && (
           <Select
-            value=""
+            value={undefined}
             onValueChange={(value) => handleAddValidation(value as ValidationType)}
           >
             <SelectTrigger className={cn(buttonVariants({ variant: 'outline' }), "w-full justify-start font-normal")}>

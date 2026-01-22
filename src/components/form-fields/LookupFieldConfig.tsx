@@ -149,11 +149,10 @@ export function LookupFieldConfig({
         <Label className="text-sm">Fuente de datos</Label>
         <div className="grid grid-cols-2 gap-2">
           <Card
-            className={`cursor-pointer transition-colors ${
-              value.sourceType === 'master-list'
+            className={`cursor-pointer transition-colors ${value.sourceType === 'master-list'
                 ? 'border-primary bg-primary/5'
                 : 'hover:bg-muted/50'
-            }`}
+              }`}
             onClick={() => handleSourceTypeChange('master-list')}
           >
             <CardContent className="p-3">
@@ -164,11 +163,10 @@ export function LookupFieldConfig({
             </CardContent>
           </Card>
           <Card
-            className={`cursor-pointer transition-colors ${
-              value.sourceType === 'collection'
+            className={`cursor-pointer transition-colors ${value.sourceType === 'collection'
                 ? 'border-primary bg-primary/5'
                 : 'hover:bg-muted/50'
-            }`}
+              }`}
             onClick={() => handleSourceTypeChange('collection')}
           >
             <CardContent className="p-3">
@@ -200,7 +198,7 @@ export function LookupFieldConfig({
                   </SelectItem>
                 ))
               ) : (
-                <SelectItem value="" disabled>
+                <SelectItem value="__empty__" disabled>
                   No hay listas maestras disponibles
                 </SelectItem>
               )}
