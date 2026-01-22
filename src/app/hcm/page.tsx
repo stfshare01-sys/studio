@@ -48,11 +48,24 @@ export default function HCMPage() {
 
     // Fetch pending incidences - only if user is loaded and has HR permissions
     const incidencesQuery = useMemoFirebase(() => {
-        if (!firestore || isUserLoading || !user || !hasHRPermissions) return null;
-
-        // Admin users can see all pending incidences
+        if (!firestore || isUserLoading || !user) return null;
+    
+        const baseQuery = collection(firestore, 'incidences');
+    
+        // Admins/HR can see all pending incidences
+        if (hasHRPermissions) {
+            return query(
+                baseQuery,
+                where('status', '==', 'pending'),
+                orderBy('createdAt', 'desc'),
+                limit(10)
+            );
+        }
+        
+        // Regular users only see their own
         return query(
-            collection(firestore, 'incidences'),
+            baseQuery,
+            where('employeeId', '==', user.uid),
             where('status', '==', 'pending'),
             orderBy('createdAt', 'desc'),
             limit(10)

@@ -4,7 +4,7 @@
 import { useState, useMemo } from 'react';
 import { useFirebase, useMemoFirebase } from '@/firebase/provider';
 import { useCollection } from '@/firebase/firestore/use-collection';
-import { collection, query, where, orderBy } from 'firebase/firestore';
+import { collection, query, where, orderBy, Query } from 'firebase/firestore';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -75,20 +75,27 @@ export default function IncidencesPage() {
         isPaid: true
     });
 
-    // Fetch incidences - only if user is loaded and has Admin role
-    const hasHRPermissions = user?.role === 'Admin';
+    const hasHRPermissions = useMemo(() => ['Admin', 'HRManager', 'Manager'].includes(user?.role || ''), [user]);
 
     const incidencesQuery = useMemoFirebase(() => {
-        if (!firestore || isUserLoading || !user || !hasHRPermissions) return null;
+        if (!firestore || isUserLoading || !user) return null;
 
-        const baseQuery = collection(firestore, 'incidences');
+        let q = collection(firestore, 'incidences') as Query;
 
-        // Admin users can see all incidences
-        if (statusFilter !== 'all') {
-            return query(baseQuery, where('status', '==', statusFilter), orderBy('createdAt', 'desc'));
+        if (hasHRPermissions) {
+            // HR/Admins can see all incidences
+            if (statusFilter !== 'all') {
+                q = query(q, where('status', '==', statusFilter));
+            }
+        } else {
+            // Members are only allowed to see their own incidences
+            q = query(q, where('employeeId', '==', user.uid));
+            if (statusFilter !== 'all') {
+                q = query(q, where('status', '==', statusFilter));
+            }
         }
-
-        return query(baseQuery, orderBy('createdAt', 'desc'));
+        
+        return query(q, orderBy('createdAt', 'desc'));
 
     }, [firestore, isUserLoading, user, hasHRPermissions, statusFilter]);
 
@@ -97,14 +104,6 @@ export default function IncidencesPage() {
     // Filter incidences client-side for type and search
     const filteredIncidences = useMemo(() => {
         return incidences?.filter(inc => {
-            // Admin users can see all incidences
-            const isAdmin = user?.role === 'Admin';
-
-            // If user is not admin, they should only see their own
-            if (!isAdmin && inc.employeeId !== user?.uid) {
-                return false;
-            }
-
             const matchesType = typeFilter === 'all' || inc.type === typeFilter;
             const matchesSearch = searchTerm === '' ||
                 inc.employeeName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -328,6 +327,7 @@ export default function IncidencesPage() {
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
                                 className="pl-10"
+                                disabled={!hasHRPermissions}
                             />
                         </div>
                         <Select value={typeFilter} onValueChange={setTypeFilter}>
@@ -424,7 +424,7 @@ export default function IncidencesPage() {
                                         </TableCell>
                                         <TableCell>{getStatusBadge(incidence.status)}</TableCell>
                                         <TableCell>
-                                            {incidence.status === 'pending' && (
+                                            {incidence.status === 'pending' && hasHRPermissions && (
                                                 <Button
                                                     size="sm"
                                                     onClick={() => {
@@ -511,7 +511,7 @@ export default function IncidencesPage() {
                                 </div>
                             )}
 
-                            {selectedIncidence.status === 'pending' && (
+                            {selectedIncidence.status === 'pending' && hasHRPermissions && (
                                 <div className="space-y-3">
                                     <div>
                                         <label className="text-sm font-medium">Motivo de rechazo (opcional)</label>
@@ -527,7 +527,7 @@ export default function IncidencesPage() {
                         </div>
                     )}
 
-                    {selectedIncidence?.status === 'pending' && (
+                    {selectedIncidence?.status === 'pending' && hasHRPermissions && (
                         <DialogFooter className="gap-2">
                             <Button
                                 variant="destructive"
@@ -626,3 +626,5 @@ export default function IncidencesPage() {
         </div>
     );
 }
+
+    
