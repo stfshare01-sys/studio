@@ -51,14 +51,17 @@ import { calculateYearsOfService } from '@/lib/hcm-utils';
  * Employees Directory Page
  */
 export default function EmployeesPage() {
-    const { firestore, isUserLoading } = useFirebase();
+    const { firestore, user, isUserLoading } = useFirebase();
     const [searchTerm, setSearchTerm] = useState('');
     const [departmentFilter, setDepartmentFilter] = useState<string>('all');
     const [statusFilter, setStatusFilter] = useState<string>('active');
 
-    // Fetch employees
+    // Check if user has HR/Admin permissions to view employees
+    const hasHRPermissions = user?.role === 'Admin';
+
+    // Fetch employees - only if user has HR permissions
     const employeesQuery = useMemoFirebase(() => {
-        if (!firestore) return null;
+        if (!firestore || !hasHRPermissions) return null;
 
         let q = collection(firestore, 'employees');
 
@@ -67,7 +70,7 @@ export default function EmployeesPage() {
         }
 
         return query(q, orderBy('fullName', 'asc'));
-    }, [firestore, statusFilter]);
+    }, [firestore, statusFilter, hasHRPermissions]);
 
     const { data: employees, isLoading } = useCollection<Employee>(employeesQuery);
 

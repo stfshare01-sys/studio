@@ -76,7 +76,8 @@ export default function TeamCalendarPage() {
     const [selectedEmployees, setSelectedEmployees] = useState<Employee[]>([]);
     const [isDialogOpen, setIsDialogOpen] = useState(false);
 
-    const isManagerOrAdmin = user?.role === 'Admin' || user?.role === 'HRManager' || user?.role === 'Manager';
+    // Check if user has Admin permissions (only Admin role exists in current UserRole type)
+    const isManagerOrAdmin = user?.role === 'Admin';
 
     // Fetch active employees
     const employeesQuery = useMemoFirebase(() => {
@@ -169,8 +170,8 @@ export default function TeamCalendarPage() {
                         <Badge
                             variant="outline"
                             className={`text-lg px-3 py-1 ${availabilityPercent >= 90 ? 'bg-green-100 text-green-800 border-green-300' :
-                                    availabilityPercent >= 70 ? 'bg-yellow-100 text-yellow-800 border-yellow-300' :
-                                        'bg-red-100 text-red-800 border-red-300'
+                                availabilityPercent >= 70 ? 'bg-yellow-100 text-yellow-800 border-yellow-300' :
+                                    'bg-red-100 text-red-800 border-red-300'
                                 }`}
                         >
                             {availableToday}/{totalEmployees} ({availabilityPercent}%)

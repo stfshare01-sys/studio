@@ -15,18 +15,21 @@ import { ArrowLeft, Network } from 'lucide-react';
  * Org Chart Page
  */
 export default function OrgChartPage() {
-    const { firestore, isUserLoading } = useFirebase();
+    const { firestore, user, isUserLoading } = useFirebase();
     const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
 
-    // Fetch active employees
+    // Check if user has HR/Admin permissions to view employees
+    const hasHRPermissions = user?.role === 'Admin';
+
+    // Fetch active employees - only if user has HR permissions
     const employeesQuery = useMemoFirebase(() => {
-        if (!firestore) return null;
+        if (!firestore || !hasHRPermissions) return null;
         return query(
             collection(firestore, 'employees'),
             where('status', '==', 'active'),
             orderBy('fullName', 'asc')
         );
-    }, [firestore]);
+    }, [firestore, hasHRPermissions]);
 
     const { data: employees, isLoading } = useCollection<Employee>(employeesQuery);
 

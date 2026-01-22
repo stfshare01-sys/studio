@@ -30,15 +30,19 @@ import type { Employee, Incidence, AttendanceImportBatch } from '@/lib/types';
 export default function HCMPage() {
     const { firestore, user, isUserLoading } = useFirebase();
 
-    // Fetch active employees count
+    // Check if user has HR/Admin permissions to view employee list
+    // Note: Currently only Admin role has access. HRManager role would need to be added to UserRole type.
+    const hasHRPermissions = user?.role === 'Admin';
+
+    // Fetch active employees count - only if user has HR permissions
     const employeesQuery = useMemoFirebase(() => {
-        if (!firestore) return null;
+        if (!firestore || !user || !hasHRPermissions) return null;
         return query(
             collection(firestore, 'employees'),
             where('status', '==', 'active'),
             limit(100)
         );
-    }, [firestore]);
+    }, [firestore, user, hasHRPermissions]);
 
     const { data: employees, isLoading: employeesLoading } = useCollection<Employee>(employeesQuery);
 
@@ -46,7 +50,9 @@ export default function HCMPage() {
     const incidencesQuery = useMemoFirebase(() => {
         if (!firestore || !user) return null;
 
-        const isManager = user.role === 'Admin' || user.role === 'HRManager' || user.role === 'Manager';
+        // Currently only Admin has manager-level permissions
+        // TODO: Add HRManager and Manager roles to UserRole type when needed
+        const isManager = user.role === 'Admin';
         const baseQuery = collection(firestore, 'incidences');
 
         if (isManager) {
