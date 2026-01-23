@@ -101,7 +101,7 @@ export default function ImportEmployeesPage() {
                 message: result.errorCount === 0
                     ? `Importación completada: ${result.successCount} empleados creados.`
                     : `Importación parcial: ${result.successCount} de ${result.recordCount} procesados.`,
-                details: result.errorCount > 0 ? `${result.errorCount} filas con errores.` : undefined,
+                details: (result.errorCount ?? 0) > 0 ? `${result.errorCount ?? 0} filas con errores.` : undefined,
                 errors: result.errors,
             });
 
