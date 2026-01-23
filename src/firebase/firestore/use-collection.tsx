@@ -81,7 +81,7 @@ export interface UseCollectionResult<T> {
  * @returns {UseCollectionResult<T>} Object with data, isLoading, error.
  */
 export function useCollection<T = any>(
-    memoizedTargetRefOrQuery: ((CollectionReference<DocumentData> | Query<DocumentData>) & {__memo?: boolean})  | null | undefined,
+  memoizedTargetRefOrQuery: ((CollectionReference<DocumentData> | Query<DocumentData>) & { __memo?: boolean }) | null | undefined,
 ): UseCollectionResult<T> {
   type ResultItemType = WithId<T>;
   type StateDataType = ResultItemType[] | null;
@@ -114,26 +114,36 @@ export function useCollection<T = any>(
         setIsLoading(false);
       },
       (error: FirestoreError) => {
-        // Extract path using robust extraction function
-        const path = extractPath(memoizedTargetRefOrQuery);
+        // Only handle permission-denied errors specially
+        // Other errors (like network issues) should be handled differently
+        if (error.code === 'permission-denied') {
+          // Extract path using robust extraction function
+          const path = extractPath(memoizedTargetRefOrQuery);
 
-        const contextualError = new FirestorePermissionError({
-          operation: 'list',
-          path: path,
-        })
+          const contextualError = new FirestorePermissionError({
+            operation: 'list',
+            path: path,
+          });
 
-        setError(contextualError)
-        setData(null)
-        setIsLoading(false)
+          setError(contextualError);
+          setData(null);
+          setIsLoading(false);
 
-        // trigger global error propagation
-        errorEmitter.emit('permission-error', contextualError);
+          // Trigger global error propagation (FirebaseErrorListener will check auth state)
+          errorEmitter.emit('permission-error', contextualError);
+        } else {
+          // For other errors, just set the error state without global propagation
+          setError(error);
+          setData(null);
+          setIsLoading(false);
+          console.error("useCollection error:", error);
+        }
       }
     );
 
     return () => unsubscribe();
   }, [memoizedTargetRefOrQuery]); // Re-run if the target query/reference changes.
-  if(memoizedTargetRefOrQuery && !memoizedTargetRefOrQuery.__memo) {
+  if (memoizedTargetRefOrQuery && !memoizedTargetRefOrQuery.__memo) {
     throw new Error(memoizedTargetRefOrQuery + ' was not properly memoized using useMemoFirebase');
   }
   return { data, isLoading, error };

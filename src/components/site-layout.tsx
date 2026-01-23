@@ -78,8 +78,12 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
 
   const handleSignOut = async () => {
     if (auth) {
-      router.replace('/login');
-      await signOut(auth);
+      try {
+        await signOut(auth);
+        // Navigation will occur automatically via useEffect when user becomes null
+      } catch (error) {
+        console.error("Error signing out:", error);
+      }
     }
   };
 

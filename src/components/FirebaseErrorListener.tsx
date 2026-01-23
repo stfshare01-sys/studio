@@ -22,15 +22,19 @@ export function FirebaseErrorListener() {
 
   useEffect(() => {
     const handleError = (error: FirestorePermissionError) => {
-      // Don't show permission errors when user is not authenticated (e.g., during sign-out)
-      if (!userRef.current) return;
+      // Use setTimeout(0) to allow React state updates to propagate before checking
+      // This prevents showing permission errors during sign-out when auth state is changing
+      setTimeout(() => {
+        // Don't show permission errors when user is not authenticated (e.g., during sign-out)
+        if (!userRef.current) return;
 
-      toast({
-        variant: "destructive",
-        title: "Permisos Insuficientes",
-        description: `No tienes permisos para realizar esta operación: ${error.request.method} en ${error.request.path}`,
-      });
-      console.error("FirebasePermissionError captured:", error);
+        toast({
+          variant: "destructive",
+          title: "Permisos Insuficientes",
+          description: `No tienes permisos para realizar esta operación: ${error.request.method} en ${error.request.path}`,
+        });
+        console.error("FirebasePermissionError captured:", error);
+      }, 0);
     };
 
     errorEmitter.on('permission-error', handleError);
