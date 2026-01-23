@@ -142,8 +142,7 @@ service cloud.firestore {
      */
     match /{path=**}/requests/{requestId} {
       // Admins and Designers can read all requests for reporting
-      // Explicitly allow both get and list operations
-      allow get, list: if hasAnyRole(['Admin', 'Designer']);
+      allow read: if hasAnyRole(['Admin', 'Designer']);
     }
 
     /**
@@ -365,16 +364,7 @@ service cloud.firestore {
      * IMPORTANT: Review and restrict before going to production.
      */
     match /{collectionName}/{documentId} {
-      // Explicitly allow get, list, create, update, delete for Admins
-      allow get, list, create, update, delete: if hasRole('Admin');
-    }
-
-    /**
-     * @description Fallback rule for subcollections not explicitly defined.
-     * Allows Admins to access any subcollection during development.
-     */
-    match /{path=**}/{collectionName}/{documentId} {
-      allow get, list, create, update, delete: if hasRole('Admin');
+      allow read, write: if hasRole('Admin');
     }
   }
 }
