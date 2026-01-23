@@ -441,7 +441,7 @@ export default function RequestDetailPage() {
         <SiteLayout>
             <div className="flex flex-1 flex-col">
                 <header className="flex items-center p-4 sm:p-6">
-                    <Button variant="outline" size="icon" asChild>
+                    <Button variant="outline" size="icon" className="border-blue-500 text-blue-600 hover:bg-blue-50 hover:text-blue-700" asChild>
                         <Link href="/">
                             <ArrowLeft className="h-4 w-4" />
                         </Link>

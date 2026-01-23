@@ -219,7 +219,7 @@ export default function AttendancePage() {
         <SiteLayout>
             <div className="flex flex-1 flex-col">
                 <header className="flex items-center gap-4 p-4 sm:p-6">
-                    <Button variant="outline" size="icon" asChild>
+                    <Button variant="outline" size="icon" className="border-blue-500 text-blue-600 hover:bg-blue-50 hover:text-blue-700" asChild>
                         <Link href="/hcm">
                             <ArrowLeft className="h-4 w-4" />
                         </Link>
@@ -298,13 +298,13 @@ export default function AttendancePage() {
                                     </AlertDescription>
                                 </Alert>
                             )}
-                            
-                             <div className="flex justify-end">
+
+                            <div className="flex justify-end">
                                 <Button variant="outline" onClick={downloadTemplate}>
                                     <FileDown className="mr-2 h-4 w-4" />
                                     Descargar Plantilla
                                 </Button>
-                             </div>
+                            </div>
 
                             {/* Format Instructions */}
                             <div className="bg-muted/50 rounded-lg p-4">

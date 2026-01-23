@@ -203,7 +203,7 @@ export default function EditMasterListPage() {
     <div className="container mx-auto py-6 max-w-4xl">
       {/* Header */}
       <div className="flex items-center gap-4 mb-6">
-        <Button variant="ghost" size="icon" asChild>
+        <Button variant="ghost" size="icon" className="text-blue-600 hover:bg-blue-50 hover:text-blue-700" asChild>
           <Link href="/master-lists">
             <ArrowLeft className="h-5 w-5" />
           </Link>

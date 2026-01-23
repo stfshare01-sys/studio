@@ -141,7 +141,7 @@ export default function ImportEmployeesPage() {
             return row as EmployeeImportRow;
         }).filter(row => row.email);
     };
-    
+
     const downloadTemplate = () => {
         const templateHeader = "fullName,email,department,positionTitle,employmentType,shiftType,hireDate,salaryDaily,managerEmail";
         const templateExample = "Juan Perez,juan.perez@example.com,Ventas,Ejecutivo de Ventas,full_time,diurnal,2023-01-15,500.00,manager@example.com";
@@ -163,7 +163,7 @@ export default function ImportEmployeesPage() {
             default: return <RefreshCw className="h-4 w-4 text-blue-500 animate-spin" />;
         }
     };
-    
+
     const getStatusBadge = (status: string) => {
         switch (status) {
             case 'completed': return <Badge className="bg-green-100 text-green-800">Completado</Badge>;
@@ -178,7 +178,7 @@ export default function ImportEmployeesPage() {
         <SiteLayout>
             <div className="flex flex-1 flex-col">
                 <header className="flex items-center gap-4 p-4 sm:p-6">
-                    <Button variant="outline" size="icon" asChild>
+                    <Button variant="outline" size="icon" className="border-blue-500 text-blue-600 hover:bg-blue-50 hover:text-blue-700" asChild>
                         <Link href="/hcm/employees">
                             <ArrowLeft className="h-4 w-4" />
                         </Link>
@@ -227,8 +227,8 @@ export default function ImportEmployeesPage() {
                             )}
 
                             {uploadResult && (
-                                <Alert variant={uploadResult.success ? (uploadResult.errors && uploadResult.errors.length > 0 ? 'default' : 'default') : 'destructive'} 
-                                       className={uploadResult.success && uploadResult.errors && uploadResult.errors.length > 0 ? 'bg-yellow-50 border-yellow-200' : ''}>
+                                <Alert variant={uploadResult.success ? (uploadResult.errors && uploadResult.errors.length > 0 ? 'default' : 'default') : 'destructive'}
+                                    className={uploadResult.success && uploadResult.errors && uploadResult.errors.length > 0 ? 'bg-yellow-50 border-yellow-200' : ''}>
                                     {uploadResult.success ? <CheckCircle2 className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
                                     <AlertTitle>{uploadResult.success ? (uploadResult.errors && uploadResult.errors.length > 0 ? 'Importación Parcial' : 'Éxito') : 'Error'}</AlertTitle>
                                     <AlertDescription>

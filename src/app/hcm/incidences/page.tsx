@@ -97,7 +97,7 @@ export default function IncidencesPage() {
                 q = query(q, where('status', '==', statusFilter));
             }
         }
-        
+
         return query(q, orderBy('createdAt', 'desc'));
 
     }, [firestore, isUserLoading, user, hasHRPermissions, statusFilter]);
@@ -277,7 +277,7 @@ export default function IncidencesPage() {
             <div className="flex flex-1 flex-col">
                 <header className="flex flex-col gap-4 p-4 sm:p-6 md:flex-row md:items-center md:justify-between">
                     <div className="flex items-center gap-4">
-                        <Button variant="outline" size="icon" asChild>
+                        <Button variant="outline" size="icon" className="border-blue-500 text-blue-600 hover:bg-blue-50 hover:text-blue-700" asChild>
                             <Link href="/hcm">
                                 <ArrowLeft className="h-4 w-4" />
                             </Link>
@@ -639,4 +639,4 @@ export default function IncidencesPage() {
     );
 }
 
-    
+

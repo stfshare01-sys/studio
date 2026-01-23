@@ -43,7 +43,8 @@ import {
     DollarSign,
     TrendingUp,
     AlertTriangle,
-    Lock
+    Lock,
+    ArrowLeft
 } from 'lucide-react';
 import type { PrenominaRecord, Employee } from '@/lib/types';
 import { consolidatePrenomina } from '@/firebase/hcm-actions';
@@ -52,6 +53,7 @@ import { es } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
 import { Label } from '@/components/ui/label';
 import { formatCurrency } from '@/lib/hcm-utils';
+import Link from 'next/link';
 
 /**
  * Prenomina Consolidation Page
@@ -249,11 +251,18 @@ export default function PrenominaPage() {
         <div className="container mx-auto py-6 space-y-6">
             {/* Header */}
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                <div>
-                    <h1 className="text-3xl font-bold tracking-tight">Pre-Nómina</h1>
-                    <p className="text-muted-foreground mt-1">
-                        Consolidación y exportación de pre-nómina para timbrado
-                    </p>
+                <div className="flex items-center gap-4">
+                    <Button variant="outline" size="icon" className="border-blue-500 text-blue-600 hover:bg-blue-50 hover:text-blue-700" asChild>
+                        <Link href="/">
+                            <ArrowLeft className="h-4 w-4" />
+                        </Link>
+                    </Button>
+                    <div>
+                        <h1 className="text-3xl font-bold tracking-tight">Pre-Nómina</h1>
+                        <p className="text-muted-foreground mt-1">
+                            Consolidación y exportación de pre-nómina para timbrado
+                        </p>
+                    </div>
                 </div>
                 <div className="flex gap-2">
                     <Button variant="outline" onClick={() => handleExport(prenominaRecords?.filter(r => r.status === 'draft') || [])}>
