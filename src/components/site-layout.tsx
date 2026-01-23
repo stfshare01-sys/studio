@@ -78,8 +78,8 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
 
   const handleSignOut = async () => {
     if (auth) {
-      await signOut(auth);
       router.replace('/login');
+      await signOut(auth);
     }
   };
 

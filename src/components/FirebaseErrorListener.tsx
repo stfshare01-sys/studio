@@ -1,22 +1,30 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
 import { useToast } from "@/hooks/use-toast";
+import { useUser } from '@/firebase';
 
 /**
  * An invisible component that listens for globally emitted 'permission-error' events.
- * It throws any received error to be caught by Next.js's global-error.tsx.
+ * Shows a toast notification when permission errors occur (only when user is authenticated).
  */
 export function FirebaseErrorListener() {
-  // Use the specific error type for the state for type safety.
   const { toast } = useToast();
+  const { user } = useUser();
+  const userRef = useRef(user);
+
+  // Keep ref in sync so the callback always has the latest user state
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
 
   useEffect(() => {
-    // The callback now expects a strongly-typed error, matching the event payload.
     const handleError = (error: FirestorePermissionError) => {
-      // Instead of setting state to throw, we simply show a toast.
+      // Don't show permission errors when user is not authenticated (e.g., during sign-out)
+      if (!userRef.current) return;
+
       toast({
         variant: "destructive",
         title: "Permisos Insuficientes",
@@ -25,19 +33,12 @@ export function FirebaseErrorListener() {
       console.error("FirebasePermissionError captured:", error);
     };
 
-    // The typed emitter will enforce that the callback for 'permission-error'
-    // matches the expected payload type (FirestorePermissionError).
     errorEmitter.on('permission-error', handleError);
 
-    // Unsubscribe on unmount to prevent memory leaks.
     return () => {
       errorEmitter.off('permission-error', handleError);
     };
   }, [toast]);
 
-  // This component renders nothing and no longer throws.
-  return null;
-
-  // This component renders nothing.
   return null;
 }
