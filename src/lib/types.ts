@@ -1,6 +1,7 @@
 
 
 
+
 export type UserRole = 'Admin' | 'Member' | 'Designer';
 export type UserStatus = 'active' | 'disabled';
 
@@ -804,7 +805,6 @@ export type TimeBankMovement = {
 
 /**
  * Lote de Importación de Asistencia
- * Metadata de archivos Excel/CSV cargados
  */
 export type AttendanceImportBatch = {
   id: string;
@@ -829,6 +829,21 @@ export type AttendanceImportBatch = {
   // Período cubierto
   dateRangeStart?: string;
   dateRangeEnd?: string;
+};
+
+export type EmployeeImportBatch = {
+  id: string;
+  filename: string;
+  fileSize: number;
+  mimeType: string;
+  uploadedById: string;
+  uploadedByName?: string;
+  uploadedAt: string;
+  recordCount: number;
+  successCount: number;
+  errorCount: number;
+  status: 'uploading' | 'processing' | 'completed' | 'failed' | 'partial';
+  errors?: ImportError[];
 };
 
 /**

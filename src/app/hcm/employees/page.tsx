@@ -1,6 +1,8 @@
+
 'use client';
 
 import { useState } from 'react';
+import SiteLayout from '@/components/site-layout';
 import { useFirebase, useMemoFirebase } from '@/firebase/provider';
 import { useCollection } from '@/firebase/firestore/use-collection';
 import { collection, query, where, orderBy } from 'firebase/firestore';
@@ -41,7 +43,9 @@ import {
     FileText,
     Building2,
     Calendar,
-    BadgeCheck
+    BadgeCheck,
+    ArrowLeft,
+    Upload,
 } from 'lucide-react';
 import Link from 'next/link';
 import type { Employee } from '@/lib/types';
@@ -110,191 +114,208 @@ export default function EmployeesPage() {
     };
 
     return (
-        <div className="container mx-auto py-6 space-y-6">
-            {/* Header */}
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                <div>
-                    <h1 className="text-3xl font-bold tracking-tight">Directorio de Empleados</h1>
-                    <p className="text-muted-foreground mt-1">
-                        Gestión de expedientes digitales del personal
-                    </p>
-                </div>
-                <Button asChild>
-                    <Link href="/hcm/employees/new">
-                        <UserPlus className="mr-2 h-4 w-4" />
-                        Nuevo Empleado
-                    </Link>
-                </Button>
-            </div>
-
-            {/* Filters */}
-            <Card>
-                <CardContent className="pt-6">
-                    <div className="flex flex-col md:flex-row gap-4">
-                        <div className="relative flex-1">
-                            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                            <Input
-                                placeholder="Buscar por nombre, email o puesto..."
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                className="pl-10"
-                            />
+        <SiteLayout>
+            <div className="flex flex-1 flex-col">
+                <header className="flex flex-col gap-4 p-4 sm:p-6 md:flex-row md:items-center md:justify-between">
+                    <div className="flex items-center gap-4">
+                        <Button variant="outline" size="icon" asChild>
+                            <Link href="/hcm">
+                                <ArrowLeft className="h-4 w-4" />
+                            </Link>
+                        </Button>
+                        <div>
+                            <h1 className="text-2xl font-bold tracking-tight">Directorio de Empleados</h1>
+                            <p className="text-muted-foreground">
+                                Gestión de expedientes digitales del personal
+                            </p>
                         </div>
-                        <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
-                            <SelectTrigger className="w-full md:w-[200px]">
-                                <Building2 className="mr-2 h-4 w-4" />
-                                <SelectValue placeholder="Departamento" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="all">Todos los departamentos</SelectItem>
-                                {departments.map(dept => (
-                                    <SelectItem key={dept} value={dept}>{dept}</SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                        <Select value={statusFilter} onValueChange={setStatusFilter}>
-                            <SelectTrigger className="w-full md:w-[150px]">
-                                <SelectValue placeholder="Estado" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="all">Todos</SelectItem>
-                                <SelectItem value="active">Activos</SelectItem>
-                                <SelectItem value="disabled">Inactivos</SelectItem>
-                            </SelectContent>
-                        </Select>
                     </div>
-                </CardContent>
-            </Card>
+                    <div className="flex gap-2">
+                        <Button asChild variant="outline">
+                            <Link href="/hcm/employees/import">
+                                <Upload className="mr-2 h-4 w-4" />
+                                Importar
+                            </Link>
+                        </Button>
+                        <Button asChild>
+                            <Link href="/hcm/employees/new">
+                                <UserPlus className="mr-2 h-4 w-4" />
+                                Nuevo Empleado
+                            </Link>
+                        </Button>
+                    </div>
+                </header>
+                <main className="flex flex-1 flex-col gap-4 p-4 pt-0 sm:gap-8 sm:p-6 sm:pt-0">
+                    {/* Filters */}
+                    <Card>
+                        <CardContent className="pt-6">
+                            <div className="flex flex-col md:flex-row gap-4">
+                                <div className="relative flex-1">
+                                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                                    <Input
+                                        placeholder="Buscar por nombre, email o puesto..."
+                                        value={searchTerm}
+                                        onChange={(e) => setSearchTerm(e.target.value)}
+                                        className="pl-10"
+                                    />
+                                </div>
+                                <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
+                                    <SelectTrigger className="w-full md:w-[200px]">
+                                        <Building2 className="mr-2 h-4 w-4" />
+                                        <SelectValue placeholder="Departamento" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">Todos los departamentos</SelectItem>
+                                        {departments.map(dept => (
+                                            <SelectItem key={dept} value={dept}>{dept}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                                    <SelectTrigger className="w-full md:w-[150px]">
+                                        <SelectValue placeholder="Estado" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">Todos</SelectItem>
+                                        <SelectItem value="active">Activos</SelectItem>
+                                        <SelectItem value="disabled">Inactivos</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </CardContent>
+                    </Card>
 
-            {/* Employees Table */}
-            <Card>
-                <CardHeader>
-                    <CardTitle>Empleados</CardTitle>
-                    <CardDescription>
-                        {isLoading ? 'Cargando...' : `${filteredEmployees.length} empleados encontrados`}
-                    </CardDescription>
-                </CardHeader>
-                <CardContent>
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead>Empleado</TableHead>
-                                <TableHead>Puesto</TableHead>
-                                <TableHead>Departamento</TableHead>
-                                <TableHead>Tipo Jornada</TableHead>
-                                <TableHead>Antigüedad</TableHead>
-                                <TableHead>Estado</TableHead>
-                                <TableHead className="text-right">Acciones</TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {isLoading ? (
-                                <TableRow>
-                                    <TableCell colSpan={7} className="text-center py-8">
-                                        Cargando empleados...
-                                    </TableCell>
-                                </TableRow>
-                            ) : filteredEmployees.length === 0 ? (
-                                <TableRow>
-                                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                                        No se encontraron empleados
-                                    </TableCell>
-                                </TableRow>
-                            ) : (
-                                filteredEmployees.map((employee) => {
-                                    const yearsOfService = employee.hireDate
-                                        ? calculateYearsOfService(employee.hireDate)
-                                        : 0;
-
-                                    return (
-                                        <TableRow key={employee.id}>
-                                            <TableCell>
-                                                <div className="flex items-center gap-3">
-                                                    <Avatar>
-                                                        <AvatarImage src={employee.avatarUrl} alt={employee.fullName} />
-                                                        <AvatarFallback>{getInitials(employee.fullName)}</AvatarFallback>
-                                                    </Avatar>
-                                                    <div>
-                                                        <div className="font-medium">{employee.fullName}</div>
-                                                        <div className="text-sm text-muted-foreground">{employee.email}</div>
-                                                    </div>
-                                                </div>
-                                            </TableCell>
-                                            <TableCell>
-                                                <div className="flex flex-col">
-                                                    <span>{employee.positionTitle || '-'}</span>
-                                                    <span className="text-xs text-muted-foreground">
-                                                        {formatEmploymentType(employee.employmentType)}
-                                                    </span>
-                                                </div>
-                                            </TableCell>
-                                            <TableCell>{employee.department}</TableCell>
-                                            <TableCell>{formatShiftType(employee.shiftType)}</TableCell>
-                                            <TableCell>
-                                                <div className="flex items-center gap-1">
-                                                    <Calendar className="h-3 w-3 text-muted-foreground" />
-                                                    <span>{yearsOfService} {yearsOfService === 1 ? 'año' : 'años'}</span>
-                                                </div>
-                                            </TableCell>
-                                            <TableCell>
-                                                {employee.status === 'active' ? (
-                                                    <Badge variant="default" className="bg-green-100 text-green-800 hover:bg-green-100">
-                                                        <BadgeCheck className="mr-1 h-3 w-3" />
-                                                        Activo
-                                                    </Badge>
-                                                ) : (
-                                                    <Badge variant="secondary">
-                                                        Inactivo
-                                                    </Badge>
-                                                )}
-                                                {employee.onboardingStatus && employee.onboardingStatus !== 'completed' && (
-                                                    <Badge variant="outline" className="ml-1">
-                                                        {employee.onboardingStatus === 'day_0' ? 'Onboarding' :
-                                                            employee.onboardingStatus === 'day_30' ? 'Día 30' :
-                                                                employee.onboardingStatus === 'day_60' ? 'Día 60' :
-                                                                    'Día 90'}
-                                                    </Badge>
-                                                )}
-                                            </TableCell>
-                                            <TableCell className="text-right">
-                                                <DropdownMenu>
-                                                    <DropdownMenuTrigger asChild>
-                                                        <Button variant="ghost" size="icon">
-                                                            <MoreHorizontal className="h-4 w-4" />
-                                                        </Button>
-                                                    </DropdownMenuTrigger>
-                                                    <DropdownMenuContent align="end">
-                                                        <DropdownMenuLabel>Acciones</DropdownMenuLabel>
-                                                        <DropdownMenuSeparator />
-                                                        <DropdownMenuItem asChild>
-                                                            <Link href={`/hcm/employees/${employee.id}`}>
-                                                                <Eye className="mr-2 h-4 w-4" />
-                                                                Ver Expediente
-                                                            </Link>
-                                                        </DropdownMenuItem>
-                                                        <DropdownMenuItem asChild>
-                                                            <Link href={`/hcm/employees/${employee.id}/edit`}>
-                                                                <Edit className="mr-2 h-4 w-4" />
-                                                                Editar
-                                                            </Link>
-                                                        </DropdownMenuItem>
-                                                        <DropdownMenuItem asChild>
-                                                            <Link href={`/hcm/employees/${employee.id}/compensation`}>
-                                                                <FileText className="mr-2 h-4 w-4" />
-                                                                Compensación
-                                                            </Link>
-                                                        </DropdownMenuItem>
-                                                    </DropdownMenuContent>
-                                                </DropdownMenu>
+                    {/* Employees Table */}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Empleados</CardTitle>
+                            <CardDescription>
+                                {isLoading ? 'Cargando...' : `${filteredEmployees.length} empleados encontrados`}
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead>Empleado</TableHead>
+                                        <TableHead>Puesto</TableHead>
+                                        <TableHead>Departamento</TableHead>
+                                        <TableHead>Tipo Jornada</TableHead>
+                                        <TableHead>Antigüedad</TableHead>
+                                        <TableHead>Estado</TableHead>
+                                        <TableHead className="text-right">Acciones</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {isLoading ? (
+                                        <TableRow>
+                                            <TableCell colSpan={7} className="text-center py-8">
+                                                Cargando empleados...
                                             </TableCell>
                                         </TableRow>
-                                    );
-                                })
-                            )}
-                        </TableBody>
-                    </Table>
-                </CardContent>
-            </Card>
-        </div>
+                                    ) : filteredEmployees.length === 0 ? (
+                                        <TableRow>
+                                            <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                                                No se encontraron empleados
+                                            </TableCell>
+                                        </TableRow>
+                                    ) : (
+                                        filteredEmployees.map((employee) => {
+                                            const yearsOfService = employee.hireDate
+                                                ? calculateYearsOfService(employee.hireDate)
+                                                : 0;
+
+                                            return (
+                                                <TableRow key={employee.id}>
+                                                    <TableCell>
+                                                        <div className="flex items-center gap-3">
+                                                            <Avatar>
+                                                                <AvatarImage src={employee.avatarUrl} alt={employee.fullName} />
+                                                                <AvatarFallback>{getInitials(employee.fullName)}</AvatarFallback>
+                                                            </Avatar>
+                                                            <div>
+                                                                <div className="font-medium">{employee.fullName}</div>
+                                                                <div className="text-sm text-muted-foreground">{employee.email}</div>
+                                                            </div>
+                                                        </div>
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        <div className="flex flex-col">
+                                                            <span>{employee.positionTitle || '-'}</span>
+                                                            <span className="text-xs text-muted-foreground">
+                                                                {formatEmploymentType(employee.employmentType)}
+                                                            </span>
+                                                        </div>
+                                                    </TableCell>
+                                                    <TableCell>{employee.department}</TableCell>
+                                                    <TableCell>{formatShiftType(employee.shiftType)}</TableCell>
+                                                    <TableCell>
+                                                        <div className="flex items-center gap-1">
+                                                            <Calendar className="h-3 w-3 text-muted-foreground" />
+                                                            <span>{yearsOfService} {yearsOfService === 1 ? 'año' : 'años'}</span>
+                                                        </div>
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        {employee.status === 'active' ? (
+                                                            <Badge variant="default" className="bg-green-100 text-green-800 hover:bg-green-100">
+                                                                <BadgeCheck className="mr-1 h-3 w-3" />
+                                                                Activo
+                                                            </Badge>
+                                                        ) : (
+                                                            <Badge variant="secondary">
+                                                                Inactivo
+                                                            </Badge>
+                                                        )}
+                                                        {employee.onboardingStatus && employee.onboardingStatus !== 'completed' && (
+                                                            <Badge variant="outline" className="ml-1">
+                                                                {employee.onboardingStatus === 'day_0' ? 'Onboarding' :
+                                                                    employee.onboardingStatus === 'day_30' ? 'Día 30' :
+                                                                        employee.onboardingStatus === 'day_60' ? 'Día 60' :
+                                                                            'Día 90'}
+                                                            </Badge>
+                                                        )}
+                                                    </TableCell>
+                                                    <TableCell className="text-right">
+                                                        <DropdownMenu>
+                                                            <DropdownMenuTrigger asChild>
+                                                                <Button variant="ghost" size="icon">
+                                                                    <MoreHorizontal className="h-4 w-4" />
+                                                                </Button>
+                                                            </DropdownMenuTrigger>
+                                                            <DropdownMenuContent align="end">
+                                                                <DropdownMenuLabel>Acciones</DropdownMenuLabel>
+                                                                <DropdownMenuSeparator />
+                                                                <DropdownMenuItem asChild>
+                                                                    <Link href={`/hcm/employees/${employee.id}`}>
+                                                                        <Eye className="mr-2 h-4 w-4" />
+                                                                        Ver Expediente
+                                                                    </Link>
+                                                                </DropdownMenuItem>
+                                                                <DropdownMenuItem asChild>
+                                                                    <Link href={`/hcm/employees/${employee.id}/edit`}>
+                                                                        <Edit className="mr-2 h-4 w-4" />
+                                                                        Editar
+                                                                    </Link>
+                                                                </DropdownMenuItem>
+                                                                <DropdownMenuItem asChild>
+                                                                    <Link href={`/hcm/employees/${employee.id}/compensation`}>
+                                                                        <FileText className="mr-2 h-4 w-4" />
+                                                                        Compensación
+                                                                    </Link>
+                                                                </DropdownMenuItem>
+                                                            </DropdownMenuContent>
+                                                        </DropdownMenu>
+                                                    </TableCell>
+                                                </TableRow>
+                                            );
+                                        })
+                                    )}
+                                </TableBody>
+                            </Table>
+                        </CardContent>
+                    </Card>
+                </main>
+            </div>
+        </SiteLayout>
     );
 }

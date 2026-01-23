@@ -2,6 +2,7 @@
 'use client';
 
 import { useState } from 'react';
+import SiteLayout from '@/components/site-layout';
 import { useFirebase, useMemoFirebase } from '@/firebase/provider';
 import { useCollection } from '@/firebase/firestore/use-collection';
 import { collection, query, where, orderBy } from 'firebase/firestore';
@@ -26,26 +27,24 @@ import { Skeleton } from '@/components/ui/skeleton';
 
 function AccessDenied() {
     return (
-        <div className="container mx-auto py-6">
-            <Card className="flex flex-1 items-center justify-center rounded-lg border border-dashed shadow-sm p-8 mt-8">
-                <div className="flex flex-col items-center gap-2 text-center">
-                    <ShieldAlert className="h-12 w-12 text-destructive" />
-                    <h3 className="text-2xl font-bold tracking-tight">Acceso Denegado</h3>
-                    <p className="text-sm text-muted-foreground max-w-md">
-                        Esta página solo está disponible para usuarios con roles de Manager, HRManager o Admin.
-                    </p>
-                    <Button className="mt-4" asChild>
-                        <Link href="/hcm">Volver al Módulo HCM</Link>
-                    </Button>
-                </div>
-            </Card>
-        </div>
+        <Card className="flex flex-1 items-center justify-center rounded-lg border border-dashed shadow-sm p-8 mt-8">
+            <div className="flex flex-col items-center gap-2 text-center">
+                <ShieldAlert className="h-12 w-12 text-destructive" />
+                <h3 className="text-2xl font-bold tracking-tight">Acceso Denegado</h3>
+                <p className="text-sm text-muted-foreground max-w-md">
+                    Esta página solo está disponible para usuarios con roles de Manager, HRManager o Admin.
+                </p>
+                <Button className="mt-4" asChild>
+                    <Link href="/hcm">Volver al Módulo HCM</Link>
+                </Button>
+            </div>
+        </Card>
     );
 }
 
 function CalendarSkeleton() {
     return (
-        <div className="container mx-auto py-6 space-y-6">
+        <div className="space-y-6">
             <div className="flex items-center gap-4">
                 <Skeleton className="h-10 w-10" />
                 <div className="space-y-2">
@@ -106,11 +105,23 @@ export default function TeamCalendarPage() {
     const isLoading = isUserLoading || (isManagerOrAdmin && (employeesLoading || incidencesLoading));
 
     if (isUserLoading) {
-        return <CalendarSkeleton />;
+        return (
+            <SiteLayout>
+                <div className="flex-1 flex-col p-4 sm:p-6">
+                    <CalendarSkeleton />
+                </div>
+            </SiteLayout>
+        );
     }
 
     if (!isManagerOrAdmin) {
-        return <AccessDenied />;
+        return (
+            <SiteLayout>
+                <div className="flex-1 flex-col p-4 sm:p-6">
+                    <AccessDenied />
+                </div>
+            </SiteLayout>
+        );
     }
 
     const handleDayClick = (date: Date, employeesOff: Employee[]) => {
@@ -140,73 +151,76 @@ export default function TeamCalendarPage() {
     const availabilityPercent = totalEmployees > 0 ? Math.round((availableToday / totalEmployees) * 100) : 100;
 
     return (
-        <div className="container mx-auto py-6 space-y-6">
-            {/* Header */}
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                <div className="flex items-center gap-4">
-                    <Button variant="ghost" size="icon" asChild>
-                        <Link href="/hcm">
-                            <ArrowLeft className="h-4 w-4" />
-                        </Link>
-                    </Button>
-                    <div>
-                        <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
-                            <Calendar className="h-8 w-8" />
-                            Calendario del Equipo
-                        </h1>
-                        <p className="text-muted-foreground mt-1">
-                            Visualización de disponibilidad y ausencias del equipo
-                        </p>
-                    </div>
-                </div>
-
-                {/* Availability Badge */}
-                <Card className="p-4">
+        <SiteLayout>
+            <div className="flex flex-1 flex-col">
+                <header className="flex flex-col gap-4 p-4 sm:p-6 md:flex-row md:items-center md:justify-between">
                     <div className="flex items-center gap-4">
-                        <div className="flex items-center gap-2">
-                            <Users className="h-5 w-5 text-muted-foreground" />
-                            <span className="text-sm font-medium">Disponibilidad Hoy:</span>
+                        <Button variant="outline" size="icon" asChild>
+                            <Link href="/hcm">
+                                <ArrowLeft className="h-4 w-4" />
+                            </Link>
+                        </Button>
+                        <div>
+                            <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+                                <Calendar className="h-6 w-6" />
+                                Calendario del Equipo
+                            </h1>
+                            <p className="text-muted-foreground">
+                                Visualización de disponibilidad y ausencias del equipo
+                            </p>
                         </div>
-                        <Badge
-                            variant="outline"
-                            className={`text-lg px-3 py-1 ${availabilityPercent >= 90 ? 'bg-green-100 text-green-800 border-green-300' :
-                                availabilityPercent >= 70 ? 'bg-yellow-100 text-yellow-800 border-yellow-300' :
-                                    'bg-red-100 text-red-800 border-red-300'
-                                }`}
-                        >
-                            {availableToday}/{totalEmployees} ({availabilityPercent}%)
-                        </Badge>
                     </div>
-                </Card>
-            </div>
+                </header>
+                <main className="flex flex-1 flex-col gap-4 p-4 pt-0 sm:gap-8 sm:p-6 sm:pt-0">
 
-            {/* Main Content */}
-            <Card>
-                <CardHeader>
-                    <CardTitle>Calendario de Ausencias</CardTitle>
-                    <CardDescription>
-                        {isLoading ? 'Cargando...' :
-                            `${totalEmployees} empleados • ${incidences?.length ?? 0} incidencias aprobadas`}
-                    </CardDescription>
-                </CardHeader>
-                <CardContent>
-                    {isLoading ? (
-                        <div className="flex items-center justify-center h-64">
-                            <p className="text-muted-foreground">Cargando calendario...</p>
-                        </div>
-                    ) : employees && incidences ? (
-                        <TeamCalendar
-                            employees={employees}
-                            incidences={incidences}
-                            onDayClick={handleDayClick}
-                        />
-                    ) : (
-                        <div className="flex items-center justify-center h-64">
-                            <p className="text-muted-foreground">No hay datos para mostrar</p>
-                        </div>
-                    )}
-                </CardContent>
-            </Card>
+                    {/* Availability Badge */}
+                    <Card>
+                        <CardContent className="p-4 flex items-center gap-4">
+                            <div className="flex items-center gap-2">
+                                <Users className="h-5 w-5 text-muted-foreground" />
+                                <span className="text-sm font-medium">Disponibilidad Hoy:</span>
+                            </div>
+                            <Badge
+                                variant="outline"
+                                className={`text-lg px-3 py-1 ${availabilityPercent >= 90 ? 'bg-green-100 text-green-800 border-green-300' :
+                                    availabilityPercent >= 70 ? 'bg-yellow-100 text-yellow-800 border-yellow-300' :
+                                        'bg-red-100 text-red-800 border-red-300'
+                                    }`}
+                            >
+                                {availableToday}/{totalEmployees} ({availabilityPercent}%)
+                            </Badge>
+                        </CardContent>
+                    </Card>
+
+                    {/* Main Content */}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Calendario de Ausencias</CardTitle>
+                            <CardDescription>
+                                {isLoading ? 'Cargando...' :
+                                    `${totalEmployees} empleados • ${incidences?.length ?? 0} incidencias aprobadas`}
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            {isLoading ? (
+                                <div className="flex items-center justify-center h-64">
+                                    <p className="text-muted-foreground">Cargando calendario...</p>
+                                </div>
+                            ) : employees && incidences ? (
+                                <TeamCalendar
+                                    employees={employees}
+                                    incidences={incidences}
+                                    onDayClick={handleDayClick}
+                                />
+                            ) : (
+                                <div className="flex items-center justify-center h-64">
+                                    <p className="text-muted-foreground">No hay datos para mostrar</p>
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
+                </main>
+            </div>
 
             {/* Day Detail Dialog */}
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
@@ -263,6 +277,6 @@ export default function TeamCalendarPage() {
                     </div>
                 </DialogContent>
             </Dialog>
-        </div>
+        </SiteLayout>
     );
 }

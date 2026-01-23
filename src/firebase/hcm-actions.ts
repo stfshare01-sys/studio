@@ -1,3 +1,4 @@
+
 'use client';
 
 /**
@@ -11,7 +12,7 @@
  * consider creating separate API routes or Cloud Functions.
  */
 
-import { Firestore, doc, collection, addDoc, updateDoc, getDoc, getDocs, query, where, orderBy, limit, Timestamp } from 'firebase/firestore';
+import { Firestore, doc, collection, addDoc, updateDoc, getDoc, getDocs, query, where, orderBy, limit, Timestamp, setDoc } from 'firebase/firestore';
 import { initializeFirebase } from '.';
 import { setDocumentNonBlocking, updateDocumentNonBlocking, addDocumentNonBlocking } from './non-blocking-updates';
 import type {
@@ -23,7 +24,8 @@ import type {
     AttendanceImportBatch,
     TimeBank,
     SettlementCalculation,
-    ShiftType
+    ShiftType,
+    EmployeeImportBatch,
 } from '@/lib/types';
 import {
     calculateSDIFactor,
@@ -67,7 +69,6 @@ export async function createEmployee(
         const { firestore } = initializeFirebase();
 
         const employeeRef = doc(firestore, 'employees', userId);
-        const now = new Date().toISOString();
 
         const employeeData: Partial<Employee> = {
             id: userId,
@@ -78,7 +79,7 @@ export async function createEmployee(
             onboardingObjectives: [],
         };
 
-        setDocumentNonBlocking(employeeRef, employeeData, {});
+        await setDoc(employeeRef, employeeData, {});
 
         console.log(`[HCM] Created employee record for ${userId}`);
         return { success: true, employeeId: userId };
@@ -353,6 +354,154 @@ export async function processAttendanceImport(
         return { success: false, errors: [{ row: 0, message: 'Error general en la importación' }] };
     }
 }
+
+// =========================================================================
+// EMPLOYEE IMPORT
+// =========================================================================
+
+interface EmployeeImportRow {
+    fullName: string;
+    email: string;
+    department: string;
+    positionTitle: string;
+    employmentType: Employee['employmentType'];
+    shiftType: ShiftType;
+    hireDate: string;
+    salaryDaily: string;
+    managerEmail?: string;
+}
+
+interface ProcessEmployeeImportResult {
+    success: boolean;
+    batchId?: string;
+    recordCount?: number;
+    successCount?: number;
+    errorCount?: number;
+    errors?: Array<{ row: number; message: string }>;
+}
+
+export async function processEmployeeImport(
+    rows: EmployeeImportRow[],
+    uploadedById: string,
+    uploadedByName: string,
+    filename: string
+): Promise<ProcessEmployeeImportResult> {
+    try {
+        const { firestore } = initializeFirebase();
+        const now = new Date().toISOString();
+
+        // Create import batch record
+        const batchRef = collection(firestore, 'employee_imports');
+        const batchData: Omit<EmployeeImportBatch, 'id'> = {
+            filename,
+            fileSize: 0, // Placeholder
+            mimeType: 'text/csv',
+            uploadedById,
+            uploadedByName,
+            uploadedAt: now,
+            recordCount: rows.length,
+            successCount: 0,
+            errorCount: 0,
+            status: 'processing',
+            errors: []
+        };
+
+        const batchDocRef = await addDoc(batchRef, batchData);
+        const batchId = batchDocRef.id;
+
+        const errors: ProcessEmployeeImportResult['errors'] = [];
+        let successCount = 0;
+
+        for (let i = 0; i < rows.length; i++) {
+            const row = rows[i];
+            const rowNum = i + 2; // CSV rows start at 1, +1 for header
+
+            try {
+                // Validate required fields
+                if (!row.fullName || !row.email || !row.department || !row.positionTitle || !row.hireDate || !row.salaryDaily) {
+                    throw new Error("Faltan campos obligatorios: fullName, email, department, positionTitle, hireDate, salaryDaily.");
+                }
+
+                const salaryDaily = parseFloat(row.salaryDaily);
+                if (isNaN(salaryDaily) || salaryDaily <= 0) {
+                    throw new Error("Salario diario inválido.");
+                }
+                
+                // Check if user already exists in users or employees collection
+                const userQuery = query(collection(firestore, 'users'), where('email', '==', row.email), limit(1));
+                const employeeQuery = query(collection(firestore, 'employees'), where('email', '==', row.email), limit(1));
+                const [userSnap, employeeSnap] = await Promise.all([getDocs(userQuery), getDocs(employeeQuery)]);
+
+                if (!userSnap.empty || !employeeSnap.empty) {
+                    throw new Error(`El email ${row.email} ya está en uso.`);
+                }
+                
+                // Generate a new unique ID for the employee
+                const employeeDocRef = doc(collection(firestore, 'employees'));
+                const employeeId = employeeDocRef.id;
+
+                // Prepare employee data
+                const employeePayload: CreateEmployeePayload = {
+                    fullName: row.fullName,
+                    email: row.email,
+                    department: row.department,
+                    positionTitle: row.positionTitle,
+                    employmentType: row.employmentType || 'full_time',
+                    shiftType: row.shiftType || 'diurnal',
+                    hireDate: new Date(row.hireDate).toISOString(),
+                };
+                
+                // Create Employee record
+                const createEmployeeResult = await createEmployee(employeeId, employeePayload);
+
+                if (!createEmployeeResult.success || !createEmployeeResult.employeeId) {
+                    throw new Error(createEmployeeResult.error || "No se pudo crear el empleado.");
+                }
+
+                // Create initial Compensation record
+                const createCompResult = await createCompensation({
+                    employeeId: createEmployeeResult.employeeId,
+                    salaryDaily: salaryDaily,
+                    effectiveDate: new Date(row.hireDate).toISOString(),
+                    createdById: uploadedById,
+                });
+
+                if (!createCompResult.success) {
+                    // In a real app, you might want to handle this with a rollback.
+                    throw new Error(createCompResult.error || "Empleado creado, pero falló la compensación.");
+                }
+
+                successCount++;
+
+            } catch (rowError: any) {
+                errors.push({ row: rowNum, message: rowError.message });
+            }
+        }
+
+        const finalStatus = errors.length === 0 ? 'completed' : (successCount === 0 ? 'failed' : 'partial');
+
+        await updateDoc(batchDocRef, {
+            status: finalStatus,
+            successCount,
+            errorCount: errors.length,
+            errors: errors.slice(0, 50),
+        });
+
+        return {
+            success: errors.length === 0,
+            batchId,
+            recordCount: rows.length,
+            successCount,
+            errorCount: errors.length,
+            errors
+        };
+
+    } catch (error: any) {
+        console.error('[HCM] Error processing employee import:', error);
+        return { success: false, errors: [{ row: 0, message: error.message || 'Error general en la importación de empleados' }] };
+    }
+}
+
 
 // =========================================================================
 // INCIDENCE MANAGEMENT
@@ -813,3 +962,5 @@ export async function updateTimeBank(
         return { success: false, error: 'Error actualizando bolsa de horas.' };
     }
 }
+
+    
