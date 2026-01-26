@@ -61,11 +61,6 @@ service cloud.firestore {
       return isSignedIn() && userDocExists() && getUserData().role in ['Admin', 'HRManager', 'Manager'];
     }
 
-    // Validate that a timestamp field uses server timestamp
-    function isServerTimestamp(field) {
-      return field == request.time;
-    }
-
     // Validate that critical timestamps are server-generated on create
     function hasValidCreateTimestamps() {
       let data = request.resource.data;
@@ -76,11 +71,6 @@ service cloud.firestore {
     function hasValidUpdateTimestamps() {
       let data = request.resource.data;
       return 'updatedAt' in data.keys();
-    }
-
-    // Check if employee owns this record
-    function isEmployeeOwner(employeeId) {
-      return isSignedIn() && request.auth.uid == employeeId;
     }
 
     // -------------------------------------------------------------------------

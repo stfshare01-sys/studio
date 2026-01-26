@@ -7,7 +7,7 @@
  * ⚠️ CRITICAL: These functions use Firestore transactions for atomicity.
  */
 
-import { onCall, HttpsError } from 'firebase-functions/v2/https';
+import { onCall, HttpsError, CallableRequest } from 'firebase-functions/v2/https';
 import * as admin from 'firebase-admin';
 import { verifyRole, HCM_ROLES, MANAGER_ROLES, getUserData } from '../utils/auth-middleware';
 import {
@@ -66,7 +66,7 @@ interface ConsolidatePrenominaResponse {
  */
 export const consolidatePrenomina = onCall<ConsolidatePrenominaRequest>(
     { region: 'us-central1' },
-    async (request): Promise<ConsolidatePrenominaResponse> => {
+    async (request: CallableRequest<ConsolidatePrenominaRequest>): Promise<ConsolidatePrenominaResponse> => {
         // Verify authentication and role
         await verifyRole(request.auth?.uid, HCM_ROLES, 'consolidar prenómina');
         const userData = await getUserData(request.auth!.uid);
