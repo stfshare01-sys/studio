@@ -153,7 +153,12 @@ export default function EmployeeDetailPage({ params }: { params: Promise<{ id: s
                         </div>
                     </div>
                     <div className="flex gap-2">
-                        <Button variant="outline">Editar Perfil</Button>
+                        <Button variant="outline" asChild>
+                            <Link href={`/hcm/employees/${employeeId}/compensation`}>Compensacion</Link>
+                        </Button>
+                        <Button variant="outline" asChild>
+                            <Link href={`/hcm/employees/${employeeId}/edit`}>Editar Perfil</Link>
+                        </Button>
                         <Button variant="destructive">Dar de Baja</Button>
                     </div>
                 </header>

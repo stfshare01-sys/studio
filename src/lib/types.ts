@@ -953,3 +953,471 @@ export type SettlementCalculation = {
   calculatedAt: string;
   calculatedById: string;
 };
+
+// =========================================================================
+// UBICACIONES, PUESTOS Y TURNOS
+// =========================================================================
+
+/**
+ * Tipo de ubicación
+ */
+export type LocationType = 'cedis' | 'tienda' | 'corporativo' | 'planta' | 'otro';
+
+/**
+ * Ubicación / Sucursal
+ * Representa una ubicación física de la empresa
+ */
+export type Location = {
+  id: string;
+  name: string;                   // Nombre de la ubicación
+  code: string;                   // Código único (ej: "CEDIS-GDL", "T001")
+  type: LocationType;             // Tipo de ubicación
+  address?: string;               // Dirección
+  city?: string;                  // Ciudad
+  state?: string;                 // Estado
+
+  // Configuración de nómina
+  overtimeResetDay: 'sunday' | 'saturday' | 'custom'; // Día de reinicio de horas extras
+  customOvertimeResetDay?: number;  // 0-6 si es custom
+
+  // Calendario específico
+  holidayCalendarId?: string;     // Calendario de días festivos específico
+  companyBenefitDays?: string[];  // Días de beneficio empresa (ej: "12-24", "12-31")
+
+  // Configuración de asistencia
+  toleranceMinutes: number;       // Tolerancia de entrada en minutos (default: 10)
+  useVirtualCheckIn?: boolean;    // Usar check-in virtual (Home Office)
+
+  // Estado
+  isActive: boolean;
+
+  // Auditoría
+  createdAt: string;
+  updatedAt: string;
+  createdById: string;
+};
+
+/**
+ * Puesto / Cargo
+ * Catálogo de puestos de la empresa
+ */
+export type Position = {
+  id: string;
+  name: string;                   // Nombre del puesto
+  code: string;                   // Código único
+  department: string;             // Departamento
+  level: number;                  // Nivel jerárquico (1 = director, 2 = gerente, etc.)
+
+  // Configuración salarial
+  salaryMin?: number;             // Salario mínimo del tabulador
+  salaryMax?: number;             // Salario máximo del tabulador
+
+  // Permisos especiales
+  canApproveOvertime?: boolean;   // Puede aprobar horas extras
+  canApproveIncidences?: boolean; // Puede aprobar incidencias
+
+  // Estado
+  isActive: boolean;
+
+  // Auditoría
+  createdAt: string;
+  updatedAt: string;
+};
+
+/**
+ * Turno personalizado
+ * Permite configurar turnos específicos por empleado/ubicación
+ */
+export type CustomShift = {
+  id: string;
+  name: string;                   // Nombre del turno (ej: "Turno Matutino")
+  code: string;                   // Código (ej: "TM-01")
+  type: ShiftType;                // Tipo base (diurnal, nocturnal, mixed)
+
+  // Horarios
+  startTime: string;              // Hora de entrada (HH:mm)
+  endTime: string;                // Hora de salida (HH:mm)
+  breakStartTime?: string;        // Inicio de descanso
+  breakEndTime?: string;          // Fin de descanso
+  breakMinutes: number;           // Minutos de descanso (si no hay horario específico)
+
+  // Días de la semana laborables (0=Dom, 1=Lun, ..., 6=Sab)
+  workDays: number[];             // ej: [1, 2, 3, 4, 5] para Lun-Vie
+
+  // Días de descanso
+  restDays: number[];             // ej: [0, 6] para Dom y Sab
+
+  // Horas calculadas
+  dailyHours: number;             // Horas diarias normales
+  weeklyHours: number;            // Horas semanales normales
+
+  // Ubicación (opcional, si es turno específico de ubicación)
+  locationId?: string;
+
+  // Estado
+  isActive: boolean;
+
+  // Auditoría
+  createdAt: string;
+  updatedAt: string;
+};
+
+// =========================================================================
+// CONTROL DE VACACIONES
+// =========================================================================
+
+/**
+ * Saldo de Vacaciones del Empleado
+ * Control del saldo de vacaciones disponible
+ */
+export type VacationBalance = {
+  id: string;
+  employeeId: string;
+
+  // Período actual (año de aniversario)
+  periodStart: string;            // Fecha de inicio del período (aniversario)
+  periodEnd: string;              // Fecha de fin del período
+
+  // Días según antigüedad (Reforma 2023)
+  daysEntitled: number;           // Días que le corresponden según antigüedad
+  yearsOfService: number;         // Años de antigüedad al inicio del período
+
+  // Control de saldo
+  daysTaken: number;              // Días ya tomados
+  daysScheduled: number;          // Días programados (aprobados pero no tomados)
+  daysAvailable: number;          // Días disponibles (entitled - taken - scheduled)
+
+  // Prima vacacional
+  vacationPremiumPaid: boolean;   // Si ya se pagó la prima vacacional
+  vacationPremiumDate?: string;   // Fecha de pago de prima
+
+  // Historial de movimientos
+  movements: VacationMovement[];
+
+  // Auditoría
+  lastUpdated: string;
+  createdAt: string;
+};
+
+/**
+ * Movimiento de Vacaciones
+ */
+export type VacationMovement = {
+  id: string;
+  date: string;
+  type: 'taken' | 'scheduled' | 'cancelled' | 'reset' | 'adjustment';
+  days: number;                   // Días (positivo o negativo)
+  description: string;
+  incidenceId?: string;           // Referencia a la incidencia
+  approvedById?: string;
+};
+
+// =========================================================================
+// SISTEMA DE RETARDOS
+// =========================================================================
+
+/**
+ * Tipo de retardo
+ */
+export type TardinessType = 'entry' | 'exit' | 'break';
+
+/**
+ * Registro de Retardo
+ */
+export type TardinessRecord = {
+  id: string;
+  employeeId: string;
+  date: string;
+  attendanceRecordId: string;     // Referencia al registro de asistencia
+
+  // Detalle del retardo
+  type: TardinessType;
+  scheduledTime: string;          // Hora programada (HH:mm)
+  actualTime: string;             // Hora real (HH:mm)
+  minutesLate: number;            // Minutos de retardo
+
+  // Estado
+  isJustified: boolean;           // Si fue justificado
+  justificationReason?: string;   // Razón de justificación
+  justifiedById?: string;         // Quién justificó
+  justifiedAt?: string;           // Cuándo se justificó
+
+  // Acumulación
+  periodStartDate: string;        // Inicio del período de 30 días
+  tardinessCountInPeriod: number; // Contador de retardos en el período
+  tardinessCountInWeek: number;   // Contador de retardos en la semana
+
+  // Sanción aplicada
+  sanctionApplied: boolean;
+  sanctionType?: 'suspension_1day' | 'warning';
+  sanctionDate?: string;
+  sanctionResetById?: string;     // Si se hizo reset de sanción
+
+  // Auditoría
+  createdAt: string;
+  updatedAt: string;
+};
+
+/**
+ * Configuración de Retardos por Ubicación
+ */
+export type TardinessPolicy = {
+  id: string;
+  locationId?: string;            // null = política global
+
+  // Tolerancia
+  toleranceMinutes: number;       // Minutos de tolerancia (default: 10)
+
+  // Reglas de acumulación
+  maxTardinessPerMonth: number;   // Máximo retardos en 30 días antes de sanción (default: 3)
+  maxTardinessPerWeek: number;    // Máximo retardos en 1 semana antes de sanción (default: 2)
+
+  // Sanciones
+  sanctionType: 'suspension_1day' | 'warning' | 'deduction';
+  autoApplySanction: boolean;     // Aplicar sanción automáticamente
+
+  // Período de acumulación
+  accumulationPeriodDays: number; // Días del período de acumulación (default: 30)
+
+  // Estado
+  isActive: boolean;
+
+  // Auditoría
+  createdAt: string;
+  updatedAt: string;
+};
+
+// =========================================================================
+// APROBACIÓN DE HORAS EXTRAS
+// =========================================================================
+
+/**
+ * Solicitud de Horas Extra
+ */
+export type OvertimeRequest = {
+  id: string;
+  employeeId: string;
+  employeeName?: string;
+
+  // Detalles de la solicitud
+  date: string;                   // Fecha de las horas extras
+  hoursRequested: number;         // Horas solicitadas
+  reason: string;                 // Razón de las horas extras
+
+  // Flujo de aprobación
+  status: 'pending' | 'approved' | 'rejected' | 'partial';
+  hoursApproved?: number;         // Horas aprobadas (puede ser menor a solicitadas)
+
+  // Aprobador
+  approverLevel: 1 | 2;           // Nivel 1 = jefe directo, Nivel 2 = siguiente nivel
+  requestedToId: string;          // A quién se solicitó aprobación
+  requestedToName?: string;
+  approvedById?: string;
+  approvedByName?: string;
+  approvedAt?: string;
+  rejectionReason?: string;
+
+  // Vinculación con asistencia
+  attendanceRecordId?: string;    // Referencia al registro de asistencia
+
+  // Auditoría
+  createdAt: string;
+  updatedAt: string;
+};
+
+// =========================================================================
+// BLOQUEO DE PERÍODOS DE NÓMINA
+// =========================================================================
+
+/**
+ * Bloqueo de Período de Nómina
+ * Una vez descargada la pre-nómina, se bloquea el período
+ */
+export type PayrollPeriodLock = {
+  id: string;
+
+  // Período bloqueado
+  periodStart: string;
+  periodEnd: string;
+  periodType: 'weekly' | 'biweekly' | 'monthly';
+
+  // Ubicación (opcional, puede ser global)
+  locationId?: string;
+
+  // Estado del bloqueo
+  isLocked: boolean;
+  lockedAt: string;
+  lockedById: string;
+  lockedByName?: string;
+
+  // Referencia a pre-nómina exportada
+  prenominaExportId?: string;
+  exportFormat?: 'nomipaq' | 'excel' | 'json';
+
+  // Desbloqueo (solo Admin)
+  unlockedAt?: string;
+  unlockedById?: string;
+  unlockReason?: string;
+
+  // Auditoría
+  createdAt: string;
+  updatedAt: string;
+};
+
+/**
+ * Alerta de Duplicidad de Período
+ */
+export type PeriodDuplicateAlert = {
+  periodStart: string;
+  periodEnd: string;
+  existingLockId: string;
+  message: string;
+};
+
+// =========================================================================
+// NOMENCLATURA DE INCIDENCIAS PARA PRE-NÓMINA
+// =========================================================================
+
+/**
+ * Códigos de incidencias para la pre-nómina
+ * Según el informe de requerimientos
+ */
+export type IncidenceCode =
+  | 'FINJ'  // Falta Injustificada
+  | 'ASI'   // Asistencia
+  | 'INC'   // Incapacidad
+  | 'PSS'   // Permiso Sin goce de Sueldo
+  | 'PCS'   // Permiso Con goce de Sueldo
+  | 'DFT'   // Día Festivo Trabajado
+  | 'DD'    // Día de Descanso
+  | 'DL'    // Descanso Laborado
+  | 'HE2'   // Horas Extras Dobles
+  | 'HE3'   // Horas Extras Triples
+  | 'RET'   // Retardo
+  | 'PD'    // Prima Dominical
+  | 'VAC'   // Vacaciones
+  | 'PV'    // Prima Vacacional
+  | 'BJ';   // Baja
+
+/**
+ * Mapeo de tipos de incidencia a códigos
+ */
+export const INCIDENCE_CODE_MAP: Record<IncidenceType | 'attendance' | 'rest_day' | 'worked_rest_day' | 'holiday_worked' | 'tardiness' | 'termination', IncidenceCode> = {
+  vacation: 'VAC',
+  sick_leave: 'INC',
+  personal_leave: 'PCS',
+  maternity: 'INC',
+  paternity: 'PCS',
+  bereavement: 'PCS',
+  unjustified_absence: 'FINJ',
+  attendance: 'ASI',
+  rest_day: 'DD',
+  worked_rest_day: 'DL',
+  holiday_worked: 'DFT',
+  tardiness: 'RET',
+  termination: 'BJ'
+};
+
+// =========================================================================
+// REGISTRO DIARIO DE PRE-NÓMINA (DESGLOSE)
+// =========================================================================
+
+/**
+ * Entrada diaria para la tabla de pre-nómina
+ */
+export type DailyPrenominaEntry = {
+  date: string;                   // Fecha YYYY-MM-DD
+  dayOfWeek: number;              // 0-6
+  dayName: string;                // LUN, MAR, etc.
+
+  // Código principal del día
+  primaryCode: IncidenceCode;
+
+  // Códigos adicionales (ej: DL, PD para domingo trabajado)
+  additionalCodes?: IncidenceCode[];
+
+  // Horas extras del día
+  overtimeDoubleHours?: number;
+  overtimeTripleHours?: number;
+
+  // Indicadores
+  isHoliday: boolean;
+  isRestDay: boolean;
+  isSunday: boolean;
+  hasTardiness: boolean;
+
+  // Texto para celda (ej: "3HE2, 0.5HE3" o "DL, PD")
+  cellDisplay: string;
+};
+
+/**
+ * Registro detallado de Pre-Nómina con desglose diario
+ * Extiende PrenominaRecord con información adicional
+ */
+export type DetailedPrenominaRecord = PrenominaRecord & {
+  // Identificación completa
+  locationName?: string;
+  locationCode?: string;
+  departmentName?: string;
+  positionName?: string;
+
+  // Desglose diario
+  dailyEntries: DailyPrenominaEntry[];
+
+  // Acumulados numéricos (columnas finales)
+  totalDaysWorked: number;
+  totalRestDaysWorked: number;    // Días de descanso laborados (DL)
+  totalSundayPremiumDays: number; // Días con prima dominical (PD)
+  totalHolidaysWorked: number;    // Días festivos trabajados (DFT)
+  totalTardiness: number;         // Total de retardos (RET)
+  totalAbsences: number;          // Total de faltas (FINJ)
+  totalVacationDays: number;      // Total vacaciones (VAC)
+  totalSickLeaveDays: number;     // Total incapacidades (INC)
+
+  // Horas extras acumuladas
+  totalOvertimeDoubleHours: number;
+  totalOvertimeTripleHours: number;
+
+  // Prima vacacional (si es aniversario en el período)
+  vacationPremiumAnniversary: boolean;
+  vacationPremiumDays?: number;
+
+  // Semáforo de bono
+  bonusEligible: boolean;         // Verde = elegible, Rojo = no elegible
+  bonusIneligibleReason?: string; // Razón de no elegibilidad
+};
+
+// =========================================================================
+// EXTENSIÓN DE EMPLOYEE CON NUEVOS CAMPOS
+// =========================================================================
+
+/**
+ * Empleado con campos extendidos para el nuevo sistema
+ */
+export type ExtendedEmployee = Employee & {
+  // Ubicación y puesto
+  locationId?: string;            // ID de la ubicación
+  positionId?: string;            // ID del puesto
+
+  // Turno personalizado
+  customShiftId?: string;         // ID del turno personalizado
+
+  // Días de descanso específicos (override del turno)
+  customRestDays?: number[];      // ej: [0, 6] para Dom y Sab
+
+  // Jefe directo
+  directManagerId?: string;       // ID del jefe directo
+  secondLevelManagerId?: string;  // ID del jefe de segundo nivel
+
+  // Control de vacaciones
+  currentVacationBalanceId?: string;
+
+  // Último retardo y contador
+  lastTardinessDate?: string;
+  tardinessCountCurrent: number;  // Contador actual de retardos
+
+  // Fecha de baja (para pre-nómina)
+  terminationDate?: string;
+  terminationReason?: string;
+  showInPrenomina: boolean;       // Si mostrar en pre-nómina (false si baja completa)
+};
