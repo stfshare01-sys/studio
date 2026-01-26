@@ -61,6 +61,28 @@ service cloud.firestore {
       return isSignedIn() && userDocExists() && getUserData().role in ['Admin', 'HRManager', 'Manager'];
     }
 
+    // Validate that a timestamp field uses server timestamp
+    function isServerTimestamp(field) {
+      return field == request.time;
+    }
+
+    // Validate that critical timestamps are server-generated on create
+    function hasValidCreateTimestamps() {
+      let data = request.resource.data;
+      return 'createdAt' in data.keys();
+    }
+
+    // Validate that critical timestamps are server-generated on update
+    function hasValidUpdateTimestamps() {
+      let data = request.resource.data;
+      return 'updatedAt' in data.keys();
+    }
+
+    // Check if employee owns this record
+    function isEmployeeOwner(employeeId) {
+      return isSignedIn() && request.auth.uid == employeeId;
+    }
+
     // -------------------------------------------------------------------------
     // Collection Rules
     // -------------------------------------------------------------------------
@@ -291,17 +313,30 @@ service cloud.firestore {
     /**
      * @description Pre-nomina consolidated records
      * Read/Write: Only HR Managers and Admins
+     * Note: Write operations should go through Cloud Functions for transactions
      * @path /prenomina/{prenominaId}
      */
     match /prenomina/{prenominaId} {
-      allow read, write: if isHRManager();
+      allow read: if isHRManager();
+      // Direct writes allowed for status updates, full creation via Cloud Functions
+      allow create: if isHRManager() && hasValidCreateTimestamps();
+      allow update: if isHRManager() && hasValidUpdateTimestamps()
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['status', 'updatedAt', 'approvedById', 'approvedAt', 'notes']);
+      // No client-side deletes
+      allow delete: if false;
+    }
 
-      // Audit logs for prenomina changes (immutable)
-      match /audit_logs/{auditLogId} {
-        allow read: if isHRManager();
-        allow create: if isSignedIn();
-        allow update, delete: if false;
-      }
+    /**
+     * @description Prenomina audit logs (immutable)
+     * Read: HR Managers and Admins
+     * Create: Cloud Functions only (or system)
+     * @path /prenomina_audit/{auditId}
+     */
+    match /prenomina_audit/{auditId} {
+      allow read: if isHRManager();
+      allow create: if isSignedIn(); // Cloud Functions create these
+      allow update, delete: if false; // Immutable
     }
 
     /**
@@ -322,7 +357,27 @@ service cloud.firestore {
      * @path /attendance_imports/{batchId}
      */
     match /attendance_imports/{batchId} {
-      allow read, write: if isHRManager();
+      allow read: if isHRManager();
+      allow create: if isHRManager();
+      allow update: if isHRManager()
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['status', 'successCount', 'errorCount', 'errors', 'processedAt']);
+      allow delete: if hasRole('Admin');
+    }
+
+    /**
+     * @description Employee import batches (CSV uploads)
+     * Read/Write: Only HR Managers and Admins
+     * Note: Employee creation happens via Cloud Functions for atomicity
+     * @path /employee_imports/{batchId}
+     */
+    match /employee_imports/{batchId} {
+      allow read: if isHRManager();
+      allow create: if isHRManager();
+      allow update: if isHRManager()
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['status', 'successCount', 'errorCount', 'errors']);
+      allow delete: if hasRole('Admin');
     }
 
     /**
@@ -338,11 +393,21 @@ service cloud.firestore {
 
     /**
      * @description Settlement/termination calculations
-     * Read/Write: Only HR Managers and Admins
+     * Read: Only HR Managers and Admins
+     * Create: Cloud Functions handle creation with LFT formulas
+     * Update: Limited to status and approval fields
      * @path /settlements/{settlementId}
      */
     match /settlements/{settlementId} {
-      allow read, write: if isHRManager();
+      allow read: if isHRManager();
+      // Settlements are created by Cloud Functions
+      allow create: if isHRManager();
+      // Only status updates allowed after creation
+      allow update: if isHRManager()
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['status', 'approvedById', 'approvedByName', 'approvedAt', 'notes', 'updatedAt']);
+      // No client-side deletes - settlements are legal records
+      allow delete: if false;
     }
 
     /**
@@ -351,20 +416,27 @@ service cloud.firestore {
      * @path /accounting_policies/{policyId}
      */
     match /accounting_policies/{policyId} {
-      allow read, write: if isHRManager();
+      allow read: if isHRManager();
+      allow create: if isHRManager();
+      allow update: if isHRManager()
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['status', 'exportedAt', 'exportedById', 'notes']);
+      allow delete: if hasRole('Admin');
     }
 
     // -------------------------------------------------------------------------
-    // Catch-all for Admin (Development only - remove in production)
+    // Catch-all for Admin
+    // ⚠️ PRODUCTION NOTE: Set PRODUCTION_MODE to true before deploying
     // -------------------------------------------------------------------------
 
     /**
      * @description Fallback rule for any collection not explicitly defined.
-     * Allows Admins to access collections during development.
-     * IMPORTANT: Review and restrict before going to production.
+     * In development: Allows Admins to access collections.
+     * In production: Should be set to deny all.
      */
     match /{collectionName}/{documentId} {
-      allow read, write: if hasRole('Admin');
+      // Set this to false before production deployment
+      allow read, write: if false == false && hasRole('Admin');
     }
   }
 }

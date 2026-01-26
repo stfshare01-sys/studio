@@ -1,0 +1,30 @@
+{
+    "name": "studio-functions",
+    "version": "1.0.0",
+    "main": "lib/index.js",
+    "scripts": {
+        "build": "tsc",
+        "build:watch": "tsc --watch",
+        "serve": "npm run build && firebase emulators:start --only functions,firestore,auth",
+        "shell": "npm run build && firebase functions:shell",
+        "start": "npm run shell",
+        "deploy": "firebase deploy --only functions",
+        "logs": "firebase functions:log",
+        "test": "jest"
+    },
+    "engines": {
+        "node": "20"
+    },
+    "dependencies": {
+        "firebase-admin": "^12.7.0",
+        "firebase-functions": "^6.3.0"
+    },
+    "devDependencies": {
+        "@types/node": "^20.0.0",
+        "firebase-functions-test": "^3.4.0",
+        "jest": "^29.7.0",
+        "ts-jest": "^29.2.0",
+        "typescript": "^5.7.0"
+    },
+    "private": true
+}

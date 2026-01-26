@@ -5,16 +5,24 @@
  * HCM Client Actions
  * 
  * Client-side functions for HCM module operations.
- * Uses non-blocking Firebase updates for responsive UI.
  * 
- * Note: These are client-side actions that use Firebase directly.
- * For sensitive operations requiring server-side validation,
- * consider creating separate API routes or Cloud Functions.
+ * ARCHITECTURE NOTE:
+ * - Critical operations (prenomina, settlements, employee import) now use Cloud Functions
+ * - Simple CRUD operations remain client-side for responsive UI
+ * - LFT payroll calculations are performed server-side for security
  */
 
 import { Firestore, doc, collection, addDoc, updateDoc, getDoc, getDocs, query, where, orderBy, limit, Timestamp, setDoc } from 'firebase/firestore';
 import { initializeFirebase } from '.';
 import { setDocumentNonBlocking, updateDocumentNonBlocking, addDocumentNonBlocking } from './non-blocking-updates';
+import {
+    callConsolidatePrenomina,
+    callProcessEmployeeImport,
+    callCalculateSettlement,
+    callApproveIncidence,
+    CloudFunctionError,
+    type EmployeeImportRow as CFEmployeeImportRow
+} from './callable-functions';
 import type {
     Employee,
     Compensation,
@@ -35,7 +43,6 @@ import {
     validateWorkday,
     calculateOvertime,
     calculateHourlyRate,
-    calculateSettlement,
     calculateHoursWorked
 } from '@/lib/hcm-utils';
 
@@ -380,6 +387,14 @@ interface ProcessEmployeeImportResult {
     errors?: Array<{ row: number; message: string }>;
 }
 
+/**
+ * Processes bulk employee import with validation.
+ * 
+ * NOTE: This function now delegates to a Cloud Function for:
+ * - Server-side transactional processing
+ * - Atomic employee + compensation creation
+ * - Role-based access control
+ */
 export async function processEmployeeImport(
     rows: EmployeeImportRow[],
     uploadedById: string,
@@ -387,118 +402,48 @@ export async function processEmployeeImport(
     filename: string
 ): Promise<ProcessEmployeeImportResult> {
     try {
-        const { firestore } = initializeFirebase();
-        const now = new Date().toISOString();
+        // Convert to Cloud Function format with type validation
+        const validEmploymentTypes = ['full_time', 'part_time', 'contractor'] as const;
+        const cfRows: CFEmployeeImportRow[] = rows.map(row => {
+            // Map employment type - default to full_time for unsupported types
+            const empType = validEmploymentTypes.includes(row.employmentType as any)
+                ? row.employmentType as 'full_time' | 'part_time' | 'contractor'
+                : 'full_time';
 
-        // Create import batch record
-        const batchRef = collection(firestore, 'employee_imports');
-        const batchData: Omit<EmployeeImportBatch, 'id'> = {
-            filename,
-            fileSize: 0, // Placeholder
-            mimeType: 'text/csv',
-            uploadedById,
-            uploadedByName,
-            uploadedAt: now,
-            recordCount: rows.length,
-            successCount: 0,
-            errorCount: 0,
-            status: 'processing',
-            errors: []
-        };
-
-        const batchDocRef = await addDoc(batchRef, batchData);
-        const batchId = batchDocRef.id;
-
-        const errors: ProcessEmployeeImportResult['errors'] = [];
-        let successCount = 0;
-
-        for (let i = 0; i < rows.length; i++) {
-            const row = rows[i];
-            const rowNum = i + 2; // CSV rows start at 1, +1 for header
-
-            try {
-                // Validate required fields
-                if (!row.fullName || !row.email || !row.department || !row.positionTitle || !row.hireDate || !row.salaryDaily) {
-                    throw new Error("Faltan campos obligatorios: fullName, email, department, positionTitle, hireDate, salaryDaily.");
-                }
-
-                const salaryDaily = parseFloat(row.salaryDaily);
-                if (isNaN(salaryDaily) || salaryDaily <= 0) {
-                    throw new Error("Salario diario inválido.");
-                }
-                
-                // Check if user already exists in users or employees collection
-                const userQuery = query(collection(firestore, 'users'), where('email', '==', row.email), limit(1));
-                const employeeQuery = query(collection(firestore, 'employees'), where('email', '==', row.email), limit(1));
-                const [userSnap, employeeSnap] = await Promise.all([getDocs(userQuery), getDocs(employeeQuery)]);
-
-                if (!userSnap.empty || !employeeSnap.empty) {
-                    throw new Error(`El email ${row.email} ya está en uso.`);
-                }
-                
-                // Generate a new unique ID for the employee
-                const employeeDocRef = doc(collection(firestore, 'employees'));
-                const employeeId = employeeDocRef.id;
-
-                // Prepare employee data
-                const employeePayload: CreateEmployeePayload = {
-                    fullName: row.fullName,
-                    email: row.email,
-                    department: row.department,
-                    positionTitle: row.positionTitle,
-                    employmentType: row.employmentType || 'full_time',
-                    shiftType: row.shiftType || 'diurnal',
-                    hireDate: new Date(row.hireDate).toISOString(),
-                };
-                
-                // Create Employee record
-                const createEmployeeResult = await createEmployee(employeeId, employeePayload);
-
-                if (!createEmployeeResult.success || !createEmployeeResult.employeeId) {
-                    throw new Error(createEmployeeResult.error || "No se pudo crear el empleado.");
-                }
-
-                // Create initial Compensation record
-                const createCompResult = await createCompensation({
-                    employeeId: createEmployeeResult.employeeId,
-                    salaryDaily: salaryDaily,
-                    effectiveDate: new Date(row.hireDate).toISOString(),
-                    createdById: uploadedById,
-                });
-
-                if (!createCompResult.success) {
-                    // In a real app, you might want to handle this with a rollback.
-                    throw new Error(createCompResult.error || "Empleado creado, pero falló la compensación.");
-                }
-
-                successCount++;
-
-            } catch (rowError: any) {
-                errors.push({ row: rowNum, message: rowError.message });
-            }
-        }
-
-        const finalStatus = errors.length === 0 ? 'completed' : (successCount === 0 ? 'failed' : 'partial');
-
-        await updateDoc(batchDocRef, {
-            status: finalStatus,
-            successCount,
-            errorCount: errors.length,
-            errors: errors.slice(0, 50),
+            return {
+                fullName: row.fullName,
+                email: row.email,
+                department: row.department,
+                positionTitle: row.positionTitle,
+                employmentType: empType,
+                shiftType: row.shiftType || 'diurnal',
+                hireDate: row.hireDate,
+                salaryDaily: row.salaryDaily,
+                managerEmail: row.managerEmail
+            };
         });
 
-        return {
-            success: errors.length === 0,
-            batchId,
-            recordCount: rows.length,
-            successCount,
-            errorCount: errors.length,
-            errors
-        };
+        const result = await callProcessEmployeeImport({
+            rows: cfRows,
+            filename
+        });
 
-    } catch (error: any) {
+        console.log(`[HCM] Processed employee import: ${result.successCount} success, ${result.errorCount} errors`);
+
+        return {
+            success: result.success,
+            batchId: result.batchId,
+            recordCount: result.recordCount,
+            successCount: result.successCount,
+            errorCount: result.errorCount,
+            errors: result.errors
+        };
+    } catch (error) {
         console.error('[HCM] Error processing employee import:', error);
-        return { success: false, errors: [{ row: 0, message: error.message || 'Error general en la importación de empleados' }] };
+        if (error instanceof CloudFunctionError) {
+            return { success: false, errors: [{ row: 0, message: error.message }] };
+        }
+        return { success: false, errors: [{ row: 0, message: 'Error general en la importación de empleados' }] };
     }
 }
 
@@ -554,6 +499,10 @@ export async function createIncidence(
 
 /**
  * Approves or rejects an incidence
+ * 
+ * NOTE: This function now delegates to a Cloud Function for:
+ * - Server-side role validation
+ * - Consistent approval workflow
  */
 export async function updateIncidenceStatus(
     incidenceId: string,
@@ -563,27 +512,19 @@ export async function updateIncidenceStatus(
     rejectionReason?: string
 ): Promise<{ success: boolean; error?: string }> {
     try {
-        const { firestore } = initializeFirebase();
-        const incidenceRef = doc(firestore, 'incidences', incidenceId);
-
-        const updateData: Partial<Incidence> = {
-            status,
-            approvedById,
-            approvedByName,
-            approvedAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-        };
-
-        if (status === 'rejected' && rejectionReason) {
-            updateData.rejectionReason = rejectionReason;
-        }
-
-        updateDocumentNonBlocking(incidenceRef, updateData);
+        const result = await callApproveIncidence({
+            incidenceId,
+            action: status === 'approved' ? 'approve' : 'reject',
+            rejectionReason
+        });
 
         console.log(`[HCM] Updated incidence ${incidenceId} to ${status}`);
-        return { success: true };
+        return { success: result.success };
     } catch (error) {
         console.error('[HCM] Error updating incidence:', error);
+        if (error instanceof CloudFunctionError) {
+            return { success: false, error: error.message };
+        }
         return { success: false, error: 'No se pudo actualizar la incidencia.' };
     }
 }
@@ -602,174 +543,34 @@ interface ConsolidatePrenominaParams {
 
 /**
  * Consolidates attendance, incidences, and overtime into prenomina records
+ * 
+ * NOTE: This function now delegates to a Cloud Function for:
+ * - Server-side transactional processing (atomicity)
+ * - Protected LFT payroll calculations
+ * - Role-based access control
  */
 export async function consolidatePrenomina(
     params: ConsolidatePrenominaParams
 ): Promise<{ success: boolean; recordIds?: string[]; error?: string }> {
     try {
-        const { firestore } = initializeFirebase();
-        const now = new Date().toISOString();
+        const result = await callConsolidatePrenomina({
+            periodStart: params.periodStart,
+            periodEnd: params.periodEnd,
+            periodType: params.periodType,
+            employeeIds: params.employeeIds
+        });
 
-        // Get employees to process
-        const employeesRef = collection(firestore, 'employees');
-        let employeesQuery;
-
-        if (params.employeeIds && params.employeeIds.length > 0) {
-            // Specific employees - need to query each
-            // Note: Firestore doesn't support 'in' queries with more than 10 items
-            employeesQuery = query(employeesRef, where('status', '==', 'active'));
-        } else {
-            employeesQuery = query(employeesRef, where('status', '==', 'active'));
+        if (result.errors && result.errors.length > 0) {
+            console.warn(`[HCM] Prenomina consolidation had ${result.errors.length} errors`);
         }
 
-        const employeesSnap = await getDocs(employeesQuery);
-        const employees = employeesSnap.docs.map(d => ({ id: d.id, ...d.data() } as Employee));
-
-        const recordIds: string[] = [];
-
-        for (const employee of employees) {
-            // Skip if not in the specified list
-            if (params.employeeIds && params.employeeIds.length > 0) {
-                if (!params.employeeIds.includes(employee.id)) continue;
-            }
-
-            // Get compensation
-            const compQuery = query(
-                collection(firestore, 'compensation'),
-                where('employeeId', '==', employee.id),
-                orderBy('effectiveDate', 'desc'),
-                limit(1)
-            );
-            const compSnap = await getDocs(compQuery);
-
-            if (compSnap.empty) {
-                console.warn(`[HCM] No compensation found for employee ${employee.id}`);
-                continue;
-            }
-
-            const compensation = compSnap.docs[0].data() as Compensation;
-
-            // Get attendance records for the period
-            const attendanceQuery = query(
-                collection(firestore, 'attendance'),
-                where('employeeId', '==', employee.id),
-                where('date', '>=', params.periodStart),
-                where('date', '<=', params.periodEnd)
-            );
-            const attendanceSnap = await getDocs(attendanceQuery);
-            const attendanceRecords = attendanceSnap.docs.map(d => d.data() as AttendanceRecord);
-
-            // Get approved incidences for the period
-            const incidencesQuery = query(
-                collection(firestore, 'incidences'),
-                where('employeeId', '==', employee.id),
-                where('status', '==', 'approved'),
-                where('startDate', '<=', params.periodEnd),
-                where('endDate', '>=', params.periodStart)
-            );
-            const incidencesSnap = await getDocs(incidencesQuery);
-            const incidences = incidencesSnap.docs.map(d => d.data() as Incidence);
-
-            // Calculate totals
-            let daysWorked = attendanceRecords.length;
-            let totalOvertimeHours = attendanceRecords.reduce((sum, a) => sum + a.overtimeHours, 0);
-            let absenceDays = 0;
-            let vacationDaysTaken = 0;
-            let sickLeaveDays = 0;
-            let paidLeaveDays = 0;
-            let unpaidLeaveDays = 0;
-            let sundayDays = 0;
-
-            // Process incidences
-            for (const inc of incidences) {
-                switch (inc.type) {
-                    case 'vacation':
-                        vacationDaysTaken += inc.totalDays;
-                        break;
-                    case 'sick_leave':
-                        sickLeaveDays += inc.totalDays;
-                        break;
-                    case 'unjustified_absence':
-                        absenceDays += inc.totalDays;
-                        break;
-                    default:
-                        if (inc.isPaid) {
-                            paidLeaveDays += inc.totalDays;
-                        } else {
-                            unpaidLeaveDays += inc.totalDays;
-                        }
-                }
-            }
-
-            // Count Sundays worked
-            for (const record of attendanceRecords) {
-                const dayOfWeek = new Date(record.date).getDay();
-                if (dayOfWeek === 0) sundayDays++;
-            }
-
-            // Calculate overtime (weekly basis - "Ley de los 9s")
-            const hourlyRate = calculateHourlyRate(compensation.salaryDaily, employee.shiftType);
-            const overtimeCalc = calculateOvertime(totalOvertimeHours, hourlyRate);
-
-            // Calculate Sunday premium (25%)
-            const sundayPremiumAmount = sundayDays * compensation.salaryDaily * 0.25;
-
-            // Calculate salary
-            const salaryBase = daysWorked * compensation.salaryDaily;
-            const absenceDeductions = absenceDays * compensation.salaryDaily;
-
-            const grossPay = salaryBase +
-                overtimeCalc.totalAmount +
-                sundayPremiumAmount +
-                (paidLeaveDays * compensation.salaryDaily);
-
-            const totalDeductions = absenceDeductions + (unpaidLeaveDays * compensation.salaryDaily);
-            const netPay = grossPay - totalDeductions;
-
-            // Earned wage (for salary on demand) - simplified calculation
-            const earnedWage = Math.max(0, netPay * 0.8); // 80% of net available
-
-            // Create prenomina record
-            const prenominaData: Omit<PrenominaRecord, 'id'> = {
-                employeeId: employee.id,
-                employeeName: employee.fullName,
-                employeeRfc: employee.rfc_curp,
-                periodStart: params.periodStart,
-                periodEnd: params.periodEnd,
-                periodType: params.periodType,
-                salaryBase,
-                daysWorked,
-                overtimeDoubleHours: overtimeCalc.doubleHours,
-                overtimeDoubleAmount: overtimeCalc.doubleAmount,
-                overtimeTripleHours: overtimeCalc.tripleHours,
-                overtimeTripleAmount: overtimeCalc.tripleAmount,
-                sundayPremiumDays: sundayDays,
-                sundayPremiumAmount,
-                absenceDays,
-                absenceDeductions,
-                vacationDaysTaken,
-                sickLeaveDays,
-                paidLeaveDays,
-                unpaidLeaveDays,
-                grossPay,
-                totalDeductions,
-                netPay,
-                earnedWage,
-                status: 'draft',
-                costCenter: employee.costCenter,
-                createdAt: now,
-                updatedAt: now
-            };
-
-            const prenominaRef = collection(firestore, 'prenomina');
-            const docRef = await addDoc(prenominaRef, prenominaData);
-            recordIds.push(docRef.id);
-        }
-
-        console.log(`[HCM] Consolidated prenomina: ${recordIds.length} records created`);
-        return { success: true, recordIds };
+        console.log(`[HCM] Consolidated prenomina: ${result.processedCount} records created, ${result.skippedCount} skipped`);
+        return { success: result.success, recordIds: result.recordIds };
     } catch (error) {
         console.error('[HCM] Error consolidating prenomina:', error);
+        if (error instanceof CloudFunctionError) {
+            return { success: false, error: error.message };
+        }
         return { success: false, error: 'Error consolidando la pre-nómina.' };
     }
 }
@@ -787,110 +588,39 @@ interface CalculateSettlementParams {
 
 /**
  * Calculates termination settlement (finiquito/liquidación)
+ * 
+ * NOTE: This function now delegates to a Cloud Function for:
+ * - Server-side LFT formula protection
+ * - Atomic transaction guarantee
+ * - Role-based access control
  */
 export async function calculateEmployeeSettlement(
     params: CalculateSettlementParams
 ): Promise<{ success: boolean; settlementId?: string; settlement?: SettlementCalculation; error?: string }> {
     try {
-        const { firestore } = initializeFirebase();
-        const now = new Date().toISOString();
-
-        // Get employee
-        const employeeRef = doc(firestore, 'employees', params.employeeId);
-        const employeeSnap = await getDoc(employeeRef);
-
-        if (!employeeSnap.exists()) {
-            return { success: false, error: 'Empleado no encontrado.' };
-        }
-
-        const employee = employeeSnap.data() as Employee;
-
-        // Get latest compensation
-        const compQuery = query(
-            collection(firestore, 'compensation'),
-            where('employeeId', '==', params.employeeId),
-            orderBy('effectiveDate', 'desc'),
-            limit(1)
-        );
-        const compSnap = await getDocs(compQuery);
-
-        if (compSnap.empty) {
-            return { success: false, error: 'No se encontró compensación para el empleado.' };
-        }
-
-        const compensation = compSnap.docs[0].data() as Compensation;
-
-        // Calculate years of service
-        const yearsOfService = calculateYearsOfService(employee.hireDate, new Date(params.terminationDate));
-
-        // Calculate days worked in current year
-        const yearStart = new Date(new Date(params.terminationDate).getFullYear(), 0, 1);
-        const termDate = new Date(params.terminationDate);
-        const daysWorkedInYear = Math.ceil((termDate.getTime() - yearStart.getTime()) / (1000 * 60 * 60 * 24));
-
-        // Get vacation days used this year
-        const startOfYear = new Date(new Date().getFullYear(), 0, 1).toISOString();
-        const incidencesQuery = query(
-            collection(firestore, 'incidences'),
-            where('employeeId', '==', params.employeeId),
-            where('type', '==', 'vacation'),
-            where('status', '==', 'approved'),
-            where('startDate', '>=', startOfYear)
-        );
-        const incidencesSnap = await getDocs(incidencesQuery);
-        const vacationDaysUsed = incidencesSnap.docs.reduce((total, doc) => {
-            return total + (doc.data() as Incidence).totalDays;
-        }, 0);
-
-        // Calculate pending salary days (approximation)
-        const lastPayDate = new Date(params.terminationDate);
-        lastPayDate.setDate(1); // First of month
-        const pendingSalaryDays = Math.ceil((termDate.getTime() - lastPayDate.getTime()) / (1000 * 60 * 60 * 24));
-
-        // Use our settlement calculation utility
-        const settlement = calculateSettlement(
-            compensation.salaryDaily,
-            compensation.sdiBase,
-            yearsOfService,
-            daysWorkedInYear,
-            pendingSalaryDays,
-            params.terminationType,
-            vacationDaysUsed
-        );
-
-        // Create settlement record
-        const settlementData: Omit<SettlementCalculation, 'id'> = {
+        // Delegate to Cloud Function for server-side calculation
+        const result = await callCalculateSettlement({
             employeeId: params.employeeId,
-            employeeName: employee.fullName,
-            type: params.terminationType,
-            terminationDate: params.terminationDate,
-            proportionalVacation: settlement.proportionalVacation,
-            proportionalVacationPremium: settlement.proportionalVacationPremium,
-            proportionalAguinaldo: settlement.proportionalAguinaldo,
-            salaryPending: settlement.salaryPending,
-            severancePay: settlement.severancePay,
-            seniorityPremium: settlement.seniorityPremium,
-            twentyDaysPerYear: settlement.twentyDaysPerYear,
-            totalPerceptions: settlement.finiquitoTotal + settlement.liquidacionTotal,
-            totalDeductions: 0, // Would include loans, advances, etc.
-            netSettlement: settlement.grandTotal,
-            status: 'preliminary',
-            calculatedAt: now,
-            calculatedById: params.calculatedById
-        };
+            terminationType: params.terminationType,
+            terminationDate: params.terminationDate
+        });
 
-        const settlementRef = collection(firestore, 'settlements');
-        const docRef = await addDoc(settlementRef, settlementData);
+        if (!result.success) {
+            return { success: false, error: 'Error en el servidor calculando finiquito.' };
+        }
 
-        console.log(`[HCM] Calculated settlement ${docRef.id} for employee ${params.employeeId}`);
+        console.log(`[HCM] Calculated settlement ${result.settlementId} for employee ${params.employeeId}`);
 
         return {
             success: true,
-            settlementId: docRef.id,
-            settlement: { id: docRef.id, ...settlementData }
+            settlementId: result.settlementId,
+            settlement: result.settlement as SettlementCalculation
         };
     } catch (error) {
         console.error('[HCM] Error calculating settlement:', error);
+        if (error instanceof CloudFunctionError) {
+            return { success: false, error: error.message };
+        }
         return { success: false, error: 'Error calculando finiquito/liquidación.' };
     }
 }
@@ -963,4 +693,3 @@ export async function updateTimeBank(
     }
 }
 
-    

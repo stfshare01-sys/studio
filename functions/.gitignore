@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+
+# Compiled output
+lib/
+
+# Logs
+*.log
+firebase-debug.log
+firebase-debug.*.log
+
+# Local config
+.env
+.env.local
+*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

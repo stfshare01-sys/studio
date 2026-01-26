@@ -1,6 +1,13 @@
 
-
-'use server';
+/**
+ * Workflow Engine
+ * 
+ * Handles workflow progression, task assignment, and rule evaluation.
+ * 
+ * NOTE: This file uses the client-side Firebase SDK for compatibility
+ * with the existing architecture. For sensitive operations requiring
+ * true server-side execution, Cloud Functions should be used instead.
+ */
 
 import { Firestore, doc, collection, getDoc, runTransaction, writeBatch } from 'firebase/firestore';
 import type { Task, Request, Template, User, WorkflowStepDefinition, Rule } from './types';
@@ -70,7 +77,7 @@ export async function evaluateAndExecuteRules({
                 }
             }
         }
-        
+
         if (conditionMet) {
             const requestRef = doc(firestore, 'users', request.submittedBy, 'requests', request.id);
             const auditLogCollection = collection(requestRef, 'audit_logs');
@@ -86,7 +93,7 @@ export async function evaluateAndExecuteRules({
                     break;
                 case 'CHANGE_REQUEST_PRIORITY':
                     updateDocumentNonBlocking(requestRef, { priority: action.priority });
-                     addDocumentNonBlocking(auditLogCollection, {
+                    addDocumentNonBlocking(auditLogCollection, {
                         requestId: request.id, userId: 'system', userFullName: 'FlowMaster AI', timestamp: now, action: 'REQUEST_SUBMITTED' as any, // This should be a valid action
                         details: { message: `La prioridad de la solicitud cambió a "${action.priority}" por una regla de negocio.` }
                     });
@@ -129,16 +136,16 @@ export async function evaluateAndAddInitialSteps(
     firestore: Firestore,
     allUsers: User[],
 ): Promise<{ finalSteps: WorkflowStepDefinition[], stepsWithTasks: (WorkflowStepDefinition & { taskId: string })[] }> {
-    
+
     const additionalSteps = await evaluateAndExecuteRules({
         firestore, formData, allUsers,
         request: { id: requestId, title: `${template.name} - ${new Date(createdAt).toLocaleDateString('es-ES')}`, submittedBy: requestOwnerId },
         template
     });
-    
+
     const finalSteps = [...template.steps, ...additionalSteps];
     const uniqueSteps = Array.from(new Map(finalSteps.map(s => [s.id, s])).values());
-    
+
     const batch = writeBatch(firestore);
     const stepsWithTasks: (WorkflowStepDefinition & { taskId: string })[] = [];
 
@@ -191,10 +198,10 @@ async function activateAndAssignTasks(
         const stepInRequest = request.steps.find(s => s.id === stepDef.id);
         if (stepInRequest && stepInRequest.taskId) {
             const taskRef = doc(firestore, 'tasks', stepInRequest.taskId);
-            
-            let taskUpdates: Record<string, any> = { 
+
+            let taskUpdates: Record<string, any> = {
                 status: 'Active',
-                activatedAt: now.toISOString() 
+                activatedAt: now.toISOString()
             };
 
             if (stepDef.slaHours) {
@@ -275,7 +282,7 @@ export async function completeTaskAndProgressWorkflow({
     const requestRef = doc(firestore, 'users', request.submittedBy, 'requests', request.id);
     const taskRef = doc(firestore, 'tasks', task.id);
     const auditLogCollection = collection(requestRef, 'audit_logs');
-    
+
     let updatedSteps = request.steps.map(s =>
         s.id === task.stepId ? { ...s, status: 'Completed' as const, completedAt: now, outcome: outcome || null } : s
     );
@@ -309,16 +316,16 @@ export async function completeTaskAndProgressWorkflow({
         });
         return;
     }
-    
+
     // Find the next step(s) in the workflow
     const findNextSteps = (currentStepId: string): WorkflowStepDefinition[] => {
         const currentStepDefinition = template.steps.find(s => s.id === currentStepId);
         const currentStepIndex = template.steps.findIndex(s => s.id === currentStepId);
         if (currentStepIndex === -1) return [];
-        
+
         // Rule-based routing for decision tasks
         if (currentStepDefinition?.outcomes && currentStepDefinition.outcomes.length > 0) {
-            const rule = template.rules.find(r => 
+            const rule = template.rules.find(r =>
                 r.condition.type === 'outcome' &&
                 r.condition.fieldId === currentStepId &&
                 r.condition.value === outcome
@@ -328,7 +335,7 @@ export async function completeTaskAndProgressWorkflow({
                 return nextStep ? [nextStep] : [];
             }
         }
-        
+
         // Default sequential logic
         const nextStepInSequence = template.steps[currentStepIndex + 1];
         if (nextStepInSequence) {
@@ -411,7 +418,7 @@ export async function handleTaskEscalation({ firestore, task, currentUser, allUs
     const policy = stepDef?.escalationPolicy;
     const now = new Date().toISOString();
     const auditLogCollection = collection(requestRef, 'audit_logs');
-    
+
     if (policy?.action === 'REASSIGN' && policy.targetRole) {
         console.log(`Reassigning task ${task.id} to role: ${policy.targetRole}`);
         try {
@@ -420,7 +427,7 @@ export async function handleTaskEscalation({ firestore, task, currentUser, allUs
                 assigneeRole: policy.targetRole,
                 availableUsers: allUsers.map(u => ({ userId: u.id, fullName: u.fullName, department: u.department, skills: u.skills ?? [], currentWorkload: u.currentWorkload ?? 0, pastPerformance: 5 })),
             });
-            
+
             if (suggestion.suggestedUserId) {
                 const newAssignee = allUsers.find(u => u.id === suggestion.suggestedUserId);
                 const updatedSteps = reqData.steps.map(s => s.id === task.stepId ? { ...s, assigneeId: suggestion.suggestedUserId } : s);
@@ -450,7 +457,7 @@ export async function handleTaskEscalation({ firestore, task, currentUser, allUs
         console.log(`Notifying for overdue task: ${task.id}`);
         const targets = policy?.notify || ['assignee'];
         const batch = writeBatch(firestore);
-        
+
         for (const target of targets) {
             let userToNotify: User | undefined;
             if (target === 'assignee') userToNotify = allUsers.find(u => u.id === task.assigneeId);
