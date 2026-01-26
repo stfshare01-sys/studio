@@ -20,7 +20,10 @@ import {
     Timer,
     UserPlus,
     Upload,
-    Calculator
+    Calculator,
+    MapPin,
+    Settings,
+    Briefcase,
 } from 'lucide-react';
 import Link from 'next/link';
 import type { Employee, Incidence, AttendanceImportBatch } from '@/lib/types';
@@ -247,6 +250,43 @@ export default function HCMPage() {
                                             <Link href="/hcm/calendar">
                                                 <Calendar className="mr-2 h-4 w-4" />
                                                 Calendario del Equipo
+                                            </Link>
+                                        </Button>
+                                        <Button asChild variant="outline" className="justify-start">
+                                            <Link href="/hcm/prenomina">
+                                                <Calculator className="mr-2 h-4 w-4" />
+                                                Pre-Nomina
+                                            </Link>
+                                        </Button>
+                                    </CardContent>
+                                </Card>
+
+                                {/* Admin Section */}
+                                <Card>
+                                    <CardHeader>
+                                        <CardTitle className="flex items-center gap-2">
+                                            <Settings className="h-5 w-5" />
+                                            Administracion
+                                        </CardTitle>
+                                        <CardDescription>Configuracion del sistema HCM</CardDescription>
+                                    </CardHeader>
+                                    <CardContent className="grid gap-2">
+                                        <Button asChild variant="outline" className="justify-start">
+                                            <Link href="/hcm/admin/locations">
+                                                <MapPin className="mr-2 h-4 w-4" />
+                                                Ubicaciones
+                                            </Link>
+                                        </Button>
+                                        <Button asChild variant="outline" className="justify-start">
+                                            <Link href="/hcm/admin/shifts">
+                                                <Clock className="mr-2 h-4 w-4" />
+                                                Turnos
+                                            </Link>
+                                        </Button>
+                                        <Button asChild variant="outline" className="justify-start">
+                                            <Link href="/hcm/admin/positions">
+                                                <Briefcase className="mr-2 h-4 w-4" />
+                                                Puestos
                                             </Link>
                                         </Button>
                                     </CardContent>
