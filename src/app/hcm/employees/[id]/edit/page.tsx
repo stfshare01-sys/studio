@@ -8,7 +8,7 @@ import SiteLayout from '@/components/site-layout';
 import { useFirebase, useMemoFirebase } from '@/firebase/provider';
 import { useDoc } from '@/firebase/firestore/use-doc';
 import { useCollection } from '@/firebase/firestore/use-collection';
-import { doc, collection, query, where, updateDoc } from 'firebase/firestore';
+import { doc, collection, query, where, updateDoc, deleteField } from 'firebase/firestore';
 import { format } from 'date-fns';
 
 import { Button } from '@/components/ui/button';
@@ -119,10 +119,23 @@ export default function EditEmployeePage({ params }: { params: Promise<{ id: str
         setIsSaving(true);
         try {
             const employeeDocRef = doc(firestore, 'employees', employeeId);
-            await updateDoc(employeeDocRef, {
-                ...formData,
+
+            // Build update object, handling undefined values properly for Firestore
+            const updateData: Record<string, any> = {
                 updatedAt: new Date().toISOString()
+            };
+
+            // Add all form fields, converting undefined to deleteField()
+            Object.entries(formData).forEach(([key, value]) => {
+                if (value === undefined) {
+                    // Use deleteField() to remove the field from Firestore
+                    updateData[key] = deleteField();
+                } else {
+                    updateData[key] = value;
+                }
             });
+
+            await updateDoc(employeeDocRef, updateData);
 
             toast({
                 title: 'Empleado actualizado',
