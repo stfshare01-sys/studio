@@ -28,6 +28,7 @@ import {
   Palette,
   Database,
   Briefcase,
+  Shield,
 } from "lucide-react";
 import { Logo } from "@/components/icons";
 import { Button } from "./ui/button";
@@ -60,6 +61,7 @@ const adminNavItems = [
   { href: "/requests/new", icon: FilePlus, label: "Nueva Solicitud" },
   { href: "/integrations", icon: Plug, label: "Integraciones" },
   { href: "/admin/users", icon: Users, label: "Usuarios (Admin)" },
+  { href: "/admin/roles", icon: Shield, label: "Roles y Permisos" },
 ];
 
 

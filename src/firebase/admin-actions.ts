@@ -26,7 +26,15 @@ async function callAdminBackend(action: string, payload: any) {
         // This simulates updating the Firestore doc AND setting a custom claim.
         console.log(`[SIMULATED ADMIN ACTION] Setting role claim for ${payload.uid} to "${payload.role}"`);
         const userRef = doc(firestore, 'users', payload.uid);
-        updateDocumentNonBlocking(userRef, { role: payload.role });
+        // Support both system roles and custom roles
+        const updateData: Record<string, any> = { role: payload.role };
+        if (payload.customRoleId) {
+            updateData.customRoleId = payload.customRoleId;
+        } else {
+            // Clear customRoleId if switching to a system role
+            updateData.customRoleId = null;
+        }
+        updateDocumentNonBlocking(userRef, updateData);
     }
 
      if (action === 'createUser' && payload.email) {
@@ -104,11 +112,12 @@ export async function createNewUser(payload: CreateUserPayload): Promise<{ succe
  * Updates a user's role, simulating a backend call that sets a custom claim.
  * @param uid The UID of the user.
  * @param role The new role to assign.
+ * @param customRoleId Optional ID of a custom role (for non-system roles).
  */
-export async function updateUserRole(uid: string, role: UserRole): Promise<void> {
+export async function updateUserRole(uid: string, role: UserRole, customRoleId?: string): Promise<void> {
     const action = 'updateUserRole';
     try {
-        const result = await callAdminBackend(action, { uid, role });
+        const result = await callAdminBackend(action, { uid, role, customRoleId });
         if (!result.success) {
             throw new Error('La actualización de rol simulada falló.');
         }

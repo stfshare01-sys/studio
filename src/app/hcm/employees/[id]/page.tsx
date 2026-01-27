@@ -159,6 +159,12 @@ export default function EmployeeDetailPage({ params }: { params: Promise<{ id: s
                         <Button variant="outline" asChild>
                             <Link href={`/hcm/employees/${employeeId}/edit`}>Editar Perfil</Link>
                         </Button>
+                        <Button variant="outline" className="border-amber-500 text-amber-600 hover:bg-amber-50" asChild>
+                            <Link href={`/hcm/employees/${employeeId}/settlement`}>
+                                <DollarSign className="mr-2 h-4 w-4" />
+                                Liquidación
+                            </Link>
+                        </Button>
                         <Button variant="destructive">Dar de Baja</Button>
                     </div>
                 </header>

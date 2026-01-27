@@ -111,8 +111,9 @@ service cloud.firestore {
        */
       match /notifications/{notificationId} {
         allow get, list: if isOwner(userId);
-        // System and admins can create notifications for any user
-        allow create: if isSignedIn();
+        // Only Admins can create notifications for any user
+        // Regular users cannot create notifications for others
+        allow create: if hasRole('Admin') || isOwner(userId);
         allow update, delete: if isOwner(userId);
       }
     }
@@ -132,19 +133,26 @@ service cloud.firestore {
         allow get, list, create, update, delete: if isOwner(userId);
       }
 
-      // Comments on requests - readable by participants and admins
+      // Comments on requests - only request owner, assignees, and admins can access
       match /comments/{commentId} {
-        allow get, list: if isSignedIn(); // Allow participants to read comments
-        allow create: if isSignedIn(); // Any authenticated user can comment
-        allow update: if isSignedIn() && request.auth.uid == resource.data.authorId; // Only author can edit
+        // Only request owner and admins can view comments
+        allow get, list: if isOwner(userId) || hasRole('Admin');
+        // Only request owner and admins can comment
+        allow create: if isOwner(userId) || hasRole('Admin');
+        // Only author can edit their own comments
+        allow update: if request.auth.uid == resource.data.authorId;
+        // Owner, admins, or author can delete comments
         allow delete: if isOwner(userId) || hasRole('Admin') || request.auth.uid == resource.data.authorId;
       }
 
-      // Audit logs - immutable history
+      // Audit logs - immutable history, restricted access
       match /audit_logs/{auditLogId} {
-        allow get, list: if isSignedIn(); // Participants can view audit trail
-        allow create: if isSignedIn(); // System creates logs
-        allow update, delete: if false; // Immutable - no edits or deletes
+        // Only request owner and admins can view audit trail
+        allow get, list: if isOwner(userId) || hasRole('Admin');
+        // Only admins can create audit logs (via backend/cloud functions)
+        allow create: if hasRole('Admin');
+        // Immutable - no edits or deletes
+        allow update, delete: if false;
       }
     }
 
@@ -214,6 +222,29 @@ service cloud.firestore {
      */
     match /integrations/{integrationId} {
       allow read, write: if hasRole('Admin');
+    }
+
+    // -------------------------------------------------------------------------
+    // ROLES & PERMISSIONS MODULE
+    // -------------------------------------------------------------------------
+
+    /**
+     * @description Custom roles definitions.
+     * Read: All authenticated users (needed for permission checks)
+     * Write: Admins only
+     * @path /roles/{roleId}
+     */
+    match /roles/{roleId} {
+      // All authenticated users can read roles (needed for permission validation)
+      allow get, list: if isSignedIn();
+      // Only Admins can create, update, or delete roles
+      allow create: if hasRole('Admin') &&
+        request.resource.data.keys().hasAll(['name', 'permissions', 'isSystemRole', 'createdAt']) &&
+        request.resource.data.isSystemRole == false;
+      allow update: if hasRole('Admin') &&
+        resource.data.isSystemRole == false &&
+        request.resource.data.isSystemRole == false;
+      allow delete: if hasRole('Admin') && resource.data.isSystemRole == false;
     }
 
     // -------------------------------------------------------------------------

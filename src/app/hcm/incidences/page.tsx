@@ -48,7 +48,8 @@ import {
     ArrowLeft
 } from 'lucide-react';
 import type { Incidence, IncidenceType, IncidenceStatus } from '@/lib/types';
-import { updateIncidenceStatus, createIncidence } from '@/firebase/hcm-actions';
+import { createIncidence } from '@/firebase/hcm-actions';
+import { callApproveIncidence } from '@/firebase/callable-functions';
 import { format, differenceInDays } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
@@ -145,18 +146,16 @@ export default function IncidencesPage() {
         }
     };
 
-    // Handle approval
+    // Handle approval - Uses Cloud Function for server-side validation
     const handleApprove = async () => {
         if (!selectedIncidence || !user) return;
 
         setIsSubmitting(true);
         try {
-            const result = await updateIncidenceStatus(
-                selectedIncidence.id,
-                'approved',
-                user.uid,
-                user.fullName || user.email || 'Unknown'
-            );
+            const result = await callApproveIncidence({
+                incidenceId: selectedIncidence.id,
+                action: 'approve',
+            });
 
             if (result.success) {
                 toast({
@@ -165,13 +164,11 @@ export default function IncidencesPage() {
                 });
                 setIsReviewDialogOpen(false);
                 setSelectedIncidence(null);
-            } else {
-                throw new Error(result.error);
             }
-        } catch (error) {
+        } catch (error: any) {
             toast({
                 title: 'Error',
-                description: 'No se pudo aprobar la incidencia.',
+                description: error.message || 'No se pudo aprobar la incidencia.',
                 variant: 'destructive',
             });
         } finally {
@@ -179,19 +176,27 @@ export default function IncidencesPage() {
         }
     };
 
-    // Handle rejection
+    // Handle rejection - Uses Cloud Function for server-side validation
     const handleReject = async () => {
-        if (!selectedIncidence || !user || !rejectionReason) return;
+        if (!selectedIncidence || !user) return;
+
+        // Rejection reason is optional but recommended
+        if (!rejectionReason.trim()) {
+            toast({
+                title: 'Motivo requerido',
+                description: 'Por favor ingresa un motivo para el rechazo.',
+                variant: 'destructive',
+            });
+            return;
+        }
 
         setIsSubmitting(true);
         try {
-            const result = await updateIncidenceStatus(
-                selectedIncidence.id,
-                'rejected',
-                user.uid,
-                user.fullName || user.email || 'Unknown',
-                rejectionReason
-            );
+            const result = await callApproveIncidence({
+                incidenceId: selectedIncidence.id,
+                action: 'reject',
+                rejectionReason: rejectionReason.trim(),
+            });
 
             if (result.success) {
                 toast({
@@ -201,13 +206,11 @@ export default function IncidencesPage() {
                 setIsReviewDialogOpen(false);
                 setSelectedIncidence(null);
                 setRejectionReason('');
-            } else {
-                throw new Error(result.error);
             }
-        } catch (error) {
+        } catch (error: any) {
             toast({
                 title: 'Error',
-                description: 'No se pudo rechazar la incidencia.',
+                description: error.message || 'No se pudo rechazar la incidencia.',
                 variant: 'destructive',
             });
         } finally {
