@@ -24,6 +24,7 @@ import {
     MapPin,
     Settings,
     Briefcase,
+    LayoutDashboard,
 } from 'lucide-react';
 import Link from 'next/link';
 import type { Employee, Incidence, AttendanceImportBatch } from '@/lib/types';
@@ -111,13 +112,19 @@ export default function HCMPage() {
                         </p>
                     </div>
                     <div className="flex gap-2">
+                        <Button asChild variant="default" className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700">
+                            <Link href="/hcm/command-center">
+                                <LayoutDashboard className="mr-2 h-4 w-4" />
+                                Centro de Comando
+                            </Link>
+                        </Button>
                         <Button asChild variant="outline">
                             <Link href="/hcm/attendance">
                                 <Upload className="mr-2 h-4 w-4" />
                                 Importar Asistencia
                             </Link>
                         </Button>
-                        <Button asChild>
+                        <Button asChild variant="outline">
                             <Link href="/hcm/employees/new">
                                 <UserPlus className="mr-2 h-4 w-4" />
                                 Nuevo Empleado
