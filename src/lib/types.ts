@@ -649,6 +649,9 @@ export type Employee = User & {
   isBlacklisted?: boolean;
   blacklistReason?: string;
   blacklistDate?: string;
+
+  // Información jerárquica
+  directManagerId?: string;    // ID del jefe directo
 };
 
 /**

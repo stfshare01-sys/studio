@@ -37,15 +37,36 @@ import type {
     Department,
 } from '@/lib/types';
 import {
-    calculateSDIFactor,
-    calculateSDI,
     calculateVacationDays,
     calculateYearsOfService,
     validateWorkday,
-    calculateOvertime,
-    calculateHourlyRate,
     calculateHoursWorked
 } from '@/lib/hcm-utils';
+
+// =========================================================================
+// LOCAL HELPER FUNCTIONS (Compensation calculations)
+// =========================================================================
+
+/**
+ * Calcula el factor de integración del SDI según LFT
+ * SDI Factor = 1 + (prima_vacacional * dias_vacaciones / 365) + (aguinaldo / 365)
+ */
+function calculateSDIFactor(
+    vacationDays: number,
+    vacationPremium: number = 0.25,
+    aguinaldoDays: number = 15
+): number {
+    const factor = 1 + ((vacationPremium * vacationDays) / 365) + (aguinaldoDays / 365);
+    return Math.round(factor * 10000) / 10000;
+}
+
+/**
+ * Calcula el Salario Diario Integrado
+ * SDI = Salario Diario * Factor de Integración
+ */
+function calculateSDI(salaryDaily: number, sdiFactor: number): number {
+    return Math.round(salaryDaily * sdiFactor * 100) / 100;
+}
 
 // =========================================================================
 // EMPLOYEE MANAGEMENT

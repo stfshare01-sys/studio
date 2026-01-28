@@ -32,7 +32,7 @@ import {
     ArrowLeft
 } from 'lucide-react';
 import type { AttendanceImportBatch, AttendanceRecord } from '@/lib/types';
-import { processAttendanceImport } from '@/firebase/hcm-actions';
+import { processAttendanceImport } from '@/firebase/actions/incidence-actions';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 

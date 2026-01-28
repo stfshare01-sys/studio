@@ -1021,6 +1021,215 @@ const SAMPLE_INCIDENCES = [
 ];
 
 // =============================================================================
+// 8. LISTAS MAESTRAS (MASTER LISTS)
+// =============================================================================
+
+const MASTER_LISTS = [
+    {
+        id: 'ml-incidence-types',
+        name: 'Tipos de Incidencia',
+        description: 'Catálogo de tipos de incidencia para solicitudes',
+        fields: [
+            { id: 'id', label: 'ID', type: 'text' },
+            { id: 'name', label: 'Nombre', type: 'text' },
+            { id: 'isPaid', label: 'Con Goce', type: 'boolean' },
+            { id: 'maxDays', label: 'Días Máximos', type: 'number' }
+        ],
+        primaryKey: 'id',
+        createdAt: NOW,
+        updatedAt: NOW
+    },
+    {
+        id: 'ml-expense-categories',
+        name: 'Categorías de Gasto',
+        description: 'Categorías para solicitudes de reembolso',
+        fields: [
+            { id: 'id', label: 'ID', type: 'text' },
+            { id: 'name', label: 'Nombre', type: 'text' },
+            { id: 'requiresReceipt', label: 'Requiere Factura', type: 'boolean' },
+            { id: 'maxAmount', label: 'Monto Máximo', type: 'number' }
+        ],
+        primaryKey: 'id',
+        createdAt: NOW,
+        updatedAt: NOW
+    },
+    {
+        id: 'ml-document-types',
+        name: 'Tipos de Documento',
+        description: 'Catálogo de documentos para expediente digital',
+        fields: [
+            { id: 'id', label: 'ID', type: 'text' },
+            { id: 'name', label: 'Nombre', type: 'text' },
+            { id: 'required', label: 'Obligatorio', type: 'boolean' }
+        ],
+        primaryKey: 'id',
+        createdAt: NOW,
+        updatedAt: NOW
+    }
+];
+
+const INCIDENCE_TYPE_ITEMS = [
+    { id: 'vacation', name: 'Vacaciones', isPaid: true, maxDays: 40 },
+    { id: 'sick_leave', name: 'Incapacidad', isPaid: true, maxDays: 365 },
+    { id: 'personal_leave', name: 'Permiso Personal', isPaid: false, maxDays: 3 },
+    { id: 'maternity', name: 'Maternidad', isPaid: true, maxDays: 84 },
+    { id: 'paternity', name: 'Paternidad', isPaid: true, maxDays: 5 },
+    { id: 'bereavement', name: 'Duelo', isPaid: true, maxDays: 3 },
+    { id: 'unjustified_absence', name: 'Falta Injustificada', isPaid: false, maxDays: 1 }
+];
+
+const EXPENSE_CATEGORY_ITEMS = [
+    { id: 'transport', name: 'Transporte', requiresReceipt: false, maxAmount: 5000 },
+    { id: 'food', name: 'Alimentación', requiresReceipt: true, maxAmount: 1500 },
+    { id: 'lodging', name: 'Hospedaje', requiresReceipt: true, maxAmount: 5000 },
+    { id: 'supplies', name: 'Insumos', requiresReceipt: true, maxAmount: 3000 },
+    { id: 'services', name: 'Servicios', requiresReceipt: true, maxAmount: 10000 },
+    { id: 'other', name: 'Otros', requiresReceipt: true, maxAmount: 2000 }
+];
+
+const DOCUMENT_TYPE_ITEMS = [
+    { id: 'ine', name: 'INE / IFE', required: true },
+    { id: 'curp', name: 'CURP', required: true },
+    { id: 'rfc', name: 'Constancia RFC', required: true },
+    { id: 'nss', name: 'Número de Seguro Social', required: true },
+    { id: 'comprobante_domicilio', name: 'Comprobante de Domicilio', required: true },
+    { id: 'acta_nacimiento', name: 'Acta de Nacimiento', required: false },
+    { id: 'comprobante_estudios', name: 'Comprobante de Estudios', required: false },
+    { id: 'carta_recomendacion', name: 'Carta de Recomendación', required: false },
+    { id: 'contrato_firmado', name: 'Contrato Firmado', required: true },
+    { id: 'estado_cuenta', name: 'Estado de Cuenta Bancario', required: true }
+];
+
+// =============================================================================
+// 9. HELPER FUNCTIONS FOR DATA GENERATION
+// =============================================================================
+
+function subtractDays(date: Date, days: number): Date {
+    const result = new Date(date);
+    result.setDate(result.getDate() - days);
+    return result;
+}
+
+function calculateYearsOfService(hireDate: string): number {
+    const hire = new Date(hireDate);
+    const now = new Date();
+    let years = now.getFullYear() - hire.getFullYear();
+    const monthDiff = now.getMonth() - hire.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && now.getDate() < hire.getDate())) {
+        years--;
+    }
+    return Math.max(0, years);
+}
+
+function calculateVacationDaysLFT(yearsOfService: number): number {
+    if (yearsOfService < 1) return 0;
+    if (yearsOfService <= 5) return 12 + ((yearsOfService - 1) * 2);
+    if (yearsOfService <= 10) return 20 + ((yearsOfService - 5) * 2);
+    if (yearsOfService <= 15) return 32;
+    if (yearsOfService <= 20) return 34;
+    if (yearsOfService <= 25) return 36;
+    if (yearsOfService <= 30) return 38;
+    return 40;
+}
+
+function calculateSDIFactor(vacationDays: number, vacationPremium = 0.25, aguinaldoDays = 15): number {
+    const factor = 1 + ((vacationPremium * vacationDays) / 365) + (aguinaldoDays / 365);
+    return Math.round(factor * 10000) / 10000;
+}
+
+// Salary ranges by position level
+const SALARY_RANGES: Record<number, { min: number; max: number }> = {
+    1: { min: 4500, max: 6000 },   // Director
+    2: { min: 2500, max: 3500 },   // Gerente
+    3: { min: 1200, max: 1800 },   // Coordinador/Supervisor
+    4: { min: 800, max: 1200 },    // Analista/Especialista
+    5: { min: 450, max: 700 },     // Operativo
+};
+
+function getPositionLevel(positionId: string): number {
+    const pos = POSITIONS.find(p => p.id === positionId);
+    return pos?.level || 5;
+}
+
+function generateCompensation(emp: typeof EMPLOYEES[0]) {
+    const level = getPositionLevel(emp.positionId);
+    const range = SALARY_RANGES[level] || SALARY_RANGES[5];
+    const salaryDaily = Math.round((range.min + range.max) / 2);
+    const yearsOfService = calculateYearsOfService(emp.hireDate);
+    const vacationDays = calculateVacationDaysLFT(yearsOfService);
+    const sdiFactor = calculateSDIFactor(vacationDays);
+    const sdiBase = Math.round(salaryDaily * sdiFactor * 100) / 100;
+
+    return {
+        id: `comp-${emp.id}`,
+        employeeId: emp.id,
+        salaryDaily,
+        salaryMonthly: salaryDaily * 30,
+        sdiBase,
+        sdiFactor,
+        vacationDays,
+        vacationPremium: 0.25,
+        aguinaldoDays: 15,
+        savingsFundPercentage: 0.13,
+        foodVouchersDaily: level <= 3 ? 100 : 0,
+        effectiveDate: emp.hireDate,
+        createdAt: NOW,
+        updatedAt: NOW,
+        createdById: 'system'
+    };
+}
+
+function generateAttendanceRecords(emp: typeof EMPLOYEES[0]): any[] {
+    const records: any[] = [];
+    const shift = SHIFTS.find(s => s.id === emp.customShiftId) || SHIFTS[0];
+    const dailyHours = shift.dailyHours || 8;
+
+    // Generate 2 weeks of attendance (10 work days)
+    for (let i = 14; i >= 1; i--) {
+        const date = subtractDays(new Date(), i);
+        const dayOfWeek = date.getDay();
+
+        // Skip rest days based on shift
+        if (shift.restDays?.includes(dayOfWeek)) continue;
+
+        // Random variations
+        const isLate = Math.random() > 0.85; // 15% late
+        const hasOvertime = Math.random() > 0.75; // 25% overtime
+        const overtimeHours = hasOvertime ? Math.floor(Math.random() * 3) + 1 : 0;
+
+        const checkInMinutes = isLate ? Math.floor(Math.random() * 20) + 5 : 0;
+        const [startHour, startMin] = shift.startTime.split(':').map(Number);
+        const checkInHour = startHour + Math.floor((startMin + checkInMinutes) / 60);
+        const checkInMinute = (startMin + checkInMinutes) % 60;
+
+        const [endHour] = shift.endTime.split(':').map(Number);
+        const checkOutHour = endHour + overtimeHours;
+
+        records.push({
+            id: `att-${emp.id}-${formatDate(date)}`,
+            employeeId: emp.id,
+            employeeName: emp.fullName,
+            date: formatDate(date),
+            checkIn: `${checkInHour.toString().padStart(2, '0')}:${checkInMinute.toString().padStart(2, '0')}:00`,
+            checkOut: `${checkOutHour.toString().padStart(2, '0')}:00:00`,
+            hoursWorked: dailyHours + overtimeHours - (checkInMinutes > 15 ? 0.5 : 0),
+            regularHours: dailyHours,
+            overtimeHours,
+            overtimeType: overtimeHours > 0 ? 'double' : null,
+            isLate,
+            minutesLate: isLate ? checkInMinutes : 0,
+            isValid: true,
+            shiftId: emp.customShiftId,
+            locationId: emp.locationId,
+            createdAt: date.toISOString(),
+            updatedAt: date.toISOString()
+        });
+    }
+
+    return records;
+}
+
+// =============================================================================
 // MAIN SEEDING FUNCTION
 // =============================================================================
 
@@ -1059,7 +1268,7 @@ async function seedDatabase() {
         // 4. Crear Turnos
         console.log('⏰ Creando Turnos...');
         for (const shift of SHIFTS) {
-            await db.collection('custom_shifts').doc(shift.id).set(shift);
+            await db.collection('shifts').doc(shift.id).set(shift);
         }
         console.log(`   ✅ ${SHIFTS.length} turnos creados\n`);
 
@@ -1156,7 +1365,7 @@ async function seedDatabase() {
         // 6. Crear Plantillas
         console.log('📄 Creando Plantillas de Workflow...');
         for (const tpl of TEMPLATES) {
-            await db.collection('templates').doc(tpl.id).set(tpl);
+            await db.collection('request_templates').doc(tpl.id).set(tpl);
         }
         console.log(`   ✅ ${TEMPLATES.length} plantillas creadas\n`);
 
@@ -1167,7 +1376,52 @@ async function seedDatabase() {
         }
         console.log(`   ✅ ${SAMPLE_INCIDENCES.length} incidencias de ejemplo creadas\n`);
 
-        // 7. Create Admin Test User
+        // 7. Crear Listas Maestras con Items
+        console.log('📚 Creando Listas Maestras...');
+        for (const ml of MASTER_LISTS) {
+            await db.collection('master_lists').doc(ml.id).set(ml);
+        }
+        // Add items to incidence types list
+        for (const item of INCIDENCE_TYPE_ITEMS) {
+            await db.collection('master_lists').doc('ml-incidence-types')
+                .collection('items').doc(item.id).set(item);
+        }
+        // Add items to expense categories list
+        for (const item of EXPENSE_CATEGORY_ITEMS) {
+            await db.collection('master_lists').doc('ml-expense-categories')
+                .collection('items').doc(item.id).set(item);
+        }
+        // Add items to document types list
+        for (const item of DOCUMENT_TYPE_ITEMS) {
+            await db.collection('master_lists').doc('ml-document-types')
+                .collection('items').doc(item.id).set(item);
+        }
+        const totalItems = INCIDENCE_TYPE_ITEMS.length + EXPENSE_CATEGORY_ITEMS.length + DOCUMENT_TYPE_ITEMS.length;
+        console.log(`   ✅ ${MASTER_LISTS.length} listas maestras con ${totalItems} items creadas\n`);
+
+        // 8. Crear Registros de Compensación
+        console.log('💰 Creando Registros de Compensación...');
+        let compensationCount = 0;
+        for (const emp of EMPLOYEES) {
+            const comp = generateCompensation(emp);
+            await db.collection('compensation').doc(comp.id).set(comp);
+            compensationCount++;
+        }
+        console.log(`   ✅ ${compensationCount} registros de compensación creados\n`);
+
+        // 9. Crear Registros de Asistencia (últimas 2 semanas)
+        console.log('📅 Creando Registros de Asistencia...');
+        let attendanceCount = 0;
+        for (const emp of EMPLOYEES) {
+            const records = generateAttendanceRecords(emp);
+            for (const rec of records) {
+                await db.collection('attendance').doc(rec.id).set(rec);
+                attendanceCount++;
+            }
+        }
+        console.log(`   ✅ ${attendanceCount} registros de asistencia creados\n`);
+
+        // 10. Create Admin Test User
         console.log('👤 Creando Usuario Administrador de Prueba...');
         const ADMIN_UID = 'admin-user';
         await safeCreateAuthUser(ADMIN_UID, 'admin@stuffactory.mx', 'Administrador Sistema');
@@ -1196,6 +1450,9 @@ async function seedDatabase() {
         console.log(`   • Vacaciones:    ${vacationBalanceCount} saldos`);
         console.log(`   • Incidencias:   ${SAMPLE_INCIDENCES.length}`);
         console.log(`   • Plantillas:    ${TEMPLATES.length}`);
+        console.log(`   • Listas Maestras: ${MASTER_LISTS.length} (con ${totalItems} items)`);
+        console.log(`   • Compensación:  ${compensationCount} registros`);
+        console.log(`   • Asistencia:    ${attendanceCount} registros`);
         console.log('\n🔐 CREDENCIALES:');
         console.log('   Email: admin@stuffactory.mx');
         console.log('   (Use Firebase Auth Emulator para login)\n');

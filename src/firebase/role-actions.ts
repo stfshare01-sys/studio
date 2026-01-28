@@ -266,6 +266,7 @@ export async function createRole(
 
 /**
  * Update a custom role
+ * @param isAdminUser - If true, allows editing system roles (for admin users only)
  */
 export async function updateRole(
   firestore: Firestore,
@@ -274,11 +275,40 @@ export async function updateRole(
     name: string;
     description: string;
     permissions: ModulePermission[];
-  }>
+  }>,
+  isAdminUser: boolean = false
 ): Promise<void> {
-  // Prevent updating system roles
-  if (isSystemRole(roleId) || isSystemRole(roleId.charAt(0).toUpperCase() + roleId.slice(1))) {
-    throw new Error('No se pueden modificar los roles del sistema');
+  // Check if it's a system role
+  const isSystem = isSystemRole(roleId) || isSystemRole(roleId.charAt(0).toUpperCase() + roleId.slice(1));
+
+  // Only admins can edit system roles
+  if (isSystem && !isAdminUser) {
+    throw new Error('No se pueden modificar los roles del sistema. Se requieren permisos de administrador.');
+  }
+
+  // For system roles, we need to update them in Firestore (create if not exists)
+  if (isSystem) {
+    const systemRoleName = roleId.charAt(0).toUpperCase() + roleId.slice(1);
+    const roleRef = doc(firestore, 'roles', roleId);
+    const snapshot = await getDoc(roleRef);
+
+    if (!snapshot.exists()) {
+      // Create the system role document with updated data
+      await setDoc(roleRef, {
+        name: systemRoleName,
+        description: getSystemRoleDescription(systemRoleName as SystemRole),
+        isSystemRole: true,
+        permissions: data.permissions || SYSTEM_ROLES[systemRoleName as SystemRole],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+    } else {
+      await updateDoc(roleRef, {
+        ...data,
+        updatedAt: new Date().toISOString(),
+      });
+    }
+    return;
   }
 
   const roleRef = doc(firestore, 'roles', roleId);
@@ -289,7 +319,7 @@ export async function updateRole(
   }
 
   const existingData = snapshot.data();
-  if (existingData.isSystemRole) {
+  if (existingData.isSystemRole && !isAdminUser) {
     throw new Error('No se pueden modificar los roles del sistema');
   }
 

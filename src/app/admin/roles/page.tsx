@@ -168,9 +168,10 @@ type RoleDialogProps = {
   role?: Role | null;
   onSave: (data: { name: string; description: string; permissions: ModulePermission[] }) => Promise<void>;
   isSaving: boolean;
+  isAdmin?: boolean;
 };
 
-function RoleDialog({ isOpen, onOpenChange, role, onSave, isSaving }: RoleDialogProps) {
+function RoleDialog({ isOpen, onOpenChange, role, onSave, isSaving, isAdmin = false }: RoleDialogProps) {
   const [name, setName] = useState(role?.name || "");
   const [description, setDescription] = useState(role?.description || "");
   const [permissions, setPermissions] = useState<Record<AppModule, PermissionLevel>>(() => {
@@ -207,6 +208,8 @@ function RoleDialog({ isOpen, onOpenChange, role, onSave, isSaving }: RoleDialog
 
   const isEditing = !!role;
   const isSystemRoleEdit = role?.isSystemRole || false;
+  // Admins can edit system roles, others cannot
+  const canEdit = isAdmin || !isSystemRoleEdit;
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
@@ -218,7 +221,9 @@ function RoleDialog({ isOpen, onOpenChange, role, onSave, isSaving }: RoleDialog
           <DialogDescription>
             {isEditing
               ? isSystemRoleEdit
-                ? "Los roles del sistema no pueden ser modificados."
+                ? isAdmin
+                  ? "Editando rol del sistema (Solo administradores)."
+                  : "Los roles del sistema no pueden ser modificados."
                 : "Modifica los permisos de este rol personalizado."
               : "Define un nuevo rol con permisos específicos para cada módulo."}
           </DialogDescription>
@@ -234,7 +239,7 @@ function RoleDialog({ isOpen, onOpenChange, role, onSave, isSaving }: RoleDialog
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Ej: Supervisor de Ventas"
-                disabled={isSystemRoleEdit}
+                disabled={!canEdit}
               />
             </div>
             <div className="space-y-2">
@@ -244,7 +249,7 @@ function RoleDialog({ isOpen, onOpenChange, role, onSave, isSaving }: RoleDialog
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Describe las responsabilidades de este rol..."
-                disabled={isSystemRoleEdit}
+                disabled={!canEdit}
               />
             </div>
           </div>
@@ -266,7 +271,7 @@ function RoleDialog({ isOpen, onOpenChange, role, onSave, isSaving }: RoleDialog
                     module={module}
                     level={permissions[module.id]}
                     onChange={(level) => handlePermissionChange(module.id, level)}
-                    disabled={isSystemRoleEdit}
+                    disabled={!canEdit}
                   />
                 ))}
               </TabsContent>
@@ -278,7 +283,7 @@ function RoleDialog({ isOpen, onOpenChange, role, onSave, isSaving }: RoleDialog
                     module={module}
                     level={permissions[module.id]}
                     onChange={(level) => handlePermissionChange(module.id, level)}
-                    disabled={isSystemRoleEdit}
+                    disabled={!canEdit}
                   />
                 ))}
               </TabsContent>
@@ -290,7 +295,7 @@ function RoleDialog({ isOpen, onOpenChange, role, onSave, isSaving }: RoleDialog
                     module={module}
                     level={permissions[module.id]}
                     onChange={(level) => handlePermissionChange(module.id, level)}
-                    disabled={isSystemRoleEdit}
+                    disabled={!canEdit}
                   />
                 ))}
               </TabsContent>
@@ -302,7 +307,7 @@ function RoleDialog({ isOpen, onOpenChange, role, onSave, isSaving }: RoleDialog
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancelar
           </Button>
-          {!isSystemRoleEdit && (
+          {canEdit && (
             <Button onClick={handleSave} disabled={!name.trim() || isSaving}>
               {isSaving ? "Guardando..." : isEditing ? "Guardar Cambios" : "Crear Rol"}
             </Button>
@@ -372,7 +377,7 @@ export default function RolesPage() {
     try {
       if (selectedRole) {
         // Update existing role
-        await updateRole(firestore, selectedRole.id, data);
+        await updateRole(firestore, selectedRole.id, data, hasAdminRole);
         toast({
           title: "Rol actualizado",
           description: `El rol "${data.name}" ha sido actualizado.`,
@@ -616,6 +621,7 @@ export default function RolesPage() {
         role={selectedRole}
         onSave={handleSaveRole}
         isSaving={isSaving}
+        isAdmin={hasAdminRole}
       />
 
       {/* Delete Confirmation */}

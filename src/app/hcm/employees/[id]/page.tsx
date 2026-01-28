@@ -216,7 +216,7 @@ export default function EmployeeDetailPage({ params }: { params: Promise<{ id: s
                                                 <p className="text-sm font-medium text-muted-foreground mb-1">Jefe Directo</p>
                                                 <div className="flex items-center gap-2">
                                                     <User className="h-4 w-4 text-muted-foreground" />
-                                                    <span>{employee.managerId || 'N/A'}</span>
+                                                    <span>{employee.directManagerId || 'N/A'}</span>
                                                 </div>
                                             </div>
                                         </div>

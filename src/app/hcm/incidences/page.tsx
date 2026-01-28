@@ -50,8 +50,8 @@ import {
     AlertTriangle
 } from 'lucide-react';
 import type { Incidence, IncidenceType, IncidenceStatus, Employee, VacationBalance } from '@/lib/types';
-import { createIncidence, getEmployeeByUserId } from '@/firebase/hcm-actions';
-import { getVacationBalance } from '@/firebase/actions/incidence-actions';
+import { getEmployeeByUserId } from '@/firebase/hcm-actions';
+import { createIncidence, getVacationBalance } from '@/firebase/actions/incidence-actions';
 import { callApproveIncidence } from '@/firebase/callable-functions';
 import { checkDateConflict } from '@/lib/hcm-utils';
 import { format, differenceInDays } from 'date-fns';
