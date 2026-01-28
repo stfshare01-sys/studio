@@ -1081,3 +1081,231 @@ export function isTerminatedBeforePeriod(
     if (!terminationDate) return false;
     return new Date(terminationDate) < new Date(periodStart);
 }
+
+// =========================================================================
+// VALIDACIÓN DE CONFLICTOS DE FECHAS
+// =========================================================================
+
+/**
+ * Resultado de la verificación de conflicto de fechas
+ */
+export type DateConflictResult = {
+    hasConflict: boolean;
+    conflictingRanges: {
+        id: string;
+        type: IncidenceType;
+        startDate: string;
+        endDate: string;
+        status: string;
+    }[];
+    message?: string;
+};
+
+/**
+ * Verifica si dos rangos de fechas se solapan
+ *
+ * @param start1 - Fecha inicio del primer rango
+ * @param end1 - Fecha fin del primer rango
+ * @param start2 - Fecha inicio del segundo rango
+ * @param end2 - Fecha fin del segundo rango
+ * @returns true si hay solapamiento
+ */
+export function datesOverlap(
+    start1: string,
+    end1: string,
+    start2: string,
+    end2: string
+): boolean {
+    const s1 = new Date(start1);
+    const e1 = new Date(end1);
+    const s2 = new Date(start2);
+    const e2 = new Date(end2);
+
+    // Dos rangos se solapan si:
+    // El inicio de uno es antes o igual al fin del otro Y
+    // El fin de uno es después o igual al inicio del otro
+    return s1 <= e2 && e1 >= s2;
+}
+
+/**
+ * Detecta conflictos de fechas con incidencias existentes
+ *
+ * Esta función debe ser llamada antes de crear o aprobar una incidencia
+ * para verificar que no hay solapamiento de fechas.
+ *
+ * @param employeeId - ID del empleado
+ * @param startDate - Fecha inicio de la nueva incidencia
+ * @param endDate - Fecha fin de la nueva incidencia
+ * @param existingIncidences - Lista de incidencias existentes del empleado
+ * @param excludeIncidenceId - ID de incidencia a excluir (para edición)
+ * @returns DateConflictResult
+ *
+ * @example
+ * // Verificar antes de crear nueva incidencia
+ * const result = checkDateConflict(
+ *   'emp123',
+ *   '2024-03-15',
+ *   '2024-03-20',
+ *   existingIncidences
+ * );
+ * if (result.hasConflict) {
+ *   console.error(result.message);
+ * }
+ */
+export function checkDateConflict(
+    employeeId: string,
+    startDate: string,
+    endDate: string,
+    existingIncidences: Array<{
+        id: string;
+        employeeId: string;
+        type: IncidenceType;
+        startDate: string;
+        endDate: string;
+        status: string;
+    }>,
+    excludeIncidenceId?: string
+): DateConflictResult {
+    // Filtrar incidencias relevantes:
+    // - Del mismo empleado
+    // - Con status pending o approved (no rechazadas ni canceladas)
+    // - Excluyendo la incidencia actual si se proporciona
+    const relevantIncidences = existingIncidences.filter(inc =>
+        inc.employeeId === employeeId &&
+        ['pending', 'approved'].includes(inc.status) &&
+        inc.id !== excludeIncidenceId
+    );
+
+    const conflictingRanges: DateConflictResult['conflictingRanges'] = [];
+
+    for (const inc of relevantIncidences) {
+        if (datesOverlap(startDate, endDate, inc.startDate, inc.endDate)) {
+            conflictingRanges.push({
+                id: inc.id,
+                type: inc.type,
+                startDate: inc.startDate,
+                endDate: inc.endDate,
+                status: inc.status
+            });
+        }
+    }
+
+    if (conflictingRanges.length === 0) {
+        return { hasConflict: false, conflictingRanges: [] };
+    }
+
+    // Generar mensaje descriptivo
+    const typeNames: Record<IncidenceType, string> = {
+        vacation: 'vacaciones',
+        sick_leave: 'incapacidad',
+        personal_leave: 'permiso personal',
+        maternity: 'maternidad',
+        paternity: 'paternidad',
+        bereavement: 'duelo',
+        unjustified_absence: 'falta injustificada'
+    };
+
+    const conflictDescriptions = conflictingRanges.map(c =>
+        `${typeNames[c.type]} del ${formatDate(c.startDate)} al ${formatDate(c.endDate)} (${c.status === 'pending' ? 'pendiente' : 'aprobada'})`
+    );
+
+    const message = conflictingRanges.length === 1
+        ? `Ya existe una solicitud de ${conflictDescriptions[0]} en las fechas seleccionadas.`
+        : `Las fechas seleccionadas se solapan con ${conflictingRanges.length} incidencias existentes: ${conflictDescriptions.join('; ')}.`;
+
+    return {
+        hasConflict: true,
+        conflictingRanges,
+        message
+    };
+}
+
+/**
+ * Formatea una fecha en formato legible DD/MM/YYYY
+ *
+ * @param dateString - Fecha en formato ISO
+ * @returns Fecha formateada
+ */
+function formatDate(dateString: string): string {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('es-MX', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric'
+    });
+}
+
+/**
+ * Valida una solicitud de incidencia completa incluyendo:
+ * - Elegibilidad de vacaciones (si aplica)
+ * - Saldo disponible (si aplica)
+ * - Conflictos de fechas
+ *
+ * @param params - Parámetros de validación
+ * @returns { valid: boolean, errors: string[] }
+ */
+export function validateIncidenceRequest(params: {
+    employeeId: string;
+    type: IncidenceType;
+    startDate: string;
+    endDate: string;
+    hireDate: string;
+    vacationBalance?: {
+        daysAvailable: number;
+        daysEntitled: number;
+    };
+    existingIncidences: Array<{
+        id: string;
+        employeeId: string;
+        type: IncidenceType;
+        startDate: string;
+        endDate: string;
+        status: string;
+    }>;
+    excludeIncidenceId?: string;
+}): { valid: boolean; errors: string[] } {
+    const errors: string[] = [];
+
+    // Validar fechas básicas
+    const start = new Date(params.startDate);
+    const end = new Date(params.endDate);
+
+    if (end < start) {
+        errors.push('La fecha de fin no puede ser anterior a la fecha de inicio.');
+    }
+
+    // Para vacaciones, validar elegibilidad y saldo
+    if (params.type === 'vacation') {
+        // Verificar antigüedad
+        const eligibility = checkVacationEligibility(params.hireDate);
+        if (!eligibility.eligible) {
+            errors.push(`No tienes la antigüedad requerida. Faltan ${eligibility.daysUntilEligible} días para cumplir 1 año.`);
+        }
+
+        // Verificar saldo disponible
+        if (params.vacationBalance) {
+            const daysRequested = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+            if (daysRequested > params.vacationBalance.daysAvailable) {
+                errors.push(`Solo tienes ${params.vacationBalance.daysAvailable} días disponibles. Solicitaste ${daysRequested} días.`);
+            }
+        }
+    }
+
+    // Verificar conflictos de fechas
+    const conflictResult = checkDateConflict(
+        params.employeeId,
+        params.startDate,
+        params.endDate,
+        params.existingIncidences,
+        params.excludeIncidenceId
+    );
+
+    if (conflictResult.hasConflict && conflictResult.message) {
+        errors.push(conflictResult.message);
+    }
+
+    return {
+        valid: errors.length === 0,
+        errors
+    };
+}

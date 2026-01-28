@@ -591,8 +591,22 @@ interface ApproveIncidenceResponse {
 }
 
 /**
+ * Helper function to check if two date ranges overlap
+ */
+function datesOverlap(start1: string, end1: string, start2: string, end2: string): boolean {
+    const s1 = new Date(start1);
+    const e1 = new Date(end1);
+    const s2 = new Date(start2);
+    const e2 = new Date(end2);
+    return s1 <= e2 && e1 >= s2;
+}
+
+/**
  * Approves or rejects an incidence request.
- * 
+ *
+ * Includes server-side validation to prevent approving incidences
+ * that overlap with other approved/pending incidences for the same employee.
+ *
  * @requires Role: Admin, HRManager, or Manager
  */
 export const approveIncidence = onCall<ApproveIncidenceRequest>(
@@ -617,6 +631,61 @@ export const approveIncidence = onCall<ApproveIncidenceRequest>(
                 throw new HttpsError('not-found', 'Incidencia no encontrada.');
             }
 
+            const incidenceData = incidenceSnap.data() as Incidence;
+
+            // Only validate date conflicts when approving (not when rejecting)
+            if (action === 'approve') {
+                // Query for other approved or pending incidences for the same employee
+                const conflictQuery = await db.collection('incidences')
+                    .where('employeeId', '==', incidenceData.employeeId)
+                    .where('status', 'in', ['approved', 'pending'])
+                    .get();
+
+                const conflictingIncidences: Incidence[] = [];
+
+                for (const doc of conflictQuery.docs) {
+                    // Skip the current incidence being approved
+                    if (doc.id === incidenceId) continue;
+
+                    const otherIncidence = doc.data() as Incidence;
+
+                    // Check if dates overlap
+                    if (datesOverlap(
+                        incidenceData.startDate,
+                        incidenceData.endDate,
+                        otherIncidence.startDate,
+                        otherIncidence.endDate
+                    )) {
+                        conflictingIncidences.push({
+                            ...otherIncidence,
+                            id: doc.id
+                        });
+                    }
+                }
+
+                // If there are conflicts, reject the approval
+                if (conflictingIncidences.length > 0) {
+                    const typeNames: Record<string, string> = {
+                        vacation: 'vacaciones',
+                        sick_leave: 'incapacidad',
+                        personal_leave: 'permiso personal',
+                        maternity: 'maternidad',
+                        paternity: 'paternidad',
+                        bereavement: 'duelo',
+                        unjustified_absence: 'falta injustificada'
+                    };
+
+                    const conflictDescriptions = conflictingIncidences.map(c =>
+                        `${typeNames[c.type] || c.type} del ${c.startDate} al ${c.endDate}`
+                    );
+
+                    throw new HttpsError(
+                        'failed-precondition',
+                        `No se puede aprobar: las fechas se solapan con ${conflictingIncidences.length === 1 ? 'otra incidencia' : 'otras incidencias'}: ${conflictDescriptions.join('; ')}.`
+                    );
+                }
+            }
+
             const updateData: Partial<Incidence> = {
                 status: action === 'approve' ? 'approved' : 'rejected',
                 approvedById: request.auth?.uid,
@@ -631,7 +700,7 @@ export const approveIncidence = onCall<ApproveIncidenceRequest>(
 
             await incidenceRef.update(updateData);
 
-            console.log(`[HCM] Incidence ${incidenceId} ${action}ed`);
+            console.log(`[HCM] Incidence ${incidenceId} ${action}ed by ${userData?.fullName}`);
 
             return { success: true };
 

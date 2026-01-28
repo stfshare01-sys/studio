@@ -73,7 +73,8 @@ export type User = {
   fullName: string;
   avatarUrl?: string;
   email: string;
-  department: string;
+  department: string;           // Legacy: nombre del departamento (string)
+  departmentId?: string;        // NEW: referencia a departments/{id}
   skills?: string[];
   currentWorkload?: number;
   role: UserRole;
@@ -1019,6 +1020,41 @@ export type SettlementCalculation = {
 };
 
 // =========================================================================
+// DEPARTAMENTOS
+// =========================================================================
+
+/**
+ * Departamento Organizacional
+ * Entidad completa con jefe, presupuesto y jerarquía
+ */
+export type Department = {
+  id: string;
+  name: string;                   // Nombre del departamento
+  code: string;                   // Código único (ej: "RH", "OPS", "FIN")
+  description?: string;           // Descripción del departamento
+
+  // Jerarquía organizacional
+  managerId?: string;             // ID del empleado responsable/jefe del departamento
+  parentDepartmentId?: string;    // Departamento padre (para jerarquías)
+
+  // Contabilidad
+  costCenter?: string;            // Centro de costos contable
+  budget?: number;                // Presupuesto asignado
+  budgetPeriod?: 'monthly' | 'quarterly' | 'annual';
+
+  // Ubicación física principal
+  locationId?: string;            // Ubicación física principal del departamento
+
+  // Estado
+  isActive: boolean;
+
+  // Auditoría
+  createdAt: string;
+  updatedAt: string;
+  createdById?: string;
+};
+
+// =========================================================================
 // UBICACIONES, PUESTOS Y TURNOS
 // =========================================================================
 
@@ -1069,7 +1105,8 @@ export type Position = {
   id: string;
   name: string;                   // Nombre del puesto
   code: string;                   // Código único
-  department: string;             // Departamento
+  department: string;             // Legacy: nombre del departamento (string)
+  departmentId?: string;          // NEW: referencia a departments/{id}
   level: number;                  // Nivel jerárquico (1 = director, 2 = gerente, etc.)
 
   // Configuración salarial

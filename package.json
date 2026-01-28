@@ -9,7 +9,8 @@
     "build": "NODE_ENV=production next build",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "seed": "npx ts-node --esm scripts/seed-emulator.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.1.0",
