@@ -12,9 +12,15 @@
 export {
     consolidatePrenomina,
     processEmployeeImport,
-    calculateSettlement,
     approveIncidence
 } from './callable/hcm-operations';
 
 // Utility exports for internal use
+// Utility exports for internal use
 export { verifyRole, getUserRole } from './utils/auth-middleware';
+
+// HCM Triggers
+export { onIncidenceUpdate } from './triggers/hcm-triggers';
+
+// Workflow Triggers
+export { onTaskComplete } from './triggers/workflow-triggers';

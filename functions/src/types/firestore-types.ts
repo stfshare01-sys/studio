@@ -86,47 +86,19 @@ export interface PrenominaRecord {
     periodStart: string;
     periodEnd: string;
     periodType: 'weekly' | 'biweekly' | 'monthly';
-    salaryBase: number;
     daysWorked: number;
     overtimeDoubleHours: number;
-    overtimeDoubleAmount: number;
     overtimeTripleHours: number;
-    overtimeTripleAmount: number;
     sundayPremiumDays: number;
-    sundayPremiumAmount: number;
     absenceDays: number;
-    absenceDeductions: number;
     vacationDaysTaken: number;
     sickLeaveDays: number;
     paidLeaveDays: number;
     unpaidLeaveDays: number;
-    grossPay: number;
-    totalDeductions: number;
-    netPay: number;
-    earnedWage: number;
     status: 'draft' | 'review' | 'approved' | 'exported';
     costCenter?: string;
     createdAt: string;
     updatedAt: string;
 }
 
-export interface SettlementCalculation {
-    id: string;
-    employeeId: string;
-    employeeName: string;
-    type: 'resignation' | 'dismissal_justified' | 'dismissal_unjustified' | 'mutual_agreement';
-    terminationDate: string;
-    proportionalVacation: number;
-    proportionalVacationPremium: number;
-    proportionalAguinaldo: number;
-    salaryPending: number;
-    severancePay: number;
-    seniorityPremium: number;
-    twentyDaysPerYear: number;
-    totalPerceptions: number;
-    totalDeductions: number;
-    netSettlement: number;
-    status: 'preliminary' | 'approved' | 'paid';
-    calculatedAt: string;
-    calculatedById: string;
-}
+

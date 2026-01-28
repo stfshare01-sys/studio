@@ -446,18 +446,18 @@ service cloud.firestore {
     }
 
     // -------------------------------------------------------------------------
-    // Catch-all for Admin
-    // ⚠️ PRODUCTION NOTE: Set PRODUCTION_MODE to true before deploying
+    // Catch-all for Admin (Recursive God Mode)
+    // ⚠️ ZERO TRUST ENFORCED: Default is DENY ALL.
     // -------------------------------------------------------------------------
 
     /**
-     * @description Fallback rule for any collection not explicitly defined.
-     * In development: Allows Admins to access collections.
-     * In production: Should be set to deny all.
+     * @description Recursive match for ALL documents in the database.
+     * Allows Admins to read/write ANY document.
+     * Prerequisite: All critical Admin actions MUST be logged to 'audit_logs' via backend.
      */
-    match /{collectionName}/{documentId} {
-      // Set this to false before production deployment
-      allow read, write: if false == false && hasRole('Admin');
+    match /{document=**} {
+      allow read, write: if hasRole('Admin');
     }
+
   }
 }

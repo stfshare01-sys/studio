@@ -11,6 +11,7 @@ import type { Request as RequestType, Task, User } from '@/lib/types';
 import { FilePlus, Hourglass, CheckCircle, Timer } from "lucide-react";
 import Link from "next/link";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/ui/empty-state";
 import { TasksTable } from "@/components/dashboard/tasks-table";
 import React from "react";
 import { differenceInHours } from 'date-fns';
@@ -19,27 +20,27 @@ import { StatCard } from "@/components/dashboard/stat-card";
 
 
 function DataTableSkeleton() {
-    return (
-      <div className="rounded-md border">
-        <div className="p-4">
-            <div className="space-y-3">
-                <Skeleton className="h-5 w-2/5" />
-                <Skeleton className="h-4 w-4/5" />
-            </div>
-        </div>
-        <div className="p-4">
-            <Skeleton className="h-10 w-full" />
-        </div>
-        <div className="p-4">
-            <div className="space-y-4">
-                <Skeleton className="h-12 w-full" />
-                <Skeleton className="h-12 w-full" />
-                <Skeleton className="h-12 w-full" />
-            </div>
+  return (
+    <div className="rounded-md border">
+      <div className="p-4">
+        <div className="space-y-3">
+          <Skeleton className="h-5 w-2/5" />
+          <Skeleton className="h-4 w-4/5" />
         </div>
       </div>
-    );
-  }
+      <div className="p-4">
+        <Skeleton className="h-10 w-full" />
+      </div>
+      <div className="p-4">
+        <div className="space-y-4">
+          <Skeleton className="h-12 w-full" />
+          <Skeleton className="h-12 w-full" />
+          <Skeleton className="h-12 w-full" />
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function DashboardPage() {
   const { user, isUserLoading } = useUser();
@@ -55,9 +56,9 @@ export default function DashboardPage() {
   const tasksQuery = useMemoFirebase(() => {
     if (isUserLoading || !firestore || !user) return null;
     return query(
-        collection(firestore, 'tasks'),
-        where('assigneeId', '==', user.uid),
-        where('status', '==', 'Active')
+      collection(firestore, 'tasks'),
+      where('assigneeId', '==', user.uid),
+      where('status', '==', 'Active')
     );
   }, [firestore, user, isUserLoading]);
 
@@ -76,17 +77,17 @@ export default function DashboardPage() {
     if (!myRequests) return { inProgress: 0, avgCycleTime: 0 };
     const completedRequests = myRequests.filter(r => r.status === 'Completed' && r.completedAt && r.createdAt);
     const totalCycleTime = completedRequests.reduce((acc, curr) => {
-        const completedAt = curr.completedAt ? new Date(curr.completedAt) : null;
-        const createdAt = new Date(curr.createdAt);
-        if (completedAt) {
-            return acc + differenceInHours(completedAt, createdAt);
-        }
-        return acc;
+      const completedAt = curr.completedAt ? new Date(curr.completedAt) : null;
+      const createdAt = new Date(curr.createdAt);
+      if (completedAt) {
+        return acc + differenceInHours(completedAt, createdAt);
+      }
+      return acc;
     }, 0);
 
     return {
-        inProgress: myRequests.filter(r => r.status === 'In Progress').length,
-        avgCycleTime: completedRequests.length > 0 ? (totalCycleTime / completedRequests.length).toFixed(1) : 0,
+      inProgress: myRequests.filter(r => r.status === 'In Progress').length,
+      avgCycleTime: completedRequests.length > 0 ? (totalCycleTime / completedRequests.length).toFixed(1) : 0,
     }
   }, [myRequests]);
 
@@ -109,41 +110,41 @@ export default function DashboardPage() {
           </Button>
         </header>
         <main className="flex flex-1 flex-col gap-8 p-4 pt-0 sm:p-6 sm:pt-0">
-          
+
           {/* STATS CARDS */}
           <div className="grid gap-4 md:grid-cols-3">
-              <StatCard
-                title="Solicitudes en Progreso"
-                value={stats.inProgress}
-                icon={Hourglass}
-                description="Procesos activos que requieren acción."
-                isLoading={isLoadingMyRequests}
-              />
-              <StatCard
-                title="Tareas Completadas"
-                value={completedTasksCount}
-                icon={CheckCircle}
-                description="Total de tareas completadas en todos los flujos."
-                isLoading={isLoadingAllTasks}
-              />
-              <StatCard
-                title="Tiempo Promedio de Ciclo (Horas)"
-                value={stats.avgCycleTime}
-                icon={Timer}
-                description="Tiempo medio para completar una solicitud."
-                isLoading={isLoadingMyRequests}
-              />
+            <StatCard
+              title="Solicitudes en Progreso"
+              value={stats.inProgress}
+              icon={Hourglass}
+              description="Procesos activos que requieren acción."
+              isLoading={isLoadingMyRequests}
+            />
+            <StatCard
+              title="Tareas Completadas"
+              value={completedTasksCount}
+              icon={CheckCircle}
+              description="Total de tareas completadas en todos los flujos."
+              isLoading={isLoadingAllTasks}
+            />
+            <StatCard
+              title="Tiempo Promedio de Ciclo (Horas)"
+              value={stats.avgCycleTime}
+              icon={Timer}
+              description="Tiempo medio para completar una solicitud."
+              isLoading={isLoadingMyRequests}
+            />
           </div>
 
           {/* BOTTLENECK CHART */}
           <Card>
-              <CardHeader>
-                  <CardTitle>Análisis de Cuellos de Botella</CardTitle>
-                  <CardDescription>Tiempo promedio de finalización por tipo de tarea para identificar retrasos.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                  <BottleneckChart tasks={allTasks} isLoading={isLoadingAllTasks} />
-              </CardContent>
+            <CardHeader>
+              <CardTitle>Análisis de Cuellos de Botella</CardTitle>
+              <CardDescription>Tiempo promedio de finalización por tipo de tarea para identificar retrasos.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <BottleneckChart tasks={allTasks} isLoading={isLoadingAllTasks} />
+            </CardContent>
           </Card>
 
 
@@ -153,19 +154,19 @@ export default function DashboardPage() {
               <CardDescription>Estas son las tareas activas que requieren tu atención.</CardDescription>
             </CardHeader>
             <CardContent>
-                {isLoadingTasks && <DataTableSkeleton />}
-                {!isLoadingTasks && tasks && <TasksTable tasks={tasks} />}
-                {!isLoadingTasks && !tasks?.length && (
-                    <div className="flex items-center justify-center rounded-lg border border-dashed shadow-sm p-8">
-                        <div className="text-center">
-                            <h3 className="text-2xl font-bold tracking-tight">Bandeja de entrada vacía</h3>
-                            <p className="text-sm text-muted-foreground">No tienes ninguna tarea asignada en este momento.</p>
-                        </div>
-                    </div>
-                )}
+              {isLoadingTasks && <DataTableSkeleton />}
+              {!isLoadingTasks && tasks && <TasksTable tasks={tasks} />}
+              {!isLoadingTasks && !tasks?.length && (
+                <EmptyState
+                  variant="inbox"
+                  title="Bandeja de entrada vacía"
+                  description="No tienes ninguna tarea asignada en este momento."
+                  compact
+                />
+              )}
             </CardContent>
           </Card>
-          
+
           <Card>
             <CardHeader>
               <CardTitle>Mis Solicitudes</CardTitle>
@@ -175,18 +176,13 @@ export default function DashboardPage() {
               {isLoadingMyRequests && <DataTableSkeleton />}
               {!isLoadingMyRequests && myRequests && <RequestsTable requests={myRequests} />}
               {!isLoadingMyRequests && !myRequests?.length && (
-                 <div className="flex flex-1 items-center justify-center rounded-lg border border-dashed shadow-sm p-8">
-                    <div className="flex flex-col items-center gap-1 text-center">
-                        <h3 className="text-2xl font-bold tracking-tight">No tiene solicitudes</h3>
-                        <p className="text-sm text-muted-foreground">Cree una nueva solicitud para empezar.</p>
-                        <Button className="mt-4" asChild>
-                            <Link href="/requests/new">
-                                <FilePlus className="mr-2 h-4 w-4" />
-                                Nueva Solicitud
-                            </Link>
-                        </Button>
-                    </div>
-                </div>
+                <EmptyState
+                  variant="documents"
+                  title="No tiene solicitudes"
+                  description="Cree una nueva solicitud para empezar."
+                  actionLabel="Nueva Solicitud"
+                  onAction={() => window.location.href = '/requests/new'}
+                />
               )}
             </CardContent>
           </Card>

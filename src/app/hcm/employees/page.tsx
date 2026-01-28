@@ -50,6 +50,7 @@ import {
 import Link from 'next/link';
 import type { Employee } from '@/lib/types';
 import { calculateYearsOfService } from '@/lib/hcm-utils';
+import { SearchEmptyState } from '@/components/ui/empty-state';
 
 /**
  * Employees Directory Page
@@ -215,8 +216,11 @@ export default function EmployeesPage() {
                                         </TableRow>
                                     ) : filteredEmployees.length === 0 ? (
                                         <TableRow>
-                                            <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                                                No se encontraron empleados
+                                            <TableCell colSpan={7}>
+                                                <SearchEmptyState
+                                                    searchTerm={searchTerm || undefined}
+                                                    onClear={searchTerm ? () => setSearchTerm('') : undefined}
+                                                />
                                             </TableCell>
                                         </TableRow>
                                     ) : (
