@@ -49,8 +49,9 @@ import {
     ArrowLeft,
     AlertTriangle
 } from 'lucide-react';
-import type { Incidence, IncidenceType, IncidenceStatus } from '@/lib/types';
-import { createIncidence } from '@/firebase/hcm-actions';
+import type { Incidence, IncidenceType, IncidenceStatus, Employee, VacationBalance } from '@/lib/types';
+import { createIncidence, getEmployeeByUserId } from '@/firebase/hcm-actions';
+import { getVacationBalance } from '@/firebase/actions/incidence-actions';
 import { callApproveIncidence } from '@/firebase/callable-functions';
 import { checkDateConflict } from '@/lib/hcm-utils';
 import { format, differenceInDays } from 'date-fns';
@@ -85,6 +86,41 @@ export default function IncidencesPage() {
     // Date conflict validation state
     const [dateConflictError, setDateConflictError] = useState<string | null>(null);
     const [isValidatingDates, setIsValidatingDates] = useState(false);
+
+    // Employee data for autocompletion
+    const [currentEmployee, setCurrentEmployee] = useState<Employee | null>(null);
+    const [vacationBalance, setVacationBalance] = useState<VacationBalance | null>(null);
+    const [isLoadingEmployeeData, setIsLoadingEmployeeData] = useState(false);
+
+    // Load employee data and vacation balance when dialog opens
+    useEffect(() => {
+        if (!isCreateDialogOpen || !user) {
+            return;
+        }
+
+        const loadEmployeeData = async () => {
+            setIsLoadingEmployeeData(true);
+            try {
+                // Load employee data
+                const empResult = await getEmployeeByUserId(user.uid);
+                if (empResult.success && empResult.employee) {
+                    setCurrentEmployee(empResult.employee);
+
+                    // Load vacation balance for this employee
+                    const balanceResult = await getVacationBalance(empResult.employee.id);
+                    if (balanceResult.success && balanceResult.balance) {
+                        setVacationBalance(balanceResult.balance);
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading employee data:', error);
+            } finally {
+                setIsLoadingEmployeeData(false);
+            }
+        };
+
+        loadEmployeeData();
+    }, [isCreateDialogOpen, user]);
 
     const hasHRPermissions = useMemo(() => ['Admin', 'HRManager', 'Manager'].includes(user?.role || ''), [user]);
 
@@ -623,6 +659,41 @@ export default function IncidencesPage() {
                             </DialogHeader>
 
                             <div className="space-y-4">
+                                {/* Employee Info - Autocompletado */}
+                                {isLoadingEmployeeData ? (
+                                    <div className="bg-muted/50 p-4 rounded-lg text-center text-sm text-muted-foreground">
+                                        Cargando datos del empleado...
+                                    </div>
+                                ) : currentEmployee && (
+                                    <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/30 p-4 rounded-lg border border-blue-100 dark:border-blue-800/50">
+                                        <div className="grid grid-cols-2 gap-3 text-sm">
+                                            <div>
+                                                <span className="text-muted-foreground block text-xs">Empleado</span>
+                                                <span className="font-medium">{currentEmployee.fullName}</span>
+                                            </div>
+                                            <div>
+                                                <span className="text-muted-foreground block text-xs">Puesto</span>
+                                                <span className="font-medium">{currentEmployee.positionTitle || 'N/A'}</span>
+                                            </div>
+                                            <div>
+                                                <span className="text-muted-foreground block text-xs">Departamento</span>
+                                                <span className="font-medium">{currentEmployee.department || 'N/A'}</span>
+                                            </div>
+                                            <div>
+                                                <span className="text-muted-foreground block text-xs">Saldo vacaciones</span>
+                                                <span className={`font-bold ${vacationBalance && vacationBalance.daysAvailable > 0 ? 'text-green-600' : 'text-orange-600'}`}>
+                                                    {vacationBalance ? `${vacationBalance.daysAvailable} días` : 'N/A'}
+                                                </span>
+                                                {vacationBalance && newIncidence.type === 'vacation' && (
+                                                    <span className="text-xs text-muted-foreground ml-1">
+                                                        de {vacationBalance.daysEntitled}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
                                 <div>
                                     <Label>Tipo de incidencia</Label>
                                     <Select
@@ -673,13 +744,34 @@ export default function IncidencesPage() {
                                 )}
 
                                 {/* Calculate and show days requested */}
-                                {newIncidence.startDate && newIncidence.endDate && !dateConflictError && (
-                                    <div className="text-sm text-muted-foreground bg-muted p-2 rounded">
-                                        <span className="font-medium">
-                                            {Math.ceil((new Date(newIncidence.endDate).getTime() - new Date(newIncidence.startDate).getTime()) / (1000 * 60 * 60 * 24)) + 1}
-                                        </span> días solicitados
-                                    </div>
-                                )}
+                                {newIncidence.startDate && newIncidence.endDate && !dateConflictError && (() => {
+                                    const daysRequested = Math.ceil((new Date(newIncidence.endDate).getTime() - new Date(newIncidence.startDate).getTime()) / (1000 * 60 * 60 * 24)) + 1;
+                                    const exceedsBalance = newIncidence.type === 'vacation' && vacationBalance && daysRequested > vacationBalance.daysAvailable;
+
+                                    return (
+                                        <div className={`text-sm p-2 rounded ${exceedsBalance ? 'bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800' : 'bg-muted text-muted-foreground'}`}>
+                                            <div className="flex items-center justify-between">
+                                                <span>
+                                                    <span className={`font-medium ${exceedsBalance ? 'text-orange-700 dark:text-orange-300' : ''}`}>
+                                                        {daysRequested}
+                                                    </span> días solicitados
+                                                </span>
+                                                {exceedsBalance && (
+                                                    <Badge variant="outline" className="text-orange-700 border-orange-300 bg-orange-100 dark:bg-orange-900/50">
+                                                        <AlertTriangle className="h-3 w-3 mr-1" />
+                                                        Excede saldo
+                                                    </Badge>
+                                                )}
+                                            </div>
+                                            {exceedsBalance && (
+                                                <p className="text-xs text-orange-600 dark:text-orange-400 mt-1">
+                                                    Solo tienes {vacationBalance?.daysAvailable} días disponibles.
+                                                    La solicitud puede requerir aprobación especial.
+                                                </p>
+                                            )}
+                                        </div>
+                                    );
+                                })()}
 
                                 <div>
                                     <Label>Notas (opcional)</Label>

@@ -98,24 +98,33 @@ export type Location = {
     createdById: string;
 };
 
+/**
+ * Límites de Aprobación por Puesto
+ */
+export type ApprovalLimits = {
+    expenses?: number;              // Reembolsos de gastos
+    purchases?: number;             // Requisiciones de compra
+    travel?: number;                // Viáticos y viajes
+    contracts?: number;             // Contratos de servicios
+    vacationDays?: number;          // Días de vacaciones que puede aprobar sin escalar
+    overtimeHours?: number;         // Horas extra semanales que puede aprobar
+    headcount?: number;             // Número de posiciones que puede aprobar contratar
+};
+
 export type Position = {
     id: string;
     name: string;                   // Nombre del puesto
     code: string;                   // Código único
     department: string;             // Departamento
+    departmentId?: string;          // Referencia a departments/{id}
     level: number;                  // Nivel jerárquico (1 = director, 2 = gerente, etc.)
-
-    // Configuración salarial - REMOVED salaryMin/Max as per Purge?
-    // Keeping as reference data is usually fine, but strictly "Operation No Payroll" might imply hiding this.
-    // I will keep them as 'reference' only, or remove if strict.
-    // User said "Elimina funciones... cálculos monetarios". Reference numbers in position are borderline.
-    // I will leave them commented out to be safe/clean.
-    // salaryMin?: number;
-    // salaryMax?: number;
 
     // Permisos especiales
     canApproveOvertime?: boolean;   // Puede aprobar horas extras
     canApproveIncidences?: boolean; // Puede aprobar incidencias
+
+    // Límites de aprobación
+    approvalLimits?: ApprovalLimits;
 
     // Estado
     isActive: boolean;

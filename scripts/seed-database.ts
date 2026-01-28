@@ -190,34 +190,205 @@ const LOCATIONS = [
 ];
 
 // =============================================================================
+// 2.5 DEPARTAMENTOS
+// =============================================================================
+
+const DEPARTMENTS = [
+    {
+        id: 'dept-direccion',
+        name: 'Dirección General',
+        code: 'DIR',
+        description: 'Dirección ejecutiva de la empresa',
+        managerId: 'emp-director-general',
+        parentDepartmentId: null,
+        costCenter: 'CC-100',
+        budget: 500000,
+        budgetPeriod: 'annual',
+        locationId: 'loc-corporativo-gdl',
+        isActive: true,
+        createdAt: NOW,
+        updatedAt: NOW,
+        createdById: 'admin-user',
+    },
+    {
+        id: 'dept-rh',
+        name: 'Recursos Humanos',
+        code: 'RH',
+        description: 'Gestión de Capital Humano',
+        managerId: 'emp-gerente-rh',
+        parentDepartmentId: 'dept-direccion',
+        costCenter: 'CC-200',
+        budget: 150000,
+        budgetPeriod: 'annual',
+        locationId: 'loc-corporativo-gdl',
+        isActive: true,
+        createdAt: NOW,
+        updatedAt: NOW,
+        createdById: 'admin-user',
+    },
+    {
+        id: 'dept-operaciones',
+        name: 'Operaciones',
+        code: 'OPS',
+        description: 'Operaciones y logística',
+        managerId: 'emp-gerente-operaciones',
+        parentDepartmentId: 'dept-direccion',
+        costCenter: 'CC-300',
+        budget: 300000,
+        budgetPeriod: 'annual',
+        locationId: 'loc-cedis-gdl',
+        isActive: true,
+        createdAt: NOW,
+        updatedAt: NOW,
+        createdById: 'admin-user',
+    },
+    {
+        id: 'dept-administracion',
+        name: 'Administración',
+        code: 'ADM',
+        description: 'Administración y finanzas',
+        managerId: 'emp-gerente-admin',
+        parentDepartmentId: 'dept-direccion',
+        costCenter: 'CC-400',
+        budget: 200000,
+        budgetPeriod: 'annual',
+        locationId: 'loc-corporativo-gdl',
+        isActive: true,
+        createdAt: NOW,
+        updatedAt: NOW,
+        createdById: 'admin-user',
+    },
+    {
+        id: 'dept-tecnologia',
+        name: 'Tecnología',
+        code: 'TI',
+        description: 'Sistemas y tecnología de información',
+        managerId: 'emp-gerente-ti',
+        parentDepartmentId: 'dept-direccion',
+        costCenter: 'CC-500',
+        budget: 250000,
+        budgetPeriod: 'annual',
+        locationId: 'loc-corporativo-gdl',
+        isActive: true,
+        createdAt: NOW,
+        updatedAt: NOW,
+        createdById: 'admin-user',
+    },
+];
+
+// =============================================================================
 // 3. PUESTOS (POSITIONS)
 // =============================================================================
 
 const POSITIONS = [
+
     // Dirección
-    { id: 'pos-director-general', name: 'Director General', code: 'DG-001', department: 'Dirección', level: 1, canApproveOvertime: true, canApproveIncidences: true, isActive: true, createdAt: NOW, updatedAt: NOW },
+    {
+        id: 'pos-director-general', name: 'Director General', code: 'DG-001',
+        department: 'Dirección', departmentId: 'dept-direccion', level: 1,
+        canApproveOvertime: true, canApproveIncidences: true,
+        approvalLimits: { expenses: 500000, purchases: 500000, travel: 200000, contracts: 500000, vacationDays: 30, overtimeHours: 50, headcount: 10 },
+        isActive: true, createdAt: NOW, updatedAt: NOW
+    },
 
     // Gerencias
-    { id: 'pos-gerente-rh', name: 'Gerente de Recursos Humanos', code: 'GRH-001', department: 'Recursos Humanos', level: 2, canApproveOvertime: true, canApproveIncidences: true, isActive: true, createdAt: NOW, updatedAt: NOW },
-    { id: 'pos-gerente-operaciones', name: 'Gerente de Operaciones', code: 'GOP-001', department: 'Operaciones', level: 2, canApproveOvertime: true, canApproveIncidences: true, isActive: true, createdAt: NOW, updatedAt: NOW },
-    { id: 'pos-gerente-admin', name: 'Gerente de Administración', code: 'GAD-001', department: 'Administración', level: 2, canApproveOvertime: true, canApproveIncidences: true, isActive: true, createdAt: NOW, updatedAt: NOW },
-    { id: 'pos-gerente-ti', name: 'Gerente de TI', code: 'GTI-001', department: 'Tecnología', level: 2, canApproveOvertime: true, canApproveIncidences: true, isActive: true, createdAt: NOW, updatedAt: NOW },
+    {
+        id: 'pos-gerente-rh', name: 'Gerente de Recursos Humanos', code: 'GRH-001',
+        department: 'Recursos Humanos', departmentId: 'dept-rh', level: 2,
+        canApproveOvertime: true, canApproveIncidences: true,
+        approvalLimits: { expenses: 100000, purchases: 50000, travel: 50000, contracts: 100000, vacationDays: 15, overtimeHours: 20, headcount: 3 },
+        isActive: true, createdAt: NOW, updatedAt: NOW
+    },
+    {
+        id: 'pos-gerente-operaciones', name: 'Gerente de Operaciones', code: 'GOP-001',
+        department: 'Operaciones', departmentId: 'dept-operaciones', level: 2,
+        canApproveOvertime: true, canApproveIncidences: true,
+        approvalLimits: { expenses: 100000, purchases: 75000, travel: 30000, contracts: 50000, vacationDays: 15, overtimeHours: 30, headcount: 5 },
+        isActive: true, createdAt: NOW, updatedAt: NOW
+    },
+    {
+        id: 'pos-gerente-admin', name: 'Gerente de Administración', code: 'GAD-001',
+        department: 'Administración', departmentId: 'dept-administracion', level: 2,
+        canApproveOvertime: true, canApproveIncidences: true,
+        approvalLimits: { expenses: 150000, purchases: 100000, travel: 50000, contracts: 150000, vacationDays: 15, overtimeHours: 15, headcount: 3 },
+        isActive: true, createdAt: NOW, updatedAt: NOW
+    },
+    {
+        id: 'pos-gerente-ti', name: 'Gerente de TI', code: 'GTI-001',
+        department: 'Tecnología', departmentId: 'dept-tecnologia', level: 2,
+        canApproveOvertime: true, canApproveIncidences: true,
+        approvalLimits: { expenses: 100000, purchases: 200000, travel: 40000, contracts: 100000, vacationDays: 15, overtimeHours: 25, headcount: 2 },
+        isActive: true, createdAt: NOW, updatedAt: NOW
+    },
 
     // Supervisores/Coordinadores
-    { id: 'pos-coord-rh', name: 'Coordinador de RH', code: 'CRH-001', department: 'Recursos Humanos', level: 3, canApproveOvertime: false, canApproveIncidences: true, isActive: true, createdAt: NOW, updatedAt: NOW },
-    { id: 'pos-super-almacen', name: 'Supervisor de Almacén', code: 'SAL-001', department: 'Operaciones', level: 3, canApproveOvertime: true, canApproveIncidences: true, isActive: true, createdAt: NOW, updatedAt: NOW },
-    { id: 'pos-super-tienda', name: 'Supervisor de Tienda', code: 'STI-001', department: 'Operaciones', level: 3, canApproveOvertime: true, canApproveIncidences: true, isActive: true, createdAt: NOW, updatedAt: NOW },
+    {
+        id: 'pos-coord-rh', name: 'Coordinador de RH', code: 'CRH-001',
+        department: 'Recursos Humanos', departmentId: 'dept-rh', level: 3,
+        canApproveOvertime: false, canApproveIncidences: true,
+        approvalLimits: { expenses: 25000, purchases: 10000, travel: 10000, vacationDays: 10, overtimeHours: 9 },
+        isActive: true, createdAt: NOW, updatedAt: NOW
+    },
+    {
+        id: 'pos-super-almacen', name: 'Supervisor de Almacén', code: 'SAL-001',
+        department: 'Operaciones', departmentId: 'dept-operaciones', level: 3,
+        canApproveOvertime: true, canApproveIncidences: true,
+        approvalLimits: { expenses: 15000, purchases: 5000, vacationDays: 5, overtimeHours: 15 },
+        isActive: true, createdAt: NOW, updatedAt: NOW
+    },
+    {
+        id: 'pos-super-tienda', name: 'Supervisor de Tienda', code: 'STI-001',
+        department: 'Operaciones', departmentId: 'dept-operaciones', level: 3,
+        canApproveOvertime: true, canApproveIncidences: true,
+        approvalLimits: { expenses: 10000, purchases: 3000, vacationDays: 5, overtimeHours: 10 },
+        isActive: true, createdAt: NOW, updatedAt: NOW
+    },
 
     // Analistas/Especialistas
-    { id: 'pos-analista-rh', name: 'Analista de RH', code: 'ARH-001', department: 'Recursos Humanos', level: 4, canApproveOvertime: false, canApproveIncidences: false, isActive: true, createdAt: NOW, updatedAt: NOW },
-    { id: 'pos-contador', name: 'Contador', code: 'CNT-001', department: 'Administración', level: 4, canApproveOvertime: false, canApproveIncidences: false, isActive: true, createdAt: NOW, updatedAt: NOW },
-    { id: 'pos-desarrollador', name: 'Desarrollador de Software', code: 'DEV-001', department: 'Tecnología', level: 4, canApproveOvertime: false, canApproveIncidences: false, isActive: true, createdAt: NOW, updatedAt: NOW },
+    {
+        id: 'pos-analista-rh', name: 'Analista de RH', code: 'ARH-001',
+        department: 'Recursos Humanos', departmentId: 'dept-rh', level: 4,
+        canApproveOvertime: false, canApproveIncidences: false,
+        isActive: true, createdAt: NOW, updatedAt: NOW
+    },
+    {
+        id: 'pos-contador', name: 'Contador', code: 'CNT-001',
+        department: 'Administración', departmentId: 'dept-administracion', level: 4,
+        canApproveOvertime: false, canApproveIncidences: false,
+        isActive: true, createdAt: NOW, updatedAt: NOW
+    },
+    {
+        id: 'pos-desarrollador', name: 'Desarrollador de Software', code: 'DEV-001',
+        department: 'Tecnología', departmentId: 'dept-tecnologia', level: 4,
+        canApproveOvertime: false, canApproveIncidences: false,
+        isActive: true, createdAt: NOW, updatedAt: NOW
+    },
 
     // Operativos
-    { id: 'pos-almacenista', name: 'Almacenista', code: 'ALM-001', department: 'Operaciones', level: 5, canApproveOvertime: false, canApproveIncidences: false, isActive: true, createdAt: NOW, updatedAt: NOW },
-    { id: 'pos-vendedor', name: 'Vendedor', code: 'VEN-001', department: 'Operaciones', level: 5, canApproveOvertime: false, canApproveIncidences: false, isActive: true, createdAt: NOW, updatedAt: NOW },
-    { id: 'pos-auxiliar-admin', name: 'Auxiliar Administrativo', code: 'AUX-001', department: 'Administración', level: 5, canApproveOvertime: false, canApproveIncidences: false, isActive: true, createdAt: NOW, updatedAt: NOW },
-    { id: 'pos-recepcion', name: 'Recepcionista', code: 'REC-001', department: 'Administración', level: 5, canApproveOvertime: false, canApproveIncidences: false, isActive: true, createdAt: NOW, updatedAt: NOW },
+    {
+        id: 'pos-almacenista', name: 'Almacenista', code: 'ALM-001',
+        department: 'Operaciones', departmentId: 'dept-operaciones', level: 5,
+        canApproveOvertime: false, canApproveIncidences: false,
+        isActive: true, createdAt: NOW, updatedAt: NOW
+    },
+    {
+        id: 'pos-vendedor', name: 'Vendedor', code: 'VEN-001',
+        department: 'Operaciones', departmentId: 'dept-operaciones', level: 5,
+        canApproveOvertime: false, canApproveIncidences: false,
+        isActive: true, createdAt: NOW, updatedAt: NOW
+    },
+    {
+        id: 'pos-auxiliar-admin', name: 'Auxiliar Administrativo', code: 'AUX-001',
+        department: 'Administración', departmentId: 'dept-administracion', level: 5,
+        canApproveOvertime: false, canApproveIncidences: false,
+        isActive: true, createdAt: NOW, updatedAt: NOW
+    },
+    {
+        id: 'pos-recepcion', name: 'Recepcionista', code: 'REC-001',
+        department: 'Administración', departmentId: 'dept-administracion', level: 5,
+        canApproveOvertime: false, canApproveIncidences: false,
+        isActive: true, createdAt: NOW, updatedAt: NOW
+    },
 ];
 
 // =============================================================================
@@ -739,6 +910,117 @@ const TEMPLATES = [
 ];
 
 // =============================================================================
+// 7. INCIDENCIAS DE EJEMPLO
+// =============================================================================
+
+// Calculate dates relative to NOW for sample incidences
+const today = new Date();
+const formatDate = (d: Date) => d.toISOString().split('T')[0];
+
+const SAMPLE_INCIDENCES = [
+    // Pendiente - Vacaciones
+    {
+        id: 'inc-pending-vacation-1',
+        employeeId: 'emp-desarrollador',
+        employeeName: 'Luis Mendoza García',
+        type: 'vacation',
+        startDate: formatDate(new Date(today.getTime() + 14 * 24 * 60 * 60 * 1000)), // +14 days
+        endDate: formatDate(new Date(today.getTime() + 18 * 24 * 60 * 60 * 1000)), // +18 days
+        totalDays: 5,
+        isPaid: true,
+        status: 'pending',
+        notes: 'Vacaciones familiares programadas',
+        createdAt: NOW,
+        updatedAt: NOW,
+    },
+    // Pendiente - Permiso Personal
+    {
+        id: 'inc-pending-personal-1',
+        employeeId: 'emp-vendedor-1',
+        employeeName: 'Carmen Morales López',
+        type: 'personal_leave',
+        startDate: formatDate(new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000)), // +7 days
+        endDate: formatDate(new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000)), // +7 days
+        totalDays: 1,
+        isPaid: false,
+        status: 'pending',
+        notes: 'Cita médica',
+        createdAt: NOW,
+        updatedAt: NOW,
+    },
+    // Aprobada - Vacaciones
+    {
+        id: 'inc-approved-vacation-1',
+        employeeId: 'emp-analista-rh',
+        employeeName: 'Andrea Romero Sánchez',
+        type: 'vacation',
+        startDate: formatDate(new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000)), // -7 days
+        endDate: formatDate(new Date(today.getTime() - 3 * 24 * 60 * 60 * 1000)), // -3 days
+        totalDays: 5,
+        isPaid: true,
+        status: 'approved',
+        approvedById: 'emp-coord-rh',
+        approvedByName: 'Elena Vargas Mendoza',
+        approvedAt: new Date(today.getTime() - 14 * 24 * 60 * 60 * 1000).toISOString(),
+        notes: 'Viaje familiar',
+        createdAt: new Date(today.getTime() - 21 * 24 * 60 * 60 * 1000).toISOString(),
+        updatedAt: new Date(today.getTime() - 14 * 24 * 60 * 60 * 1000).toISOString(),
+    },
+    // Aprobada - Incapacidad
+    {
+        id: 'inc-approved-sick-1',
+        employeeId: 'emp-almacenista-1',
+        employeeName: 'Pedro García Hernández',
+        type: 'sick_leave',
+        startDate: formatDate(new Date(today.getTime() - 10 * 24 * 60 * 60 * 1000)), // -10 days
+        endDate: formatDate(new Date(today.getTime() - 8 * 24 * 60 * 60 * 1000)), // -8 days
+        totalDays: 3,
+        isPaid: true,
+        status: 'approved',
+        approvedById: 'emp-super-almacen',
+        approvedByName: 'Roberto Díaz Villa',
+        approvedAt: new Date(today.getTime() - 10 * 24 * 60 * 60 * 1000).toISOString(),
+        notes: 'Incapacidad por enfermedad respiratoria',
+        createdAt: new Date(today.getTime() - 10 * 24 * 60 * 60 * 1000).toISOString(),
+        updatedAt: new Date(today.getTime() - 10 * 24 * 60 * 60 * 1000).toISOString(),
+    },
+    // Rechazada - Vacaciones
+    {
+        id: 'inc-rejected-vacation-1',
+        employeeId: 'emp-contador',
+        employeeName: 'Ricardo Flores Torres',
+        type: 'vacation',
+        startDate: formatDate(new Date(today.getTime() + 3 * 24 * 60 * 60 * 1000)), // +3 days
+        endDate: formatDate(new Date(today.getTime() + 10 * 24 * 60 * 60 * 1000)), // +10 days
+        totalDays: 8,
+        isPaid: true,
+        status: 'rejected',
+        approvedById: 'emp-gerente-admin',
+        approvedByName: 'Fernando Gutiérrez Ramos',
+        approvedAt: new Date(today.getTime() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+        rejectionReason: 'Coincide con cierre fiscal mensual. Favor de reprogramar para la siguiente semana.',
+        notes: 'Vacaciones de descanso',
+        createdAt: new Date(today.getTime() - 5 * 24 * 60 * 60 * 1000).toISOString(),
+        updatedAt: new Date(today.getTime() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+    },
+    // Pendiente - Vacaciones (Gerente)
+    {
+        id: 'inc-pending-vacation-2',
+        employeeId: 'emp-gerente-ti',
+        employeeName: 'Carlos Ramírez Ortiz',
+        type: 'vacation',
+        startDate: formatDate(new Date(today.getTime() + 30 * 24 * 60 * 60 * 1000)), // +30 days
+        endDate: formatDate(new Date(today.getTime() + 37 * 24 * 60 * 60 * 1000)), // +37 days
+        totalDays: 8,
+        isPaid: true,
+        status: 'pending',
+        notes: 'Vacaciones anuales programadas',
+        createdAt: NOW,
+        updatedAt: NOW,
+    },
+];
+
+// =============================================================================
 // MAIN SEEDING FUNCTION
 // =============================================================================
 
@@ -759,6 +1041,13 @@ async function seedDatabase() {
             await db.collection('locations').doc(loc.id).set(loc);
         }
         console.log(`   ✅ ${LOCATIONS.length} ubicaciones creadas\n`);
+
+        // 2.5 Crear Departamentos
+        console.log('🏢 Creando Departamentos...');
+        for (const dept of DEPARTMENTS) {
+            await db.collection('departments').doc(dept.id).set(dept);
+        }
+        console.log(`   ✅ ${DEPARTMENTS.length} departamentos creados\n`);
 
         // 3. Crear Puestos
         console.log('💼 Creando Puestos...');
@@ -801,12 +1090,82 @@ async function seedDatabase() {
         }
         console.log(`   ✅ ${EMPLOYEES.length} usuarios/empleados creados\n`);
 
+        // 5.5 Crear Saldos de Vacaciones
+        console.log('🌴 Creando Saldos de Vacaciones...');
+        let vacationBalanceCount = 0;
+        for (const emp of EMPLOYEES) {
+            const hireDate = new Date(emp.hireDate);
+            const now = new Date();
+            const yearsOfService = Math.floor((now.getTime() - hireDate.getTime()) / (365.25 * 24 * 60 * 60 * 1000));
+
+            // Calculate vacation days according to LFT 2023 reform
+            let vacationDays = 12; // Base for first year
+            if (yearsOfService >= 1 && yearsOfService <= 5) {
+                // Years 1-5: 12 + 2 per year after first
+                vacationDays = 12 + (yearsOfService - 1) * 2;
+            } else if (yearsOfService >= 6 && yearsOfService <= 10) {
+                // Years 6-10: 22 days
+                vacationDays = 22;
+            } else if (yearsOfService >= 11 && yearsOfService <= 15) {
+                // Years 11-15: 24 days
+                vacationDays = 24;
+            } else if (yearsOfService >= 16 && yearsOfService <= 20) {
+                // Years 16-20: 26 days
+                vacationDays = 26;
+            } else if (yearsOfService >= 21) {
+                // 21+ years: 28-40 days (capped at 40)
+                vacationDays = Math.min(28 + Math.floor((yearsOfService - 21) / 5) * 2, 40);
+            }
+
+            const periodStart = new Date(now.getFullYear(), hireDate.getMonth(), hireDate.getDate());
+            if (periodStart > now) {
+                periodStart.setFullYear(periodStart.getFullYear() - 1);
+            }
+            const periodEnd = new Date(periodStart);
+            periodEnd.setFullYear(periodEnd.getFullYear() + 1);
+            periodEnd.setDate(periodEnd.getDate() - 1);
+
+            const balanceId = `vb-${emp.id}`;
+            const vacationBalance = {
+                id: balanceId,
+                employeeId: emp.id,
+                periodStart: periodStart.toISOString().split('T')[0],
+                periodEnd: periodEnd.toISOString().split('T')[0],
+                daysEntitled: vacationDays,
+                yearsOfService: yearsOfService,
+                daysTaken: 0,
+                daysScheduled: 0,
+                daysAvailable: vacationDays,
+                vacationPremiumPaid: false,
+                movements: [{
+                    id: 'mov-initial',
+                    date: NOW,
+                    type: 'reset',
+                    days: vacationDays,
+                    description: `Saldo inicial - ${yearsOfService} años de antigüedad`,
+                }],
+                lastUpdated: NOW,
+                createdAt: NOW,
+            };
+
+            await db.collection('vacation_balances').doc(balanceId).set(vacationBalance);
+            vacationBalanceCount++;
+        }
+        console.log(`   ✅ ${vacationBalanceCount} saldos de vacaciones creados\n`);
+
         // 6. Crear Plantillas
         console.log('📄 Creando Plantillas de Workflow...');
         for (const tpl of TEMPLATES) {
             await db.collection('templates').doc(tpl.id).set(tpl);
         }
         console.log(`   ✅ ${TEMPLATES.length} plantillas creadas\n`);
+
+        // 6.5 Crear Incidencias de Ejemplo
+        console.log('📋 Creando Incidencias de Ejemplo...');
+        for (const inc of SAMPLE_INCIDENCES) {
+            await db.collection('incidences').doc(inc.id).set(inc);
+        }
+        console.log(`   ✅ ${SAMPLE_INCIDENCES.length} incidencias de ejemplo creadas\n`);
 
         // 7. Create Admin Test User
         console.log('👤 Creando Usuario Administrador de Prueba...');
@@ -828,12 +1187,15 @@ async function seedDatabase() {
         console.log('🎉 ¡SEED COMPLETADO EXITOSAMENTE!');
         console.log('═══════════════════════════════════════════════════════════');
         console.log('\n📊 RESUMEN:');
-        console.log(`   • Roles:       ${ROLES.length}`);
-        console.log(`   • Ubicaciones: ${LOCATIONS.length}`);
-        console.log(`   • Puestos:     ${POSITIONS.length}`);
-        console.log(`   • Turnos:      ${SHIFTS.length}`);
-        console.log(`   • Empleados:   ${EMPLOYEES.length}`);
-        console.log(`   • Plantillas:  ${TEMPLATES.length}`);
+        console.log(`   • Roles:         ${ROLES.length}`);
+        console.log(`   • Ubicaciones:   ${LOCATIONS.length}`);
+        console.log(`   • Departamentos: ${DEPARTMENTS.length}`);
+        console.log(`   • Puestos:       ${POSITIONS.length}`);
+        console.log(`   • Turnos:        ${SHIFTS.length}`);
+        console.log(`   • Empleados:     ${EMPLOYEES.length}`);
+        console.log(`   • Vacaciones:    ${vacationBalanceCount} saldos`);
+        console.log(`   • Incidencias:   ${SAMPLE_INCIDENCES.length}`);
+        console.log(`   • Plantillas:    ${TEMPLATES.length}`);
         console.log('\n🔐 CREDENCIALES:');
         console.log('   Email: admin@stuffactory.mx');
         console.log('   (Use Firebase Auth Emulator para login)\n');

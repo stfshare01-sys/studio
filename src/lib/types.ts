@@ -1098,6 +1098,25 @@ export type Location = {
 };
 
 /**
+ * Límites de Aprobación por Puesto
+ * Define los montos máximos que un puesto puede aprobar sin escalamiento
+ */
+export type ApprovalLimits = {
+  // Límites monetarios (MXN)
+  expenses?: number;              // Reembolsos de gastos
+  purchases?: number;             // Requisiciones de compra
+  travel?: number;                // Viáticos y viajes
+  contracts?: number;             // Contratos de servicios
+
+  // Límites de tiempo (días)
+  vacationDays?: number;          // Días de vacaciones que puede aprobar sin escalar
+  overtimeHours?: number;         // Horas extra semanales que puede aprobar
+
+  // Límites de personal
+  headcount?: number;             // Número de posiciones que puede aprobar contratar
+};
+
+/**
  * Puesto / Cargo
  * Catálogo de puestos de la empresa
  */
@@ -1116,6 +1135,9 @@ export type Position = {
   // Permisos especiales
   canApproveOvertime?: boolean;   // Puede aprobar horas extras
   canApproveIncidences?: boolean; // Puede aprobar incidencias
+
+  // Límites de aprobación
+  approvalLimits?: ApprovalLimits; // Límites máximos que puede aprobar sin escalar
 
   // Estado
   isActive: boolean;
