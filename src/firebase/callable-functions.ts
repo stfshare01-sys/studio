@@ -8,7 +8,7 @@
  * and provide proper error handling.
  */
 
-import { getFunctions, httpsCallable, HttpsCallableResult } from 'firebase/functions';
+import { httpsCallable, HttpsCallableResult } from 'firebase/functions';
 import { initializeFirebase } from '.';
 
 // =========================================================================
@@ -141,8 +141,7 @@ export async function callConsolidatePrenomina(
     params: ConsolidatePrenominaRequest
 ): Promise<ConsolidatePrenominaResponse> {
     try {
-        const { app } = initializeFirebase();
-        const functions = getFunctions(app, 'us-central1');
+        const { functions } = initializeFirebase();
         const callable = httpsCallable<ConsolidatePrenominaRequest, ConsolidatePrenominaResponse>(
             functions,
             'consolidatePrenomina'
@@ -165,8 +164,7 @@ export async function callProcessEmployeeImport(
     params: ProcessEmployeeImportRequest
 ): Promise<ProcessEmployeeImportResponse> {
     try {
-        const { app } = initializeFirebase();
-        const functions = getFunctions(app, 'us-central1');
+        const { functions } = initializeFirebase();
         const callable = httpsCallable<ProcessEmployeeImportRequest, ProcessEmployeeImportResponse>(
             functions,
             'processEmployeeImport'
@@ -189,8 +187,7 @@ export async function callCalculateSettlement(
     params: CalculateSettlementRequest
 ): Promise<CalculateSettlementResponse> {
     try {
-        const { app } = initializeFirebase();
-        const functions = getFunctions(app, 'us-central1');
+        const { functions } = initializeFirebase();
         const callable = httpsCallable<CalculateSettlementRequest, CalculateSettlementResponse>(
             functions,
             'calculateSettlement'
@@ -212,8 +209,7 @@ export async function callApproveIncidence(
     params: ApproveIncidenceRequest
 ): Promise<ApproveIncidenceResponse> {
     try {
-        const { app } = initializeFirebase();
-        const functions = getFunctions(app, 'us-central1');
+        const { functions } = initializeFirebase();
         const callable = httpsCallable<ApproveIncidenceRequest, ApproveIncidenceResponse>(
             functions,
             'approveIncidence'

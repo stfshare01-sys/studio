@@ -32,12 +32,17 @@ import type { Employee, Incidence, AttendanceImportBatch } from '@/lib/types';
 /**
  * HCM Dashboard - Main page for Human Capital Management module
  */
+import { usePermissions } from '@/hooks/use-permissions';
+
+/**
+ * HCM Dashboard - Main page for Human Capital Management module
+ */
 export default function HCMPage() {
     const { firestore, user, isUserLoading } = useFirebase();
+    const { canRead, canWrite, isAdmin } = usePermissions();
 
-    // Check if user has HR/Admin permissions to view employee list
-    // Note: Currently only Admin role has access. HRManager role would need to be added to UserRole type.
-    const hasHRPermissions = user?.role === 'Admin';
+    // Check if user has HR/Admin permissions (Write access to employees implies HR management)
+    const hasHRPermissions = isAdmin || canWrite('hcm_employees');
 
     // Fetch active employees count - only if user is loaded and has HR permissions
     const employeesQuery = useMemoFirebase(() => {
@@ -54,9 +59,9 @@ export default function HCMPage() {
     // Fetch pending incidences - only if user is loaded and has HR permissions
     const incidencesQuery = useMemoFirebase(() => {
         if (!firestore || isUserLoading || !user) return null;
-    
+
         const baseQuery = collection(firestore, 'incidences');
-    
+
         // Admins/HR can see all pending incidences
         if (hasHRPermissions) {
             return query(
@@ -66,7 +71,7 @@ export default function HCMPage() {
                 limit(10)
             );
         }
-        
+
         // Regular users only see their own
         return query(
             baseQuery,
@@ -118,37 +123,43 @@ export default function HCMPage() {
                                 Centro de Comando
                             </Link>
                         </Button>
-                        <Button asChild variant="outline">
-                            <Link href="/hcm/attendance">
-                                <Upload className="mr-2 h-4 w-4" />
-                                Importar Asistencia
-                            </Link>
-                        </Button>
-                        <Button asChild variant="outline">
-                            <Link href="/hcm/employees/new">
-                                <UserPlus className="mr-2 h-4 w-4" />
-                                Nuevo Empleado
-                            </Link>
-                        </Button>
+                        {canWrite('hcm_attendance') && (
+                            <Button asChild variant="outline">
+                                <Link href="/hcm/attendance">
+                                    <Upload className="mr-2 h-4 w-4" />
+                                    Importar Asistencia
+                                </Link>
+                            </Button>
+                        )}
+                        {canWrite('hcm_employees') && (
+                            <Button asChild variant="outline">
+                                <Link href="/hcm/employees/new">
+                                    <UserPlus className="mr-2 h-4 w-4" />
+                                    Nuevo Empleado
+                                </Link>
+                            </Button>
+                        )}
                     </div>
                 </header>
                 <main className="flex flex-1 flex-col gap-4 p-4 pt-0 sm:gap-8 sm:p-6 sm:pt-0">
                     {/* Stats Cards */}
                     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                        <Card>
-                            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                                <CardTitle className="text-sm font-medium">Empleados Activos</CardTitle>
-                                <Users className="h-4 w-4 text-muted-foreground" />
-                            </CardHeader>
-                            <CardContent>
-                                <div className="text-2xl font-bold">
-                                    {isLoading ? '...' : totalEmployees}
-                                </div>
-                                <p className="text-xs text-muted-foreground">
-                                    {onboardingEmployees > 0 && `${onboardingEmployees} en onboarding`}
-                                </p>
-                            </CardContent>
-                        </Card>
+                        {hasHRPermissions && (
+                            <Card>
+                                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                                    <CardTitle className="text-sm font-medium">Empleados Activos</CardTitle>
+                                    <Users className="h-4 w-4 text-muted-foreground" />
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="text-2xl font-bold">
+                                        {isLoading ? '...' : totalEmployees}
+                                    </div>
+                                    <p className="text-xs text-muted-foreground">
+                                        {onboardingEmployees > 0 && `${onboardingEmployees} en onboarding`}
+                                    </p>
+                                </CardContent>
+                            </Card>
+                        )}
 
                         <Card>
                             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -165,39 +176,43 @@ export default function HCMPage() {
                             </CardContent>
                         </Card>
 
-                        <Card>
-                            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                                <CardTitle className="text-sm font-medium">Última Importación</CardTitle>
-                                <FileSpreadsheet className="h-4 w-4 text-muted-foreground" />
-                            </CardHeader>
-                            <CardContent>
-                                <div className="text-2xl font-bold">
-                                    {isLoading ? '...' : recentImports?.[0]?.recordCount ?? 0}
-                                </div>
-                                <p className="text-xs text-muted-foreground">
-                                    {recentImports?.[0]?.status === 'completed' ? 'Completada' :
-                                        recentImports?.[0]?.status === 'processing' ? 'Procesando...' :
-                                            recentImports?.[0]?.status ?? 'Sin importaciones'}
-                                </p>
-                            </CardContent>
-                        </Card>
+                        {hasHRPermissions && (
+                            <Card>
+                                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                                    <CardTitle className="text-sm font-medium">Última Importación</CardTitle>
+                                    <FileSpreadsheet className="h-4 w-4 text-muted-foreground" />
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="text-2xl font-bold">
+                                        {isLoading ? '...' : recentImports?.[0]?.recordCount ?? 0}
+                                    </div>
+                                    <p className="text-xs text-muted-foreground">
+                                        {recentImports?.[0]?.status === 'completed' ? 'Completada' :
+                                            recentImports?.[0]?.status === 'processing' ? 'Procesando...' :
+                                                recentImports?.[0]?.status ?? 'Sin importaciones'}
+                                    </p>
+                                </CardContent>
+                            </Card>
+                        )}
 
-                        <Card>
-                            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                                <CardTitle className="text-sm font-medium">Pre-Nómina</CardTitle>
-                                <Calculator className="h-4 w-4 text-muted-foreground" />
-                            </CardHeader>
-                            <CardContent>
-                                <div className="text-2xl font-bold">
-                                    -
-                                </div>
-                                <p className="text-xs text-muted-foreground">
-                                    <Link href="/prenomina" className="text-primary hover:underline">
-                                        Ir a consolidación →
-                                    </Link>
-                                </p>
-                            </CardContent>
-                        </Card>
+                        {canRead('hcm_prenomina') && (
+                            <Card>
+                                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                                    <CardTitle className="text-sm font-medium">Pre-Nómina</CardTitle>
+                                    <Calculator className="h-4 w-4 text-muted-foreground" />
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="text-2xl font-bold">
+                                        -
+                                    </div>
+                                    <p className="text-xs text-muted-foreground">
+                                        <Link href="/prenomina" className="text-primary hover:underline">
+                                            Ir a consolidación →
+                                        </Link>
+                                    </p>
+                                </CardContent>
+                            </Card>
+                        )}
                     </div>
 
                     {/* Main Content Tabs */}
@@ -217,87 +232,105 @@ export default function HCMPage() {
                                         <CardDescription>Operaciones frecuentes del módulo HCM</CardDescription>
                                     </CardHeader>
                                     <CardContent className="grid gap-2">
-                                        <Button asChild variant="outline" className="justify-start">
-                                            <Link href="/hcm/employees">
-                                                <Users className="mr-2 h-4 w-4" />
-                                                Ver Directorio de Empleados
-                                            </Link>
-                                        </Button>
-                                        <Button asChild variant="outline" className="justify-start">
-                                            <Link href="/hcm/employees/import">
-                                                <Upload className="mr-2 h-4 w-4" />
-                                                Importar Empleados
-                                            </Link>
-                                        </Button>
-                                        <Button asChild variant="outline" className="justify-start">
-                                            <Link href="/hcm/incidences">
-                                                <Calendar className="mr-2 h-4 w-4" />
-                                                Gestionar Incidencias
-                                            </Link>
-                                        </Button>
-                                        <Button asChild variant="outline" className="justify-start">
-                                            <Link href="/hcm/attendance">
-                                                <Clock className="mr-2 h-4 w-4" />
-                                                Revisar Asistencia
-                                            </Link>
-                                        </Button>
-                                        <Button asChild variant="outline" className="justify-start">
-                                            <Link href="/hcm/org-chart">
-                                                <TrendingUp className="mr-2 h-4 w-4" />
-                                                Ver Organigrama
-                                            </Link>
-                                        </Button>
-                                        <Button asChild variant="outline" className="justify-start">
-                                            <Link href="/hcm/talent-grid">
-                                                <Users className="mr-2 h-4 w-4" />
-                                                Matriz 9-Box
-                                            </Link>
-                                        </Button>
-                                        <Button asChild variant="outline" className="justify-start">
-                                            <Link href="/hcm/calendar">
-                                                <Calendar className="mr-2 h-4 w-4" />
-                                                Calendario del Equipo
-                                            </Link>
-                                        </Button>
-                                        <Button asChild variant="outline" className="justify-start">
-                                            <Link href="/hcm/prenomina">
-                                                <Calculator className="mr-2 h-4 w-4" />
-                                                Pre-Nomina
-                                            </Link>
-                                        </Button>
+                                        {canRead('hcm_employees') && (
+                                            <Button asChild variant="outline" className="justify-start">
+                                                <Link href="/hcm/employees">
+                                                    <Users className="mr-2 h-4 w-4" />
+                                                    Ver Directorio de Empleados
+                                                </Link>
+                                            </Button>
+                                        )}
+                                        {canWrite('hcm_employees') && (
+                                            <Button asChild variant="outline" className="justify-start">
+                                                <Link href="/hcm/employees/import">
+                                                    <Upload className="mr-2 h-4 w-4" />
+                                                    Importar Empleados
+                                                </Link>
+                                            </Button>
+                                        )}
+                                        {canRead('hcm_incidences') && (
+                                            <Button asChild variant="outline" className="justify-start">
+                                                <Link href="/hcm/incidences">
+                                                    <Calendar className="mr-2 h-4 w-4" />
+                                                    Gestionar Incidencias
+                                                </Link>
+                                            </Button>
+                                        )}
+                                        {canRead('hcm_attendance') && (
+                                            <Button asChild variant="outline" className="justify-start">
+                                                <Link href="/hcm/attendance">
+                                                    <Clock className="mr-2 h-4 w-4" />
+                                                    Revisar Asistencia
+                                                </Link>
+                                            </Button>
+                                        )}
+                                        {canRead('hcm_org_chart') && (
+                                            <Button asChild variant="outline" className="justify-start">
+                                                <Link href="/hcm/org-chart">
+                                                    <TrendingUp className="mr-2 h-4 w-4" />
+                                                    Ver Organigrama
+                                                </Link>
+                                            </Button>
+                                        )}
+                                        {canRead('hcm_talent_grid') && (
+                                            <Button asChild variant="outline" className="justify-start">
+                                                <Link href="/hcm/talent-grid">
+                                                    <Users className="mr-2 h-4 w-4" />
+                                                    Matriz 9-Box
+                                                </Link>
+                                            </Button>
+                                        )}
+                                        {canRead('hcm_calendar') && (
+                                            <Button asChild variant="outline" className="justify-start">
+                                                <Link href="/hcm/calendar">
+                                                    <Calendar className="mr-2 h-4 w-4" />
+                                                    Calendario del Equipo
+                                                </Link>
+                                            </Button>
+                                        )}
+                                        {canRead('hcm_prenomina') && (
+                                            <Button asChild variant="outline" className="justify-start">
+                                                <Link href="/hcm/prenomina">
+                                                    <Calculator className="mr-2 h-4 w-4" />
+                                                    Pre-Nomina
+                                                </Link>
+                                            </Button>
+                                        )}
                                     </CardContent>
                                 </Card>
 
                                 {/* Admin Section */}
-                                <Card>
-                                    <CardHeader>
-                                        <CardTitle className="flex items-center gap-2">
-                                            <Settings className="h-5 w-5" />
-                                            Administracion
-                                        </CardTitle>
-                                        <CardDescription>Configuracion del sistema HCM</CardDescription>
-                                    </CardHeader>
-                                    <CardContent className="grid gap-2">
-                                        <Button asChild variant="outline" className="justify-start">
-                                            <Link href="/hcm/admin/locations">
-                                                <MapPin className="mr-2 h-4 w-4" />
-                                                Ubicaciones
-                                            </Link>
-                                        </Button>
-                                        <Button asChild variant="outline" className="justify-start">
-                                            <Link href="/hcm/admin/shifts">
-                                                <Clock className="mr-2 h-4 w-4" />
-                                                Turnos
-                                            </Link>
-                                        </Button>
-                                        <Button asChild variant="outline" className="justify-start">
-                                            <Link href="/hcm/admin/positions">
-                                                <Briefcase className="mr-2 h-4 w-4" />
-                                                Puestos
-                                            </Link>
-                                        </Button>
-                                    </CardContent>
-                                </Card>
+                                {hasHRPermissions && (
+                                    <Card>
+                                        <CardHeader>
+                                            <CardTitle className="flex items-center gap-2">
+                                                <Settings className="h-5 w-5" />
+                                                Administracion
+                                            </CardTitle>
+                                            <CardDescription>Configuracion del sistema HCM</CardDescription>
+                                        </CardHeader>
+                                        <CardContent className="grid gap-2">
+                                            <Button asChild variant="outline" className="justify-start">
+                                                <Link href="/hcm/admin/locations">
+                                                    <MapPin className="mr-2 h-4 w-4" />
+                                                    Ubicaciones
+                                                </Link>
+                                            </Button>
+                                            <Button asChild variant="outline" className="justify-start">
+                                                <Link href="/hcm/admin/shifts">
+                                                    <Clock className="mr-2 h-4 w-4" />
+                                                    Turnos
+                                                </Link>
+                                            </Button>
+                                            <Button asChild variant="outline" className="justify-start">
+                                                <Link href="/hcm/admin/positions">
+                                                    <Briefcase className="mr-2 h-4 w-4" />
+                                                    Puestos
+                                                </Link>
+                                            </Button>
+                                        </CardContent>
+                                    </Card>
+                                )}
 
                                 {/* Recent Imports */}
                                 <Card>

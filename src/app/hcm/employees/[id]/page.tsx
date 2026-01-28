@@ -1,4 +1,3 @@
-
 'use client';
 
 import SiteLayout from '@/components/site-layout';
@@ -17,7 +16,6 @@ import {
     Briefcase,
     User,
     Calendar,
-    DollarSign,
     FileText,
     Clock,
     AlertCircle
@@ -29,11 +27,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 
-import type { Employee, Compensation, AttendanceRecord, Incidence } from '@/lib/types';
-import { formatCurrency } from '@/lib/hcm-utils';
+import { KardexTimeline, EmployeeMovement } from '@/components/hcm/kardex-timeline';
+
+import type { Employee, AttendanceRecord, Incidence } from '@/lib/types';
 
 export default function EmployeeDetailPage({ params }: { params: Promise<{ id: string }> }) {
     const router = useRouter();
@@ -47,18 +45,6 @@ export default function EmployeeDetailPage({ params }: { params: Promise<{ id: s
     }, [firestore, isUserLoading, employeeId]);
 
     const { data: employee, isLoading: isLoadingEmployee } = useDoc<Employee>(employeeRef);
-
-    // 2. Fetch Compensation History
-    const compensationQuery = useMemoFirebase(() => {
-        if (!firestore || isUserLoading) return null;
-        return query(
-            collection(firestore, 'compensation'),
-            where('employeeId', '==', employeeId),
-            orderBy('effectiveDate', 'desc')
-        );
-    }, [firestore, isUserLoading, employeeId]);
-
-    const { data: compensations, isLoading: isLoadingComp } = useCollection<Compensation>(compensationQuery);
 
     // 3. Fetch Recent Attendance
     const attendanceQuery = useMemoFirebase(() => {
@@ -85,6 +71,17 @@ export default function EmployeeDetailPage({ params }: { params: Promise<{ id: s
     }, [firestore, isUserLoading, employeeId]);
 
     const { data: incidences, isLoading: isLoadingIncidences } = useCollection<Incidence>(incidencesQuery);
+
+    // 5. Fetch Kardex Movements
+    const movementsQuery = useMemoFirebase(() => {
+        if (!firestore || isUserLoading) return null;
+        return query(
+            collection(firestore, 'employees', employeeId, 'movements'),
+            orderBy('date', 'desc')
+        );
+    }, [firestore, isUserLoading, employeeId]);
+
+    const { data: movements, isLoading: isLoadingMovements } = useCollection<EmployeeMovement>(movementsQuery);
 
     const getInitials = (name: string) => {
         return name?.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || '??';
@@ -154,27 +151,18 @@ export default function EmployeeDetailPage({ params }: { params: Promise<{ id: s
                     </div>
                     <div className="flex gap-2">
                         <Button variant="outline" asChild>
-                            <Link href={`/hcm/employees/${employeeId}/compensation`}>Compensacion</Link>
-                        </Button>
-                        <Button variant="outline" asChild>
                             <Link href={`/hcm/employees/${employeeId}/edit`}>Editar Perfil</Link>
-                        </Button>
-                        <Button variant="outline" className="border-amber-500 text-amber-600 hover:bg-amber-50" asChild>
-                            <Link href={`/hcm/employees/${employeeId}/settlement`}>
-                                <DollarSign className="mr-2 h-4 w-4" />
-                                Liquidación
-                            </Link>
                         </Button>
                         <Button variant="destructive">Dar de Baja</Button>
                     </div>
                 </header>
                 <main className="flex-1 p-4 pt-0 sm:p-6 sm:pt-0">
                     <Tabs defaultValue="general" className="w-full">
-                        <TabsList className="grid w-full grid-cols-4 lg:w-[600px]">
+                        <TabsList className="grid w-full grid-cols-4 lg:w-[800px]">
                             <TabsTrigger value="general">General</TabsTrigger>
-                            <TabsTrigger value="compensation">Nómina</TabsTrigger>
                             <TabsTrigger value="attendance">Asistencia</TabsTrigger>
                             <TabsTrigger value="incidences">Incidencias</TabsTrigger>
+                            <TabsTrigger value="kardex">Kardex</TabsTrigger>
                         </TabsList>
 
                         {/* Tab: General Information */}
@@ -194,7 +182,6 @@ export default function EmployeeDetailPage({ params }: { params: Promise<{ id: s
                                                 <p className="text-sm text-muted-foreground">{employee.email}</p>
                                             </div>
                                         </div>
-                                        {/* Phone would go here if added to schema */}
                                     </CardContent>
                                 </Card>
 
@@ -255,77 +242,6 @@ export default function EmployeeDetailPage({ params }: { params: Promise<{ id: s
                                                 <p className="text-lg font-mono mt-1">{employee.nss || 'No registrado'}</p>
                                             </div>
                                         </div>
-                                    </CardContent>
-                                </Card>
-                            </div>
-                        </TabsContent>
-
-                        {/* Tab: Compensation */}
-                        <TabsContent value="compensation" className="space-y-6 mt-6">
-                            <div className="grid gap-6 md:grid-cols-3">
-                                <Card className="md:col-span-2">
-                                    <CardHeader>
-                                        <CardTitle>Historial Salarial</CardTitle>
-                                        <CardDescription>Registro histórico de compensaciones y ajustes</CardDescription>
-                                    </CardHeader>
-                                    <CardContent>
-                                        <div className="space-y-8">
-                                            {compensations?.map((comp, index) => (
-                                                <div key={comp.id} className="flex gap-4">
-                                                    <div className="flex flex-col items-center">
-                                                        <div className={`w-3 h-3 rounded-full ${index === 0 ? 'bg-primary' : 'bg-muted-foreground'}`} />
-                                                        {index < compensations.length - 1 && <div className="w-px h-full bg-border my-1" />}
-                                                    </div>
-                                                    <div className="space-y-1 pb-4">
-                                                        <p className="text-sm text-muted-foreground">
-                                                            {format(new Date(comp.effectiveDate), 'PPP', { locale: es })}
-                                                        </p>
-                                                        <div className="flex items-baseline gap-2">
-                                                            <h4 className="text-lg font-semibold">{formatCurrency(comp.salaryDaily)} / día</h4>
-                                                            <span className="text-muted-foreground text-sm">({formatCurrency(comp.salaryMonthly || 0)} / mes)</span>
-                                                        </div>
-                                                        <div className="grid grid-cols-2 gap-x-8 gap-y-1 text-sm text-muted-foreground pt-1">
-                                                            <span>SDI: {formatCurrency(comp.sdiBase)}</span>
-                                                            <span>Factor: {comp.sdiFactor}</span>
-                                                            <span>Aguinaldo: {comp.aguinaldoDays} días</span>
-                                                            <span>Vacaciones: {comp.vacationDays} días ({comp.vacationPremium * 100}%)</span>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                            {(!compensations || compensations.length === 0) && (
-                                                <p className="text-muted-foreground text-center py-4">No hay historial de compensación.</p>
-                                            )}
-                                        </div>
-                                    </CardContent>
-                                </Card>
-
-                                <Card>
-                                    <CardHeader>
-                                        <CardTitle>Resumen Actual</CardTitle>
-                                    </CardHeader>
-                                    <CardContent className="space-y-4">
-                                        {compensations && compensations[0] ? (
-                                            <>
-                                                <div className="p-4 bg-primary/5 rounded-lg border border-primary/10">
-                                                    <p className="text-sm font-medium text-muted-foreground">Salario Diario Integrado</p>
-                                                    <p className="text-2xl font-bold text-primary mt-1">{formatCurrency(compensations[0].sdiBase)}</p>
-                                                </div>
-                                                <Separator />
-                                                <div className="space-y-2 text-sm">
-                                                    <div className="flex justify-between">
-                                                        <span className="text-muted-foreground">Salario Base</span>
-                                                        <span className="font-medium">{formatCurrency(compensations[0].salaryDaily)}</span>
-                                                    </div>
-                                                    <div className="flex justify-between">
-                                                        <span className="text-muted-foreground">Salario Mensual</span>
-                                                        <span className="font-medium">{formatCurrency(compensations[0].salaryMonthly || 0)}</span>
-                                                    </div>
-                                                </div>
-                                            </>
-                                        ) : (
-                                            <p className="text-sm text-muted-foreground">Sin información salarial activa.</p>
-                                        )}
                                     </CardContent>
                                 </Card>
                             </div>
@@ -422,6 +338,19 @@ export default function EmployeeDetailPage({ params }: { params: Promise<{ id: s
                                             </div>
                                         )}
                                     </div>
+                                </CardContent>
+                            </Card>
+                        </TabsContent>
+
+                        {/* Tab: Kardex */}
+                        <TabsContent value="kardex" className="mt-6">
+                            <Card>
+                                <CardHeader>
+                                    <CardTitle>Kardex del Empleado</CardTitle>
+                                    <CardDescription>Historial cronológico de movimientos y cambios laborales.</CardDescription>
+                                </CardHeader>
+                                <CardContent>
+                                    <KardexTimeline movements={movements || []} isLoading={isLoadingMovements} />
                                 </CardContent>
                             </Card>
                         </TabsContent>

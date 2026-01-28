@@ -38,7 +38,7 @@ import {
 } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { useToast } from '@/hooks/use-toast';
-import { createEmployee } from '@/firebase/hcm-actions';
+import { createEmployee } from '@/firebase/actions/employee-actions';
 
 // Schema Validation
 const employeeSchema = z.object({
@@ -52,10 +52,6 @@ const employeeSchema = z.object({
     rfc: z.string().min(12, 'RFC inválido').max(13, 'RFC inválido').optional(),
     curp: z.string().length(18, 'CURP debe tener 18 caracteres').optional(),
     nss: z.string().length(11, 'NSS debe tener 11 dígitos').optional(),
-    // Initial Compensation
-    salaryDaily: z.string().transform((val) => parseFloat(val)).refine((val) => !isNaN(val) && val > 0, {
-        message: 'El salario diario debe ser mayor a 0',
-    }),
 });
 
 type EmployeeFormValues = z.infer<typeof employeeSchema>;
@@ -74,7 +70,7 @@ export default function NewEmployeePage() {
             positionTitle: '',
             employmentType: 'full_time',
             shiftType: 'diurnal',
-            salaryDaily: 0,
+            // salaryDaily: 0, // Removed
         },
     });
 
@@ -352,38 +348,6 @@ export default function NewEmployeePage() {
                                     </CardContent>
                                 </Card>
 
-                                {/* Initial Compensation */}
-                                <Card>
-                                    <CardHeader>
-                                        <CardTitle>Compensación Inicial</CardTitle>
-                                        <CardDescription>Salario base para cálculos de nómina</CardDescription>
-                                    </CardHeader>
-                                    <CardContent className="space-y-4">
-                                        <FormField
-                                            control={form.control}
-                                            name="salaryDaily"
-                                            render={({ field }) => (
-                                                <FormItem>
-                                                    <FormLabel>Salario Diario (MXN)</FormLabel>
-                                                    <FormControl>
-                                                        <Input
-                                                            type="number"
-                                                            step="0.01"
-                                                            placeholder="0.00"
-                                                            {...field}
-                                                            onChange={(e) => field.onChange(e.target.value)}
-                                                        />
-                                                    </FormControl>
-                                                    <FormDescription>
-                                                        Se calculará automáticamente el Salario Diario Integrado (SDI)
-                                                    </FormDescription>
-                                                    <FormMessage />
-                                                </FormItem>
-                                            )}
-                                        />
-                                    </CardContent>
-                                </Card>
-
                             </div>
 
                             <div className="flex justify-end gap-4">
@@ -391,7 +355,7 @@ export default function NewEmployeePage() {
                                     Cancelar
                                 </Button>
                                 <Button type="submit" disabled={isSubmitting}>
-                                    {isSubmitting && <Loader2 className="nr-2 h-4 w-4 animate-spin" />}
+                                    {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                                     <Save className="mr-2 h-4 w-4" />
                                     Guardar Empleado
                                 </Button>

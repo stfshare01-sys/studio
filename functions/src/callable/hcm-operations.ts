@@ -12,22 +12,12 @@ import * as admin from 'firebase-admin';
 import { verifyRole, HCM_ROLES, MANAGER_ROLES, getUserData } from '../utils/auth-middleware';
 import {
     calculateOvertime,
-    calculateHourlyRate,
-    calculateSettlement as calculateSettlementLFT,
-    calculateVacationDays,
-    calculateYearsOfService,
-    calculateSDIFactor,
-    calculateSDI,
-    ShiftType,
-    TerminationType
 } from '../utils/lft-calculations';
 import {
     Employee,
-    Compensation,
     AttendanceRecord,
     Incidence,
-    PrenominaRecord,
-    SettlementCalculation
+    PrenominaRecord
 } from '../types/firestore-types';
 
 // Initialize Firebase Admin SDK
@@ -109,21 +99,6 @@ export const consolidatePrenomina = onCall<ConsolidatePrenominaRequest>(
 
                     for (const employee of employeeBatch) {
                         try {
-                            // Get latest compensation
-                            const compQuery = db.collection('compensation')
-                                .where('employeeId', '==', employee.id)
-                                .orderBy('effectiveDate', 'desc')
-                                .limit(1);
-                            const compSnap = await transaction.get(compQuery);
-
-                            if (compSnap.empty) {
-                                errors.push({ employeeId: employee.id, message: 'Sin compensación registrada' });
-                                skippedCount++;
-                                continue;
-                            }
-
-                            const compensation = compSnap.docs[0].data() as Compensation;
-
                             // Get attendance records for the period
                             const attendanceQuery = db.collection('attendance')
                                 .where('employeeId', '==', employee.id)
@@ -178,27 +153,9 @@ export const consolidatePrenomina = onCall<ConsolidatePrenominaRequest>(
                                 if (dayOfWeek === 0) sundayDays++;
                             }
 
-                            // Calculate overtime using "Ley de los 9s"
-                            const hourlyRate = calculateHourlyRate(compensation.salaryDaily, employee.shiftType as ShiftType);
-                            const overtimeCalc = calculateOvertime(totalOvertimeHours, hourlyRate);
-
-                            // Calculate Sunday premium (25%)
-                            const sundayPremiumAmount = sundayDays * compensation.salaryDaily * 0.25;
-
-                            // Calculate salary
-                            const salaryBase = daysWorked * compensation.salaryDaily;
-                            const absenceDeductions = absenceDays * compensation.salaryDaily;
-
-                            const grossPay = salaryBase +
-                                overtimeCalc.totalAmount +
-                                sundayPremiumAmount +
-                                (paidLeaveDays * compensation.salaryDaily);
-
-                            const totalDeductions = absenceDeductions + (unpaidLeaveDays * compensation.salaryDaily);
-                            const netPay = grossPay - totalDeductions;
-
-                            // Earned wage (for salary on demand)
-                            const earnedWage = Math.max(0, netPay * 0.8);
+                            // Calculate overtime (HOURS ONLY - Rate 0)
+                            // We pass 0 as rate because we only care about doubleHours and tripleHours
+                            const overtimeCalc = calculateOvertime(totalOvertimeHours, 0);
 
                             // Prepare prenomina record
                             const prenominaRef = db.collection('prenomina').doc();
@@ -209,24 +166,15 @@ export const consolidatePrenomina = onCall<ConsolidatePrenominaRequest>(
                                 periodStart,
                                 periodEnd,
                                 periodType,
-                                salaryBase,
                                 daysWorked,
                                 overtimeDoubleHours: overtimeCalc.doubleHours,
-                                overtimeDoubleAmount: overtimeCalc.doubleAmount,
                                 overtimeTripleHours: overtimeCalc.tripleHours,
-                                overtimeTripleAmount: overtimeCalc.tripleAmount,
                                 sundayPremiumDays: sundayDays,
-                                sundayPremiumAmount,
                                 absenceDays,
-                                absenceDeductions,
                                 vacationDaysTaken,
                                 sickLeaveDays,
                                 paidLeaveDays,
                                 unpaidLeaveDays,
-                                grossPay,
-                                totalDeductions,
-                                netPay,
-                                earnedWage,
                                 status: 'draft',
                                 costCenter: employee.costCenter,
                                 createdAt: nowISO,
@@ -291,7 +239,7 @@ interface EmployeeImportRow {
     employmentType: 'full_time' | 'part_time' | 'contractor';
     shiftType: 'diurnal' | 'nocturnal' | 'mixed';
     hireDate: string;
-    salaryDaily: string;
+    // salaryDaily REMOVED
     managerEmail?: string;
 }
 
@@ -354,14 +302,11 @@ export const processEmployeeImport = onCall<ProcessEmployeeImportRequest>(
 
                     try {
                         // Validate required fields
-                        if (!row.fullName || !row.email || !row.department || !row.positionTitle || !row.hireDate || !row.salaryDaily) {
+                        if (!row.fullName || !row.email || !row.department || !row.positionTitle || !row.hireDate) {
                             throw new Error('Faltan campos obligatorios');
                         }
 
-                        const salaryDaily = parseFloat(row.salaryDaily);
-                        if (isNaN(salaryDaily) || salaryDaily <= 0) {
-                            throw new Error('Salario diario inválido');
-                        }
+                        // salaryDaily validation removed
 
                         if (existingEmails.has(row.email)) {
                             throw new Error(`Email ${row.email} ya existe`);
@@ -369,13 +314,10 @@ export const processEmployeeImport = onCall<ProcessEmployeeImportRequest>(
 
                         // Create employee document
                         const employeeRef = db.collection('employees').doc();
-                        const employeeId = employeeRef.id;
-
                         const hireDateISO = new Date(row.hireDate).toISOString();
-                        const yearsOfService = calculateYearsOfService(hireDateISO);
-                        const vacationDays = calculateVacationDays(yearsOfService);
-                        const sdiFactor = calculateSDIFactor(vacationDays);
-                        const sdiBase = calculateSDI(salaryDaily, sdiFactor);
+                        // const yearsOfService = calculateYearsOfService(hireDateISO);
+                        // const vacationDays = calculateVacationDays(yearsOfService);
+                        // SDI calculations removed
 
                         transaction.set(employeeRef, {
                             email: row.email,
@@ -391,22 +333,7 @@ export const processEmployeeImport = onCall<ProcessEmployeeImportRequest>(
                             updatedAt: nowISO
                         });
 
-                        // Create compensation record
-                        const compRef = db.collection('compensation').doc();
-                        transaction.set(compRef, {
-                            employeeId,
-                            salaryDaily,
-                            salaryMonthly: Math.round(salaryDaily * 30.4 * 100) / 100,
-                            sdiBase,
-                            sdiFactor,
-                            vacationDays,
-                            vacationPremium: 0.25,
-                            aguinaldoDays: 15,
-                            effectiveDate: hireDateISO,
-                            createdAt: nowISO,
-                            updatedAt: nowISO,
-                            createdById: request.auth?.uid
-                        });
+                        // Compensation creation removed - Operational Only
 
                         successCount++;
 
@@ -447,134 +374,7 @@ export const processEmployeeImport = onCall<ProcessEmployeeImportRequest>(
     }
 );
 
-// =========================================================================
-// CALCULATE SETTLEMENT
-// =========================================================================
 
-interface CalculateSettlementRequest {
-    employeeId: string;
-    terminationType: TerminationType;
-    terminationDate: string;
-}
-
-interface CalculateSettlementResponse {
-    success: boolean;
-    settlementId: string;
-    settlement: SettlementCalculation;
-}
-
-/**
- * Calculates termination settlement (finiquito/liquidación) using LFT formulas.
- * 
- * @requires Role: Admin or HRManager
- */
-export const calculateSettlement = onCall<CalculateSettlementRequest>(
-    { region: 'us-central1' },
-    async (request): Promise<CalculateSettlementResponse> => {
-        await verifyRole(request.auth?.uid, HCM_ROLES, 'calcular finiquito');
-
-        const { employeeId, terminationType, terminationDate } = request.data;
-
-        if (!employeeId || !terminationType || !terminationDate) {
-            throw new HttpsError('invalid-argument', 'Parámetros incompletos.');
-        }
-
-        const nowISO = new Date().toISOString();
-
-        try {
-            // Get employee
-            const employeeSnap = await db.collection('employees').doc(employeeId).get();
-            if (!employeeSnap.exists) {
-                throw new HttpsError('not-found', 'Empleado no encontrado.');
-            }
-            const employee = employeeSnap.data() as Employee;
-
-            // Get latest compensation
-            const compQuery = db.collection('compensation')
-                .where('employeeId', '==', employeeId)
-                .orderBy('effectiveDate', 'desc')
-                .limit(1);
-            const compSnap = await compQuery.get();
-
-            if (compSnap.empty) {
-                throw new HttpsError('not-found', 'Compensación no encontrada.');
-            }
-            const compensation = compSnap.docs[0].data() as Compensation;
-
-            // Calculate using server-side LFT formulas
-            const yearsOfService = calculateYearsOfService(employee.hireDate, new Date(terminationDate));
-
-            const yearStart = new Date(new Date(terminationDate).getFullYear(), 0, 1);
-            const termDate = new Date(terminationDate);
-            const daysWorkedInYear = Math.ceil((termDate.getTime() - yearStart.getTime()) / (1000 * 60 * 60 * 24));
-
-            // Get vacation days used this year
-            const startOfYear = new Date(new Date().getFullYear(), 0, 1).toISOString();
-            const incidencesQuery = db.collection('incidences')
-                .where('employeeId', '==', employeeId)
-                .where('type', '==', 'vacation')
-                .where('status', '==', 'approved')
-                .where('startDate', '>=', startOfYear);
-            const incidencesSnap = await incidencesQuery.get();
-            const vacationDaysUsed = incidencesSnap.docs.reduce((total, doc) => {
-                return total + ((doc.data() as Incidence).totalDays || 0);
-            }, 0);
-
-            // Pending salary days (simplified)
-            const lastPayDate = new Date(terminationDate);
-            lastPayDate.setDate(1);
-            const pendingSalaryDays = Math.ceil((termDate.getTime() - lastPayDate.getTime()) / (1000 * 60 * 60 * 24));
-
-            // Calculate settlement using protected LFT formulas
-            const settlementCalc = calculateSettlementLFT(
-                compensation.salaryDaily,
-                compensation.sdiBase,
-                yearsOfService,
-                daysWorkedInYear,
-                pendingSalaryDays,
-                terminationType,
-                vacationDaysUsed
-            );
-
-            // Create settlement record
-            const settlementRef = db.collection('settlements').doc();
-            const settlementData: Omit<SettlementCalculation, 'id'> = {
-                employeeId,
-                employeeName: employee.fullName,
-                type: terminationType,
-                terminationDate,
-                proportionalVacation: settlementCalc.proportionalVacation,
-                proportionalVacationPremium: settlementCalc.proportionalVacationPremium,
-                proportionalAguinaldo: settlementCalc.proportionalAguinaldo,
-                salaryPending: settlementCalc.salaryPending,
-                severancePay: settlementCalc.severancePay,
-                seniorityPremium: settlementCalc.seniorityPremium,
-                twentyDaysPerYear: settlementCalc.twentyDaysPerYear,
-                totalPerceptions: settlementCalc.finiquitoTotal + settlementCalc.liquidacionTotal,
-                totalDeductions: 0,
-                netSettlement: settlementCalc.grandTotal,
-                status: 'preliminary',
-                calculatedAt: nowISO,
-                calculatedById: request.auth!.uid
-            };
-
-            await settlementRef.set(settlementData);
-
-            console.log(`[HCM] Calculated settlement ${settlementRef.id} for employee ${employeeId}`);
-
-            return {
-                success: true,
-                settlementId: settlementRef.id,
-                settlement: { id: settlementRef.id, ...settlementData }
-            };
-
-        } catch (error: any) {
-            console.error('[HCM] Error calculating settlement:', error);
-            if (error instanceof HttpsError) throw error;
-            throw new HttpsError('internal', `Error calculando finiquito: ${error.message}`);
-        }
-    }
-);
 
 // =========================================================================
 // APPROVE INCIDENCE

@@ -29,6 +29,7 @@ import {
   Database,
   Briefcase,
   Shield,
+  CheckSquare,
 } from "lucide-react";
 import { Logo } from "@/components/icons";
 import { Button } from "./ui/button";
@@ -39,37 +40,40 @@ import { NotificationCenter } from "@/components/notifications/notification-cent
 import { ThemeToggle } from "@/components/theme-toggle";
 import { GlobalSearch } from "@/components/global-search";
 
-const memberNavItems = [
-  { href: "/", icon: LayoutDashboard, label: "Panel" },
-  { href: "/templates", icon: FolderKanban, label: "Plantillas" },
-  { href: "/requests/new", icon: FilePlus, label: "Nueva Solicitud" },
-];
+import { usePermissions } from "@/hooks/use-permissions";
+import type { AppModule } from "@/lib/types";
 
-const designerNavItems = [
-  { href: "/", icon: LayoutDashboard, label: "Panel" },
-  { href: "/templates", icon: FolderKanban, label: "Plantillas" },
-  { href: "/master-lists", icon: Database, label: "Listas Maestras" },
-];
+// Unified navigation configuration
+type NavItem = {
+  href: string;
+  icon: any;
+  label: string;
+  module: AppModule;
+  exact?: boolean;
+};
 
-const adminNavItems = [
-  { href: "/", icon: LayoutDashboard, label: "Panel" },
-  { href: "/hcm", icon: Briefcase, label: "Capital Humano" },
-  { href: "/reports", icon: BarChart3, label: "Informes" },
-  { href: "/process-mining", icon: Activity, label: "Minería de Procesos" },
-  { href: "/templates", icon: FolderKanban, label: "Plantillas" },
-  { href: "/master-lists", icon: Database, label: "Listas Maestras" },
-  { href: "/requests/new", icon: FilePlus, label: "Nueva Solicitud" },
-  { href: "/integrations", icon: Plug, label: "Integraciones" },
-  { href: "/admin/users", icon: Users, label: "Usuarios (Admin)" },
-  { href: "/admin/roles", icon: Shield, label: "Roles y Permisos" },
+const ALL_NAV_ITEMS: NavItem[] = [
+  { href: "/", icon: LayoutDashboard, label: "Panel", module: "dashboard", exact: true },
+  { href: "/tasks", icon: CheckSquare, label: "Buzón", module: "requests" },
+  { href: "/hcm", icon: Briefcase, label: "Capital Humano", module: "hcm_employees" },
+  { href: "/reports", icon: BarChart3, label: "Informes", module: "reports" },
+  { href: "/process-mining", icon: Activity, label: "Minería de Procesos", module: "process_mining" },
+  { href: "/templates", icon: FolderKanban, label: "Plantillas", module: "templates" },
+  { href: "/master-lists", icon: Database, label: "Listas Maestras", module: "master_lists" },
+  { href: "/requests/new", icon: FilePlus, label: "Nueva Solicitud", module: "requests" },
+  { href: "/integrations", icon: Plug, label: "Integraciones", module: "integrations" },
+  { href: "/admin/users", icon: Users, label: "Usuarios (Admin)", module: "admin_users" },
+  { href: "/admin/roles", icon: Shield, label: "Roles y Permisos", module: "admin_roles" },
 ];
-
 
 export default function SiteLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const auth = useAuth();
   const { user, isUserLoading } = useUser();
   const router = useRouter();
+
+  // Use the permissions hook for dynamic filtering
+  const { canRead, isAdmin, isLoading: permissionsLoading } = usePermissions();
 
   useEffect(() => {
     if (!isUserLoading && !user) {
@@ -89,7 +93,7 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
     }
   };
 
-  if (isUserLoading || !user) {
+  if (isUserLoading || !user || permissionsLoading) {
     return (
       <div className="flex h-screen w-full items-center justify-center">
         <p>Cargando...</p>
@@ -99,18 +103,15 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
 
   const displayName = user?.fullName || user?.email || 'Usuario';
   const displayEmail = user?.email || '';
-  const userRole = user?.role || 'Member';
 
-  const getNavItems = () => {
-    switch (userRole) {
-      case 'Admin': return adminNavItems;
-      case 'Designer': return designerNavItems;
-      default: return memberNavItems;
-    }
-  }
+  // Filter items based on permissions
+  const navItems = ALL_NAV_ITEMS.filter(item => {
+    // Admin sees everything (redundant check if hasPermission handles isAdmin, but good for clarity)
+    if (isAdmin) return true;
 
-  const navItems = getNavItems();
-
+    // Check read permission for the module
+    return canRead(item.module);
+  });
 
   return (
     <SidebarProvider>
@@ -129,7 +130,7 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
               <SidebarMenuItem key={item.href}>
                 <SidebarMenuButton
                   asChild
-                  isActive={pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href))}
+                  isActive={item.exact ? pathname === item.href : pathname.startsWith(item.href)}
                   className="w-full"
                 >
                   <Link href={item.href}>

@@ -40,23 +40,25 @@ import {
     RefreshCw,
     CheckCircle2,
     Clock,
-    DollarSign,
     TrendingUp,
     AlertTriangle,
     Lock,
     ArrowLeft
 } from 'lucide-react';
 import type { PrenominaRecord, Employee } from '@/lib/types';
-import { consolidatePrenomina } from '@/firebase/hcm-actions';
+import { consolidatePrenomina } from '@/firebase/actions/report-actions';
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subDays } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
 import { Label } from '@/components/ui/label';
-import { formatCurrency } from '@/lib/hcm-utils';
 import Link from 'next/link';
 
+// Import local export util
+import { generateNomipaqIncidenceReport, downloadCSV } from '@/lib/export-utils';
+
 /**
- * Prenomina Consolidation Page
+ * Prenomina Consolidation Page (Operational Only)
+ * Focuses on Time & Attendance, Incidences, and Overtime.
  */
 export default function PrenominaPage() {
     const { firestore, user, isUserLoading } = useFirebase();
@@ -93,11 +95,10 @@ export default function PrenominaPage() {
 
     const { data: prenominaRecords, isLoading } = useCollection<PrenominaRecord>(prenominaQuery);
 
-    // Calculate totals
-    const totalGrossPay = prenominaRecords?.reduce((sum, r) => sum + (r.grossPay || 0), 0) ?? 0;
-    const totalNetPay = prenominaRecords?.reduce((sum, r) => sum + (r.netPay || 0), 0) ?? 0;
+    // Calculate totals - Operational only
+    const totalDaysWorked = prenominaRecords?.reduce((sum, r) => sum + (r.daysWorked || 0), 0) ?? 0;
     const totalOvertime = prenominaRecords?.reduce((sum, r) =>
-        sum + (r.overtimeDoubleAmount || 0) + (r.overtimeTripleAmount || 0), 0) ?? 0;
+        sum + (r.overtimeDoubleHours || 0) + (r.overtimeTripleHours || 0), 0) ?? 0;
 
     // Get status badge
     const getStatusBadge = (status: PrenominaRecord['status']) => {
@@ -135,7 +136,7 @@ export default function PrenominaPage() {
             if (result.success) {
                 toast({
                     title: 'Consolidación completada',
-                    description: `Se generaron ${result.recordIds?.length || 0} registros de pre-nómina.`,
+                    description: `Se generaron ${result.recordIds?.length || 0} registros de asistencia.`,
                 });
                 setIsConsolidateDialogOpen(false);
             } else {
@@ -144,7 +145,7 @@ export default function PrenominaPage() {
         } catch (error) {
             toast({
                 title: 'Error',
-                description: 'No se pudo consolidar la pre-nómina.',
+                description: 'No se pudo consolidar la asistencia.',
                 variant: 'destructive',
             });
         } finally {
@@ -153,51 +154,38 @@ export default function PrenominaPage() {
         }
     };
 
-    // Handle export to Nomipaq format
+    // Handle export to Nomipaq CSV (Operational)
     const handleExport = (records: PrenominaRecord[]) => {
-        // Create CSV content for Nomipaq import
+        if (!records || records.length === 0) {
+            toast({ variant: 'destructive', title: 'Sin datos', description: 'No hay registros para exportar.' });
+            return;
+        }
+
+        // We export a CSV summarizing the attendance/overtime for payroll input
         const headers = [
             'RFC',
             'Nombre',
             'Dias Trabajados',
-            'Salario Base',
             'Horas Extra Dobles',
-            'Monto HE Dobles',
             'Horas Extra Triples',
-            'Monto HE Triples',
-            'Prima Dominical',
-            'Deducciones',
-            'Percepciones',
-            'Neto'
+            'Incidencias (Folios)' // Placeholder for incidence references if any
         ].join(',');
 
         const rows = records.map(r => [
             r.employeeRfc || '',
             r.employeeName || '',
             r.daysWorked,
-            r.salaryBase.toFixed(2),
             r.overtimeDoubleHours.toFixed(2),
-            r.overtimeDoubleAmount.toFixed(2),
             r.overtimeTripleHours.toFixed(2),
-            r.overtimeTripleAmount.toFixed(2),
-            r.sundayPremiumAmount.toFixed(2),
-            r.totalDeductions.toFixed(2),
-            r.grossPay.toFixed(2),
-            r.netPay.toFixed(2)
+            'Ver reporte detallado'
         ].join(','));
 
         const csv = [headers, ...rows].join('\n');
-        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `prenomina_${consolidateForm.periodStart}_${consolidateForm.periodEnd}.csv`;
-        a.click();
-        URL.revokeObjectURL(url);
+        downloadCSV(csv, `asistencia_prenomina_${consolidateForm.periodStart}_${consolidateForm.periodEnd}.csv`);
 
         toast({
             title: 'Exportación completada',
-            description: 'El archivo CSV ha sido descargado.',
+            description: 'El archivo CSV de asistencia ha sido descargado.',
         });
     };
 
@@ -233,19 +221,8 @@ export default function PrenominaPage() {
         });
     };
 
-    // Format date
-    const formatDate = (dateStr: string) => {
-        try {
-            return format(new Date(dateStr), 'dd MMM yyyy', { locale: es });
-        } catch {
-            return dateStr;
-        }
-    };
-
     // Count by status
     const draftCount = prenominaRecords?.filter(r => r.status === 'draft').length ?? 0;
-    const reviewedCount = prenominaRecords?.filter(r => r.status === 'reviewed').length ?? 0;
-    const exportedCount = prenominaRecords?.filter(r => r.status === 'exported').length ?? 0;
 
     return (
         <div className="container mx-auto py-6 space-y-6">
@@ -258,172 +235,115 @@ export default function PrenominaPage() {
                         </Link>
                     </Button>
                     <div>
-                        <h1 className="text-3xl font-bold tracking-tight">Pre-Nómina</h1>
+                        <h1 className="text-3xl font-bold tracking-tight">Consolidación de Asistencia</h1>
                         <p className="text-muted-foreground mt-1">
-                            Consolidación y exportación de pre-nómina para timbrado
+                            Revisión y cierre de incidencias para nómina
                         </p>
                     </div>
                 </div>
                 <div className="flex gap-2">
                     <Button variant="outline" onClick={() => handleExport(prenominaRecords?.filter(r => r.status === 'draft') || [])}>
                         <Download className="mr-2 h-4 w-4" />
-                        Exportar a Nomipaq
+                        Exportar CSV (NomiPAQ)
                     </Button>
                     <Button onClick={() => setIsConsolidateDialogOpen(true)}>
                         <Calculator className="mr-2 h-4 w-4" />
-                        Consolidar Período
+                        Cerrar Periodo
                     </Button>
                 </div>
             </div>
 
-            {/* Stats */}
+            {/* Stats - Operational Only */}
             <div className="grid gap-4 md:grid-cols-4">
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Total Bruto</CardTitle>
-                        <DollarSign className="h-4 w-4 text-muted-foreground" />
+                        <CardTitle className="text-sm font-medium">Asistencia Total</CardTitle>
+                        <Clock className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">{formatCurrency(totalGrossPay)}</div>
-                        <p className="text-xs text-muted-foreground">Percepciones totales</p>
-                    </CardContent>
-                </Card>
-                <Card>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Total Neto</CardTitle>
-                        <TrendingUp className="h-4 w-4 text-green-500" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold text-green-600">{formatCurrency(totalNetPay)}</div>
-                        <p className="text-xs text-muted-foreground">Neto a pagar</p>
+                        <div className="text-2xl font-bold">{totalDaysWorked} días</div>
+                        <p className="text-xs text-muted-foreground">Días trabajados en periodo</p>
                     </CardContent>
                 </Card>
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">Horas Extra</CardTitle>
-                        <Clock className="h-4 w-4 text-orange-500" />
+                        <TrendingUp className="h-4 w-4 text-amber-500" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold text-orange-600">{formatCurrency(totalOvertime)}</div>
-                        <p className="text-xs text-muted-foreground">Monto total HE</p>
-                    </CardContent>
-                </Card>
-                <Card>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Registros</CardTitle>
-                        <FileSpreadsheet className="h-4 w-4 text-muted-foreground" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold">{prenominaRecords?.length ?? 0}</div>
-                        <p className="text-xs text-muted-foreground">
-                            {draftCount} borrador, {exportedCount} exportados
-                        </p>
+                        <div className="text-2xl font-bold text-amber-600">{totalOvertime.toFixed(1)} hrs</div>
+                        <p className="text-xs text-muted-foreground">Dobles + Triples</p>
                     </CardContent>
                 </Card>
             </div>
 
-            {/* Filters */}
+            {/* Data Table */}
             <Card>
-                <CardContent className="pt-6">
-                    <div className="flex gap-4">
+                <CardHeader>
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <CardTitle>Detalle por Empleado</CardTitle>
+                            <CardDescription>
+                                {prenominaRecords?.length || 0} registros encontrados
+                            </CardDescription>
+                        </div>
                         <Select value={statusFilter} onValueChange={setStatusFilter}>
-                            <SelectTrigger className="w-[200px]">
-                                <SelectValue placeholder="Estado" />
+                            <SelectTrigger className="w-[180px]">
+                                <SelectValue placeholder="Filtrar por estado" />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="all">Todos los estados</SelectItem>
+                                <SelectItem value="all">Todos</SelectItem>
                                 <SelectItem value="draft">Borrador</SelectItem>
                                 <SelectItem value="reviewed">Revisada</SelectItem>
                                 <SelectItem value="exported">Exportada</SelectItem>
-                                <SelectItem value="locked">Bloqueada</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
-                </CardContent>
-            </Card>
-
-            {/* Pre-nomina Records Table */}
-            <Card>
-                <CardHeader>
-                    <CardTitle>Registros de Pre-Nómina</CardTitle>
-                    <CardDescription>
-                        Detalle por empleado para el período seleccionado
-                    </CardDescription>
                 </CardHeader>
                 <CardContent>
                     <Table>
                         <TableHeader>
                             <TableRow>
                                 <TableHead>Empleado</TableHead>
-                                <TableHead>Período</TableHead>
-                                <TableHead className="text-right">Días</TableHead>
-                                <TableHead className="text-right">Salario Base</TableHead>
-                                <TableHead className="text-right">Horas Extra</TableHead>
-                                <TableHead className="text-right">Prima Dom.</TableHead>
-                                <TableHead className="text-right">Deducciones</TableHead>
-                                <TableHead className="text-right">Neto</TableHead>
-                                <TableHead>Estado</TableHead>
+                                <TableHead>Periodo</TableHead>
+                                <TableHead className="text-center">Días Trab.</TableHead>
+                                <TableHead className="text-center">HE Dobles</TableHead>
+                                <TableHead className="text-center">HE Triples</TableHead>
+                                <TableHead className="text-center">Estado</TableHead>
+                                <TableHead className="text-right">Acciones</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {isLoading ? (
-                                <TableRow>
-                                    <TableCell colSpan={9} className="text-center py-8">
-                                        Cargando registros...
+                            {prenominaRecords?.map((record) => (
+                                <TableRow key={record.id}>
+                                    <TableCell>
+                                        <div>
+                                            <p className="font-medium">{record.employeeName}</p>
+                                            <p className="text-xs text-muted-foreground">{record.employeeRfc}</p>
+                                        </div>
+                                    </TableCell>
+                                    <TableCell>
+                                        <div className="text-sm">
+                                            {format(new Date(record.periodStart), 'dd/MM')} - {format(new Date(record.periodEnd), 'dd/MM')}
+                                        </div>
+                                    </TableCell>
+                                    <TableCell className="text-center">{record.daysWorked}</TableCell>
+                                    <TableCell className="text-center">{record.overtimeDoubleHours}</TableCell>
+                                    <TableCell className="text-center">{record.overtimeTripleHours}</TableCell>
+                                    <TableCell className="text-center">
+                                        {getStatusBadge(record.status)}
+                                    </TableCell>
+                                    <TableCell className="text-right">
+                                        <Button variant="ghost" size="sm" asChild>
+                                            <Link href={`/hcm/reports/${record.id}`}>Ver Detalle</Link>
+                                        </Button>
                                     </TableCell>
                                 </TableRow>
-                            ) : prenominaRecords && prenominaRecords.length > 0 ? (
-                                prenominaRecords.map((record) => (
-                                    <TableRow key={record.id}>
-                                        <TableCell>
-                                            <div>
-                                                <div className="font-medium">{record.employeeName}</div>
-                                                <div className="text-xs text-muted-foreground">{record.employeeRfc}</div>
-                                            </div>
-                                        </TableCell>
-                                        <TableCell>
-                                            <div className="text-sm">
-                                                {formatDate(record.periodStart)} - {formatDate(record.periodEnd)}
-                                            </div>
-                                            <Badge variant="outline" className="mt-1">
-                                                {record.periodType === 'weekly' ? 'Semanal' :
-                                                    record.periodType === 'biweekly' ? 'Quincenal' : 'Mensual'}
-                                            </Badge>
-                                        </TableCell>
-                                        <TableCell className="text-right">{record.daysWorked}</TableCell>
-                                        <TableCell className="text-right">{formatCurrency(record.salaryBase)}</TableCell>
-                                        <TableCell className="text-right">
-                                            {(record.overtimeDoubleHours > 0 || record.overtimeTripleHours > 0) ? (
-                                                <div>
-                                                    <div>{formatCurrency(record.overtimeDoubleAmount + record.overtimeTripleAmount)}</div>
-                                                    <div className="text-xs text-muted-foreground">
-                                                        {record.overtimeDoubleHours > 0 && `${record.overtimeDoubleHours.toFixed(1)}h×2`}
-                                                        {record.overtimeDoubleHours > 0 && record.overtimeTripleHours > 0 && ' + '}
-                                                        {record.overtimeTripleHours > 0 && `${record.overtimeTripleHours.toFixed(1)}h×3`}
-                                                    </div>
-                                                </div>
-                                            ) : '-'}
-                                        </TableCell>
-                                        <TableCell className="text-right">
-                                            {record.sundayPremiumAmount > 0
-                                                ? formatCurrency(record.sundayPremiumAmount)
-                                                : '-'}
-                                        </TableCell>
-                                        <TableCell className="text-right text-red-600">
-                                            {record.totalDeductions > 0
-                                                ? `-${formatCurrency(record.totalDeductions)}`
-                                                : '-'}
-                                        </TableCell>
-                                        <TableCell className="text-right font-bold text-green-600">
-                                            {formatCurrency(record.netPay)}
-                                        </TableCell>
-                                        <TableCell>{getStatusBadge(record.status)}</TableCell>
-                                    </TableRow>
-                                ))
-                            ) : (
+                            ))}
+                            {(!prenominaRecords || prenominaRecords.length === 0) && (
                                 <TableRow>
-                                    <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
-                                        No hay registros de pre-nómina
+                                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                                        No hay registros para este periodo.
                                     </TableCell>
                                 </TableRow>
                             )}
@@ -434,22 +354,22 @@ export default function PrenominaPage() {
 
             {/* Consolidate Dialog */}
             <Dialog open={isConsolidateDialogOpen} onOpenChange={setIsConsolidateDialogOpen}>
-                <DialogContent className="max-w-md">
+                <DialogContent>
                     <DialogHeader>
-                        <DialogTitle>Consolidar Pre-Nómina</DialogTitle>
+                        <DialogTitle>Consolidar Asistencia del Periodo</DialogTitle>
                         <DialogDescription>
-                            Genera los registros de pre-nómina para el período seleccionado
+                            Esto calculará los días trabajados y horas extra para todos los empleados activos.
                         </DialogDescription>
                     </DialogHeader>
 
-                    <div className="space-y-4">
-                        <div>
-                            <Label>Tipo de período</Label>
+                    <div className="grid gap-4 py-4">
+                        <div className="grid grid-cols-4 items-center gap-4">
+                            <Label className="text-right">Tipo</Label>
                             <Select
                                 value={consolidateForm.periodType}
-                                onValueChange={(v) => updatePeriodDates(v as any)}
+                                onValueChange={(val: any) => updatePeriodDates(val)}
                             >
-                                <SelectTrigger className="mt-1">
+                                <SelectTrigger className="col-span-3">
                                     <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -459,69 +379,37 @@ export default function PrenominaPage() {
                                 </SelectContent>
                             </Select>
                         </div>
-
-                        <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <Label>Fecha inicio</Label>
-                                <Input
-                                    type="date"
-                                    value={consolidateForm.periodStart}
-                                    onChange={(e) => setConsolidateForm({ ...consolidateForm, periodStart: e.target.value })}
-                                    className="mt-1"
-                                />
-                            </div>
-                            <div>
-                                <Label>Fecha fin</Label>
-                                <Input
-                                    type="date"
-                                    value={consolidateForm.periodEnd}
-                                    onChange={(e) => setConsolidateForm({ ...consolidateForm, periodEnd: e.target.value })}
-                                    className="mt-1"
-                                />
-                            </div>
+                        <div className="grid grid-cols-4 items-center gap-4">
+                            <Label className="text-right">Inicio</Label>
+                            <Input
+                                type="date"
+                                value={consolidateForm.periodStart}
+                                onChange={(e) => setConsolidateForm({ ...consolidateForm, periodStart: e.target.value })}
+                                className="col-span-3"
+                            />
                         </div>
-
-                        {isConsolidating && (
-                            <div className="space-y-2">
-                                <div className="flex justify-between text-sm">
-                                    <span>Consolidando...</span>
-                                    <span>{consolidateProgress}%</span>
-                                </div>
-                                <Progress value={consolidateProgress} />
-                            </div>
-                        )}
-
-                        <div className="bg-muted/50 rounded-lg p-3 text-sm">
-                            <p className="font-medium mb-1">Este proceso realizará:</p>
-                            <ul className="text-muted-foreground space-y-1">
-                                <li>• Lectura de registros de asistencia del período</li>
-                                <li>• Cálculo de horas extra según "Ley de los 9s"</li>
-                                <li>• Aplicación de incidencias aprobadas</li>
-                                <li>• Cálculo de prima dominical</li>
-                                <li>• Generación de registro por empleado</li>
-                            </ul>
+                        <div className="grid grid-cols-4 items-center gap-4">
+                            <Label className="text-right">Fin</Label>
+                            <Input
+                                type="date"
+                                value={consolidateForm.periodEnd}
+                                onChange={(e) => setConsolidateForm({ ...consolidateForm, periodEnd: e.target.value })}
+                                className="col-span-3"
+                            />
                         </div>
                     </div>
 
+                    {isConsolidating && (
+                        <div className="space-y-2">
+                            <Progress value={consolidateProgress} />
+                            <p className="text-xs text-center text-muted-foreground">Procesando registros...</p>
+                        </div>
+                    )}
+
                     <DialogFooter>
-                        <Button variant="outline" onClick={() => setIsConsolidateDialogOpen(false)}>
-                            Cancelar
-                        </Button>
-                        <Button
-                            onClick={handleConsolidate}
-                            disabled={isConsolidating}
-                        >
-                            {isConsolidating ? (
-                                <>
-                                    <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                                    Procesando...
-                                </>
-                            ) : (
-                                <>
-                                    <Calculator className="mr-2 h-4 w-4" />
-                                    Consolidar
-                                </>
-                            )}
+                        <Button variant="outline" onClick={() => setIsConsolidateDialogOpen(false)}>Cancelar</Button>
+                        <Button onClick={handleConsolidate} disabled={isConsolidating}>
+                            {isConsolidating ? 'Procesando...' : 'Consolidar'}
                         </Button>
                     </DialogFooter>
                 </DialogContent>
