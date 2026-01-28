@@ -445,6 +445,153 @@ service cloud.firestore {
       allow delete: if hasRole('Admin');
     }
 
+    /**
+     * @description Departments - Organizational units with hierarchy
+     * Read: All authenticated users (needed for dropdowns, org chart)
+     * Write: Only HR Managers and Admins
+     * @path /departments/{departmentId}
+     */
+    match /departments/{departmentId} {
+      // All users can read departments (needed for UI dropdowns, org chart)
+      allow get, list: if isSignedIn();
+      // Only HR and Admin can create departments
+      allow create: if isHRManager() && hasValidCreateTimestamps();
+      // Only HR and Admin can update departments
+      allow update: if isHRManager() && hasValidUpdateTimestamps();
+      // Only Admins can delete departments (soft delete preferred)
+      allow delete: if hasRole('Admin');
+    }
+
+    /**
+     * @description Vacation balances for employees
+     * Read: Employee can read their own, HR can read all
+     * Write: HR only (balance updates happen through incidence approval)
+     * @path /vacation_balances/{balanceId}
+     */
+    match /vacation_balances/{balanceId} {
+      // Employees can read their own vacation balance
+      allow get: if isSignedIn() && resource.data.employeeId == request.auth.uid;
+      // HR can read any vacation balance
+      allow get, list: if isHRManager();
+      // Only HR can modify vacation balances
+      allow create, update: if isHRManager();
+      // No deletes - balance history is important
+      allow delete: if false;
+    }
+
+    /**
+     * @description Tardiness records for tracking late arrivals
+     * Read: Employee can read their own, HR/Manager can read all
+     * Write: HR only
+     * @path /tardiness_records/{recordId}
+     */
+    match /tardiness_records/{recordId} {
+      // Employees can read their own tardiness records
+      allow get: if isSignedIn() && resource.data.employeeId == request.auth.uid;
+      // Managers and HR can read any tardiness record
+      allow get, list: if isManagerOrHR();
+      // Only HR can create/update tardiness records
+      allow create, update: if isHRManager();
+      // Managers can justify tardiness (limited update)
+      allow update: if hasAnyRole(['Manager']) &&
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['isJustified', 'justificationReason', 'justifiedById', 'justifiedAt', 'updatedAt']);
+      // No deletes
+      allow delete: if false;
+    }
+
+    /**
+     * @description Overtime requests and approvals
+     * Read: Employee can read their own, Manager/HR can read all
+     * Create: Employees can create their own requests
+     * Update: Managers/HR can approve/reject
+     * @path /overtime_requests/{requestId}
+     */
+    match /overtime_requests/{requestId} {
+      // Employees can read their own overtime requests
+      allow get: if isSignedIn() && resource.data.employeeId == request.auth.uid;
+      // Managers and HR can read any overtime request
+      allow get, list: if isManagerOrHR();
+      // Employees can create overtime requests for themselves
+      allow create: if isSignedIn() && request.resource.data.employeeId == request.auth.uid;
+      // Managers and HR can approve/reject overtime requests
+      allow update: if isManagerOrHR();
+      // No deletes
+      allow delete: if false;
+    }
+
+    /**
+     * @description Payroll period locks to prevent modifications after export
+     * Read: HR Managers and Admins
+     * Write: HR Managers and Admins (unlock requires Admin)
+     * @path /payroll_period_locks/{lockId}
+     */
+    match /payroll_period_locks/{lockId} {
+      allow read: if isHRManager();
+      allow create: if isHRManager();
+      // Unlocking requires Admin
+      allow update: if hasRole('Admin');
+      allow delete: if hasRole('Admin');
+    }
+
+    /**
+     * @description Positions catalog
+     * Read: All authenticated users
+     * Write: HR Managers and Admins
+     * @path /positions/{positionId}
+     */
+    match /positions/{positionId} {
+      allow get, list: if isSignedIn();
+      allow create, update: if isHRManager();
+      allow delete: if hasRole('Admin');
+    }
+
+    /**
+     * @description Locations/branches catalog
+     * Read: All authenticated users
+     * Write: HR Managers and Admins
+     * @path /locations/{locationId}
+     */
+    match /locations/{locationId} {
+      allow get, list: if isSignedIn();
+      allow create, update: if isHRManager();
+      allow delete: if hasRole('Admin');
+    }
+
+    /**
+     * @description Custom shifts catalog
+     * Read: All authenticated users
+     * Write: HR Managers and Admins
+     * @path /custom_shifts/{shiftId}
+     */
+    match /custom_shifts/{shiftId} {
+      allow get, list: if isSignedIn();
+      allow create, update: if isHRManager();
+      allow delete: if hasRole('Admin');
+    }
+
+    /**
+     * @description Holiday calendars by year/location
+     * Read: All authenticated users
+     * Write: Admins only
+     * @path /holiday_calendars/{calendarId}
+     */
+    match /holiday_calendars/{calendarId} {
+      allow get, list: if isSignedIn();
+      allow create, update, delete: if hasRole('Admin');
+    }
+
+    /**
+     * @description Tardiness policy configuration
+     * Read: All authenticated users
+     * Write: Admins only
+     * @path /tardiness_policy/{policyId}
+     */
+    match /tardiness_policy/{policyId} {
+      allow get, list: if isSignedIn();
+      allow create, update, delete: if hasRole('Admin');
+    }
+
     // -------------------------------------------------------------------------
     // Catch-all for Admin (Recursive God Mode)
     // ⚠️ ZERO TRUST ENFORCED: Default is DENY ALL.

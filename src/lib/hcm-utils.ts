@@ -410,3 +410,513 @@ export function shouldApplyTardinessSanction(
 
     return { applySanction: false };
 }
+
+// =========================================================================
+// HORAS EXTRAS - REGLA 3x3 CON REDONDEO
+// =========================================================================
+
+/**
+ * Política de redondeo basada en fracciones de 30 minutos
+ * - 1-14 minutos: se redondea a 0
+ * - 15-44 minutos: se redondea a 0.5 (media hora)
+ * - 45-59 minutos: se redondea a 1 (hora completa)
+ *
+ * @param decimalHours - Horas en decimal
+ * @returns Horas redondeadas según política
+ */
+export function roundOvertimeHours(decimalHours: number): number {
+    const hours = Math.floor(decimalHours);
+    const minutes = Math.round((decimalHours - hours) * 60);
+
+    let roundedMinutes: number;
+    if (minutes < 15) {
+        roundedMinutes = 0;
+    } else if (minutes < 45) {
+        roundedMinutes = 30;
+    } else {
+        roundedMinutes = 60;
+    }
+
+    return hours + (roundedMinutes / 60);
+}
+
+/**
+ * Resultado extendido del cálculo de horas extra con desglose diario
+ */
+export type OvertimeResultExtended = OvertimeResult & {
+    dailyBreakdown: {
+        date: string;
+        doubleHours: number;
+        tripleHours: number;
+        carryoverMinutes: number; // Minutos sobrantes para bolsa de tiempo
+    }[];
+    totalCarryoverMinutes: number;
+};
+
+/**
+ * Calcula horas extra con regla 3x3 y política de redondeo
+ *
+ * Reglas:
+ * - Máximo 3 horas dobles diarias
+ * - Máximo 9 horas dobles semanales
+ * - Excedente se paga como triples
+ * - Redondeo según política de 30 minutos
+ *
+ * @param dailyOvertimeHours - Array de horas extra por día
+ * @param hourlyRate - Tarifa por hora
+ * @returns OvertimeResultExtended
+ */
+export function calculateOvertimeWithRounding(
+    dailyOvertimeHours: { date: string; hours: number }[],
+    hourlyRate: number
+): OvertimeResultExtended {
+    let weeklyDoubleHoursUsed = 0;
+    let totalDoubleHours = 0;
+    let totalTripleHours = 0;
+    let totalCarryoverMinutes = 0;
+
+    const dailyBreakdown: OvertimeResultExtended['dailyBreakdown'] = [];
+
+    for (const day of dailyOvertimeHours) {
+        const roundedHours = roundOvertimeHours(day.hours);
+        const carryoverMinutes = Math.round((day.hours - roundedHours) * 60);
+
+        let dayDoubleHours = 0;
+        let dayTripleHours = 0;
+
+        // Máximo 3 horas dobles por día
+        const maxDailyDouble = 3;
+        const remainingWeeklyDouble = 9 - weeklyDoubleHoursUsed;
+        const availableDouble = Math.min(maxDailyDouble, remainingWeeklyDouble);
+
+        if (roundedHours <= availableDouble) {
+            dayDoubleHours = roundedHours;
+        } else {
+            dayDoubleHours = availableDouble;
+            dayTripleHours = roundedHours - availableDouble;
+        }
+
+        weeklyDoubleHoursUsed += dayDoubleHours;
+        totalDoubleHours += dayDoubleHours;
+        totalTripleHours += dayTripleHours;
+        totalCarryoverMinutes += carryoverMinutes;
+
+        dailyBreakdown.push({
+            date: day.date,
+            doubleHours: dayDoubleHours,
+            tripleHours: dayTripleHours,
+            carryoverMinutes
+        });
+    }
+
+    const doubleAmount = Math.round(totalDoubleHours * hourlyRate * 2 * 100) / 100;
+    const tripleAmount = Math.round(totalTripleHours * hourlyRate * 3 * 100) / 100;
+
+    return {
+        doubleHours: totalDoubleHours,
+        tripleHours: totalTripleHours,
+        doubleAmount,
+        tripleAmount,
+        totalAmount: doubleAmount + tripleAmount,
+        dailyBreakdown,
+        totalCarryoverMinutes
+    };
+}
+
+/**
+ * Convierte minutos de bolsa de tiempo a horas pagables
+ * Solo se pagan cuando se acumulan 30 minutos o más
+ *
+ * @param minutes - Minutos acumulados
+ * @returns { payableHours: number, remainingMinutes: number }
+ */
+export function convertCarryoverToPayable(minutes: number): {
+    payableHours: number;
+    remainingMinutes: number;
+} {
+    if (minutes < 30) {
+        return { payableHours: 0, remainingMinutes: minutes };
+    }
+
+    const halfHours = Math.floor(minutes / 30);
+    const payableHours = halfHours * 0.5;
+    const remainingMinutes = minutes % 30;
+
+    return { payableHours, remainingMinutes };
+}
+
+// =========================================================================
+// FORMATO DE TEXTO PARA PRE-NÓMINA
+// =========================================================================
+
+/**
+ * Mapa de caracteres acentuados a sin acento
+ */
+const ACCENT_MAP: Record<string, string> = {
+    'Á': 'A', 'É': 'E', 'Í': 'I', 'Ó': 'O', 'Ú': 'U',
+    'á': 'A', 'é': 'E', 'í': 'I', 'ó': 'O', 'ú': 'U',
+    'Ñ': 'N', 'ñ': 'N',
+    'Ü': 'U', 'ü': 'U'
+};
+
+/**
+ * Normaliza texto para pre-nómina
+ * - Convierte a MAYÚSCULAS
+ * - Elimina acentos
+ * - Cambia Ñ por N
+ * - Elimina caracteres especiales
+ *
+ * @param text - Texto original
+ * @returns Texto normalizado
+ */
+export function normalizeTextForPayroll(text: string): string {
+    if (!text) return '';
+
+    let normalized = text.toUpperCase();
+
+    // Reemplazar caracteres acentuados
+    for (const [accented, plain] of Object.entries(ACCENT_MAP)) {
+        normalized = normalized.replace(new RegExp(accented, 'g'), plain);
+    }
+
+    // Eliminar caracteres especiales (mantener solo letras, números y espacios)
+    normalized = normalized.replace(/[^A-Z0-9\s]/g, '');
+
+    // Normalizar espacios múltiples
+    normalized = normalized.replace(/\s+/g, ' ').trim();
+
+    return normalized;
+}
+
+/**
+ * Formatea el nombre para pre-nómina (APELLIDOS, NOMBRE)
+ *
+ * @param fullName - Nombre completo
+ * @returns Nombre formateado
+ */
+export function formatNameForPayroll(fullName: string): string {
+    const normalized = normalizeTextForPayroll(fullName);
+    const parts = normalized.split(' ');
+
+    if (parts.length <= 2) {
+        return normalized;
+    }
+
+    // Asumimos: NOMBRE(S) APELLIDO_PATERNO APELLIDO_MATERNO
+    // Convertir a: APELLIDO_PATERNO APELLIDO_MATERNO, NOMBRE(S)
+    const names = parts.slice(0, -2).join(' ');
+    const surnames = parts.slice(-2).join(' ');
+
+    return `${surnames}, ${names}`;
+}
+
+/**
+ * Genera el código de celda para una entrada de pre-nómina
+ * Ej: "3HE2, 0.5HE3" o "DL, PD"
+ *
+ * @param entry - Datos del día
+ * @returns Texto para mostrar en la celda
+ */
+export function generateCellDisplay(entry: {
+    primaryCode: string;
+    additionalCodes?: string[];
+    overtimeDoubleHours?: number;
+    overtimeTripleHours?: number;
+}): string {
+    const parts: string[] = [];
+
+    // Si hay horas extras, mostrar formato especial
+    if (entry.overtimeDoubleHours && entry.overtimeDoubleHours > 0) {
+        parts.push(`${entry.overtimeDoubleHours}HE2`);
+    }
+    if (entry.overtimeTripleHours && entry.overtimeTripleHours > 0) {
+        parts.push(`${entry.overtimeTripleHours}HE3`);
+    }
+
+    // Si hay horas extras, no mostrar ASI (asistencia implícita)
+    if (parts.length === 0) {
+        // Si es DL o PD, mostrar esos códigos
+        if (entry.primaryCode === 'DL' || entry.primaryCode === 'PD') {
+            parts.push(entry.primaryCode);
+        } else if (entry.primaryCode !== 'ASI' || !entry.additionalCodes?.length) {
+            // Solo mostrar ASI si no hay otros códigos
+            parts.push(entry.primaryCode);
+        }
+    }
+
+    // Agregar códigos adicionales
+    if (entry.additionalCodes) {
+        for (const code of entry.additionalCodes) {
+            if (!parts.includes(code)) {
+                parts.push(code);
+            }
+        }
+    }
+
+    return parts.join(', ');
+}
+
+/**
+ * Obtiene el nombre corto del día de la semana
+ *
+ * @param dayOfWeek - Día de la semana (0-6, 0=Domingo)
+ * @returns Nombre corto del día
+ */
+export function getDayShortName(dayOfWeek: number): string {
+    const days = ['DOM', 'LUN', 'MAR', 'MIE', 'JUE', 'VIE', 'SAB'];
+    return days[dayOfWeek] || '';
+}
+
+/**
+ * Verifica si una fecha es domingo
+ *
+ * @param date - Fecha a verificar
+ * @returns true si es domingo
+ */
+export function isSunday(date: Date | string): boolean {
+    const d = typeof date === 'string' ? new Date(date) : date;
+    return d.getDay() === 0;
+}
+
+/**
+ * Verifica si un empleado está de baja durante todo un período
+ *
+ * @param terminationDate - Fecha de baja
+ * @param periodStart - Inicio del período
+ * @returns true si la baja fue antes del inicio del período
+ */
+export function isTerminatedBeforePeriod(
+    terminationDate: string | undefined,
+    periodStart: string
+): boolean {
+    if (!terminationDate) return false;
+    return new Date(terminationDate) < new Date(periodStart);
+}
+
+// =========================================================================
+// VALIDACIÓN DE CONFLICTOS DE FECHAS
+// =========================================================================
+
+/**
+ * Resultado de la verificación de conflicto de fechas
+ */
+export type DateConflictResult = {
+    hasConflict: boolean;
+    conflictingRanges: {
+        id: string;
+        type: IncidenceType;
+        startDate: string;
+        endDate: string;
+        status: string;
+    }[];
+    message?: string;
+};
+
+/**
+ * Verifica si dos rangos de fechas se solapan
+ *
+ * @param start1 - Fecha inicio del primer rango
+ * @param end1 - Fecha fin del primer rango
+ * @param start2 - Fecha inicio del segundo rango
+ * @param end2 - Fecha fin del segundo rango
+ * @returns true si hay solapamiento
+ */
+export function datesOverlap(
+    start1: string,
+    end1: string,
+    start2: string,
+    end2: string
+): boolean {
+    const s1 = new Date(start1);
+    const e1 = new Date(end1);
+    const s2 = new Date(start2);
+    const e2 = new Date(end2);
+
+    // Dos rangos se solapan si:
+    // El inicio de uno es antes o igual al fin del otro Y
+    // El fin de uno es después o igual al inicio del otro
+    return s1 <= e2 && e1 >= s2;
+}
+
+/**
+ * Detecta conflictos de fechas con incidencias existentes
+ *
+ * Esta función debe ser llamada antes de crear o aprobar una incidencia
+ * para verificar que no hay solapamiento de fechas.
+ *
+ * @param employeeId - ID del empleado
+ * @param startDate - Fecha inicio de la nueva incidencia
+ * @param endDate - Fecha fin de la nueva incidencia
+ * @param existingIncidences - Lista de incidencias existentes del empleado
+ * @param excludeIncidenceId - ID de incidencia a excluir (para edición)
+ * @returns DateConflictResult
+ *
+ * @example
+ * // Verificar antes de crear nueva incidencia
+ * const result = checkDateConflict(
+ *   'emp123',
+ *   '2024-03-15',
+ *   '2024-03-20',
+ *   existingIncidences
+ * );
+ * if (result.hasConflict) {
+ *   console.error(result.message);
+ * }
+ */
+export function checkDateConflict(
+    employeeId: string,
+    startDate: string,
+    endDate: string,
+    existingIncidences: Array<{
+        id: string;
+        employeeId: string;
+        type: IncidenceType;
+        startDate: string;
+        endDate: string;
+        status: string;
+    }>,
+    excludeIncidenceId?: string
+): DateConflictResult {
+    // Filtrar incidencias relevantes:
+    // - Del mismo empleado
+    // - Con status pending o approved (no rechazadas ni canceladas)
+    // - Excluyendo la incidencia actual si se proporciona
+    const relevantIncidences = existingIncidences.filter(inc =>
+        inc.employeeId === employeeId &&
+        ['pending', 'approved'].includes(inc.status) &&
+        inc.id !== excludeIncidenceId
+    );
+
+    const conflictingRanges: DateConflictResult['conflictingRanges'] = [];
+
+    for (const inc of relevantIncidences) {
+        if (datesOverlap(startDate, endDate, inc.startDate, inc.endDate)) {
+            conflictingRanges.push({
+                id: inc.id,
+                type: inc.type,
+                startDate: inc.startDate,
+                endDate: inc.endDate,
+                status: inc.status
+            });
+        }
+    }
+
+    if (conflictingRanges.length === 0) {
+        return { hasConflict: false, conflictingRanges: [] };
+    }
+
+    // Generar mensaje descriptivo
+    const typeNames: Record<IncidenceType, string> = {
+        vacation: 'vacaciones',
+        sick_leave: 'incapacidad',
+        personal_leave: 'permiso personal',
+        maternity: 'maternidad',
+        paternity: 'paternidad',
+        bereavement: 'duelo',
+        unjustified_absence: 'falta injustificada'
+    };
+
+    const conflictDescriptions = conflictingRanges.map(c =>
+        `${typeNames[c.type]} del ${formatDate(c.startDate)} al ${formatDate(c.endDate)} (${c.status === 'pending' ? 'pendiente' : 'aprobada'})`
+    );
+
+    const message = conflictingRanges.length === 1
+        ? `Ya existe una solicitud de ${conflictDescriptions[0]} en las fechas seleccionadas.`
+        : `Las fechas seleccionadas se solapan con ${conflictingRanges.length} incidencias existentes: ${conflictDescriptions.join('; ')}.`;
+
+    return {
+        hasConflict: true,
+        conflictingRanges,
+        message
+    };
+}
+
+/**
+ * Formatea una fecha en formato legible DD/MM/YYYY
+ *
+ * @param dateString - Fecha en formato ISO
+ * @returns Fecha formateada
+ */
+function formatDate(dateString: string): string {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('es-MX', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric'
+    });
+}
+
+/**
+ * Valida una solicitud de incidencia completa incluyendo:
+ * - Elegibilidad de vacaciones (si aplica)
+ * - Saldo disponible (si aplica)
+ * - Conflictos de fechas
+ *
+ * @param params - Parámetros de validación
+ * @returns { valid: boolean, errors: string[] }
+ */
+export function validateIncidenceRequest(params: {
+    employeeId: string;
+    type: IncidenceType;
+    startDate: string;
+    endDate: string;
+    hireDate: string;
+    vacationBalance?: {
+        daysAvailable: number;
+        daysEntitled: number;
+    };
+    existingIncidences: Array<{
+        id: string;
+        employeeId: string;
+        type: IncidenceType;
+        startDate: string;
+        endDate: string;
+        status: string;
+    }>;
+    excludeIncidenceId?: string;
+}): { valid: boolean; errors: string[] } {
+    const errors: string[] = [];
+
+    // Validar fechas básicas
+    const start = new Date(params.startDate);
+    const end = new Date(params.endDate);
+
+    if (end < start) {
+        errors.push('La fecha de fin no puede ser anterior a la fecha de inicio.');
+    }
+
+    // Para vacaciones, validar elegibilidad y saldo
+    if (params.type === 'vacation') {
+        // Verificar antigüedad
+        const eligibility = checkVacationEligibility(params.hireDate);
+        if (!eligibility.eligible) {
+            errors.push(`No tienes la antigüedad requerida. Faltan ${eligibility.daysUntilEligible} días para cumplir 1 año.`);
+        }
+
+        // Verificar saldo disponible
+        if (params.vacationBalance) {
+            const daysRequested = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+            if (daysRequested > params.vacationBalance.daysAvailable) {
+                errors.push(`Solo tienes ${params.vacationBalance.daysAvailable} días disponibles. Solicitaste ${daysRequested} días.`);
+            }
+        }
+    }
+
+    // Verificar conflictos de fechas
+    const conflictResult = checkDateConflict(
+        params.employeeId,
+        params.startDate,
+        params.endDate,
+        params.existingIncidences,
+        params.excludeIncidenceId
+    );
+
+    if (conflictResult.hasConflict && conflictResult.message) {
+        errors.push(conflictResult.message);
+    }
+
+    return {
+        valid: errors.length === 0,
+        errors
+    };
+}

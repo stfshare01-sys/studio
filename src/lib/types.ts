@@ -1,3 +1,1524 @@
-// This file is now a facade for the modular type system.
-// Please use @/types/{module} or @/types in new code.
-export * from '../types';
+
+
+
+
+// -------------------------------------------------------------------------
+// System Roles - Built-in roles (cannot be deleted)
+// -------------------------------------------------------------------------
+export type SystemRole = 'Admin' | 'Member' | 'Designer' | 'HRManager' | 'Manager';
+
+// UserRole can be a system role or a custom role ID
+export type UserRole = SystemRole | string;
+export type UserStatus = 'active' | 'disabled';
+
+// -------------------------------------------------------------------------
+// Permission System Types
+// -------------------------------------------------------------------------
+
+// Permission levels for modules and features
+export type PermissionLevel = 'read' | 'write' | 'hidden';
+
+// Application modules that can have permissions assigned
+export type AppModule =
+  | 'dashboard'
+  | 'requests'
+  | 'templates'
+  | 'master_lists'
+  | 'reports'
+  | 'process_mining'
+  | 'integrations'
+  | 'admin_users'
+  | 'admin_roles'
+  | 'hcm_employees'
+  | 'hcm_attendance'
+  | 'hcm_incidences'
+  | 'hcm_prenomina'
+  | 'hcm_calendar'
+  | 'hcm_org_chart'
+  | 'hcm_talent_grid'
+  | 'hcm_admin_shifts'
+  | 'hcm_admin_positions'
+  | 'hcm_admin_locations'
+  | 'hcm_settlements';
+
+// Permission for a specific module
+export type ModulePermission = {
+  module: AppModule;
+  level: PermissionLevel;
+};
+
+// Custom role definition stored in Firestore
+export type Role = {
+  id: string;
+  name: string;
+  description?: string;
+  isSystemRole: boolean;       // true for Admin, Member, Designer, etc.
+  permissions: ModulePermission[];
+  createdAt: string;
+  updatedAt: string;
+  createdById?: string;
+};
+
+// Module metadata for UI display
+export type ModuleInfo = {
+  id: AppModule;
+  name: string;
+  description: string;
+  category: 'general' | 'admin' | 'hcm';
+  icon?: string;
+};
+
+export type User = {
+  id: string;
+  fullName: string;
+  avatarUrl?: string;
+  email: string;
+  department: string;           // Legacy: nombre del departamento (string)
+  departmentId?: string;        // NEW: referencia a departments/{id}
+  skills?: string[];
+  currentWorkload?: number;
+  role: UserRole;
+  customRoleId?: string;       // If role is custom, stores the role document ID
+  status: UserStatus;
+  managerId?: string; // ID of the user's manager
+};
+
+// Represents a step within a template, before it becomes a live task
+export type WorkflowStepType = 'task' | 'gateway-exclusive' | 'gateway-parallel' | 'gateway-inclusive' | 'timer';
+
+export type EscalationPolicy = {
+  action: 'NOTIFY' | 'REASSIGN';
+  targetRole?: string; // For REASSIGN action
+  notify: ('assignee' | 'manager' | 'submitter')[];
+};
+
+// -------------------------------------------------------------------------
+// Field State Override Types (for dynamic states per task)
+// -------------------------------------------------------------------------
+
+export type FieldStateOverride = {
+  fieldId: string;
+  readOnly?: boolean;
+  required?: boolean;
+  visible?: boolean;
+  defaultValue?: any;
+};
+
+// -------------------------------------------------------------------------
+// Timer Configuration Types
+// -------------------------------------------------------------------------
+
+export type TimerType = 'duration' | 'date';
+
+export type TimerConfig = {
+  type: TimerType;
+  durationHours?: number;       // For duration type: wait X hours
+  durationDays?: number;        // For duration type: wait X days
+  targetDate?: string;          // For date type: wait until specific date
+  targetDateFieldId?: string;   // For date type: get date from form field
+};
+
+// -------------------------------------------------------------------------
+// Assignee Source Types (for assignment by field)
+// -------------------------------------------------------------------------
+
+export type AssigneeSourceType = 'role' | 'field' | 'user' | 'submitter';
+
+export type AssigneeSource = {
+  type: AssigneeSourceType;
+  role?: string;              // For role-based assignment
+  fieldId?: string;           // For field-based assignment (email field)
+  userId?: string;            // For direct user assignment
+};
+
+// -------------------------------------------------------------------------
+// Lookup Field Configuration
+// -------------------------------------------------------------------------
+
+export type LookupMapping = {
+  sourceField: string;        // Field in source data
+  targetFieldId: string;      // Field in form to populate
+};
+
+export type LookupConfig = {
+  sourceType: 'master-list' | 'collection';
+  masterListId?: string;
+  collectionPath?: string;
+  lookupKeyField: string;     // Field in source to match against
+  mappings: LookupMapping[];  // Which fields to populate
+};
+
+// -------------------------------------------------------------------------
+// Default Value Rules (conditional defaults)
+// -------------------------------------------------------------------------
+
+export type DefaultValueRuleCondition = {
+  fieldId: string;
+  operator: RuleOperator;
+  value: any;
+};
+
+export type DefaultValueRule = {
+  id: string;
+  targetFieldId: string;
+  value: any;                 // Value to set (can be static or expression like "@fieldId")
+  conditions?: DefaultValueRuleCondition[];
+  logic?: VisibilityLogicalOperator;
+  triggerOnChange?: string[]; // Field IDs that trigger re-evaluation
+};
+
+// -------------------------------------------------------------------------
+// Field Layout Configuration (grid layout)
+// -------------------------------------------------------------------------
+
+export type FieldLayoutConfig = {
+  fieldId: string;
+  row: number;                // Row index (0-based)
+  column: number;             // Column position (1-5)
+  colspan?: number;           // Number of columns to span (1-5, default 5 = full width)
+};
+
+// -------------------------------------------------------------------------
+// Public Form / External Participants
+// -------------------------------------------------------------------------
+
+export type PublicFormToken = {
+  id: string;
+  templateId: string;
+  requestId?: string;         // If linked to existing request
+  stepId?: string;            // Specific step for external participation
+  createdAt: string;
+  expiresAt: string;
+  createdBy: string;          // User who created the link
+  email?: string;             // Optional: restrict to specific email
+  maxUses?: number;           // Optional: limit number of submissions
+  usedCount: number;
+  isActive: boolean;
+};
+
+export type WorkflowStepDefinition = {
+  id: string;
+  name: string;
+  type: WorkflowStepType;
+  assigneeRole?: string; // e.g., 'Finance Approver', 'IT Support' (legacy)
+  // For exclusive gateways, defines possible outcomes
+  outcomes?: string[];
+  slaHours?: number; // Service Level Agreement in hours
+  escalationPolicy?: EscalationPolicy;
+
+  // NEW: Advanced assignee configuration
+  assigneeSource?: AssigneeSource;
+
+  // NEW: Field state overrides for this specific task
+  fieldOverrides?: FieldStateOverride[];
+
+  // NEW: Timer configuration (for timer steps)
+  timerConfig?: TimerConfig;
+
+  // NEW: Allow external participants without authentication
+  allowExternalParticipants?: boolean;
+  externalParticipantEmail?: string;  // Specific email for external participant
+
+  // NEW: For inclusive gateway - which conditions must be true
+  inclusiveConditions?: {
+    targetStepId: string;
+    condition: RuleCondition;
+  }[];
+
+  // NEW: Gateway routing configuration
+  routes?: GatewayRoute[];
+};
+
+// Gateway route configuration
+export type GatewayRoute = {
+  id: string;
+  targetStepId: string;
+  condition?: {
+    sourceType: 'form' | 'outcome';
+    fieldId: string;
+    operator: RuleOperator;
+    value: string | number;
+  };
+  isDefault?: boolean;
+};
+
+export type TaskStatus = 'Completed' | 'Pending' | 'Active';
+
+// Represents a live, actionable task assigned to a user, based on a WorkflowStepDefinition
+export type Task = {
+  id: string; // Unique ID for the task document itself
+  requestTitle: string; // Denormalized from parent request
+  requestId: string; // ID of the parent request
+  requestOwnerId: string; // ID of the user who submitted the request
+  stepId: string; // ID from the original WorkflowStepDefinition in the template
+  name: string; // Name of the step/task
+  status: TaskStatus;
+  assigneeId: string | null;
+  completedAt: string | null;
+  createdAt: string; // Timestamp when the task was created
+  activatedAt?: string; // Timestamp when the task became active
+  slaExpiresAt?: string; // Timestamp when the SLA for this task expires
+  isEscalated?: boolean; // Flag to prevent multiple escalations
+};
+
+export type Document = {
+  id: string;
+  requestId: string;
+  filename: string;
+  contentType: string;
+  size: number;
+  uploadDate: string;
+  url: string;
+  storagePath: string; // Path in Firebase Storage
+};
+
+export type RequestPriority = 'Baja' | 'Media' | 'Alta';
+
+export type Request = {
+  id: string;
+  title: string;
+  templateId: string;
+  status: 'In Progress' | 'Completed' | 'Rejected';
+  priority: RequestPriority;
+  createdAt: string;
+  updatedAt: string;
+  completedAt?: string | null; // Added for cycle time calculation
+  submittedBy: string; // User ID
+  // Steps are now mainly for historical/display purposes within the request context
+  steps: {
+    id: string; // Matches stepId from template
+    name: string;
+    status: TaskStatus;
+    assigneeId: string | null;
+    completedAt: string | null;
+    taskId: string | null; // Reference to the document in the /tasks collection
+    outcome?: string | null; // The result of a decision task
+  }[];
+  formData: Record<string, any>;
+  documents: Document[];
+  template?: Template; // Denormalized template data
+};
+
+export type FormFieldType =
+  | 'text'
+  | 'textarea'
+  | 'number'
+  | 'date'
+  | 'select'
+  | 'checkbox'
+  | 'radio'
+  | 'file'
+  // Advanced field types
+  | 'table'           // Interactive sub-table with multiple rows
+  | 'dynamic-select'  // Dropdown connected to Firestore collections/master lists
+  | 'user-identity'   // Auto-filled with logged-in user info (read-only)
+  | 'email'           // Email with format validation
+  | 'html';           // Custom HTML/script content for advanced layouts
+
+// -------------------------------------------------------------------------
+// Typography Configuration
+// -------------------------------------------------------------------------
+
+export type TypographyConfig = {
+  fontFamily?: 'default' | 'serif' | 'mono' | 'custom';
+  customFont?: string;           // Custom font name if fontFamily is 'custom'
+  fontSize?: 'xs' | 'sm' | 'base' | 'lg' | 'xl' | '2xl';
+  fontWeight?: 'normal' | 'medium' | 'semibold' | 'bold';
+  textColor?: string;            // Hex color or Tailwind class
+  textAlign?: 'left' | 'center' | 'right';
+  labelHidden?: boolean;         // Hide the field label
+};
+
+// -------------------------------------------------------------------------
+// Table Field Types
+// -------------------------------------------------------------------------
+
+export type TableColumnType = 'text' | 'number' | 'date' | 'select' | 'formula';
+
+export type TableColumnFormula = {
+  type: 'SUM' | 'AVG' | 'COUNT' | 'MIN' | 'MAX' | 'CUSTOM';
+  targetColumn?: string;      // Column ID for aggregation functions
+  expression?: string;        // Custom formula expression like "colA * colB"
+  referenceField?: string;    // Main form field reference using @fieldId syntax
+};
+
+export type TableColumnDefinition = {
+  id: string;
+  name: string;
+  type: TableColumnType;
+  options?: string[];           // For select columns
+  formula?: TableColumnFormula; // For formula columns
+  width?: number;               // Column width in pixels
+  required?: boolean;
+};
+
+export type TableRowData = {
+  _rowId: string;               // Internal row identifier
+  [columnId: string]: any;
+};
+
+// -------------------------------------------------------------------------
+// Dynamic Select Types
+// -------------------------------------------------------------------------
+
+export type DynamicSelectSourceType = 'master-list' | 'collection' | 'static';
+
+export type CascadeFilter = {
+  dependsOn: string;           // Field ID this dropdown depends on
+  filterField: string;         // Field in source data to filter by
+  operator: '==' | 'contains' | 'in';
+};
+
+export type DynamicSelectSource = {
+  type: DynamicSelectSourceType;
+  masterListId?: string;       // Reference to master_lists/{id}
+  collectionPath?: string;     // Direct Firestore collection path
+  labelField: string;          // Field to display as label
+  valueField: string;          // Field to use as value
+  filterConfig?: CascadeFilter;
+};
+
+// -------------------------------------------------------------------------
+// User Identity Field Types
+// -------------------------------------------------------------------------
+
+export type UserIdentityDisplayField = 'email' | 'fullName' | 'both';
+
+export type UserIdentityConfig = {
+  displayField: UserIdentityDisplayField;
+  includeTimestamp?: boolean;
+};
+
+export type UserIdentityValue = {
+  userId: string;
+  email: string;
+  fullName: string;
+  timestamp?: string;
+};
+
+// -------------------------------------------------------------------------
+// Visibility Rules Types
+// -------------------------------------------------------------------------
+
+export type VisibilityLogicalOperator = 'AND' | 'OR';
+
+export type VisibilityCondition = {
+  fieldId: string;
+  operator: RuleOperator;
+  value: any;
+};
+
+export type VisibilityRule = {
+  id: string;
+  targetFieldId: string;
+  logic: VisibilityLogicalOperator;
+  conditions: VisibilityCondition[];
+  action: 'show' | 'hide';     // What happens when condition is met
+};
+
+// -------------------------------------------------------------------------
+// Validation Rules Types
+// -------------------------------------------------------------------------
+
+export type ValidationType =
+  | 'required'
+  | 'min'
+  | 'max'
+  | 'minLength'
+  | 'maxLength'
+  | 'pattern'
+  | 'email'
+  | 'fileSize'
+  | 'fileType';
+
+export type ValidationRule = {
+  type: ValidationType;
+  value?: any;                  // The validation parameter (e.g., min value, pattern)
+  message?: string;             // Custom error message
+};
+
+// -------------------------------------------------------------------------
+// Legacy TableColumn (for master lists)
+// -------------------------------------------------------------------------
+
+export type TableColumn = {
+  id: string;
+  name: string;
+  type: 'text' | 'number' | 'date' | 'select';
+  options?: string[]; // For select type columns
+};
+
+// -------------------------------------------------------------------------
+// Extended FormField Type
+// -------------------------------------------------------------------------
+
+export type FormField = {
+  id: string;
+  label: string;
+  type: FormFieldType;
+  options?: string[];
+
+  // Table configuration
+  tableColumns?: TableColumnDefinition[];
+  minRows?: number;
+  maxRows?: number;
+  showSummaryRow?: boolean;    // Show auto-calculated summary row
+
+  // Dynamic select configuration
+  dynamicSource?: DynamicSelectSource;
+
+  // User identity configuration
+  userIdentityConfig?: UserIdentityConfig;
+
+  // Validation rules
+  validations?: ValidationRule[];
+
+  // General properties
+  placeholder?: string;
+  helpText?: string;
+  defaultValue?: any;
+  readOnly?: boolean;
+  required?: boolean;
+
+  // NEW: Lookup configuration - auto-populate other fields based on selection
+  lookupConfig?: LookupConfig;
+
+  // NEW: Typography configuration for field styling
+  typography?: TypographyConfig;
+
+  // NEW: HTML content for 'html' field type
+  htmlContent?: string;          // Raw HTML/script content to render
+};
+
+export type RuleOperator =
+  | '==' | '!=' // Generic equality
+  | '>' | '<' | '>=' | '<=' // For numbers
+  | 'contains' | 'not_contains' // For text
+  | 'is' | 'is_not'; // For selects/radios
+
+export type RuleCondition = {
+  fieldId: string; // Can be a form field ID or a step ID for outcome-based rules
+  operator: RuleOperator;
+  value: any;
+  type: 'form' | 'outcome'; // Distinguish between form data rules and workflow outcome rules
+};
+
+export type RuleAction =
+  | { type: 'REQUIRE_ADDITIONAL_STEP'; stepId: string; }
+  | { type: 'ROUTE_TO_STEP'; stepId: string; }
+  | { type: 'ASSIGN_USER'; stepId: string; userId: string; }
+  | { type: 'SEND_NOTIFICATION'; target: 'submitter' | UserRole; message: string; }
+  | { type: 'CHANGE_REQUEST_PRIORITY'; priority: RequestPriority; };
+
+export type Rule = {
+  id: string;
+  condition: RuleCondition;
+  action: RuleAction;
+};
+
+export type MasterListField = {
+  id: string;
+  label: string;
+  type: 'text' | 'number' | 'boolean' | 'date';
+}
+
+export type MasterList = {
+  id: string;
+  name: string;
+  description: string;
+  primaryKey: string;
+  fields: MasterListField[];
+}
+
+export type Template = {
+  id: string;
+  name: string;
+  description: string;
+  fields: FormField[];
+  steps: WorkflowStepDefinition[];
+  rules: Rule[];
+  pools?: {
+    id: string;
+    name: string;
+    lanes: {
+      id: string;
+      name: string;
+      steps: WorkflowStepDefinition[];
+    }[];
+  }[];
+  // Global visibility rules for conditional field display
+  visibilityRules?: VisibilityRule[];
+
+  // NEW: Field layout configuration for grid display
+  fieldLayout?: FieldLayoutConfig[];
+
+  // NEW: Default value rules with conditional logic
+  defaultValueRules?: DefaultValueRule[];
+
+  // NEW: Allow public form submissions (no authentication)
+  allowPublicSubmission?: boolean;
+};
+
+export type Comment = {
+  id: string;
+  requestId: string;
+  authorId: string;
+  text: string;
+  createdAt: string;
+};
+
+export type AuditLogAction = 'REQUEST_SUBMITTED' | 'STEP_ASSIGNEE_CHANGED' | 'COMMENT_ADDED' | 'STEP_COMPLETED' | 'DOCUMENT_DELETED';
+
+export type AuditLog = {
+  id: string;
+  requestId: string;
+  userId: string;
+  userFullName: string; // Denormalized for display
+  userAvatarUrl?: string; // Denormalized for display
+  timestamp: string;
+  action: AuditLogAction;
+  details: Record<string, any>;
+};
+
+
+// Enriched types for UI
+export type EnrichedWorkflowStep = Omit<Request['steps'][0], 'assigneeId'> & {
+  assignee: User | null;
+};
+
+export type EnrichedRequest = Omit<Request, 'submittedBy' | 'steps'> & {
+  submittedBy: User;
+  steps: EnrichedWorkflowStep[];
+  template: Template; // Enriched requests must have the template
+};
+
+export type EnrichedComment = Omit<Comment, 'authorId'> & {
+  author?: User;
+};
+
+// Analytics types
+export type TaskDuration = {
+  name: string;
+  duration: number;
+};
+
+// =========================================================================
+// HCM MODULE TYPES - Sistema de Gestión de Capital Humano
+// =========================================================================
+
+// Extend UserRole to include HRManager
+export type ExtendedUserRole = UserRole | 'HRManager' | 'Manager';
+
+export type EmploymentType = 'full_time' | 'part_time' | 'contractor' | 'intern';
+export type ShiftType = 'diurnal' | 'nocturnal' | 'mixed';
+export type IncidenceType = 'vacation' | 'sick_leave' | 'personal_leave' | 'maternity' | 'paternity' | 'bereavement' | 'unjustified_absence';
+export type IncidenceStatus = 'pending' | 'approved' | 'rejected' | 'cancelled';
+export type OnboardingPhase = 'day_0' | 'day_30' | 'day_60' | 'day_90' | 'completed';
+
+/**
+ * Expediente Digital del Empleado
+ * Extiende el tipo User existente con datos laborales según LFT
+ */
+export type Employee = User & {
+  // Datos fiscales y legales (LFT compliance)
+  rfc_curp?: string;           // RFC con homoclave + CURP
+  nss?: string;                // Número de Seguridad Social (IMSS)
+
+  // Datos laborales
+  employmentType: EmploymentType;
+  shiftType: ShiftType;
+  hireDate: string;            // Fecha de ingreso (ISO 8601)
+  terminationDate?: string;    // Fecha de baja (si aplica)
+  costCenter?: string;         // Centro de costos contable
+  positionTitle: string;       // Puesto / cargo
+
+  // Datos financieros (sensibles)
+  clabe?: string;              // Cuenta bancaria CLABE 18 dígitos
+
+  // Onboarding
+  onboardingStatus?: OnboardingPhase;
+  mentorId?: string;           // ID del mentor asignado
+  onboardingObjectives?: OnboardingObjective[];
+
+  // Evaluación 9-Box Grid
+  performanceRating?: 1 | 2 | 3 | 4 | 5;
+  potentialRating?: 1 | 2 | 3 | 4 | 5;
+  lastEvaluationDate?: string;
+
+  // Lista negra (offboarding)
+  isBlacklisted?: boolean;
+  blacklistReason?: string;
+  blacklistDate?: string;
+};
+
+/**
+ * Objetivo SMART para Onboarding
+ */
+export type OnboardingObjective = {
+  id: string;
+  phase: OnboardingPhase;
+  description: string;
+  isCompleted: boolean;
+  completedAt?: string;
+  notes?: string;
+};
+
+/**
+ * Registro de Compensación
+ * Contiene información salarial y factores de integración según LFT
+ */
+export type Compensation = {
+  id: string;
+  employeeId: string;
+
+  // Salario base
+  salaryDaily: number;          // Salario diario base
+  salaryMonthly?: number;       // Salario mensual (calculado)
+
+  // Salario Diario Integrado (SDI)
+  sdiBase: number;              // SDI calculado
+  sdiFactor: number;            // Factor de integración (típicamente 1.0452 - 1.0493)
+
+  // Prestaciones LFT
+  vacationDays: number;         // Días de vacaciones según antigüedad (Art. 76 LFT)
+  vacationPremium: number;      // Prima vacacional (25% mínimo según Art. 80 LFT)
+  aguinaldoDays: number;        // Días de aguinaldo (15 mínimo según Art. 87 LFT)
+
+  // Prestaciones superiores a la ley
+  savingsFundPercentage?: number;  // Fondo de ahorro (%)
+  foodVouchersDaily?: number;      // Vales de despensa diarios
+
+  // Vigencia
+  effectiveDate: string;        // Fecha de vigencia
+  endDate?: string;             // Fecha fin (si hay cambio de tabulador)
+
+  // Auditoría
+  createdAt: string;
+  updatedAt: string;
+  createdById: string;
+};
+
+/**
+ * Registro de Asistencia
+ * Importado de sistema externo (biométrico, reloj checador, etc.)
+ */
+export type AttendanceRecord = {
+  id: string;
+  employeeId: string;
+
+  // Fecha y hora
+  date: string;                 // YYYY-MM-DD
+  checkIn?: string;             // HH:mm:ss (hora de entrada)
+  checkOut?: string;            // HH:mm:ss (hora de salida)
+
+  // Cálculos automáticos
+  hoursWorked: number;          // Total horas trabajadas
+  regularHours: number;         // Horas dentro de jornada normal
+  overtimeHours: number;        // Horas extra totales
+  overtimeType?: 'double' | 'triple'; // Tipo según "Ley de los 9s"
+
+  // Estado y validación
+  isValid: boolean;             // Validación de jornada según turno
+  validationNotes?: string;     // Notas de validación (ej: "Excede jornada diurna")
+
+  // Incidencia relacionada (si aplica)
+  linkedIncidenceId?: string;   // Si hay permiso/incapacidad que justifica
+
+  // Lote de importación
+  importBatchId: string;        // ID del lote de importación
+
+  // Auditoría
+  createdAt: string;
+};
+
+/**
+ * Incidencias y Permisos
+ * Gestiona ausencias, vacaciones, incapacidades según LFT
+ */
+export type Incidence = {
+  id: string;
+  employeeId: string;
+  employeeName?: string;        // Denormalizado para consultas rápidas
+
+  // Tipo y fechas
+  type: IncidenceType;
+  startDate: string;            // Fecha inicio
+  endDate: string;              // Fecha fin
+  totalDays: number;            // Días totales
+
+  // Estado del flujo
+  status: IncidenceStatus;
+  isPaid: boolean;              // Con o sin goce de sueldo
+
+  // Datos específicos según tipo
+  imssReference?: string;       // Folio IMSS para incapacidades
+  imssPercentage?: number;      // % que cubre IMSS (40% o 60%)
+
+  // Flujo de aprobación
+  requestId?: string;           // Referencia al Request del workflow
+  approvedById?: string;
+  approvedByName?: string;      // Denormalizado
+  approvedAt?: string;
+  rejectionReason?: string;
+
+  // Información adicional
+  notes?: string;
+  attachmentUrls?: string[];    // Documentos adjuntos (constancias médicas, etc.)
+
+  // Auditoría
+  createdAt: string;
+  updatedAt: string;
+};
+
+/**
+ * Registro de Pre-Nómina Consolidada
+ * Resumen por empleado por período de pago
+ */
+export type PrenominaRecord = {
+  id: string;
+  employeeId: string;
+  employeeName?: string;        // Denormalizado
+  employeeRfc?: string;         // Denormalizado para exportación
+
+  // Período
+  periodStart: string;          // Inicio del período (YYYY-MM-DD)
+  periodEnd: string;            // Fin del período (YYYY-MM-DD)
+  periodType: 'weekly' | 'biweekly' | 'monthly';
+
+  // Percepciones
+  salaryBase: number;           // Salario base del período
+  daysWorked: number;           // Días trabajados
+
+  // Horas extra (según "Ley de los 9s")
+  overtimeDoubleHours: number;  // Horas dobles (primeras 9 semanales)
+  overtimeDoubleAmount: number; // Monto horas dobles
+  overtimeTripleHours: number;  // Horas triples (excedente de 9)
+  overtimeTripleAmount: number; // Monto horas triples
+
+  // Prima dominical (si aplica)
+  sundayPremiumDays: number;
+  sundayPremiumAmount: number;  // 25% adicional según Art. 71 LFT
+
+  // Deducciones
+  absenceDays: number;          // Días de falta
+  absenceDeductions: number;    // Deducciones por faltas no justificadas
+
+  // Incidencias del período
+  vacationDaysTaken: number;
+  sickLeaveDays: number;
+  paidLeaveDays: number;
+  unpaidLeaveDays: number;
+
+  // Totales
+  grossPay: number;             // Total percepciones
+  totalDeductions: number;      // Total deducciones (sin ISR, solo prenómina)
+  netPay: number;               // Neto a pagar
+
+  // Salario bajo demanda (Liquidity)
+  earnedWage: number;           // Salario neto generado disponible para retiro
+
+  // Estado y exportación
+  status: 'draft' | 'reviewed' | 'exported' | 'locked';
+  reviewedById?: string;
+  reviewedAt?: string;
+  exportedAt?: string;
+  exportedById?: string;
+  exportFormat?: 'nomipaq' | 'excel' | 'json';
+
+  // Contabilidad
+  costCenter?: string;          // Centro de costos
+  accountingPolicyId?: string;  // ID de póliza contable generada
+
+  // Auditoría
+  createdAt: string;
+  updatedAt: string;
+};
+
+/**
+ * Bolsa de Horas Compensatorias
+ * "Tiempo por tiempo" según mutuo acuerdo
+ */
+export type TimeBank = {
+  id: string;
+  employeeId: string;
+
+  // Saldos
+  hoursEarned: number;          // Horas acumuladas por trabajo extra
+  hoursUsed: number;            // Horas compensadas/usadas
+  hoursBalance: number;         // Saldo disponible (earned - used)
+  hoursExpired: number;         // Horas expiradas (si aplica política)
+
+  // Política
+  expirationMonths?: number;    // Meses para expiración (null = no expira)
+
+  // Auditoría
+  lastUpdated: string;
+  movements: TimeBankMovement[];
+};
+
+/**
+ * Movimiento en Bolsa de Horas
+ */
+export type TimeBankMovement = {
+  id: string;
+  type: 'earn' | 'use' | 'expire' | 'adjustment';
+  hours: number;
+  date: string;
+  description: string;
+  approvedById?: string;
+};
+
+/**
+ * Lote de Importación de Asistencia
+ */
+export type AttendanceImportBatch = {
+  id: string;
+  filename: string;
+  fileSize: number;
+  mimeType: string;
+
+  // Procesamiento
+  uploadedById: string;
+  uploadedByName?: string;
+  uploadedAt: string;
+
+  // Resultados
+  recordCount: number;          // Total registros procesados
+  successCount: number;         // Registros exitosos
+  errorCount: number;           // Registros con error
+
+  // Estado
+  status: 'uploading' | 'processing' | 'completed' | 'failed' | 'partial';
+  errors?: ImportError[];
+
+  // Período cubierto
+  dateRangeStart?: string;
+  dateRangeEnd?: string;
+};
+
+export type EmployeeImportBatch = {
+  id: string;
+  filename: string;
+  fileSize: number;
+  mimeType: string;
+  uploadedById: string;
+  uploadedByName?: string;
+  uploadedAt: string;
+  recordCount: number;
+  successCount: number;
+  errorCount: number;
+  status: 'uploading' | 'processing' | 'completed' | 'failed' | 'partial';
+  errors?: ImportError[];
+};
+
+/**
+ * Error de Importación
+ */
+export type ImportError = {
+  row: number;
+  column?: string;
+  employeeId?: string;
+  message: string;
+  severity: 'warning' | 'error';
+};
+
+/**
+ * Póliza Contable de Nómina
+ */
+export type AccountingPolicy = {
+  id: string;
+  prenominalPeriodStart: string;
+  prenominalPeriodEnd: string;
+
+  // Cuentas contables
+  entries: AccountingEntry[];
+
+  // Totales
+  totalDebit: number;
+  totalCredit: number;
+  isBalanced: boolean;
+
+  // Estado
+  status: 'draft' | 'posted' | 'cancelled';
+  postedAt?: string;
+  postedById?: string;
+
+  // Auditoría
+  createdAt: string;
+  createdById: string;
+};
+
+/**
+ * Entrada de Póliza Contable
+ */
+export type AccountingEntry = {
+  accountCode: string;          // Código de cuenta contable
+  accountName: string;          // Nombre de cuenta
+  costCenter?: string;          // Centro de costos
+  debit: number;                // Cargo
+  credit: number;               // Abono
+  concept: string;              // Concepto
+};
+
+/**
+ * Configuración de Calendario Laboral
+ * Días festivos oficiales según LFT
+ */
+export type HolidayCalendar = {
+  id: string;
+  year: number;
+  holidays: OfficialHoliday[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+/**
+ * Día Festivo Oficial
+ */
+export type OfficialHoliday = {
+  date: string;                 // YYYY-MM-DD
+  name: string;                 // Nombre del día festivo
+  isObligatory: boolean;        // Descanso obligatorio según Art. 74 LFT
+  premiumRequired: boolean;     // Requiere pago de prima (200%)
+};
+
+/**
+ * Datos de Liquidación/Finiquito
+ */
+export type SettlementCalculation = {
+  id: string;
+  employeeId: string;
+  employeeName?: string;
+
+  // Tipo
+  type: 'resignation' | 'dismissal_justified' | 'dismissal_unjustified' | 'mutual_agreement';
+  terminationDate: string;
+
+  // Cálculos
+  proportionalVacation: number;
+  proportionalVacationPremium: number;
+  proportionalAguinaldo: number;
+  salaryPending: number;
+
+  // Indemnizaciones (según tipo)
+  severancePay?: number;        // 3 meses de salario (Art. 48 LFT)
+  seniorityPremium?: number;    // Prima de antigüedad (12 días/año, Art. 162 LFT)
+  twentyDaysPerYear?: number;   // 20 días por año (despido injustificado)
+
+  // Totales
+  totalPerceptions: number;
+  totalDeductions: number;
+  netSettlement: number;
+
+  // Estado
+  status: 'preliminary' | 'final' | 'paid';
+  paidAt?: string;
+
+  // Auditoría
+  calculatedAt: string;
+  calculatedById: string;
+};
+
+// =========================================================================
+// DEPARTAMENTOS
+// =========================================================================
+
+/**
+ * Departamento Organizacional
+ * Entidad completa con jefe, presupuesto y jerarquía
+ */
+export type Department = {
+  id: string;
+  name: string;                   // Nombre del departamento
+  code: string;                   // Código único (ej: "RH", "OPS", "FIN")
+  description?: string;           // Descripción del departamento
+
+  // Jerarquía organizacional
+  managerId?: string;             // ID del empleado responsable/jefe del departamento
+  parentDepartmentId?: string;    // Departamento padre (para jerarquías)
+
+  // Contabilidad
+  costCenter?: string;            // Centro de costos contable
+  budget?: number;                // Presupuesto asignado
+  budgetPeriod?: 'monthly' | 'quarterly' | 'annual';
+
+  // Ubicación física principal
+  locationId?: string;            // Ubicación física principal del departamento
+
+  // Estado
+  isActive: boolean;
+
+  // Auditoría
+  createdAt: string;
+  updatedAt: string;
+  createdById?: string;
+};
+
+// =========================================================================
+// UBICACIONES, PUESTOS Y TURNOS
+// =========================================================================
+
+/**
+ * Tipo de ubicación
+ */
+export type LocationType = 'cedis' | 'tienda' | 'corporativo' | 'planta' | 'otro';
+
+/**
+ * Ubicación / Sucursal
+ * Representa una ubicación física de la empresa
+ */
+export type Location = {
+  id: string;
+  name: string;                   // Nombre de la ubicación
+  code: string;                   // Código único (ej: "CEDIS-GDL", "T001")
+  type: LocationType;             // Tipo de ubicación
+  address?: string;               // Dirección
+  city?: string;                  // Ciudad
+  state?: string;                 // Estado
+
+  // Configuración de nómina
+  overtimeResetDay: 'sunday' | 'saturday' | 'custom'; // Día de reinicio de horas extras
+  customOvertimeResetDay?: number;  // 0-6 si es custom
+
+  // Calendario específico
+  holidayCalendarId?: string;     // Calendario de días festivos específico
+  companyBenefitDays?: string[];  // Días de beneficio empresa (ej: "12-24", "12-31")
+
+  // Configuración de asistencia
+  toleranceMinutes: number;       // Tolerancia de entrada en minutos (default: 10)
+  useVirtualCheckIn?: boolean;    // Usar check-in virtual (Home Office)
+
+  // Estado
+  isActive: boolean;
+
+  // Auditoría
+  createdAt: string;
+  updatedAt: string;
+  createdById: string;
+};
+
+/**
+ * Puesto / Cargo
+ * Catálogo de puestos de la empresa
+ */
+export type Position = {
+  id: string;
+  name: string;                   // Nombre del puesto
+  code: string;                   // Código único
+  department: string;             // Legacy: nombre del departamento (string)
+  departmentId?: string;          // NEW: referencia a departments/{id}
+  level: number;                  // Nivel jerárquico (1 = director, 2 = gerente, etc.)
+
+  // Configuración salarial
+  salaryMin?: number;             // Salario mínimo del tabulador
+  salaryMax?: number;             // Salario máximo del tabulador
+
+  // Permisos especiales
+  canApproveOvertime?: boolean;   // Puede aprobar horas extras
+  canApproveIncidences?: boolean; // Puede aprobar incidencias
+
+  // Estado
+  isActive: boolean;
+
+  // Auditoría
+  createdAt: string;
+  updatedAt: string;
+};
+
+/**
+ * Turno personalizado
+ * Permite configurar turnos específicos por empleado/ubicación
+ */
+export type CustomShift = {
+  id: string;
+  name: string;                   // Nombre del turno (ej: "Turno Matutino")
+  code: string;                   // Código (ej: "TM-01")
+  type: ShiftType;                // Tipo base (diurnal, nocturnal, mixed)
+
+  // Horarios
+  startTime: string;              // Hora de entrada (HH:mm)
+  endTime: string;                // Hora de salida (HH:mm)
+  breakStartTime?: string;        // Inicio de descanso
+  breakEndTime?: string;          // Fin de descanso
+  breakMinutes: number;           // Minutos de descanso (si no hay horario específico)
+
+  // Días de la semana laborables (0=Dom, 1=Lun, ..., 6=Sab)
+  workDays: number[];             // ej: [1, 2, 3, 4, 5] para Lun-Vie
+
+  // Días de descanso
+  restDays: number[];             // ej: [0, 6] para Dom y Sab
+
+  // Horas calculadas
+  dailyHours: number;             // Horas diarias normales
+  weeklyHours: number;            // Horas semanales normales
+
+  // Ubicación (opcional, si es turno específico de ubicación)
+  locationId?: string;
+
+  // Estado
+  isActive: boolean;
+
+  // Auditoría
+  createdAt: string;
+  updatedAt: string;
+};
+
+// =========================================================================
+// CONTROL DE VACACIONES
+// =========================================================================
+
+/**
+ * Saldo de Vacaciones del Empleado
+ * Control del saldo de vacaciones disponible
+ */
+export type VacationBalance = {
+  id: string;
+  employeeId: string;
+
+  // Período actual (año de aniversario)
+  periodStart: string;            // Fecha de inicio del período (aniversario)
+  periodEnd: string;              // Fecha de fin del período
+
+  // Días según antigüedad (Reforma 2023)
+  daysEntitled: number;           // Días que le corresponden según antigüedad
+  yearsOfService: number;         // Años de antigüedad al inicio del período
+
+  // Control de saldo
+  daysTaken: number;              // Días ya tomados
+  daysScheduled: number;          // Días programados (aprobados pero no tomados)
+  daysAvailable: number;          // Días disponibles (entitled - taken - scheduled)
+
+  // Prima vacacional
+  vacationPremiumPaid: boolean;   // Si ya se pagó la prima vacacional
+  vacationPremiumDate?: string;   // Fecha de pago de prima
+
+  // Historial de movimientos
+  movements: VacationMovement[];
+
+  // Auditoría
+  lastUpdated: string;
+  createdAt: string;
+};
+
+/**
+ * Movimiento de Vacaciones
+ */
+export type VacationMovement = {
+  id: string;
+  date: string;
+  type: 'taken' | 'scheduled' | 'cancelled' | 'reset' | 'adjustment';
+  days: number;                   // Días (positivo o negativo)
+  description: string;
+  incidenceId?: string;           // Referencia a la incidencia
+  approvedById?: string;
+};
+
+// =========================================================================
+// SISTEMA DE RETARDOS
+// =========================================================================
+
+/**
+ * Tipo de retardo
+ */
+export type TardinessType = 'entry' | 'exit' | 'break';
+
+/**
+ * Registro de Retardo
+ */
+export type TardinessRecord = {
+  id: string;
+  employeeId: string;
+  date: string;
+  attendanceRecordId: string;     // Referencia al registro de asistencia
+
+  // Detalle del retardo
+  type: TardinessType;
+  scheduledTime: string;          // Hora programada (HH:mm)
+  actualTime: string;             // Hora real (HH:mm)
+  minutesLate: number;            // Minutos de retardo
+
+  // Estado
+  isJustified: boolean;           // Si fue justificado
+  justificationReason?: string;   // Razón de justificación
+  justifiedById?: string;         // Quién justificó
+  justifiedAt?: string;           // Cuándo se justificó
+
+  // Acumulación
+  periodStartDate: string;        // Inicio del período de 30 días
+  tardinessCountInPeriod: number; // Contador de retardos en el período
+  tardinessCountInWeek: number;   // Contador de retardos en la semana
+
+  // Sanción aplicada
+  sanctionApplied: boolean;
+  sanctionType?: 'suspension_1day' | 'warning';
+  sanctionDate?: string;
+  sanctionResetById?: string;     // Si se hizo reset de sanción
+
+  // Auditoría
+  createdAt: string;
+  updatedAt: string;
+};
+
+/**
+ * Configuración de Retardos por Ubicación
+ */
+export type TardinessPolicy = {
+  id: string;
+  locationId?: string;            // null = política global
+
+  // Tolerancia
+  toleranceMinutes: number;       // Minutos de tolerancia (default: 10)
+
+  // Reglas de acumulación
+  maxTardinessPerMonth: number;   // Máximo retardos en 30 días antes de sanción (default: 3)
+  maxTardinessPerWeek: number;    // Máximo retardos en 1 semana antes de sanción (default: 2)
+
+  // Sanciones
+  sanctionType: 'suspension_1day' | 'warning' | 'deduction';
+  autoApplySanction: boolean;     // Aplicar sanción automáticamente
+
+  // Período de acumulación
+  accumulationPeriodDays: number; // Días del período de acumulación (default: 30)
+
+  // Estado
+  isActive: boolean;
+
+  // Auditoría
+  createdAt: string;
+  updatedAt: string;
+};
+
+// =========================================================================
+// APROBACIÓN DE HORAS EXTRAS
+// =========================================================================
+
+/**
+ * Solicitud de Horas Extra
+ */
+export type OvertimeRequest = {
+  id: string;
+  employeeId: string;
+  employeeName?: string;
+
+  // Detalles de la solicitud
+  date: string;                   // Fecha de las horas extras
+  hoursRequested: number;         // Horas solicitadas
+  reason: string;                 // Razón de las horas extras
+
+  // Flujo de aprobación
+  status: 'pending' | 'approved' | 'rejected' | 'partial';
+  hoursApproved?: number;         // Horas aprobadas (puede ser menor a solicitadas)
+
+  // Aprobador
+  approverLevel: 1 | 2;           // Nivel 1 = jefe directo, Nivel 2 = siguiente nivel
+  requestedToId: string;          // A quién se solicitó aprobación
+  requestedToName?: string;
+  approvedById?: string;
+  approvedByName?: string;
+  approvedAt?: string;
+  rejectionReason?: string;
+
+  // Vinculación con asistencia
+  attendanceRecordId?: string;    // Referencia al registro de asistencia
+
+  // Auditoría
+  createdAt: string;
+  updatedAt: string;
+};
+
+// =========================================================================
+// BLOQUEO DE PERÍODOS DE NÓMINA
+// =========================================================================
+
+/**
+ * Bloqueo de Período de Nómina
+ * Una vez descargada la pre-nómina, se bloquea el período
+ */
+export type PayrollPeriodLock = {
+  id: string;
+
+  // Período bloqueado
+  periodStart: string;
+  periodEnd: string;
+  periodType: 'weekly' | 'biweekly' | 'monthly';
+
+  // Ubicación (opcional, puede ser global)
+  locationId?: string;
+
+  // Estado del bloqueo
+  isLocked: boolean;
+  lockedAt: string;
+  lockedById: string;
+  lockedByName?: string;
+
+  // Referencia a pre-nómina exportada
+  prenominaExportId?: string;
+  exportFormat?: 'nomipaq' | 'excel' | 'json';
+
+  // Desbloqueo (solo Admin)
+  unlockedAt?: string;
+  unlockedById?: string;
+  unlockReason?: string;
+
+  // Auditoría
+  createdAt: string;
+  updatedAt: string;
+};
+
+/**
+ * Alerta de Duplicidad de Período
+ */
+export type PeriodDuplicateAlert = {
+  periodStart: string;
+  periodEnd: string;
+  existingLockId: string;
+  message: string;
+};
+
+// =========================================================================
+// NOMENCLATURA DE INCIDENCIAS PARA PRE-NÓMINA
+// =========================================================================
+
+/**
+ * Códigos de incidencias para la pre-nómina
+ * Según el informe de requerimientos
+ */
+export type IncidenceCode =
+  | 'FINJ'  // Falta Injustificada
+  | 'ASI'   // Asistencia
+  | 'INC'   // Incapacidad
+  | 'PSS'   // Permiso Sin goce de Sueldo
+  | 'PCS'   // Permiso Con goce de Sueldo
+  | 'DFT'   // Día Festivo Trabajado
+  | 'DD'    // Día de Descanso
+  | 'DL'    // Descanso Laborado
+  | 'HE2'   // Horas Extras Dobles
+  | 'HE3'   // Horas Extras Triples
+  | 'RET'   // Retardo
+  | 'PD'    // Prima Dominical
+  | 'VAC'   // Vacaciones
+  | 'PV'    // Prima Vacacional
+  | 'BJ';   // Baja
+
+/**
+ * Mapeo de tipos de incidencia a códigos
+ */
+export const INCIDENCE_CODE_MAP: Record<IncidenceType | 'attendance' | 'rest_day' | 'worked_rest_day' | 'holiday_worked' | 'tardiness' | 'termination', IncidenceCode> = {
+  vacation: 'VAC',
+  sick_leave: 'INC',
+  personal_leave: 'PCS',
+  maternity: 'INC',
+  paternity: 'PCS',
+  bereavement: 'PCS',
+  unjustified_absence: 'FINJ',
+  attendance: 'ASI',
+  rest_day: 'DD',
+  worked_rest_day: 'DL',
+  holiday_worked: 'DFT',
+  tardiness: 'RET',
+  termination: 'BJ'
+};
+
+// =========================================================================
+// REGISTRO DIARIO DE PRE-NÓMINA (DESGLOSE)
+// =========================================================================
+
+/**
+ * Entrada diaria para la tabla de pre-nómina
+ */
+export type DailyPrenominaEntry = {
+  date: string;                   // Fecha YYYY-MM-DD
+  dayOfWeek: number;              // 0-6
+  dayName: string;                // LUN, MAR, etc.
+
+  // Código principal del día
+  primaryCode: IncidenceCode;
+
+  // Códigos adicionales (ej: DL, PD para domingo trabajado)
+  additionalCodes?: IncidenceCode[];
+
+  // Horas extras del día
+  overtimeDoubleHours?: number;
+  overtimeTripleHours?: number;
+
+  // Indicadores
+  isHoliday: boolean;
+  isRestDay: boolean;
+  isSunday: boolean;
+  hasTardiness: boolean;
+
+  // Texto para celda (ej: "3HE2, 0.5HE3" o "DL, PD")
+  cellDisplay: string;
+};
+
+/**
+ * Registro detallado de Pre-Nómina con desglose diario
+ * Extiende PrenominaRecord con información adicional
+ */
+export type DetailedPrenominaRecord = PrenominaRecord & {
+  // Identificación completa
+  locationName?: string;
+  locationCode?: string;
+  departmentName?: string;
+  positionName?: string;
+
+  // Desglose diario
+  dailyEntries: DailyPrenominaEntry[];
+
+  // Acumulados numéricos (columnas finales)
+  totalDaysWorked: number;
+  totalRestDaysWorked: number;    // Días de descanso laborados (DL)
+  totalSundayPremiumDays: number; // Días con prima dominical (PD)
+  totalHolidaysWorked: number;    // Días festivos trabajados (DFT)
+  totalTardiness: number;         // Total de retardos (RET)
+  totalAbsences: number;          // Total de faltas (FINJ)
+  totalVacationDays: number;      // Total vacaciones (VAC)
+  totalSickLeaveDays: number;     // Total incapacidades (INC)
+
+  // Horas extras acumuladas
+  totalOvertimeDoubleHours: number;
+  totalOvertimeTripleHours: number;
+
+  // Prima vacacional (si es aniversario en el período)
+  vacationPremiumAnniversary: boolean;
+  vacationPremiumDays?: number;
+
+  // Semáforo de bono
+  bonusEligible: boolean;         // Verde = elegible, Rojo = no elegible
+  bonusIneligibleReason?: string; // Razón de no elegibilidad
+};
+
+// =========================================================================
+// EXTENSIÓN DE EMPLOYEE CON NUEVOS CAMPOS
+// =========================================================================
+
+/**
+ * Empleado con campos extendidos para el nuevo sistema
+ */
+export type ExtendedEmployee = Employee & {
+  // Ubicación y puesto
+  locationId?: string;            // ID de la ubicación
+  positionId?: string;            // ID del puesto
+
+  // Turno personalizado
+  customShiftId?: string;         // ID del turno personalizado
+
+  // Días de descanso específicos (override del turno)
+  customRestDays?: number[];      // ej: [0, 6] para Dom y Sab
+
+  // Jefe directo
+  directManagerId?: string;       // ID del jefe directo
+  secondLevelManagerId?: string;  // ID del jefe de segundo nivel
+
+  // Control de vacaciones
+  currentVacationBalanceId?: string;
+
+  // Último retardo y contador
+  lastTardinessDate?: string;
+  tardinessCountCurrent: number;  // Contador actual de retardos
+
+  // Fecha de baja (para pre-nómina)
+  terminationDate?: string;
+  terminationReason?: string;
+  showInPrenomina: boolean;       // Si mostrar en pre-nómina (false si baja completa)
+};

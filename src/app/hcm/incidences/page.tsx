@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import SiteLayout from '@/components/site-layout';
 import Link from 'next/link';
 import { useFirebase, useMemoFirebase } from '@/firebase/provider';
@@ -36,6 +36,7 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
     Calendar,
     CheckCircle2,
@@ -45,11 +46,13 @@ import {
     Search,
     Plus,
     FileText,
-    ArrowLeft
+    ArrowLeft,
+    AlertTriangle
 } from 'lucide-react';
 import type { Incidence, IncidenceType, IncidenceStatus } from '@/lib/types';
 import { createIncidence } from '@/firebase/hcm-actions';
 import { callApproveIncidence } from '@/firebase/callable-functions';
+import { checkDateConflict } from '@/lib/hcm-utils';
 import { format, differenceInDays } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
@@ -79,6 +82,10 @@ export default function IncidencesPage() {
         isPaid: true
     });
 
+    // Date conflict validation state
+    const [dateConflictError, setDateConflictError] = useState<string | null>(null);
+    const [isValidatingDates, setIsValidatingDates] = useState(false);
+
     const hasHRPermissions = useMemo(() => ['Admin', 'HRManager', 'Manager'].includes(user?.role || ''), [user]);
 
     const incidencesQuery = useMemoFirebase(() => {
@@ -104,6 +111,49 @@ export default function IncidencesPage() {
     }, [firestore, isUserLoading, user, hasHRPermissions, statusFilter]);
 
     const { data: incidences, isLoading } = useCollection<Incidence>(incidencesQuery);
+
+    // Real-time date conflict validation
+    useEffect(() => {
+        // Only validate when both dates are set and the dialog is open
+        if (!isCreateDialogOpen || !newIncidence.startDate || !newIncidence.endDate || !user) {
+            setDateConflictError(null);
+            return;
+        }
+
+        // Validate that end date is not before start date
+        if (new Date(newIncidence.endDate) < new Date(newIncidence.startDate)) {
+            setDateConflictError('La fecha de fin no puede ser anterior a la fecha de inicio.');
+            return;
+        }
+
+        setIsValidatingDates(true);
+
+        // Get user's existing incidences for conflict check
+        const userIncidences = incidences?.filter(inc => inc.employeeId === user.uid) || [];
+
+        // Check for date conflicts
+        const conflictResult = checkDateConflict(
+            user.uid,
+            newIncidence.startDate,
+            newIncidence.endDate,
+            userIncidences.map(inc => ({
+                id: inc.id,
+                employeeId: inc.employeeId,
+                type: inc.type,
+                startDate: inc.startDate,
+                endDate: inc.endDate,
+                status: inc.status
+            }))
+        );
+
+        if (conflictResult.hasConflict) {
+            setDateConflictError(conflictResult.message || 'Las fechas seleccionadas se solapan con otra incidencia.');
+        } else {
+            setDateConflictError(null);
+        }
+
+        setIsValidatingDates(false);
+    }, [newIncidence.startDate, newIncidence.endDate, isCreateDialogOpen, incidences, user]);
 
     // Filter incidences client-side for type and search
     const filteredIncidences = useMemo(() => {
@@ -598,7 +648,7 @@ export default function IncidencesPage() {
                                             type="date"
                                             value={newIncidence.startDate}
                                             onChange={(e) => setNewIncidence({ ...newIncidence, startDate: e.target.value })}
-                                            className="mt-1"
+                                            className={`mt-1 ${dateConflictError ? 'border-red-500' : ''}`}
                                         />
                                     </div>
                                     <div>
@@ -607,10 +657,29 @@ export default function IncidencesPage() {
                                             type="date"
                                             value={newIncidence.endDate}
                                             onChange={(e) => setNewIncidence({ ...newIncidence, endDate: e.target.value })}
-                                            className="mt-1"
+                                            className={`mt-1 ${dateConflictError ? 'border-red-500' : ''}`}
                                         />
                                     </div>
                                 </div>
+
+                                {/* Date conflict warning */}
+                                {dateConflictError && (
+                                    <Alert variant="destructive">
+                                        <AlertTriangle className="h-4 w-4" />
+                                        <AlertDescription>
+                                            {dateConflictError}
+                                        </AlertDescription>
+                                    </Alert>
+                                )}
+
+                                {/* Calculate and show days requested */}
+                                {newIncidence.startDate && newIncidence.endDate && !dateConflictError && (
+                                    <div className="text-sm text-muted-foreground bg-muted p-2 rounded">
+                                        <span className="font-medium">
+                                            {Math.ceil((new Date(newIncidence.endDate).getTime() - new Date(newIncidence.startDate).getTime()) / (1000 * 60 * 60 * 24)) + 1}
+                                        </span> días solicitados
+                                    </div>
+                                )}
 
                                 <div>
                                     <Label>Notas (opcional)</Label>
@@ -629,9 +698,9 @@ export default function IncidencesPage() {
                                 </Button>
                                 <Button
                                     onClick={handleCreateIncidence}
-                                    disabled={isSubmitting || !newIncidence.startDate || !newIncidence.endDate}
+                                    disabled={isSubmitting || !newIncidence.startDate || !newIncidence.endDate || !!dateConflictError || isValidatingDates}
                                 >
-                                    Enviar Solicitud
+                                    {isValidatingDates ? 'Validando...' : 'Enviar Solicitud'}
                                 </Button>
                             </DialogFooter>
                         </DialogContent>
