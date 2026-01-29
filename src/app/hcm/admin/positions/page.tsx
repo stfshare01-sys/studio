@@ -119,18 +119,24 @@ export default function PositionsAdminPage() {
         try {
             const now = new Date().toISOString();
 
-            const positionData = {
+            const positionData: Record<string, any> = {
                 name: formData.name,
                 code: formData.code.toUpperCase(),
                 department: formData.department,
                 level: formData.level,
-                salaryMin: formData.salaryMin ? parseFloat(formData.salaryMin) : undefined,
-                salaryMax: formData.salaryMax ? parseFloat(formData.salaryMax) : undefined,
                 canApproveOvertime: formData.canApproveOvertime,
                 canApproveIncidences: formData.canApproveIncidences,
                 isActive: true,
                 updatedAt: now,
             };
+
+            // Solo agregar salarios si tienen valor (Firestore no acepta undefined)
+            if (formData.salaryMin) {
+                positionData.salaryMin = parseFloat(formData.salaryMin);
+            }
+            if (formData.salaryMax) {
+                positionData.salaryMax = parseFloat(formData.salaryMax);
+            }
 
             if (isEditing && editingId) {
                 await updateDoc(doc(firestore, 'positions', editingId), positionData);
