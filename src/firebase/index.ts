@@ -4,7 +4,7 @@
 import { firebaseConfig } from '@/firebase/config';
 import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
 import { getAuth, Auth, connectAuthEmulator } from 'firebase/auth';
-import { getFirestore, Firestore, connectFirestoreEmulator } from 'firebase/firestore';
+import { getFirestore, Firestore, connectFirestoreEmulator, initializeFirestore } from 'firebase/firestore';
 import { getStorage, FirebaseStorage, connectStorageEmulator } from 'firebase/storage';
 import { getFunctions, Functions, connectFunctionsEmulator } from 'firebase/functions';
 
@@ -30,7 +30,12 @@ export function initializeFirebase(): FirebaseServices {
   // Get the Firebase App instance, initializing it if necessary
   const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
   const auth = getAuth(app);
-  const firestore = getFirestore(app);
+  let firestore: Firestore;
+  try {
+    firestore = initializeFirestore(app, { experimentalForceLongPolling: true });
+  } catch (e) {
+    firestore = getFirestore(app);
+  }
   const storage = getStorage(app);
   const functions = getFunctions(app, 'us-central1');
 

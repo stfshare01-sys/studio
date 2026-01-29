@@ -99,7 +99,7 @@ export default function EditEmployeePage({ params }: { params: Promise<{ id: str
                 employmentType: employee.employmentType,
                 shiftType: employee.shiftType,
                 hireDate: employee.hireDate?.split('T')[0] || '',
-                managerId: employee.managerId,
+                directManagerId: employee.directManagerId,
                 rfc_curp: employee.rfc_curp,
                 nss: employee.nss,
                 clabe: employee.clabe,
@@ -327,8 +327,8 @@ export default function EditEmployeePage({ params }: { params: Promise<{ id: str
                                 <div className="space-y-2">
                                     <Label>Jefe Directo</Label>
                                     <Select
-                                        value={formData.managerId || 'none'}
-                                        onValueChange={(v) => handleInputChange('managerId', v === 'none' ? undefined : v)}
+                                        value={formData.directManagerId || 'none'}
+                                        onValueChange={(v) => handleInputChange('directManagerId', v === 'none' ? undefined : v)}
                                     >
                                         <SelectTrigger>
                                             <SelectValue placeholder="Seleccionar jefe" />

@@ -36,6 +36,7 @@ export type AppModule =
   | 'hcm_calendar'
   | 'hcm_org_chart'
   | 'hcm_talent_grid'
+  | 'hcm_team_management'
   | 'hcm_admin_shifts'
   | 'hcm_admin_positions'
   | 'hcm_admin_locations'
@@ -1546,4 +1547,197 @@ export type ExtendedEmployee = Employee & {
   terminationDate?: string;
   terminationReason?: string;
   showInPrenomina: boolean;       // Si mostrar en pre-nómina (false si baja completa)
+};
+
+// =========================================================================
+// GESTIÓN DE EQUIPO - TIPOS PARA JEFES
+// =========================================================================
+
+/**
+ * Salida Temprana
+ * Registro de salida anticipada del empleado
+ */
+export type EarlyDeparture = {
+  id: string;
+  employeeId: string;
+  employeeName?: string;
+  date: string;                     // YYYY-MM-DD
+  scheduledEndTime: string;         // Hora programada de salida (HH:mm)
+  actualEndTime: string;            // Hora real de salida (HH:mm)
+  minutesEarly: number;             // Minutos antes de lo programado
+
+  // Estado de justificación
+  isJustified: boolean;
+  justificationReason?: string;
+  justifiedById?: string;
+  justifiedByName?: string;
+  justifiedAt?: string;
+
+  // Referencias
+  attendanceRecordId?: string;      // Referencia al registro de asistencia
+
+  // Auditoría
+  createdAt: string;
+  updatedAt: string;
+};
+
+/**
+ * Asignación de Turno (temporal o permanente)
+ * Permite al jefe asignar un turno diferente a un empleado
+ */
+export type ShiftAssignment = {
+  id: string;
+  employeeId: string;
+  employeeName?: string;
+
+  // Turnos
+  originalShiftId?: string;         // Turno original (para restaurar)
+  originalShiftName?: string;
+  newShiftId: string;               // Nuevo turno asignado
+  newShiftName?: string;
+
+  // Tipo de asignación
+  assignmentType: 'temporary' | 'permanent';
+  startDate: string;                // Fecha de inicio
+  endDate?: string;                 // Fecha fin (solo si es temporal)
+  reason: string;                   // Razón del cambio
+
+  // Estado
+  status: 'active' | 'completed' | 'cancelled';
+
+  // Aprobación
+  assignedById: string;
+  assignedByName?: string;
+  assignedAt: string;
+
+  // Auditoría
+  createdAt: string;
+  updatedAt: string;
+};
+
+/**
+ * Cambio de Horario (temporal o permanente)
+ * Permite al jefe modificar las horas de entrada/salida de un empleado
+ */
+export type ScheduleChange = {
+  id: string;
+  employeeId: string;
+  employeeName?: string;
+
+  // Horario original
+  originalStartTime: string;        // HH:mm
+  originalEndTime: string;          // HH:mm
+
+  // Nuevo horario
+  newStartTime: string;             // HH:mm
+  newEndTime: string;               // HH:mm
+
+  // Tipo de cambio
+  changeType: 'temporary' | 'permanent';
+  effectiveDate: string;            // Fecha de inicio del cambio
+  endDate?: string;                 // Fecha fin (solo si es temporal)
+  reason: string;                   // Razón del cambio
+
+  // Estado
+  status: 'active' | 'completed' | 'cancelled';
+
+  // Aprobación
+  assignedById: string;
+  assignedByName?: string;
+  assignedAt: string;
+
+  // Auditoría
+  createdAt: string;
+  updatedAt: string;
+};
+
+/**
+ * Estadísticas de equipo por día
+ * Para la vista diaria del panel del jefe
+ */
+export type TeamDailyStats = {
+  date: string;                     // YYYY-MM-DD
+  employeeId: string;
+  employeeName: string;
+
+  // Eventos del día
+  tardinessMinutes?: number;        // Minutos de retardo
+  tardinessJustified?: boolean;
+  earlyDepartureMinutes?: number;   // Minutos de salida temprana
+  earlyDepartureJustified?: boolean;
+  overtimeHoursRequested?: number;  // HE solicitadas
+  overtimeHoursApproved?: number;   // HE aprobadas
+  overtimeStatus?: 'pending' | 'approved' | 'rejected' | 'partial';
+
+  // Incidencias
+  hasIncidence: boolean;
+  incidenceType?: IncidenceType;
+  incidenceStatus?: IncidenceStatus;
+};
+
+/**
+ * Resumen mensual de empleado
+ * Para la vista de estadísticas del equipo
+ */
+export type EmployeeMonthlyStats = {
+  employeeId: string;
+  employeeName: string;
+  positionTitle?: string;
+  avatarUrl?: string;
+
+  // Período
+  month: number;                    // 1-12
+  year: number;
+
+  // Contadores
+  totalTardiness: number;           // Total retardos del mes
+  justifiedTardiness: number;       // Retardos justificados
+  unjustifiedTardiness: number;     // Retardos sin justificar
+  totalEarlyDepartures: number;     // Total salidas tempranas
+  justifiedEarlyDepartures: number; // Salidas tempranas justificadas
+
+  // Horas extras
+  overtimeHoursRequested: number;   // HE solicitadas
+  overtimeHoursApproved: number;    // HE aprobadas
+  overtimeHoursRejected: number;    // HE rechazadas
+  overtimeRequestsPending: number;  // Solicitudes pendientes
+
+  // Incidencias
+  pendingIncidences: number;        // Incidencias pendientes de aprobación
+  approvedIncidences: number;       // Incidencias aprobadas
+};
+
+// -------------------------------------------------------------------------
+// Notification Types
+// -------------------------------------------------------------------------
+
+export type NotificationType =
+  | 'overtime_approved'
+  | 'overtime_rejected'
+  | 'overtime_partial'
+  | 'tardiness_justified'
+  | 'early_departure_justified'
+  | 'shift_assigned'
+  | 'schedule_changed'
+  | 'incidence_approved'
+  | 'incidence_rejected'
+  | 'general';
+
+export type Notification = {
+  id: string;
+  userId: string;                   // Usuario que recibe la notificación
+  type: NotificationType;
+  title: string;
+  message: string;
+  read: boolean;
+  createdAt: string;
+
+  // Metadatos opcionales para navegación
+  relatedId?: string;               // ID del registro relacionado (incidencia, OT, etc.)
+  relatedType?: 'incidence' | 'overtime' | 'tardiness' | 'early_departure' | 'shift' | 'schedule';
+  actionUrl?: string;               // URL para navegar al hacer click
+
+  // Quién generó la notificación
+  createdById?: string;
+  createdByName?: string;
 };

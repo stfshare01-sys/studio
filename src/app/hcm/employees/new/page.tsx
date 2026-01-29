@@ -40,6 +40,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { createEmployee } from '@/firebase/actions/employee-actions';
+import { createNewUser } from '@/firebase/admin-actions';
 import { useFirebase, useMemoFirebase } from '@/firebase/provider';
 import { useCollection } from '@/firebase/firestore/use-collection';
 import { collection, query, where } from 'firebase/firestore';
@@ -134,6 +135,36 @@ export default function NewEmployeePage() {
                 : null;
             const selectedShift = shifts?.find(s => s.id === data.shiftId);
 
+            // 1. Create System User First (Sync: Employee -> User)
+            // We use the email and name provided. Department name is derived.
+            // Role defaults to 'Member' as specific permissions are handled via Roles later.
+            let userId = '';
+            try {
+                const userResult = await createNewUser({
+                    fullName: data.fullName,
+                    email: data.email,
+                    department: selectedDept?.name || data.departmentId,
+                    role: 'Member'
+                });
+
+                if (userResult.success && userResult.uid) {
+                    userId = userResult.uid;
+                } else {
+                    // Fallback if user creation fails (e.g. email exists)? 
+                    // For now we assume success or throw. 
+                    // If backend simulation fails, we might want to throw to prevent orphan employee?
+                    // Or we proceed with a generated ID if it's acceptable (but user asked for sync).
+                    throw new Error("No se pudo crear el usuario del sistema.");
+                }
+            } catch (userError) {
+                console.error("Error creating system user:", userError);
+                // Optional: Decide whether to block employee creation. 
+                // Given the requirement "generate a new user", we should probably block or warn.
+                // We'll throw to stop.
+                throw new Error("Error al crear la cuenta de usuario: " + (userError as Error).message);
+            }
+
+            // 2. Create Employee Record using the User ID
             const result = await createEmployee(userId, {
                 fullName: data.fullName,
                 email: data.email,

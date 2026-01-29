@@ -1,6 +1,6 @@
 'use client';
 
-import { doc, setDoc } from 'firebase/firestore';
+import { doc, setDoc, collection, query, getDocs, updateDoc, deleteField, DocumentSnapshot } from 'firebase/firestore';
 import { initializeFirebase } from '@/firebase';
 import { updateDocumentNonBlocking } from '../non-blocking-updates';
 import { callProcessEmployeeImport, CloudFunctionError, type EmployeeImportRow as CFEmployeeImportRow } from '../callable-functions';
@@ -40,14 +40,28 @@ export async function createEmployee(
 
         const employeeRef = doc(firestore, 'employees', userId);
 
-        const employeeData: Partial<Employee> = {
+        // Build employee data, excluding undefined values (Firestore doesn't accept undefined)
+        const employeeData: Record<string, unknown> = {
             id: userId,
-            ...payload,
+            fullName: payload.fullName,
+            email: payload.email,
+            department: payload.department,
+            positionTitle: payload.positionTitle,
+            employmentType: payload.employmentType,
+            shiftType: payload.shiftType,
+            hireDate: payload.hireDate,
             role: 'Member',
             status: 'active',
             onboardingStatus: 'day_0',
             onboardingObjectives: [],
         };
+
+        // Only add optional fields if they have values
+        if (payload.managerId) employeeData.directManagerId = payload.managerId;
+        if (payload.rfc_curp) employeeData.rfc_curp = payload.rfc_curp;
+        if (payload.nss) employeeData.nss = payload.nss;
+        if (payload.clabe) employeeData.clabe = payload.clabe;
+        if (payload.costCenter) employeeData.costCenter = payload.costCenter;
 
         await setDoc(employeeRef, employeeData, {});
 
@@ -188,5 +202,51 @@ export async function processEmployeeImport(
             return { success: false, errors: [{ row: 0, message: error.message }] };
         }
         return { success: false, errors: [{ row: 0, message: 'Error general en la importación de empleados' }] };
+    }
+}
+
+/**
+ * Migrates employees with 'managerId' field to use 'directManagerId'
+ * This is needed because the field name was inconsistent in older code
+ */
+export async function migrateManagerIdField(): Promise<{
+    success: boolean;
+    migratedCount: number;
+    error?: string
+}> {
+    try {
+        const { firestore } = initializeFirebase();
+
+        // Get all employees
+        const employeesQuery = query(collection(firestore, 'employees'));
+        const snapshot = await getDocs(employeesQuery);
+
+        let migratedCount = 0;
+        const batch: Promise<void>[] = [];
+
+        snapshot.docs.forEach((docSnap) => {
+            const data = docSnap.data();
+            // Check if employee has managerId but not directManagerId
+            if (data.managerId && !data.directManagerId) {
+                const employeeRef = doc(firestore, 'employees', docSnap.id);
+                batch.push(
+                    updateDoc(employeeRef, {
+                        directManagerId: data.managerId,
+                        managerId: deleteField(), // Remove the old field
+                        updatedAt: new Date().toISOString()
+                    }).then(() => {
+                        migratedCount++;
+                    })
+                );
+            }
+        });
+
+        await Promise.all(batch);
+
+        console.log(`[HCM] Migrated ${migratedCount} employees from managerId to directManagerId`);
+        return { success: true, migratedCount };
+    } catch (error) {
+        console.error('[HCM] Error migrating managerId field:', error);
+        return { success: false, migratedCount: 0, error: 'Error migrando campo managerId.' };
     }
 }
