@@ -441,6 +441,17 @@ export function roundOvertimeHours(decimalHours: number): number {
 }
 
 /**
+ * Resultado base del cálculo de horas extra
+ */
+export type OvertimeResult = {
+    doubleHours: number;
+    tripleHours: number;
+    doubleAmount: number;
+    tripleAmount: number;
+    totalAmount: number;
+};
+
+/**
  * Resultado extendido del cálculo de horas extra con desglose diario
  */
 export type OvertimeResultExtended = OvertimeResult & {

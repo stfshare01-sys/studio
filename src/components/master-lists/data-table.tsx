@@ -41,7 +41,8 @@ export function DataTable<TData, TValue>({
 
   const dataRef = useMemoFirebase(() => {
     if (!firestore || !listId) return null;
-    return collection(firestore, 'master_data', listId);
+    // Acceder a la subcolección 'records' dentro del documento master_data/{listId}
+    return collection(firestore, 'master_data', listId, 'records');
   }, [firestore, listId]);
   
   const { data, isLoading } = useCollection<TData>(dataRef);

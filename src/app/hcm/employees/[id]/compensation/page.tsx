@@ -37,19 +37,19 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
     ArrowLeft,
     Plus,
     DollarSign,
-    TrendingUp,
     Calendar,
     Loader2,
     History,
-    Calculator,
+    Info,
 } from 'lucide-react';
 
 import type { Employee, Compensation } from '@/lib/types';
-import { formatCurrency, calculateSDIFactor, calculateSDI, calculateVacationDays, calculateYearsOfService } from '@/lib/hcm-utils';
+import { formatCurrency, calculateVacationDays, calculateYearsOfService } from '@/lib/hcm-utils';
 
 export default function EmployeeCompensationPage({ params }: { params: Promise<{ id: string }> }) {
     const router = useRouter();
@@ -87,23 +87,14 @@ export default function EmployeeCompensationPage({ params }: { params: Promise<{
 
     const { data: compensations, isLoading: isLoadingComp } = useCollection<Compensation>(compensationQuery);
 
-    // Calculate derived values for preview
+    // Calculate preview values (only informational, no SDI calculations)
     const calculatePreview = () => {
         const salaryDaily = parseFloat(newCompensation.salaryDaily) || 0;
-        const vacationPremium = parseFloat(newCompensation.vacationPremium) / 100 || 0.25;
-        const aguinaldoDays = parseInt(newCompensation.aguinaldoDays) || 15;
-
-        if (!employee || salaryDaily === 0) {
-            return { sdiFactor: 0, sdiBase: 0, vacationDays: 0, salaryMonthly: 0 };
+        if (salaryDaily === 0) {
+            return { salaryMonthly: 0 };
         }
-
-        const yearsOfService = calculateYearsOfService(employee.hireDate);
-        const vacationDays = calculateVacationDays(yearsOfService);
-        const sdiFactor = calculateSDIFactor(vacationDays, vacationPremium, aguinaldoDays);
-        const sdiBase = calculateSDI(salaryDaily, sdiFactor);
         const salaryMonthly = Math.round(salaryDaily * 30.4 * 100) / 100;
-
-        return { sdiFactor, sdiBase, vacationDays, salaryMonthly };
+        return { salaryMonthly };
     };
 
     const preview = calculatePreview();
@@ -127,8 +118,6 @@ export default function EmployeeCompensationPage({ params }: { params: Promise<{
             const vacationDays = calculateVacationDays(yearsOfService);
             const vacationPremium = parseFloat(newCompensation.vacationPremium) / 100 || 0.25;
             const aguinaldoDays = parseInt(newCompensation.aguinaldoDays) || 15;
-            const sdiFactor = calculateSDIFactor(vacationDays, vacationPremium, aguinaldoDays);
-            const sdiBase = calculateSDI(salaryDaily, sdiFactor);
 
             const now = new Date().toISOString();
 
@@ -136,8 +125,6 @@ export default function EmployeeCompensationPage({ params }: { params: Promise<{
                 employeeId,
                 salaryDaily,
                 salaryMonthly: Math.round(salaryDaily * 30.4 * 100) / 100,
-                sdiBase,
-                sdiFactor,
                 vacationDays,
                 vacationPremium,
                 aguinaldoDays,
@@ -210,6 +197,7 @@ export default function EmployeeCompensationPage({ params }: { params: Promise<{
 
     const currentComp = compensations?.[0];
     const yearsOfService = calculateYearsOfService(employee.hireDate);
+    const vacationDays = calculateVacationDays(yearsOfService);
 
     return (
         <SiteLayout>
@@ -242,6 +230,13 @@ export default function EmployeeCompensationPage({ params }: { params: Promise<{
                             </DialogHeader>
 
                             <div className="grid gap-4 py-4">
+                                <Alert>
+                                    <Info className="h-4 w-4" />
+                                    <AlertDescription>
+                                        Este modulo solo registra informacion salarial. Los calculos de nomina, SDI e impuestos se realizan en el sistema de nomina externo.
+                                    </AlertDescription>
+                                </Alert>
+
                                 <div className="grid grid-cols-2 gap-4">
                                     <div className="space-y-2">
                                         <Label htmlFor="salaryDaily">Salario Diario *</Label>
@@ -321,31 +316,20 @@ export default function EmployeeCompensationPage({ params }: { params: Promise<{
                                     </div>
                                 </div>
 
-                                {/* Preview de cálculos */}
+                                {/* Preview informativo */}
                                 {parseFloat(newCompensation.salaryDaily) > 0 && (
                                     <>
                                         <Separator />
                                         <div className="bg-muted/50 rounded-lg p-4 space-y-2">
-                                            <h4 className="font-medium flex items-center gap-2">
-                                                <Calculator className="h-4 w-4" />
-                                                Calculos Automaticos (Vista Previa)
-                                            </h4>
+                                            <h4 className="font-medium">Vista Previa</h4>
                                             <div className="grid grid-cols-2 gap-4 text-sm">
                                                 <div>
-                                                    <span className="text-muted-foreground">Salario Mensual:</span>
+                                                    <span className="text-muted-foreground">Salario Mensual (aprox):</span>
                                                     <span className="ml-2 font-medium">{formatCurrency(preview.salaryMonthly)}</span>
                                                 </div>
                                                 <div>
                                                     <span className="text-muted-foreground">Dias Vacaciones:</span>
-                                                    <span className="ml-2 font-medium">{preview.vacationDays} dias</span>
-                                                </div>
-                                                <div>
-                                                    <span className="text-muted-foreground">Factor SDI:</span>
-                                                    <span className="ml-2 font-medium">{preview.sdiFactor.toFixed(4)}</span>
-                                                </div>
-                                                <div>
-                                                    <span className="text-muted-foreground">SDI:</span>
-                                                    <span className="ml-2 font-medium text-primary">{formatCurrency(preview.sdiBase)}</span>
+                                                    <span className="ml-2 font-medium">{vacationDays} dias</span>
                                                 </div>
                                             </div>
                                         </div>
@@ -373,8 +357,16 @@ export default function EmployeeCompensationPage({ params }: { params: Promise<{
                 </header>
 
                 <main className="flex-1 p-4 pt-0 sm:p-6 sm:pt-0 space-y-6">
+                    {/* Aviso informativo */}
+                    <Alert>
+                        <Info className="h-4 w-4" />
+                        <AlertDescription>
+                            Este modulo registra la informacion salarial para referencia. Los calculos de nomina (SDI, impuestos, deducciones) se realizan en el sistema de nomina al exportar la prenomina.
+                        </AlertDescription>
+                    </Alert>
+
                     {/* Resumen Actual */}
-                    <div className="grid gap-4 md:grid-cols-4">
+                    <div className="grid gap-4 md:grid-cols-3">
                         <Card>
                             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                                 <CardTitle className="text-sm font-medium">Salario Diario</CardTitle>
@@ -384,20 +376,8 @@ export default function EmployeeCompensationPage({ params }: { params: Promise<{
                                 <div className="text-2xl font-bold">
                                     {currentComp ? formatCurrency(currentComp.salaryDaily) : '-'}
                                 </div>
-                                <p className="text-xs text-muted-foreground">Base para calculos</p>
-                            </CardContent>
-                        </Card>
-                        <Card>
-                            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                                <CardTitle className="text-sm font-medium">SDI</CardTitle>
-                                <TrendingUp className="h-4 w-4 text-green-500" />
-                            </CardHeader>
-                            <CardContent>
-                                <div className="text-2xl font-bold text-green-600">
-                                    {currentComp ? formatCurrency(currentComp.sdiBase) : '-'}
-                                </div>
                                 <p className="text-xs text-muted-foreground">
-                                    Factor: {currentComp?.sdiFactor?.toFixed(4) || '-'}
+                                    Mensual: {currentComp ? formatCurrency(currentComp.salaryMonthly || currentComp.salaryDaily * 30.4) : '-'}
                                 </p>
                             </CardContent>
                         </Card>
@@ -408,10 +388,10 @@ export default function EmployeeCompensationPage({ params }: { params: Promise<{
                             </CardHeader>
                             <CardContent>
                                 <div className="text-2xl font-bold text-blue-600">
-                                    {currentComp?.vacationDays || '-'} dias
+                                    {vacationDays} dias
                                 </div>
                                 <p className="text-xs text-muted-foreground">
-                                    {yearsOfService} anos de antiguedad
+                                    {yearsOfService} año{yearsOfService !== 1 ? 's' : ''} de antiguedad
                                 </p>
                             </CardContent>
                         </Card>
@@ -449,7 +429,6 @@ export default function EmployeeCompensationPage({ params }: { params: Promise<{
                                         <TableHead>Fecha Efectiva</TableHead>
                                         <TableHead className="text-right">Salario Diario</TableHead>
                                         <TableHead className="text-right">Salario Mensual</TableHead>
-                                        <TableHead className="text-right">SDI</TableHead>
                                         <TableHead className="text-right">Vacaciones</TableHead>
                                         <TableHead className="text-right">Aguinaldo</TableHead>
                                         <TableHead>Estado</TableHead>
@@ -458,7 +437,7 @@ export default function EmployeeCompensationPage({ params }: { params: Promise<{
                                 <TableBody>
                                     {isLoadingComp ? (
                                         <TableRow>
-                                            <TableCell colSpan={7} className="text-center py-8">
+                                            <TableCell colSpan={6} className="text-center py-8">
                                                 Cargando historial...
                                             </TableCell>
                                         </TableRow>
@@ -472,10 +451,7 @@ export default function EmployeeCompensationPage({ params }: { params: Promise<{
                                                     {formatCurrency(comp.salaryDaily)}
                                                 </TableCell>
                                                 <TableCell className="text-right">
-                                                    {formatCurrency(comp.salaryMonthly || 0)}
-                                                </TableCell>
-                                                <TableCell className="text-right font-medium text-green-600">
-                                                    {formatCurrency(comp.sdiBase)}
+                                                    {formatCurrency(comp.salaryMonthly || comp.salaryDaily * 30.4)}
                                                 </TableCell>
                                                 <TableCell className="text-right">
                                                     {comp.vacationDays} dias
@@ -494,7 +470,7 @@ export default function EmployeeCompensationPage({ params }: { params: Promise<{
                                         ))
                                     ) : (
                                         <TableRow>
-                                            <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                                            <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
                                                 No hay registros de compensacion
                                             </TableCell>
                                         </TableRow>

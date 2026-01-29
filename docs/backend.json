@@ -329,11 +329,11 @@
         }
       },
       {
-        "path": "/master_data/{listId}/{documentId}",
+        "path": "/master_data/{listId}/records/{documentId}",
         "definition": {
           "entityName": "DynamicDocument",
           "schema": { "type": "object", "properties": {} },
-          "description": "Stores the actual data for a master list. The schema is dynamic, based on the definition in /master_lists/{listId}.",
+          "description": "Stores the actual data for a master list in a 'records' subcollection. The schema is dynamic, based on the definition in /master_lists/{listId}.",
           "params": [
             { "name": "listId", "description": "The ID of the master list this data belongs to." },
             { "name": "documentId", "description": "The unique ID for the data record, potentially based on the list's primary key." }
