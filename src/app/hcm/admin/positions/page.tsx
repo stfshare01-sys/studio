@@ -103,7 +103,7 @@ export default function PositionsAdminPage() {
             setFormData({
                 name: position.name,
                 code: position.code,
-                department: position.department,
+                departmentId: position.departmentId || position.department || '', // Support legacy 'department' field
                 level: position.level,
                 salaryMin: position.salaryMin?.toString() || '',
                 salaryMax: position.salaryMax?.toString() || '',
@@ -121,10 +121,10 @@ export default function PositionsAdminPage() {
     const handleSave = async () => {
         if (!firestore || !user) return;
 
-        if (!formData.name || !formData.code || !formData.department) {
+        if (!formData.name || !formData.code || !formData.departmentId) {
             toast({
                 title: 'Error',
-                description: 'El nombre, codigo y departamento son requeridos.',
+                description: 'El nombre, código y departamento son requeridos.',
                 variant: 'destructive',
             });
             return;
@@ -133,11 +133,13 @@ export default function PositionsAdminPage() {
         setIsSaving(true);
         try {
             const now = new Date().toISOString();
+            const selectedDept = departments?.find(d => d.id === formData.departmentId);
 
             const positionData: Record<string, any> = {
                 name: formData.name,
                 code: formData.code.toUpperCase(),
-                department: formData.department,
+                departmentId: formData.departmentId,
+                department: selectedDept?.name || '', // Denormalized for display
                 level: formData.level,
                 canApproveOvertime: formData.canApproveOvertime,
                 canApproveIncidences: formData.canApproveIncidences,
@@ -357,14 +359,35 @@ export default function PositionsAdminPage() {
                                 <div className="grid grid-cols-2 gap-4">
                                     <div className="space-y-2">
                                         <Label>Departamento *</Label>
-                                        <Input
-                                            value={formData.department}
-                                            onChange={(e) => setFormData(prev => ({ ...prev, department: e.target.value }))}
-                                            placeholder="Operaciones"
-                                        />
+                                        <Select
+                                            value={formData.departmentId || '_empty'}
+                                            onValueChange={(v) => setFormData(prev => ({ ...prev, departmentId: v === '_empty' ? '' : v }))}
+                                        >
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="Seleccionar departamento" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {departments && departments.length > 0 ? (
+                                                    departments.filter(d => d.isActive).map((dept) => (
+                                                        <SelectItem key={dept.id} value={dept.id}>
+                                                            {dept.code} - {dept.name}
+                                                        </SelectItem>
+                                                    ))
+                                                ) : (
+                                                    <SelectItem value="_empty" disabled>
+                                                        No hay departamentos. Créelos primero.
+                                                    </SelectItem>
+                                                )}
+                                            </SelectContent>
+                                        </Select>
+                                        <p className="text-xs text-muted-foreground">
+                                            <Link href="/hcm/admin/departments" className="text-primary hover:underline">
+                                                Administrar departamentos
+                                            </Link>
+                                        </p>
                                     </div>
                                     <div className="space-y-2">
-                                        <Label>Nivel Jerarquico</Label>
+                                        <Label>Nivel Jerárquico</Label>
                                         <Select
                                             value={formData.level.toString()}
                                             onValueChange={(v) => setFormData(prev => ({ ...prev, level: parseInt(v) }))}
