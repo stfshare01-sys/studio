@@ -135,20 +135,30 @@ export default function LocationsAdminPage() {
                 .map(d => d.trim())
                 .filter(d => d);
 
-            const locationData = {
+            const locationData: Record<string, any> = {
                 name: formData.name,
                 code: formData.code.toUpperCase(),
                 type: formData.type,
-                address: formData.address || undefined,
-                city: formData.city || undefined,
-                state: formData.state || undefined,
                 overtimeResetDay: formData.overtimeResetDay,
                 toleranceMinutes: formData.toleranceMinutes,
                 useVirtualCheckIn: formData.useVirtualCheckIn,
-                companyBenefitDays: benefitDays.length > 0 ? benefitDays : undefined,
                 isActive: true,
                 updatedAt: now,
             };
+
+            // Solo agregar campos opcionales si tienen valor (Firestore no acepta undefined)
+            if (formData.address) {
+                locationData.address = formData.address;
+            }
+            if (formData.city) {
+                locationData.city = formData.city;
+            }
+            if (formData.state) {
+                locationData.state = formData.state;
+            }
+            if (benefitDays.length > 0) {
+                locationData.companyBenefitDays = benefitDays;
+            }
 
             if (isEditing && editingId) {
                 await updateDoc(doc(firestore, 'locations', editingId), locationData);
