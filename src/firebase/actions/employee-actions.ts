@@ -14,9 +14,12 @@ interface CreateEmployeePayload {
     fullName: string;
     email: string;
     department: string;
+    departmentId?: string;
+    positionId?: string;
     positionTitle: string;
     employmentType: Employee['employmentType'];
     shiftType: ShiftType;
+    shiftId?: string;
     hireDate: string;
     managerId?: string;
     rfc_curp?: string;

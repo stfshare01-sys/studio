@@ -45,11 +45,10 @@ import { useCollection } from '@/firebase/firestore/use-collection';
 import { collection, query, where } from 'firebase/firestore';
 import type { Department, Position, CustomShift, Employee } from '@/lib/types';
 
-// Schema Validation
+// Schema Validation - departmentId es opcional porque se auto-llena desde el puesto
 const employeeSchema = z.object({
     fullName: z.string().min(2, 'El nombre debe tener al menos 2 caracteres'),
     email: z.string().email('Correo electrónico inválido'),
-    departmentId: z.string().min(1, 'El departamento es requerido'),
     positionId: z.string().min(1, 'El puesto es requerido'),
     employmentType: z.enum(['full_time', 'part_time', 'contractor', 'intern']),
     shiftId: z.string().min(1, 'El turno es requerido'),
@@ -105,7 +104,6 @@ export default function NewEmployeePage() {
         defaultValues: {
             fullName: '',
             email: '',
-            departmentId: '',
             positionId: '',
             employmentType: 'full_time',
             shiftId: '',
@@ -116,24 +114,36 @@ export default function NewEmployeePage() {
         },
     });
 
+    // Watch positionId to auto-fill department
+    const selectedPositionId = form.watch('positionId');
+    const selectedPosition = positions?.find(p => p.id === selectedPositionId);
+    const autoDepartment = selectedPosition?.departmentId
+        ? departments?.find(d => d.id === selectedPosition.departmentId)
+        : null;
+
     async function onSubmit(data: EmployeeFormValues) {
         setIsSubmitting(true);
         try {
             // Create a temporary ID based on email (in production this would be handled differently, likely by Auth)
             const userId = data.email.replace(/[@.]/g, '_');
 
-            // Find the selected department and position names for denormalization
-            const selectedDept = departments?.find(d => d.id === data.departmentId);
+            // Find the selected position and get department from it
             const selectedPos = positions?.find(p => p.id === data.positionId);
+            const selectedDept = selectedPos?.departmentId
+                ? departments?.find(d => d.id === selectedPos.departmentId)
+                : null;
             const selectedShift = shifts?.find(s => s.id === data.shiftId);
 
             const result = await createEmployee(userId, {
                 fullName: data.fullName,
                 email: data.email,
-                department: selectedDept?.name || data.departmentId,
+                department: selectedDept?.name || selectedPos?.department || '',
+                departmentId: selectedPos?.departmentId || '',
+                positionId: data.positionId,
                 positionTitle: selectedPos?.name || data.positionId,
                 employmentType: data.employmentType,
                 shiftType: selectedShift?.type || 'diurnal',
+                shiftId: data.shiftId,
                 hireDate: data.hireDate.toISOString(),
                 managerId: data.managerId || undefined,
                 rfc_curp: `${data.rfc || ''} ${data.curp || ''}`.trim() || undefined,
@@ -241,42 +251,6 @@ export default function NewEmployeePage() {
 
                                             <FormField
                                                 control={form.control}
-                                                name="departmentId"
-                                                render={({ field }) => (
-                                                    <FormItem>
-                                                        <FormLabel>Departamento</FormLabel>
-                                                        <Select onValueChange={field.onChange} defaultValue={field.value}>
-                                                            <FormControl>
-                                                                <SelectTrigger>
-                                                                    <SelectValue placeholder="Seleccionar departamento" />
-                                                                </SelectTrigger>
-                                                            </FormControl>
-                                                            <SelectContent>
-                                                                {departments && departments.length > 0 ? (
-                                                                    departments.map((dept) => (
-                                                                        <SelectItem key={dept.id} value={dept.id}>
-                                                                            {dept.name}
-                                                                        </SelectItem>
-                                                                    ))
-                                                                ) : (
-                                                                    <SelectItem value="_empty" disabled>
-                                                                        No hay departamentos disponibles
-                                                                    </SelectItem>
-                                                                )}
-                                                            </SelectContent>
-                                                        </Select>
-                                                        <FormDescription>
-                                                            <Link href="/hcm/admin/departments" className="text-primary hover:underline text-xs">
-                                                                Administrar departamentos
-                                                            </Link>
-                                                        </FormDescription>
-                                                        <FormMessage />
-                                                    </FormItem>
-                                                )}
-                                            />
-
-                                            <FormField
-                                                control={form.control}
                                                 name="positionId"
                                                 render={({ field }) => (
                                                     <FormItem>
@@ -310,6 +284,21 @@ export default function NewEmployeePage() {
                                                     </FormItem>
                                                 )}
                                             />
+
+                                            {/* Departamento - Auto-llenado desde el puesto seleccionado */}
+                                            <FormItem>
+                                                <FormLabel>Departamento</FormLabel>
+                                                <FormControl>
+                                                    <Input
+                                                        value={autoDepartment?.name || selectedPosition?.department || 'Selecciona un puesto primero'}
+                                                        disabled
+                                                        className="bg-muted"
+                                                    />
+                                                </FormControl>
+                                                <FormDescription>
+                                                    Se asigna automáticamente según el puesto seleccionado
+                                                </FormDescription>
+                                            </FormItem>
 
                                             <FormField
                                                 control={form.control}
