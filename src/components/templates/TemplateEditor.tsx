@@ -695,10 +695,198 @@ export function TemplateEditor({ mode, initialData, templateId }: TemplateEditor
                     </Card>
                 </main>
 
-                {/* Field Dialog - Simplified for this component, logic would be imported or inline */}
-                {/* For full implementation, reuse the Dialog code from original pages within this logic block or strict component */}
+                {/* Field Dialog for adding/editing form fields */}
+                <Dialog open={isFieldDialogOpen} onOpenChange={setIsFieldDialogOpen}>
+                    <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
+                        <DialogHeader>
+                            <DialogTitle>{editingField ? 'Editar Campo' : 'Agregar Campo'}</DialogTitle>
+                            <DialogDescription>
+                                {editingField ? 'Modifica las propiedades del campo.' : 'Define un nuevo campo para el formulario.'}
+                            </DialogDescription>
+                        </DialogHeader>
+                        <FieldFormDialog
+                            field={editingField}
+                            onSave={(field) => {
+                                if (editingField) {
+                                    setFields(fields.map(f => f.id === field.id ? field : f));
+                                } else {
+                                    setFields([...fields, field]);
+                                }
+                                setIsFieldDialogOpen(false);
+                                setEditingField(null);
+                            }}
+                            onCancel={() => {
+                                setIsFieldDialogOpen(false);
+                                setEditingField(null);
+                            }}
+                        />
+                    </DialogContent>
+                </Dialog>
             </div>
         </DndContext>
+    );
+}
+
+// --- Field Form Dialog Component ---
+function FieldFormDialog({ field, onSave, onCancel }: {
+    field: FormField | null;
+    onSave: (field: FormField) => void;
+    onCancel: () => void;
+}) {
+    const [label, setLabel] = useState(field?.label || '');
+    const [type, setType] = useState<FormFieldType>(field?.type || 'text');
+    const [placeholder, setPlaceholder] = useState(field?.placeholder || '');
+    const [helpText, setHelpText] = useState(field?.helpText || '');
+    const [required, setRequired] = useState(field?.required || false);
+    const [options, setOptions] = useState<string[]>(field?.options || []);
+    const [newOption, setNewOption] = useState('');
+
+    const handleSave = () => {
+        if (!label.trim()) return;
+
+        const newField: FormField = {
+            id: field?.id || `field_${Date.now()}`,
+            label: label.trim(),
+            type,
+            placeholder: placeholder.trim() || undefined,
+            helpText: helpText.trim() || undefined,
+            required,
+            options: ['select', 'radio', 'checkbox'].includes(type) && options.length > 0 ? options : undefined,
+        };
+
+        onSave(newField);
+    };
+
+    const addOption = () => {
+        if (newOption.trim() && !options.includes(newOption.trim())) {
+            setOptions([...options, newOption.trim()]);
+            setNewOption('');
+        }
+    };
+
+    const removeOption = (index: number) => {
+        setOptions(options.filter((_, i) => i !== index));
+    };
+
+    const fieldTypes: { value: FormFieldType; label: string }[] = [
+        { value: 'text', label: 'Texto' },
+        { value: 'textarea', label: 'Área de texto' },
+        { value: 'number', label: 'Número' },
+        { value: 'date', label: 'Fecha' },
+        { value: 'email', label: 'Correo electrónico' },
+        { value: 'select', label: 'Lista desplegable' },
+        { value: 'radio', label: 'Opciones (radio)' },
+        { value: 'checkbox', label: 'Casillas de verificación' },
+        { value: 'file', label: 'Archivo adjunto' },
+        { value: 'table', label: 'Tabla' },
+        { value: 'dynamic-select', label: 'Lista dinámica' },
+        { value: 'user-identity', label: 'Identidad de usuario' },
+        { value: 'html', label: 'HTML personalizado' },
+    ];
+
+    return (
+        <div className="space-y-4 py-2">
+            <div className="space-y-2">
+                <Label htmlFor="field-label">Etiqueta del campo *</Label>
+                <Input
+                    id="field-label"
+                    value={label}
+                    onChange={(e) => setLabel(e.target.value)}
+                    placeholder="Ej: Nombre del solicitante"
+                />
+            </div>
+
+            <div className="space-y-2">
+                <Label htmlFor="field-type">Tipo de campo</Label>
+                <Select value={type} onValueChange={(v) => setType(v as FormFieldType)}>
+                    <SelectTrigger>
+                        <SelectValue placeholder="Seleccionar tipo" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        {fieldTypes.map((ft) => (
+                            <SelectItem key={ft.value} value={ft.value}>
+                                {ft.label}
+                            </SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+            </div>
+
+            <div className="space-y-2">
+                <Label htmlFor="field-placeholder">Placeholder</Label>
+                <Input
+                    id="field-placeholder"
+                    value={placeholder}
+                    onChange={(e) => setPlaceholder(e.target.value)}
+                    placeholder="Texto de ayuda dentro del campo"
+                />
+            </div>
+
+            <div className="space-y-2">
+                <Label htmlFor="field-help">Texto de ayuda</Label>
+                <Input
+                    id="field-help"
+                    value={helpText}
+                    onChange={(e) => setHelpText(e.target.value)}
+                    placeholder="Descripción adicional debajo del campo"
+                />
+            </div>
+
+            <div className="flex items-center space-x-2">
+                <Checkbox
+                    id="field-required"
+                    checked={required}
+                    onCheckedChange={(checked) => setRequired(checked === true)}
+                />
+                <Label htmlFor="field-required" className="text-sm font-normal">
+                    Campo obligatorio
+                </Label>
+            </div>
+
+            {['select', 'radio', 'checkbox'].includes(type) && (
+                <div className="space-y-2 border-t pt-4">
+                    <Label>Opciones</Label>
+                    <div className="flex gap-2">
+                        <Input
+                            value={newOption}
+                            onChange={(e) => setNewOption(e.target.value)}
+                            placeholder="Nueva opción"
+                            onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addOption())}
+                        />
+                        <Button type="button" size="sm" onClick={addOption}>
+                            <PlusCircle className="h-4 w-4" />
+                        </Button>
+                    </div>
+                    {options.length > 0 && (
+                        <div className="space-y-1 mt-2">
+                            {options.map((opt, i) => (
+                                <div key={i} className="flex items-center justify-between bg-muted px-3 py-1.5 rounded text-sm">
+                                    <span>{opt}</span>
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-6 w-6 p-0"
+                                        onClick={() => removeOption(i)}
+                                    >
+                                        <X className="h-3 w-3" />
+                                    </Button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
+
+            <DialogFooter className="pt-4">
+                <Button variant="outline" onClick={onCancel}>
+                    Cancelar
+                </Button>
+                <Button onClick={handleSave} disabled={!label.trim()}>
+                    {field ? 'Guardar cambios' : 'Agregar campo'}
+                </Button>
+            </DialogFooter>
+        </div>
     );
 }
 

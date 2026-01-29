@@ -377,14 +377,17 @@ export default function NewEmployeePage() {
                                                 render={({ field }) => (
                                                     <FormItem>
                                                         <FormLabel>Jefe Directo</FormLabel>
-                                                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                                        <Select
+                                                            onValueChange={(value) => field.onChange(value === '_none' ? '' : value)}
+                                                            defaultValue={field.value || '_none'}
+                                                        >
                                                             <FormControl>
                                                                 <SelectTrigger>
                                                                     <SelectValue placeholder="Seleccionar jefe (opcional)" />
                                                                 </SelectTrigger>
                                                             </FormControl>
                                                             <SelectContent>
-                                                                <SelectItem value="">Sin jefe asignado</SelectItem>
+                                                                <SelectItem value="_none">Sin jefe asignado</SelectItem>
                                                                 {managers && managers.length > 0 ? (
                                                                     managers.map((manager) => (
                                                                         <SelectItem key={manager.id} value={manager.id}>

@@ -1,8 +1,8 @@
-
 "use client"
 
+import * as React from "react"
 import { Row } from "@tanstack/react-table"
-import { MoreHorizontal, Trash2 } from "lucide-react"
+import { MoreHorizontal, Pencil, Trash2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -12,6 +12,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { DataTableContext } from "./data-table"
 
 interface DataTableRowActionsProps<TData> {
   row: Row<TData>
@@ -20,15 +21,18 @@ interface DataTableRowActionsProps<TData> {
 export function DataTableRowActions<TData>({
   row,
 }: DataTableRowActionsProps<TData>) {
+  const context = React.useContext(DataTableContext)
 
   const handleEdit = () => {
-    // Logic to open an edit dialog/modal would go here
-    console.log("Edit row:", row.original)
+    if (context) {
+      context.onEditRecord(row.original)
+    }
   }
 
   const handleDelete = () => {
-    // Logic to open a confirmation dialog and delete the row
-    console.log("Delete row:", row.original)
+    if (context) {
+      context.onDeleteRecord(row.original)
+    }
   }
 
   return (
@@ -43,11 +47,17 @@ export function DataTableRowActions<TData>({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-[160px]">
-        <DropdownMenuItem onClick={handleEdit} disabled>Editar (Próximamente)</DropdownMenuItem>
+        <DropdownMenuItem onClick={handleEdit}>
+          <Pencil className="mr-2 h-3.5 w-3.5" />
+          Editar
+        </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={handleDelete} disabled className="text-destructive focus:text-destructive">
+        <DropdownMenuItem
+          onClick={handleDelete}
+          className="text-destructive focus:text-destructive"
+        >
           <Trash2 className="mr-2 h-3.5 w-3.5" />
-          Eliminar (Próximamente)
+          Eliminar
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
