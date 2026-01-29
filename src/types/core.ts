@@ -32,6 +32,7 @@ export type AppModule =
     | 'hcm_calendar'
     | 'hcm_org_chart'
     | 'hcm_talent_grid'
+    | 'hcm_team_management'
     | 'hcm_admin_shifts'
     | 'hcm_admin_positions'
     | 'hcm_admin_locations';

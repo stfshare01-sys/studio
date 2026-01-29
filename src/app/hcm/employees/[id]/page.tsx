@@ -46,6 +46,14 @@ export default function EmployeeDetailPage({ params }: { params: Promise<{ id: s
 
     const { data: employee, isLoading: isLoadingEmployee } = useDoc<Employee>(employeeRef);
 
+    // 2. Fetch Manager Details (if employee has directManagerId)
+    const managerRef = useMemoFirebase(() => {
+        if (!firestore || isUserLoading || !employee?.directManagerId) return null;
+        return doc(firestore, 'employees', employee.directManagerId);
+    }, [firestore, isUserLoading, employee?.directManagerId]);
+
+    const { data: manager } = useDoc<Employee>(managerRef);
+
     // 3. Fetch Recent Attendance
     const attendanceQuery = useMemoFirebase(() => {
         if (!firestore || isUserLoading) return null;
@@ -216,7 +224,7 @@ export default function EmployeeDetailPage({ params }: { params: Promise<{ id: s
                                                 <p className="text-sm font-medium text-muted-foreground mb-1">Jefe Directo</p>
                                                 <div className="flex items-center gap-2">
                                                     <User className="h-4 w-4 text-muted-foreground" />
-                                                    <span>{employee.directManagerId || 'N/A'}</span>
+                                                    <span>{manager?.fullName || employee.directManagerId || 'Sin asignar'}</span>
                                                 </div>
                                             </div>
                                         </div>

@@ -1409,17 +1409,113 @@ async function seedDatabase() {
         }
         console.log(`   ✅ ${compensationCount} registros de compensación creados\n`);
 
-        // 9. Crear Registros de Asistencia (últimas 2 semanas)
-        console.log('📅 Creando Registros de Asistencia...');
+        // 9. Crear Registros de Asistencia y Gestión de Equipo
+        console.log('📅 Creando Registros de Asistencia y Gestión de Equipo...');
         let attendanceCount = 0;
+        let tardinessCount = 0;
+        let departureCount = 0;
+        let overtimeCount = 0;
+
         for (const emp of EMPLOYEES) {
             const records = generateAttendanceRecords(emp);
+
+            // Managers who needs specific issues for testing
+            const targetManagers = [
+                'emp-gerente-ti', // Carlos Alberto Navarro Ruiz
+                'emp-gerente-ops', // Jorge Luis Hernández Vega
+                'emp-gerente-admin', // María Elena Torres Díaz
+                'emp-gerente-rh' // Patricia Ramírez Luna
+            ];
+
+            const isTarget = targetManagers.includes(emp.id);
+
             for (const rec of records) {
+                // Force issues for target managers on some days
+                if (isTarget) {
+                    const random = Math.random();
+                    // 30% chance of being modified if not already late/overtime
+                    if (random > 0.7) {
+                        if (!rec.isLate && random > 0.8) {
+                            rec.isLate = true;
+                            rec.minutesLate = Math.floor(Math.random() * 45) + 15; // 15-60 min late
+                            rec.checkIn = '09:45:00'; // Approximate
+                        }
+                        if (random > 0.9) {
+                            rec.overtimeHours = 2;
+                            rec.overtimeType = 'double';
+                            rec.checkOut = '20:00:00';
+                        }
+                    }
+                }
+
                 await db.collection('attendance').doc(rec.id).set(rec);
                 attendanceCount++;
+
+                // 9.1 Tardiness Records
+                if (rec.isLate && rec.minutesLate > 0) {
+                    const tardinessId = `tard-${rec.id}`;
+                    await db.collection('tardiness_records').doc(tardinessId).set({
+                        id: tardinessId,
+                        employeeId: rec.employeeId,
+                        employeeName: rec.employeeName, // Including name for display
+                        date: rec.date,
+                        scheduledTime: rec.checkIn.split(':').map((v: any, i: number) => i === 1 ? (parseInt(v) - Math.floor(rec.minutesLate % 60)).toString().padStart(2, '0') : v).join(':'), // Approximate
+                        actualTime: rec.checkIn,
+                        minutesLate: rec.minutesLate,
+                        isJustified: false,
+                        createdAt: rec.createdAt,
+                        updatedAt: rec.updatedAt
+                    });
+                    tardinessCount++;
+                }
+
+                // 9.2 Early Departure Records (simulate based on random chance or checkOut time)
+                // If checkOut is before shift end (e.g., 18:00)
+                // For simulation allow some early departures
+                if (Math.random() > 0.95 || (isTarget && Math.random() > 0.85)) {
+                    // Force an early departure
+                    const departureId = `dep-${rec.id}`;
+                    const minutesEarly = Math.floor(Math.random() * 60) + 15;
+                    const scheduledEnd = '18:00';
+                    const actualEnd = '17:00'; // Simplified
+
+                    await db.collection('early_departures').doc(departureId).set({
+                        id: departureId,
+                        employeeId: rec.employeeId,
+                        employeeName: rec.employeeName,
+                        date: rec.date,
+                        scheduledEndTime: scheduledEnd,
+                        actualEndTime: actualEnd,
+                        minutesEarly: minutesEarly,
+                        isJustified: false,
+                        createdAt: rec.createdAt,
+                        updatedAt: rec.updatedAt
+                    });
+                    departureCount++;
+                }
+
+                // 9.3 Overtime Requests
+                if (rec.overtimeHours > 0) {
+                    const overtimeId = `ot-${rec.id}`;
+                    await db.collection('overtime_requests').doc(overtimeId).set({
+                        id: overtimeId,
+                        employeeId: rec.employeeId,
+                        employeeName: rec.employeeName,
+                        date: rec.date,
+                        hoursRequested: rec.overtimeHours,
+                        reason: 'Cierre de mes y proyectos urgentes',
+                        status: 'pending',
+                        createdAt: rec.createdAt,
+                        updatedAt: rec.updatedAt
+                    });
+                    overtimeCount++;
+                }
             }
         }
-        console.log(`   ✅ ${attendanceCount} registros de asistencia creados\n`);
+        console.log(`   ✅ ${attendanceCount} registros de asistencia creados`);
+        console.log(`   ✅ ${tardinessCount} registros de retardos creados`);
+        console.log(`   ✅ ${departureCount} registros de salidas tempranas creados`);
+        console.log(`   ✅ ${overtimeCount} solicitudes de horas extras creadas\n`);
 
         // 10. Create Admin Test User
         console.log('👤 Creando Usuario Administrador de Prueba...');

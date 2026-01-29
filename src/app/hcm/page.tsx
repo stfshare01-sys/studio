@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import {
     Users,
+    Users2,
     Clock,
     Calendar,
     FileSpreadsheet,
@@ -97,7 +98,21 @@ export default function HCMPage() {
 
     const { data: recentImports, isLoading: importsLoading } = useCollection<AttendanceImportBatch>(importsQuery);
 
-    const isLoading = isUserLoading || employeesLoading || incidencesLoading || importsLoading;
+    // Check if current user has direct reports (for team management access)
+    const directReportsQuery = useMemoFirebase(() => {
+        if (!firestore || isUserLoading || !user?.id) return null;
+        return query(
+            collection(firestore, 'employees'),
+            where('directManagerId', '==', user.id),
+            where('status', '==', 'active'),
+            limit(1)
+        );
+    }, [firestore, isUserLoading, user?.id]);
+
+    const { data: directReports, isLoading: directReportsLoading } = useCollection<Employee>(directReportsQuery);
+    const hasDirectReports = (directReports && directReports.length > 0) || isAdmin;
+
+    const isLoading = isUserLoading || employeesLoading || incidencesLoading || importsLoading || directReportsLoading;
 
     // Stats calculations
     const totalEmployees = employees?.length ?? 0;
@@ -253,6 +268,14 @@ export default function HCMPage() {
                                                 <Link href="/hcm/incidences">
                                                     <Calendar className="mr-2 h-4 w-4" />
                                                     Gestionar Incidencias
+                                                </Link>
+                                            </Button>
+                                        )}
+                                        {hasDirectReports && (
+                                            <Button asChild variant="outline" className="justify-start">
+                                                <Link href="/hcm/team-management">
+                                                    <Users2 className="mr-2 h-4 w-4" />
+                                                    Gestión de Equipo
                                                 </Link>
                                             </Button>
                                         )}
