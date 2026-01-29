@@ -279,9 +279,10 @@ export default function CommandCenterPage() {
     const totalPendingIncidences = pendingIncidences?.length || 0;
     const oldPendingIncidences =
       pendingIncidences?.filter((inc) => {
-        const created = inc.createdAt instanceof Timestamp
-          ? inc.createdAt.toDate()
-          : new Date(inc.createdAt);
+        const createdAt = inc.createdAt as string | Timestamp | undefined;
+        const created = createdAt && typeof createdAt === 'object' && 'toDate' in createdAt
+          ? createdAt.toDate()
+          : new Date(createdAt as string);
         return differenceInDays(today, created) > 2;
       }).length || 0;
 
@@ -545,9 +546,10 @@ export default function CommandCenterPage() {
                     </>
                   ) : recentIncidences && recentIncidences.length > 0 ? (
                     recentIncidences.map((inc) => {
-                      const createdAt = inc.createdAt instanceof Timestamp
-                        ? inc.createdAt.toDate()
-                        : new Date(inc.createdAt);
+                      const incCreatedAt = inc.createdAt as string | Timestamp | undefined;
+                      const createdAt = incCreatedAt && typeof incCreatedAt === 'object' && 'toDate' in incCreatedAt
+                        ? incCreatedAt.toDate()
+                        : new Date(incCreatedAt as string);
 
                       const iconConfig = {
                         pending: { icon: Clock, bg: "bg-amber-500" },

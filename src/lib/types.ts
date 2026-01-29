@@ -678,9 +678,9 @@ export type Compensation = {
   salaryDaily: number;          // Salario diario base
   salaryMonthly?: number;       // Salario mensual (calculado)
 
-  // Salario Diario Integrado (SDI)
-  sdiBase: number;              // SDI calculado
-  sdiFactor: number;            // Factor de integración (típicamente 1.0452 - 1.0493)
+  // Salario Diario Integrado (SDI) - Calculado por sistema de nómina externo
+  sdiBase?: number;              // SDI calculado (opcional, se calcula en nómina)
+  sdiFactor?: number;            // Factor de integración (opcional, se calcula en nómina)
 
   // Prestaciones LFT
   vacationDays: number;         // Días de vacaciones según antigüedad (Art. 76 LFT)

@@ -50,7 +50,7 @@ import {
     ArrowLeft,
 } from 'lucide-react';
 import type { PrenominaRecord, Employee } from '@/lib/types';
-import { consolidatePrenomina } from '@/firebase/hcm-actions';
+import { callConsolidatePrenomina } from '@/firebase/callable-functions';
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subDays } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
@@ -125,11 +125,10 @@ export default function PrenominaPage() {
         try {
             setConsolidateProgress(30);
 
-            const result = await consolidatePrenomina({
+            const result = await callConsolidatePrenomina({
                 periodStart: consolidateForm.periodStart,
                 periodEnd: consolidateForm.periodEnd,
-                periodType: consolidateForm.periodType,
-                createdById: user.uid
+                periodType: consolidateForm.periodType
             });
 
             setConsolidateProgress(100);
@@ -141,7 +140,7 @@ export default function PrenominaPage() {
                 });
                 setIsConsolidateDialogOpen(false);
             } else {
-                throw new Error(result.error);
+                throw new Error(result.errors?.[0]?.message || 'Error desconocido');
             }
         } catch (error) {
             toast({

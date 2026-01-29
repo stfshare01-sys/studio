@@ -641,21 +641,21 @@ export function TemplateEditor({ mode, initialData, templateId }: TemplateEditor
                                         <VisibilityRulesBuilder
                                             fields={fields}
                                             rules={visibilityRules}
-                                            onChange={setVisibilityRules}
+                                            onRulesChange={setVisibilityRules}
                                         />
                                     </TabsContent>
                                     <TabsContent value="layout">
                                         <FieldLayoutEditor
                                             fields={fields}
                                             layout={fieldLayout}
-                                            onChange={setFieldLayout}
+                                            onLayoutChange={setFieldLayout}
                                         />
                                     </TabsContent>
                                     <TabsContent value="defaults">
                                         <DefaultValueRulesBuilder
                                             fields={fields}
                                             rules={defaultValueRules}
-                                            onChange={setDefaultValueRules}
+                                            onRulesChange={setDefaultValueRules}
                                         />
                                     </TabsContent>
                                 </CardContent>
