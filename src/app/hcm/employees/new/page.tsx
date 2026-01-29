@@ -125,9 +125,6 @@ export default function NewEmployeePage() {
     async function onSubmit(data: EmployeeFormValues) {
         setIsSubmitting(true);
         try {
-            // Create a temporary ID based on email (in production this would be handled differently, likely by Auth)
-            const userId = data.email.replace(/[@.]/g, '_');
-
             // Find the selected position and get department from it
             const selectedPos = positions?.find(p => p.id === data.positionId);
             const selectedDept = selectedPos?.departmentId
@@ -143,7 +140,7 @@ export default function NewEmployeePage() {
                 const userResult = await createNewUser({
                     fullName: data.fullName,
                     email: data.email,
-                    department: selectedDept?.name || data.departmentId,
+                    department: selectedDept?.name || selectedPos?.department || '',
                     role: 'Member'
                 });
 
