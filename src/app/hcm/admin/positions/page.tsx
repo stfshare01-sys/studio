@@ -49,13 +49,13 @@ import {
     DollarSign,
 } from 'lucide-react';
 
-import type { Position } from '@/lib/types';
+import type { Position, Department } from '@/lib/types';
 import { formatCurrency } from '@/lib/hcm-utils';
 
 const initialFormState = {
     name: '',
     code: '',
-    department: '',
+    departmentId: '',
     level: 3,
     salaryMin: '',
     salaryMax: '',
@@ -80,6 +80,21 @@ export default function PositionsAdminPage() {
     }, [firestore]);
 
     const { data: positions, isLoading } = useCollection<Position>(positionsQuery);
+
+    // Fetch departments
+    const departmentsQuery = useMemoFirebase(() => {
+        if (!firestore) return null;
+        return query(collection(firestore, 'departments'));
+    }, [firestore]);
+
+    const { data: departments } = useCollection<Department>(departmentsQuery);
+
+    // Helper to get department name by ID
+    const getDepartmentName = (departmentId?: string) => {
+        if (!departmentId) return '-';
+        const dept = departments?.find(d => d.id === departmentId);
+        return dept?.name || departmentId; // Fallback to ID if name not found (for backward compatibility)
+    };
 
     const handleOpenDialog = (position?: Position) => {
         if (position) {
