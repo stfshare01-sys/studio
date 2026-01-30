@@ -567,132 +567,273 @@ export function TemplateEditor({ mode, initialData, templateId }: TemplateEditor
     const [editingField, setEditingField] = useState<FormField | null>(null);
     const [isFieldDialogOpen, setIsFieldDialogOpen] = useState(false);
 
+    // Rules dialog state
+    const [editingRule, setEditingRule] = useState<Rule | null>(null);
+    const [isRuleDialogOpen, setIsRuleDialogOpen] = useState(false);
+
+    // Load users for rule builder
+    const usersQuery = useMemoFirebase(() => collection(firestore, 'users'), [firestore]);
+    const { data: users } = useCollection<UserType>(usersQuery);
+
+    // Rule handlers
+    const handleAddRule = (rule: Omit<Rule, 'id'>) => {
+        setRules([...rules, { ...rule, id: `rule-${Date.now()}` }]);
+        setIsRuleDialogOpen(false);
+    };
+
+    const handleUpdateRule = (updatedRule: Rule) => {
+        setRules(rules.map(r => r.id === updatedRule.id ? updatedRule : r));
+        setEditingRule(null);
+        setIsRuleDialogOpen(false);
+    };
+
+    const handleOpenRuleDialog = (rule: Rule | null) => {
+        setEditingRule(rule);
+        setIsRuleDialogOpen(true);
+    };
+
+    const handleRemoveRule = (id: string) => {
+        setRules(rules.filter((rule) => rule.id !== id));
+    };
+
     // --- RENDER ---
     const allStepsFlat = pools.flatMap(p => p.lanes.flatMap(l => l.steps));
 
     return (
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
             <div className="flex flex-1 flex-col">
-                <header className="flex items-center justify-between p-4 sm:p-6 border-b">
-                    <div className="flex flex-col gap-1">
-                        <Input
-                            value={templateName}
-                            onChange={e => setTemplateName(e.target.value)}
-                            className="text-lg font-bold border-none px-0 h-auto focus-visible:ring-0"
-                            placeholder="Nombre de la Plantilla"
-                        />
-                        <Input
-                            value={templateDescription}
-                            onChange={e => setTemplateDescription(e.target.value)}
-                            className="text-sm text-muted-foreground border-none px-0 h-auto focus-visible:ring-0"
-                            placeholder="Descripción corta"
-                        />
+                <header className="flex items-center justify-between p-4 sm:p-6">
+                    <div className="flex items-center gap-4">
+                        <h1 className="text-2xl font-bold tracking-tight">
+                            {mode === 'create' ? 'Crear Nueva Plantilla' : 'Editar Plantilla'}
+                        </h1>
+                        <CopilotDialog onApply={applyAiDraft} />
                     </div>
                     <div className="flex gap-2">
-                        <CopilotDialog onApply={applyAiDraft} />
+                        <Button variant="outline" asChild><Link href="/templates">Cancelar</Link></Button>
                         <Button onClick={handleSave} disabled={isSaving}>
                             {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                            <Save className="mr-2 h-4 w-4" /> Guardar
+                            Guardar Plantilla
                         </Button>
                     </div>
                 </header>
 
-                <main className="grid flex-1 items-start gap-4 p-4 sm:gap-8 sm:p-6 md:grid-cols-[1fr_2fr]">
-                    {/* LEFT COLUMN: FIELDS & CONFIG */}
-                    <div className="grid auto-rows-max items-start gap-4 lg:gap-8">
-                        <Card>
-                            <CardHeader className="pb-3">
-                                <div className="flex justify-between items-center">
-                                    <CardTitle>Campos del Formulario</CardTitle>
-                                    <Button size="sm" variant="outline" onClick={() => { setEditingField(null); setIsFieldDialogOpen(true); }}>
-                                        <PlusCircle className="mr-2 h-3.5 w-3.5" /> Agregar
-                                    </Button>
-                                    {/* Detailed Field Dialog would go here - omitting strictly for brevity, existing one works */}
-                                </div>
-                                <CardDescription>Define qué información debe proveer el solicitante.</CardDescription>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="space-y-2">
-                                    <SortableContext items={fields.map(f => f.id)} strategy={verticalListSortingStrategy}>
-                                        {fields.length === 0 && <p className="text-sm text-muted-foreground text-center py-4">No hay campos definidos.</p>}
-                                        {fields.map(field => (
-                                            <SortableField key={field.id} field={field}
-                                                onRemove={(id) => setFields(fields.filter(f => f.id !== id))}
-                                                onEdit={(f) => { setEditingField(f); setIsFieldDialogOpen(true); }}
+                <main className="flex-1 p-4 pt-0 sm:p-6 sm:pt-0">
+                    <div className="grid gap-4 md:grid-cols-[280px_1fr]">
+                        {/* Left sidebar - Basic Info */}
+                        <div className="space-y-4">
+                            <Card>
+                                <CardContent className="p-4">
+                                    <div className="space-y-4">
+                                        <div>
+                                            <Label htmlFor="template-name">Nombre de la Plantilla</Label>
+                                            <Input
+                                                id="template-name"
+                                                placeholder="p.ej., Orden de Compra"
+                                                value={templateName}
+                                                onChange={(e) => setTemplateName(e.target.value)}
                                             />
-                                        ))}
-                                    </SortableContext>
-                                </div>
-                            </CardContent>
-                        </Card>
-
-                        {/* RULES & LAYOUT TABS */}
-                        <Card>
-                            <Tabs defaultValue="visibility">
-                                <CardHeader className="pb-3 px-4 pt-4">
-                                    <TabsList className="grid w-full grid-cols-3">
-                                        <TabsTrigger value="visibility">Visibilidad</TabsTrigger>
-                                        <TabsTrigger value="layout">Diseño</TabsTrigger>
-                                        <TabsTrigger value="defaults">Valores</TabsTrigger>
-                                    </TabsList>
-                                </CardHeader>
-                                <CardContent className="px-4 pb-4">
-                                    <TabsContent value="visibility">
-                                        <VisibilityRulesBuilder
-                                            fields={fields}
-                                            rules={visibilityRules}
-                                            onRulesChange={setVisibilityRules}
-                                        />
-                                    </TabsContent>
-                                    <TabsContent value="layout">
-                                        <FieldLayoutEditor
-                                            fields={fields}
-                                            layout={fieldLayout}
-                                            onLayoutChange={setFieldLayout}
-                                        />
-                                    </TabsContent>
-                                    <TabsContent value="defaults">
-                                        <DefaultValueRulesBuilder
-                                            fields={fields}
-                                            rules={defaultValueRules}
-                                            onRulesChange={setDefaultValueRules}
-                                        />
-                                    </TabsContent>
+                                        </div>
+                                        <div>
+                                            <Label htmlFor="template-description">Descripción</Label>
+                                            <Textarea
+                                                id="template-description"
+                                                placeholder="Descripción del flujo de trabajo."
+                                                value={templateDescription}
+                                                onChange={(e) => setTemplateDescription(e.target.value)}
+                                                rows={3}
+                                            />
+                                        </div>
+                                    </div>
                                 </CardContent>
-                            </Tabs>
-                        </Card>
-                    </div>
-
-                    {/* RIGHT COLUMN: FLOW DESIGNER */}
-                    <Card className="h-full flex flex-col min-h-[500px]">
-                        <CardHeader className="pb-3 border-b">
-                            <div className="flex justify-between items-center">
-                                <div>
-                                    <CardTitle>Diseñador de Flujo (BPMN)</CardTitle>
-                                    <CardDescription>Arrastra para reordenar pasos y configurar lógica.</CardDescription>
+                            </Card>
+                            <Card className="p-4">
+                                <div className="text-sm text-muted-foreground space-y-2">
+                                    <p><strong>Campos:</strong> {fields.length}</p>
+                                    <p><strong>Pasos:</strong> {allStepsFlat.length}</p>
+                                    <p><strong>Reglas:</strong> {rules.length}</p>
                                 </div>
-                                <Button size="sm" variant="outline" onClick={addPool}><PlusCircle className="mr-2 h-3.5 w-3.5" /> Nueva Piscina</Button>
-                            </div>
-                        </CardHeader>
-                        <CardContent className="flex-1 bg-muted/20 p-4 space-y-4 overflow-y-auto max-h-[calc(100vh-250px)]">
-                            <SortableContext items={pools.map(p => p.id)} strategy={verticalListSortingStrategy}>
-                                {pools.map((pool, index) => (
-                                    <PoolItem
-                                        key={pool.id} pool={pool} index={index} totalPools={pools.length}
-                                        handleUpdate={updatePoolOrLane}
-                                        handleAddLane={addLane}
-                                        handleDelete={deleteItem}
-                                        handleAddStep={addStep}
-                                        allSteps={allStepsFlat}
-                                        formFields={fields}
-                                        onUpdateStep={updateStep}
-                                        movePool={movePool}
-                                        moveLane={moveLane}
-                                    />
-                                ))}
-                            </SortableContext>
-                        </CardContent>
-                    </Card>
+                            </Card>
+                        </div>
+
+                        {/* Right area - Tabs */}
+                        <Tabs defaultValue="formulario" className="w-full">
+                            <TabsList className="grid w-full grid-cols-3">
+                                <TabsTrigger value="formulario">Formulario</TabsTrigger>
+                                <TabsTrigger value="reglas">Reglas</TabsTrigger>
+                                <TabsTrigger value="flujo">Flujo de Trabajo</TabsTrigger>
+                            </TabsList>
+
+                            {/* Tab: Formulario */}
+                            <TabsContent value="formulario" className="space-y-4 mt-4">
+                                <Card>
+                                    <CardHeader>
+                                        <CardTitle>Campos del Formulario</CardTitle>
+                                        <CardDescription>
+                                            Defina los datos que se recopilarán para esta plantilla.
+                                        </CardDescription>
+                                    </CardHeader>
+                                    <CardContent className="space-y-4">
+                                        <div className="space-y-2 rounded-md border p-4 min-h-[120px]">
+                                            {fields.length === 0 ? (
+                                                <p className="text-center text-sm text-muted-foreground py-4">Añada campos a su formulario.</p>
+                                            ) : (
+                                                <SortableContext items={fields.map(f => f.id)} strategy={verticalListSortingStrategy} id="form-fields">
+                                                    {fields.map((field) => (
+                                                        <SortableField key={field.id} field={field}
+                                                            onRemove={(id) => setFields(fields.filter(f => f.id !== id))}
+                                                            onEdit={(f) => { setEditingField(f); setIsFieldDialogOpen(true); }}
+                                                        />
+                                                    ))}
+                                                </SortableContext>
+                                            )}
+                                        </div>
+                                        <Button variant="outline" className="w-full" onClick={() => { setEditingField(null); setIsFieldDialogOpen(true); }}>
+                                            <PlusCircle className="mr-2 h-4 w-4" /> Añadir Campo
+                                        </Button>
+                                    </CardContent>
+                                </Card>
+
+                                {/* Field Layout Editor */}
+                                {fields.length > 0 && (
+                                    <Card>
+                                        <CardHeader>
+                                            <CardTitle>Diseño del Formulario</CardTitle>
+                                            <CardDescription>
+                                                Configure la disposición de los campos en filas y columnas para mostrarlos lado a lado.
+                                            </CardDescription>
+                                        </CardHeader>
+                                        <CardContent>
+                                            {fields.length === 1 ? (
+                                                <p className="text-sm text-muted-foreground py-4 text-center">
+                                                    Agregue más campos para configurar el layout. Con múltiples campos puede colocarlos lado a lado.
+                                                </p>
+                                            ) : (
+                                                <FieldLayoutEditor
+                                                    fields={fields}
+                                                    layout={fieldLayout}
+                                                    onLayoutChange={setFieldLayout}
+                                                />
+                                            )}
+                                        </CardContent>
+                                    </Card>
+                                )}
+                            </TabsContent>
+
+                            {/* Tab: Reglas */}
+                            <TabsContent value="reglas" className="space-y-4 mt-4">
+                                {fields.length > 0 && (
+                                    <Card>
+                                        <CardHeader>
+                                            <CardTitle>Reglas de Visibilidad</CardTitle>
+                                            <CardDescription>
+                                                Configure cuándo mostrar u ocultar campos.
+                                            </CardDescription>
+                                        </CardHeader>
+                                        <CardContent>
+                                            <VisibilityRulesBuilder
+                                                fields={fields}
+                                                rules={visibilityRules}
+                                                onRulesChange={setVisibilityRules}
+                                            />
+                                        </CardContent>
+                                    </Card>
+                                )}
+
+                                {fields.length > 0 && (
+                                    <Card>
+                                        <CardHeader>
+                                            <CardTitle>Valores por Defecto Condicionales</CardTitle>
+                                            <CardDescription>
+                                                Configure valores que se asignan automáticamente basándose en condiciones.
+                                            </CardDescription>
+                                        </CardHeader>
+                                        <CardContent>
+                                            <DefaultValueRulesBuilder
+                                                fields={fields}
+                                                rules={defaultValueRules}
+                                                onRulesChange={setDefaultValueRules}
+                                            />
+                                        </CardContent>
+                                    </Card>
+                                )}
+
+                                <Card>
+                                    <CardHeader>
+                                        <CardTitle>Motor de Reglas de Negocio</CardTitle>
+                                        <CardDescription>Defina la lógica condicional para automatizar decisiones.</CardDescription>
+                                    </CardHeader>
+                                    <CardContent className="space-y-4">
+                                        <div className="space-y-3">
+                                            {rules.length === 0 && (
+                                                <div className="text-center text-sm text-muted-foreground py-4 space-y-1">
+                                                    <p>No hay reglas definidas.</p>
+                                                    <p className="text-xs">Las reglas permiten enrutar el flujo basado en resultados o datos.</p>
+                                                </div>
+                                            )}
+                                            {rules.map((rule) => (
+                                                <RuleDisplay key={rule.id} rule={rule} fields={fields} pools={pools} users={users || []} onRemove={handleRemoveRule} onEdit={handleOpenRuleDialog} />
+                                            ))}
+                                        </div>
+                                        <Dialog open={isRuleDialogOpen} onOpenChange={setIsRuleDialogOpen}>
+                                            <DialogTrigger asChild>
+                                                <Button variant="outline" className="w-full" onClick={() => handleOpenRuleDialog(null)}>
+                                                    <PlusCircle className="mr-2 h-4 w-4" /> Añadir Regla
+                                                </Button>
+                                            </DialogTrigger>
+                                            <RuleBuilderDialog
+                                                fields={fields}
+                                                steps={allStepsFlat}
+                                                users={users || []}
+                                                onAddRule={handleAddRule}
+                                                onUpdateRule={handleUpdateRule}
+                                                ruleToEdit={editingRule}
+                                                onClose={() => setIsRuleDialogOpen(false)}
+                                            />
+                                        </Dialog>
+                                    </CardContent>
+                                </Card>
+                            </TabsContent>
+
+                            {/* Tab: Flujo de Trabajo */}
+                            <TabsContent value="flujo" className="mt-4">
+                                <Card>
+                                    <CardHeader>
+                                        <CardTitle>Lienzo del Flujo de Trabajo (BPMN)</CardTitle>
+                                        <CardDescription>
+                                            Diseñe y ordene las etapas de su proceso usando Piscinas (Pools) y Carriles (Lanes).
+                                        </CardDescription>
+                                    </CardHeader>
+                                    <CardContent className="space-y-4">
+                                        <div className="space-y-4 rounded-md bg-muted/50 p-4 min-h-[300px]">
+                                            <SortableContext items={pools.map(p => p.id)} strategy={verticalListSortingStrategy} id="pools">
+                                                {pools.map((pool, index) => (
+                                                    <PoolItem
+                                                        key={pool.id}
+                                                        pool={pool}
+                                                        index={index}
+                                                        totalPools={pools.length}
+                                                        handleUpdate={updatePoolOrLane}
+                                                        handleAddLane={addLane}
+                                                        handleDelete={deleteItem}
+                                                        handleAddStep={addStep}
+                                                        allSteps={allStepsFlat}
+                                                        formFields={fields}
+                                                        onUpdateStep={updateStep}
+                                                        movePool={movePool}
+                                                        moveLane={moveLane}
+                                                    />
+                                                ))}
+                                            </SortableContext>
+                                        </div>
+                                        <Button variant="outline" className="w-full mt-4" onClick={addPool}>
+                                            <Library className="mr-2 h-4 w-4" /> Añadir Piscina
+                                        </Button>
+                                    </CardContent>
+                                </Card>
+                            </TabsContent>
+                        </Tabs>
+                    </div>
                 </main>
 
                 {/* Field Dialog for adding/editing form fields */}
@@ -1224,6 +1365,277 @@ function FieldFormDialog({ field, onSave, onCancel }: {
                 </Button>
             </DialogFooter>
         </div>
+    );
+}
+
+// --- Rule Display Components ---
+function RuleConditionDisplay({ condition, fields, steps }: { condition: RuleCondition, fields: FormField[], steps: WorkflowStepDefinition[] }) {
+    const source = condition.type === 'form'
+        ? fields.find(f => f.id === condition.fieldId)
+        : steps.find(s => s.id === condition.fieldId);
+
+    const operatorLabels: Partial<Record<RuleOperator, string>> = {
+        '==': '=', '!=': '!=', '>': '>', '<': '<', '>=': '>=', '<=': '<=',
+        'contains': 'contiene', 'not_contains': 'no contiene', 'is': 'es', 'is_not': 'no es',
+    };
+
+    const getSourceTypeIcon = (type: FormFieldType | 'outcome' | undefined) => {
+        switch(type) {
+            case 'number': return <Hash className="h-4 w-4 text-muted-foreground"/>;
+            case 'text':
+            case 'textarea':
+                return <CaseSensitive className="h-4 w-4 text-muted-foreground"/>;
+            case 'select':
+            case 'radio':
+            case 'checkbox':
+            case 'outcome':
+                return <GitBranch className="h-4 w-4 text-muted-foreground" />;
+            default: return null;
+        }
+    }
+
+    return (
+        <div className="flex items-center gap-2 text-sm">
+            <span className="font-semibold text-muted-foreground">SI</span>
+            <div className="flex items-center gap-1">
+                {getSourceTypeIcon((source?.type || (condition.type === 'outcome' ? 'outcome' : undefined)) as FormFieldType | 'outcome' | undefined)}
+                <Badge variant="outline">{(source as any)?.name || (source as any)?.label || '??'}</Badge>
+            </div>
+            <span className="font-semibold text-muted-foreground">{operatorLabels[condition.operator] || condition.operator}</span>
+            <Badge variant="secondary" className="font-mono">{condition.value}</Badge>
+        </div>
+    );
+}
+
+function RuleActionDisplay({ action, steps, users }: { action: RuleAction, steps: WorkflowStepDefinition[], users: UserType[] }) {
+    const getActionIcon = (type: RuleAction['type']) => {
+        switch(type) {
+            case 'REQUIRE_ADDITIONAL_STEP':
+            case 'ROUTE_TO_STEP':
+                return <GitBranch className="h-5 w-5 text-primary"/>;
+            case 'ASSIGN_USER':
+                return <User className="h-5 w-5 text-primary"/>;
+            case 'SEND_NOTIFICATION':
+                return <Bell className="h-5 w-5 text-primary"/>;
+            case 'CHANGE_REQUEST_PRIORITY':
+                return <AlertTriangle className="h-5 w-5 text-primary"/>;
+        }
+    }
+
+    const renderActionDetails = () => {
+        switch (action.type) {
+            case 'REQUIRE_ADDITIONAL_STEP':
+            case 'ROUTE_TO_STEP':
+                const step = steps.find(s => s.id === action.stepId);
+                return <>{action.type === 'ROUTE_TO_STEP' ? 'Enrutar a' : 'Añadir paso'}: <Badge>{step?.name || '??'}</Badge></>;
+            case 'ASSIGN_USER':
+                const assignUser = users.find(u => u.id === action.userId);
+                const assignStep = steps.find(s => s.id === action.stepId);
+                return <>Asignar <Badge variant="secondary">{assignUser?.fullName || '??'}</Badge> a <Badge>{assignStep?.name || '??'}</Badge></>;
+            case 'SEND_NOTIFICATION':
+                return <>Notificar a <Badge variant="secondary">{action.target}</Badge> con mensaje: <span className="italic">"{action.message}"</span></>;
+            case 'CHANGE_REQUEST_PRIORITY':
+                return <>Cambiar prioridad a <Badge variant="destructive">{action.priority}</Badge></>;
+            default:
+                return null;
+        }
+    }
+
+    return (
+        <div className="flex items-center gap-3">
+            <div className="flex-shrink-0">{getActionIcon(action.type)}</div>
+            <div className="flex flex-wrap items-center gap-2 text-sm">{renderActionDetails()}</div>
+        </div>
+    );
+}
+
+function RuleDisplay({ rule, fields, pools, users, onRemove, onEdit }: { rule: Rule, fields: FormField[], pools: Pool[], users: UserType[], onRemove: (id: string) => void, onEdit: (rule: Rule) => void }) {
+    const allSteps = pools.flatMap(p => p.lanes.flatMap(l => l.steps));
+
+    return (
+        <div className="group relative rounded-lg border bg-card p-4 transition-all hover:shadow-md">
+            <div className="grid grid-cols-[1fr,auto,1fr] items-center gap-4">
+                {/* Condition */}
+                <RuleConditionDisplay condition={rule.condition} fields={fields} steps={allSteps} />
+
+                {/* Arrow */}
+                <div className="flex justify-center">
+                    <ChevronsRight className="h-6 w-6 text-muted-foreground" />
+                </div>
+
+                {/* Action */}
+                <RuleActionDisplay action={rule.action} steps={allSteps} users={users} />
+            </div>
+
+            <Button
+                variant="ghost"
+                size="icon"
+                className="absolute right-8 top-1 h-6 w-6 opacity-0 group-hover:opacity-100"
+                onClick={() => onEdit(rule)}
+            >
+                <Pencil className="h-4 w-4 text-primary" />
+                <span className="sr-only">Editar regla</span>
+            </Button>
+
+            <Button
+                variant="ghost"
+                size="icon"
+                className="absolute right-1 top-1 h-6 w-6 opacity-0 group-hover:opacity-100"
+                onClick={() => onRemove(rule.id)}
+            >
+                <Trash2 className="h-4 w-4 text-destructive" />
+                <span className="sr-only">Eliminar regla</span>
+            </Button>
+        </div>
+    );
+}
+
+function RuleBuilderDialog({ fields, steps, users, onAddRule, onUpdateRule, ruleToEdit, onClose }: { fields: FormField[], steps: WorkflowStepDefinition[], users: UserType[], onAddRule: (rule: Omit<Rule, 'id'>) => void, onUpdateRule: (rule: Rule) => void, ruleToEdit: Rule | null, onClose: () => void }) {
+    const { toast } = useToast();
+    const [condition, setCondition] = useState<Partial<RuleCondition>>({ type: 'form' });
+    const [action, setAction] = useState<Partial<RuleAction>>({ type: 'REQUIRE_ADDITIONAL_STEP' });
+    const isEditing = !!ruleToEdit;
+
+    useEffect(() => {
+        if (ruleToEdit) {
+            setCondition(ruleToEdit.condition);
+            setAction(ruleToEdit.action);
+        } else {
+            setCondition({ type: 'form' });
+            setAction({ type: 'REQUIRE_ADDITIONAL_STEP' });
+        }
+    }, [ruleToEdit]);
+
+    const decisionTasks = steps.filter(s => s.outcomes && s.outcomes.length > 0);
+    const formFieldsForRules = fields.filter(f => ['number', 'select', 'radio', 'text', 'textarea'].includes(f.type));
+    const selectedSource = condition.type === 'form' ? formFieldsForRules.find(f => f.id === condition.fieldId) : decisionTasks.find(s => s.id === condition.fieldId);
+
+    const getOperatorsForType = (type?: FormFieldType | 'outcome'): { value: RuleOperator, label: string }[] => {
+        if (type === 'outcome') return [{ value: '==', label: 'es igual a' }];
+        switch (type) {
+            case 'number':
+                return [ { value: '==', label: 'es igual a' }, { value: '!=', label: 'no es igual a' }, { value: '>', label: 'es mayor que' }, { value: '<', label: 'es menor que' }, { value: '>=', label: 'es mayor o igual que' }, { value: '<=', label: 'es menor o igual que' } ];
+            case 'text':
+            case 'textarea':
+                return [ { value: 'is', label: 'es igual a' }, { value: 'is_not', label: 'no es igual a' }, { value: 'contains', label: 'contiene' }, { value: 'not_contains', label: 'no contiene' }];
+            case 'select':
+            case 'radio':
+                return [ { value: 'is', label: 'es' }, { value: 'is_not', label: 'no es' } ];
+            default: return [];
+        }
+    };
+
+    const availableOperators = getOperatorsForType((selectedSource?.type || (condition.type === 'outcome' ? 'outcome' : undefined)) as FormFieldType | 'outcome' | undefined);
+
+    const handleSubmit = () => {
+        if (!condition.fieldId || !condition.operator || (condition.value === undefined || condition.value === '')) {
+            toast({ variant: "destructive", title: "Condición incompleta" }); return;
+        }
+
+        const newRule: Omit<Rule, 'id'> = { condition: condition as RuleCondition, action: action as RuleAction };
+
+        if (isEditing && ruleToEdit) {
+            onUpdateRule({ ...newRule, id: ruleToEdit.id });
+        } else {
+            onAddRule(newRule);
+        }
+        toast({ title: isEditing ? "Regla actualizada" : "Regla agregada" });
+        onClose();
+    };
+
+    return (
+        <DialogContent className="sm:max-w-3xl">
+            <DialogHeader>
+                <DialogTitle>{isEditing ? "Editar Regla de Negocio" : "Constructor de Reglas de Negocio"}</DialogTitle>
+                <DialogDescription>Cree una regla "SI-ENTONCES" para automatizar su flujo de trabajo.</DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-6 py-4">
+                <div className="p-4 rounded-md border">
+                    <h3 className="mb-4 text-lg font-medium flex items-center"><ShieldCheck className="mr-2 h-5 w-5 text-primary"/> Condición (SI)</h3>
+                    <div className="grid grid-cols-4 gap-4">
+                        <div className="space-y-2 col-span-1">
+                            <Label>Tipo de Condición</Label>
+                            <Select value={condition.type} onValueChange={(v) => setCondition({ type: v as any })}>
+                                <SelectTrigger><SelectValue/></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="form">Basada en Campo de Formulario</SelectItem>
+                                    <SelectItem value="outcome">Basada en Resultado de Tarea</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="space-y-2 col-span-3 grid grid-cols-3 gap-4">
+                            <div className="space-y-2">
+                                <Label>Fuente</Label>
+                                <Select value={condition.fieldId} onValueChange={(v) => setCondition(c => ({...c, fieldId: v }))}>
+                                    <SelectTrigger><SelectValue placeholder="Seleccione fuente..."/></SelectTrigger>
+                                    <SelectContent>
+                                        {condition.type === 'form' && formFieldsForRules.map(field => <SelectItem key={field.id} value={field.id}>{field.label}</SelectItem>)}
+                                        {condition.type === 'outcome' && decisionTasks.map(task => <SelectItem key={task.id} value={task.id}>{task.name}</SelectItem>)}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Operador</Label>
+                                <Select value={condition.operator} onValueChange={(v) => setCondition(c => ({...c, operator: v as any }))} disabled={!selectedSource}>
+                                    <SelectTrigger><SelectValue placeholder="Seleccione..."/></SelectTrigger>
+                                    <SelectContent>{availableOperators.map(op => <SelectItem key={op.value} value={op.value}>{op.label}</SelectItem>)}</SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Valor</Label>
+                                {selectedSource && (selectedSource.type === 'number' || selectedSource.type === 'text' || selectedSource.type === 'textarea') ? (
+                                    <Input type={selectedSource?.type === 'number' ? 'number' : 'text'} placeholder="p.ej., 5000" value={condition.value || ''} onChange={(e) => setCondition(c => ({...c, value: e.target.value}))} />
+                                ) : (
+                                    <Select value={condition.value} onValueChange={(v) => setCondition(c => ({...c, value: v}))} disabled={!selectedSource}>
+                                        <SelectTrigger><SelectValue placeholder="Seleccione valor..."/></SelectTrigger>
+                                        <SelectContent>
+                                            {((selectedSource as any)?.options || (selectedSource as any)?.outcomes)?.map((opt: string) => <SelectItem key={opt} value={opt}>{opt}</SelectItem>)}
+                                        </SelectContent>
+                                    </Select>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="p-4 rounded-md border">
+                    <h3 className="mb-4 text-lg font-medium flex items-center"><GitBranch className="mr-2 h-5 w-5 text-primary"/> Acción (ENTONCES)</h3>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                            <Label>Tipo de Acción</Label>
+                            <Select value={action.type} onValueChange={(v) => setAction({ type: v as any })}>
+                                <SelectTrigger><SelectValue/></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="REQUIRE_ADDITIONAL_STEP">Añadir Paso Requerido</SelectItem>
+                                    <SelectItem value="ROUTE_TO_STEP">Enrutar a Paso</SelectItem>
+                                    <SelectItem value="ASSIGN_USER">Asignar Usuario a Tarea</SelectItem>
+                                    <SelectItem value="SEND_NOTIFICATION">Enviar Notificación</SelectItem>
+                                    <SelectItem value="CHANGE_REQUEST_PRIORITY">Cambiar Prioridad de Solicitud</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="space-y-2">
+                            { (action.type === 'REQUIRE_ADDITIONAL_STEP' || action.type === 'ROUTE_TO_STEP') &&
+                                <><Label>Paso de Destino</Label><Select value={(action as any).stepId} onValueChange={(v) => setAction(a => ({...a, stepId: v}))}><SelectTrigger><SelectValue placeholder="Seleccione un paso..."/></SelectTrigger><SelectContent>{steps.map(step => <SelectItem key={step.id} value={step.id}>{step.name}</SelectItem>)}</SelectContent></Select></>
+                            }
+                            { action.type === 'ASSIGN_USER' &&
+                                <div className="grid grid-cols-2 gap-2"><div className="space-y-2"><Label>Tarea</Label><Select value={(action as any).stepId} onValueChange={(v) => setAction(a => ({...a, stepId: v}))}><SelectTrigger><SelectValue placeholder="Seleccione tarea..."/></SelectTrigger><SelectContent>{steps.map(step => <SelectItem key={step.id} value={step.id}>{step.name}</SelectItem>)}</SelectContent></Select></div><div className="space-y-2"><Label>Usuario</Label><Select value={(action as any).userId} onValueChange={(v) => setAction(a => ({...a, userId: v}))}><SelectTrigger><SelectValue placeholder="Seleccione usuario..."/></SelectTrigger><SelectContent>{users.map(user => <SelectItem key={user.id} value={user.id}>{user.fullName}</SelectItem>)}</SelectContent></Select></div></div>
+                            }
+                            { action.type === 'SEND_NOTIFICATION' &&
+                                <div className="grid grid-cols-2 gap-2"><div className="space-y-2"><Label>Destinatario</Label><Select value={(action as any).target} onValueChange={(v) => setAction(a => ({...a, target: v}) as Partial<RuleAction>)}><SelectTrigger><SelectValue placeholder="Seleccione..."/></SelectTrigger><SelectContent><SelectItem value="submitter">Creador de la solicitud</SelectItem><SelectItem value="Admin">Admin</SelectItem><SelectItem value="Member">Miembro</SelectItem></SelectContent></Select></div><div className="space-y-2"><Label>Mensaje</Label><Input placeholder="Tu mensaje aquí" value={(action as any).message || ''} onChange={(e) => setAction(a => ({...a, message: e.target.value}) as Partial<RuleAction>)}/></div></div>
+                            }
+                            { action.type === 'CHANGE_REQUEST_PRIORITY' &&
+                                <><Label>Nueva Prioridad</Label><Select value={(action as any).priority} onValueChange={(v) => setAction(a => ({...a, priority: v}) as Partial<RuleAction>)}><SelectTrigger><SelectValue placeholder="Seleccione prioridad..."/></SelectTrigger><SelectContent><SelectItem value="Alta">Alta</SelectItem><SelectItem value="Media">Media</SelectItem><SelectItem value="Baja">Baja</SelectItem></SelectContent></Select></>
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <DialogFooter>
+                <DialogClose asChild><Button variant="ghost" onClick={onClose}>Cancelar</Button></DialogClose>
+                <Button onClick={handleSubmit}>{isEditing ? "Guardar Cambios" : "Añadir Regla"}</Button>
+            </DialogFooter>
+        </DialogContent>
     );
 }
 
