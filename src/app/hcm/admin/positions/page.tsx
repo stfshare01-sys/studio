@@ -55,7 +55,7 @@ import { formatCurrency } from '@/lib/hcm-utils';
 const initialFormState = {
     name: '',
     code: '',
-    department: '',
+    departmentId: '',
     level: 3,
     salaryMin: '',
     salaryMax: '',

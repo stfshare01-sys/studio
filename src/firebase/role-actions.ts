@@ -41,7 +41,18 @@ export const SYSTEM_ROLES: Record<SystemRole, ModulePermission[]> = {
     { module: 'hcm_admin_shifts', level: 'write' },
     { module: 'hcm_admin_positions', level: 'write' },
     { module: 'hcm_admin_locations', level: 'write' },
+    { module: 'hcm_admin_departments', level: 'write' },
     { module: 'hcm_settlements', level: 'write' },
+    // Granular team management
+    { module: 'hcm_team_tardiness', level: 'write' },
+    { module: 'hcm_team_departures', level: 'write' },
+    { module: 'hcm_team_overtime', level: 'write' },
+    { module: 'hcm_team_shifts', level: 'write' },
+    { module: 'hcm_team_hour_bank', level: 'write' },
+    // Granular prenomina
+    { module: 'hcm_prenomina_process', level: 'write' },
+    { module: 'hcm_prenomina_close', level: 'write' },
+    { module: 'hcm_prenomina_export', level: 'write' },
   ],
   Designer: [
     { module: 'dashboard', level: 'read' },
@@ -64,7 +75,16 @@ export const SYSTEM_ROLES: Record<SystemRole, ModulePermission[]> = {
     { module: 'hcm_admin_shifts', level: 'hidden' },
     { module: 'hcm_admin_positions', level: 'hidden' },
     { module: 'hcm_admin_locations', level: 'hidden' },
+    { module: 'hcm_admin_departments', level: 'hidden' },
     { module: 'hcm_settlements', level: 'hidden' },
+    { module: 'hcm_team_tardiness', level: 'hidden' },
+    { module: 'hcm_team_departures', level: 'hidden' },
+    { module: 'hcm_team_overtime', level: 'hidden' },
+    { module: 'hcm_team_shifts', level: 'hidden' },
+    { module: 'hcm_team_hour_bank', level: 'hidden' },
+    { module: 'hcm_prenomina_process', level: 'hidden' },
+    { module: 'hcm_prenomina_close', level: 'hidden' },
+    { module: 'hcm_prenomina_export', level: 'hidden' },
   ],
   Member: [
     { module: 'dashboard', level: 'read' },
@@ -87,7 +107,16 @@ export const SYSTEM_ROLES: Record<SystemRole, ModulePermission[]> = {
     { module: 'hcm_admin_shifts', level: 'hidden' },
     { module: 'hcm_admin_positions', level: 'hidden' },
     { module: 'hcm_admin_locations', level: 'hidden' },
+    { module: 'hcm_admin_departments', level: 'hidden' },
     { module: 'hcm_settlements', level: 'hidden' },
+    { module: 'hcm_team_tardiness', level: 'hidden' },
+    { module: 'hcm_team_departures', level: 'hidden' },
+    { module: 'hcm_team_overtime', level: 'hidden' },
+    { module: 'hcm_team_shifts', level: 'hidden' },
+    { module: 'hcm_team_hour_bank', level: 'hidden' },
+    { module: 'hcm_prenomina_process', level: 'hidden' },
+    { module: 'hcm_prenomina_close', level: 'hidden' },
+    { module: 'hcm_prenomina_export', level: 'hidden' },
   ],
   HRManager: [
     { module: 'dashboard', level: 'read' },
@@ -110,7 +139,18 @@ export const SYSTEM_ROLES: Record<SystemRole, ModulePermission[]> = {
     { module: 'hcm_admin_shifts', level: 'write' },
     { module: 'hcm_admin_positions', level: 'write' },
     { module: 'hcm_admin_locations', level: 'write' },
+    { module: 'hcm_admin_departments', level: 'write' },
     { module: 'hcm_settlements', level: 'write' },
+    // Full team management for HR
+    { module: 'hcm_team_tardiness', level: 'write' },
+    { module: 'hcm_team_departures', level: 'write' },
+    { module: 'hcm_team_overtime', level: 'write' },
+    { module: 'hcm_team_shifts', level: 'write' },
+    { module: 'hcm_team_hour_bank', level: 'write' },
+    // Full prenomina for HR
+    { module: 'hcm_prenomina_process', level: 'write' },
+    { module: 'hcm_prenomina_close', level: 'write' },
+    { module: 'hcm_prenomina_export', level: 'write' },
   ],
   Manager: [
     { module: 'dashboard', level: 'read' },
@@ -133,7 +173,18 @@ export const SYSTEM_ROLES: Record<SystemRole, ModulePermission[]> = {
     { module: 'hcm_admin_shifts', level: 'hidden' },
     { module: 'hcm_admin_positions', level: 'hidden' },
     { module: 'hcm_admin_locations', level: 'hidden' },
+    { module: 'hcm_admin_departments', level: 'hidden' },
     { module: 'hcm_settlements', level: 'hidden' },
+    // Managers can manage their team
+    { module: 'hcm_team_tardiness', level: 'write' },
+    { module: 'hcm_team_departures', level: 'write' },
+    { module: 'hcm_team_overtime', level: 'write' },
+    { module: 'hcm_team_shifts', level: 'write' },
+    { module: 'hcm_team_hour_bank', level: 'read' },
+    // Managers can process but not close/export
+    { module: 'hcm_prenomina_process', level: 'write' },
+    { module: 'hcm_prenomina_close', level: 'hidden' },
+    { module: 'hcm_prenomina_export', level: 'hidden' },
   ],
 };
 
@@ -159,7 +210,18 @@ export const MODULE_INFO: Record<AppModule, { name: string; description: string;
   hcm_admin_shifts: { name: 'Turnos', description: 'Configurar tipos de turnos', category: 'hcm' },
   hcm_admin_positions: { name: 'Posiciones', description: 'Catálogo de posiciones', category: 'hcm' },
   hcm_admin_locations: { name: 'Ubicaciones', description: 'Catálogo de ubicaciones', category: 'hcm' },
+  hcm_admin_departments: { name: 'Departamentos', description: 'Catálogo de departamentos', category: 'hcm' },
   hcm_settlements: { name: 'Liquidaciones', description: 'Cálculos de finiquito y liquidación', category: 'hcm' },
+  // Granular team management
+  hcm_team_tardiness: { name: 'Retardos del Equipo', description: 'Gestionar y justificar retardos', category: 'hcm' },
+  hcm_team_departures: { name: 'Salidas Tempranas', description: 'Gestionar salidas anticipadas', category: 'hcm' },
+  hcm_team_overtime: { name: 'Horas Extras del Equipo', description: 'Aprobar y gestionar horas extras', category: 'hcm' },
+  hcm_team_shifts: { name: 'Asignación de Turnos', description: 'Asignar turnos a subordinados', category: 'hcm' },
+  hcm_team_hour_bank: { name: 'Bolsa de Horas', description: 'Ver saldo de bolsa de horas del equipo', category: 'hcm' },
+  // Granular prenomina
+  hcm_prenomina_process: { name: 'Procesar Pre-nómina', description: 'Procesar datos para pre-nómina', category: 'hcm' },
+  hcm_prenomina_close: { name: 'Cerrar Período', description: 'Cerrar y bloquear período de nómina', category: 'hcm' },
+  hcm_prenomina_export: { name: 'Exportar Pre-nómina', description: 'Exportar datos a sistema de nómina', category: 'hcm' },
 };
 
 // Check if a role is a system role

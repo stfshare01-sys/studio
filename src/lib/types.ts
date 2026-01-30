@@ -40,7 +40,18 @@ export type AppModule =
   | 'hcm_admin_shifts'
   | 'hcm_admin_positions'
   | 'hcm_admin_locations'
-  | 'hcm_settlements';
+  | 'hcm_admin_departments'
+  | 'hcm_settlements'
+  // Granular team management permissions
+  | 'hcm_team_tardiness'       // Gestionar retardos del equipo
+  | 'hcm_team_departures'      // Gestionar salidas tempranas
+  | 'hcm_team_overtime'        // Gestionar horas extras
+  | 'hcm_team_shifts'          // Asignar turnos al equipo
+  | 'hcm_team_hour_bank'       // Ver/gestionar bolsa de horas
+  // Granular prenomina permissions
+  | 'hcm_prenomina_process'    // Procesar prenómina
+  | 'hcm_prenomina_close'      // Cerrar período
+  | 'hcm_prenomina_export';    // Exportar prenómina
 
 // Permission for a specific module
 export type ModulePermission = {
@@ -1140,6 +1151,10 @@ export type Position = {
   canApproveOvertime?: boolean;   // Puede aprobar horas extras
   canApproveIncidences?: boolean; // Puede aprobar incidencias
 
+  // Configuración de horas extras
+  generatesOvertime?: boolean;    // Si el puesto genera horas extras pagadas
+  overtimePreApprovalRequired?: boolean; // Si requiere pre-autorización para HE
+
   // Límites de aprobación
   approvalLimits?: ApprovalLimits; // Límites máximos que puede aprobar sin escalar
 
@@ -1263,11 +1278,15 @@ export type TardinessRecord = {
   actualTime: string;             // Hora real (HH:mm)
   minutesLate: number;            // Minutos de retardo
 
-  // Estado
-  isJustified: boolean;           // Si fue justificado
-  justificationReason?: string;   // Razón de justificación
+  // Estado de justificación
+  isJustified: boolean;           // Si fue justificado (legacy, usar justificationStatus)
+  justificationStatus: IncidenceJustificationStatus; // Nuevo estado detallado
+  justificationType?: JustificationType; // Tipo de justificación seleccionado
+  justificationReason?: string;   // Razón de justificación o comentario
   justifiedById?: string;         // Quién justificó
   justifiedAt?: string;           // Cuándo se justificó
+  linkedIncidenceId?: string;     // Si fue auto-justificado por una incidencia previa
+  compensatedToHourBank?: boolean; // Si se envió a bolsa de horas
 
   // Acumulación
   periodStartDate: string;        // Inicio del período de 30 días
@@ -1567,11 +1586,19 @@ export type EarlyDeparture = {
   minutesEarly: number;             // Minutos antes de lo programado
 
   // Estado de justificación
-  isJustified: boolean;
+  isJustified: boolean;             // Legacy, usar justificationStatus
+  justificationStatus: IncidenceJustificationStatus; // Nuevo estado detallado
+  justificationType?: JustificationType; // Tipo de justificación seleccionado
   justificationReason?: string;
   justifiedById?: string;
   justifiedByName?: string;
   justifiedAt?: string;
+  linkedIncidenceId?: string;       // Si fue auto-justificado
+  compensatedToHourBank?: boolean;  // Si se envió a bolsa de horas
+
+  // Regla de 6 horas
+  hoursWorked?: number;             // Horas trabajadas antes de la salida
+  isAbsence?: boolean;              // True si trabajó < 6 horas (se considera falta)
 
   // Referencias
   attendanceRecordId?: string;      // Referencia al registro de asistencia
@@ -1740,4 +1767,129 @@ export type Notification = {
   // Quién generó la notificación
   createdById?: string;
   createdByName?: string;
+};
+
+// =========================================================================
+// BOLSA DE HORAS Y TIPOS DE JUSTIFICACIÓN
+// =========================================================================
+
+/**
+ * Estado de justificación para incidencias (retardos/salidas)
+ */
+export type IncidenceJustificationStatus =
+  | 'pending'           // Pendiente de revisión
+  | 'justified'         // Justificado por el jefe
+  | 'unjustified'       // Marcado como injustificado
+  | 'compensated'       // Repuesto (enviado a bolsa de horas)
+  | 'auto_justified';   // Auto-justificado por solicitud previa aprobada
+
+/**
+ * Tipos de justificación preconfigurados
+ */
+export type JustificationType =
+  | 'medical_appointment'       // Cita médica
+  | 'family_emergency'          // Emergencia familiar
+  | 'traffic_incident'          // Incidente de tráfico
+  | 'public_transport_delay'    // Retraso transporte público
+  | 'weather_conditions'        // Condiciones climáticas
+  | 'official_business'         // Asuntos oficiales
+  | 'manager_authorization'     // Autorización del jefe
+  | 'other';                    // Otros (requiere comentario)
+
+/**
+ * Labels para tipos de justificación (uso en UI)
+ */
+export const JUSTIFICATION_TYPE_LABELS: Record<JustificationType, string> = {
+  medical_appointment: 'Cita médica',
+  family_emergency: 'Emergencia familiar',
+  traffic_incident: 'Incidente de tráfico',
+  public_transport_delay: 'Retraso en transporte público',
+  weather_conditions: 'Condiciones climáticas',
+  official_business: 'Asuntos oficiales',
+  manager_authorization: 'Autorización del jefe',
+  other: 'Otros',
+};
+
+/**
+ * Bolsa de Horas del Empleado
+ * Registra la deuda/crédito de tiempo del empleado
+ */
+export type HourBank = {
+  id: string;
+  employeeId: string;
+  employeeName?: string;
+
+  // Saldo actual (en minutos)
+  // Positivo = empleado debe tiempo a la empresa
+  // Negativo = empresa debe tiempo al empleado (crédito)
+  balanceMinutes: number;
+
+  // Estadísticas
+  totalDebtAccumulated: number;   // Total acumulado de deuda
+  totalCompensated: number;       // Total compensado con HE
+  lastMovementDate?: string;      // Última actualización
+
+  // Auditoría
+  createdAt: string;
+  updatedAt: string;
+};
+
+/**
+ * Movimiento en la Bolsa de Horas
+ */
+export type HourBankMovement = {
+  id: string;
+  hourBankId: string;
+  employeeId: string;
+  date: string;                   // Fecha del movimiento
+
+  // Tipo de movimiento
+  type:
+  | 'tardiness'                 // Retardo agregado
+  | 'early_departure'           // Salida temprana agregada
+  | 'overtime_compensation'     // Compensado con horas extras
+  | 'manual_adjustment';        // Ajuste manual
+
+  // Cantidad (en minutos)
+  // Positivo = agrega deuda
+  // Negativo = reduce deuda (compensación)
+  minutes: number;
+
+  // Referencias
+  reason: string;
+  sourceRecordId?: string;        // ID del retardo/salida/OT origen
+  sourceRecordType?: 'tardiness' | 'early_departure' | 'overtime';
+
+  // Auditoría
+  createdById: string;
+  createdByName?: string;
+  createdAt: string;
+};
+
+/**
+ * Resultado del cálculo de horas extras según LFT
+ */
+export type OvertimeCalculation = {
+  // Entrada
+  rawOvertimeMinutes: number;     // Minutos extras trabajados (antes de compensación)
+  hourBankDebt: number;           // Deuda en bolsa de horas
+
+  // Compensación
+  minutesCompensated: number;     // Minutos usados para compensar deuda
+  remainingDebt: number;          // Deuda restante después de compensar
+
+  // Horas extras netas
+  netOvertimeMinutes: number;     // Minutos extras después de compensar
+
+  // Desglose LFT
+  doubleHoursMinutes: number;     // Minutos a pagar dobles (primeras 9 HE semanales)
+  tripleHoursMinutes: number;     // Minutos a pagar triples (a partir de hora 10)
+
+  // Valores monetarios (si se proporciona tarifa)
+  doubleHoursAmount?: number;
+  tripleHoursAmount?: number;
+  totalAmount?: number;
+
+  // Acumulado semanal (para saber cuántas HE lleva en la semana)
+  weeklyOvertimeAccumulated: number;
 };

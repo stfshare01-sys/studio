@@ -26,6 +26,7 @@ import {
     Settings,
     Briefcase,
     LayoutDashboard,
+    Building2,
 } from 'lucide-react';
 import Link from 'next/link';
 import type { Employee, Incidence, AttendanceImportBatch } from '@/lib/types';
@@ -349,6 +350,12 @@ export default function HCMPage() {
                                                 <Link href="/hcm/admin/positions">
                                                     <Briefcase className="mr-2 h-4 w-4" />
                                                     Puestos
+                                                </Link>
+                                            </Button>
+                                            <Button asChild variant="outline" className="justify-start">
+                                                <Link href="/hcm/admin/departments">
+                                                    <Building2 className="mr-2 h-4 w-4" />
+                                                    Departamentos
                                                 </Link>
                                             </Button>
                                         </CardContent>
