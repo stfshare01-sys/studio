@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { PlusCircle, Trash2, GitBranch, ShieldCheck, CheckCircle, GitMerge, GitFork, Library, WandSparkles, Loader2, UserSquare, Pencil, GripVertical, X, AlertTriangle, User, Bell, ChevronsRight, Hash, CaseSensitive, Timer, Siren, ArrowUp, ArrowDown, Save } from "lucide-react";
+import { PlusCircle, Trash2, GitBranch, ShieldCheck, CheckCircle, GitMerge, GitFork, Library, WandSparkles, Loader2, UserSquare, Pencil, GripVertical, X, AlertTriangle, User, Bell, ChevronsRight, Hash, CaseSensitive, Timer, Siren, ArrowUp, ArrowDown, Save, Globe, Lock, Users, Building2, Briefcase, UserCog, Eye, EyeOff } from "lucide-react";
 import Link from "next/link";
 import {
     Dialog,
@@ -36,7 +36,7 @@ import { useCollection, useFirestore, useMemoFirebase } from "@/firebase";
 import { addDocumentNonBlocking, updateDocumentNonBlocking } from "@/firebase/non-blocking-updates";
 import { collection, doc } from "firebase/firestore";
 import { useRouter } from "next/navigation";
-import type { FormField, WorkflowStepDefinition, Rule, RuleCondition, RuleAction, WorkflowStepType, FormFieldType, RuleOperator, User as UserType, RequestPriority, UserRole, EscalationPolicy, VisibilityRule, TableColumnDefinition, DynamicSelectSource, UserIdentityConfig, ValidationRule, Template, FieldLayoutConfig, DefaultValueRule, TypographyConfig as TypographyConfigType } from "@/lib/types";
+import type { FormField, WorkflowStepDefinition, Rule, RuleCondition, RuleAction, WorkflowStepType, FormFieldType, RuleOperator, User as UserType, RequestPriority, UserRole, EscalationPolicy, VisibilityRule, TableColumnDefinition, DynamicSelectSource, UserIdentityConfig, ValidationRule, Template, FieldLayoutConfig, DefaultValueRule, TypographyConfig as TypographyConfigType, InitiatorPermission } from "@/lib/types";
 import { VisibilityRulesBuilder, FieldValidationConfig, TableColumnDialog, useMasterLists, FieldLayoutEditor, GatewayRoutingConfig, DefaultValueRulesBuilder, TypographyConfig, HtmlFieldEditor, TimerStepConfig } from "@/components/form-fields";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
@@ -360,6 +360,12 @@ export function TemplateEditor({ mode, initialData, templateId }: TemplateEditor
     // Flow Data
     const [pools, setPools] = useState<Pool[]>(initialData?.pools || []);
 
+    // Publication and Permissions
+    const [templateStatus, setTemplateStatus] = useState<'draft' | 'published' | 'archived'>(initialData?.status || 'draft');
+    const [initiatorPermissions, setInitiatorPermissions] = useState<InitiatorPermission>(
+        initialData?.initiatorPermissions || { type: 'all' }
+    );
+
     // Load Default Pool if empty
     useEffect(() => {
         if (pools.length === 0 && mode === 'create') {
@@ -386,6 +392,8 @@ export function TemplateEditor({ mode, initialData, templateId }: TemplateEditor
             setFieldLayout(initialData.fieldLayout || []);
             setDefaultValueRules(initialData.defaultValueRules || []);
             setPools(initialData.pools || []);
+            setTemplateStatus(initialData.status || 'draft');
+            setInitiatorPermissions(initialData.initiatorPermissions || { type: 'all' });
         }
     }, [initialData]);
 
@@ -412,13 +420,15 @@ export function TemplateEditor({ mode, initialData, templateId }: TemplateEditor
                 steps: allSteps, // Flattened for backward compatibility/easier querying
                 fieldLayout,
                 defaultValueRules,
+                status: templateStatus,
+                initiatorPermissions,
                 updatedAt: new Date().toISOString()
             };
 
             if (mode === 'create') {
                 templateData.createdAt = new Date().toISOString();
                 templateData.createdBy = 'me'; // ToDo: Real user
-                templateData.status = 'active';
+                templateData.status = 'draft'; // New templates start as draft
                 templateData.version = 1;
 
                 // Logic to create document (using non-blocking for speed, but routing needs ID)
@@ -443,6 +453,87 @@ export function TemplateEditor({ mode, initialData, templateId }: TemplateEditor
         }
     };
     const [isSaving, setIsSaving] = useState(false);
+    const [isPublishing, setIsPublishing] = useState(false);
+
+    // Publish/Unpublish handler
+    const handlePublish = async () => {
+        if (!templateId && mode === 'edit') {
+            toast({ variant: 'destructive', title: 'Error', description: 'Guarda la plantilla primero' });
+            return;
+        }
+
+        // Validate before publishing
+        const allSteps = pools.flatMap(p => p.lanes.flatMap(l => l.steps));
+        if (templateStatus === 'draft') {
+            if (!templateName.trim()) {
+                toast({ variant: 'destructive', title: 'Error', description: 'El nombre es obligatorio para publicar' });
+                return;
+            }
+            if (allSteps.length === 0) {
+                toast({ variant: 'destructive', title: 'Error', description: 'Debe haber al menos un paso en el proceso para publicar' });
+                return;
+            }
+            if (fields.length === 0) {
+                toast({ variant: 'destructive', title: 'Error', description: 'Debe haber al menos un campo en el formulario para publicar' });
+                return;
+            }
+        }
+
+        setIsPublishing(true);
+        try {
+            const newStatus = templateStatus === 'published' ? 'draft' : 'published';
+
+            if (mode === 'create') {
+                // First save the template, then publish
+                const templateData: any = {
+                    name: templateName,
+                    description: templateDescription,
+                    fields,
+                    rules,
+                    visibilityRules,
+                    pools,
+                    steps: allSteps,
+                    fieldLayout,
+                    defaultValueRules,
+                    status: newStatus,
+                    initiatorPermissions,
+                    createdAt: new Date().toISOString(),
+                    createdBy: 'me',
+                    updatedAt: new Date().toISOString(),
+                    publishedAt: newStatus === 'published' ? new Date().toISOString() : null,
+                    version: 1,
+                };
+                await addDocumentNonBlocking(collection(firestore, 'request_templates'), templateData);
+                toast({
+                    title: newStatus === 'published' ? '¡Publicada!' : 'Despublicada',
+                    description: newStatus === 'published'
+                        ? 'La plantilla está ahora disponible en "Nueva Solicitud"'
+                        : 'La plantilla ya no está visible en "Nueva Solicitud"'
+                });
+                router.push('/templates');
+            } else {
+                if (!templateId) throw new Error("No ID for edit");
+                const docRef = doc(firestore, 'request_templates', templateId);
+                await updateDocumentNonBlocking(docRef, {
+                    status: newStatus,
+                    publishedAt: newStatus === 'published' ? new Date().toISOString() : null,
+                    updatedAt: new Date().toISOString()
+                });
+                setTemplateStatus(newStatus);
+                toast({
+                    title: newStatus === 'published' ? '¡Publicada!' : 'Despublicada',
+                    description: newStatus === 'published'
+                        ? 'La plantilla está ahora disponible en "Nueva Solicitud"'
+                        : 'La plantilla ya no está visible en "Nueva Solicitud"'
+                });
+            }
+        } catch (error) {
+            console.error(error);
+            toast({ variant: 'destructive', title: 'Error', description: 'No se pudo cambiar el estado de publicación' });
+        } finally {
+            setIsPublishing(false);
+        }
+    };
 
     // DND Logic
     const handleDragEnd = (event: DragEndEvent) => {
@@ -571,9 +662,26 @@ export function TemplateEditor({ mode, initialData, templateId }: TemplateEditor
     const [editingRule, setEditingRule] = useState<Rule | null>(null);
     const [isRuleDialogOpen, setIsRuleDialogOpen] = useState(false);
 
-    // Load users for rule builder
+    // Load users for rule builder and initiator permissions
     const usersQuery = useMemoFirebase(() => collection(firestore, 'users'), [firestore]);
     const { data: users } = useCollection<UserType>(usersQuery);
+
+    // Load positions for initiator permissions
+    const positionsQuery = useMemoFirebase(() => collection(firestore, 'positions'), [firestore]);
+    const { data: positions } = useCollection<{ id: string; name: string; department?: string }>(positionsQuery);
+
+    // Load departments for initiator permissions
+    const departmentsQuery = useMemoFirebase(() => collection(firestore, 'departments'), [firestore]);
+    const { data: departments } = useCollection<{ id: string; name: string; parentId?: string }>(departmentsQuery);
+
+    // Load roles from admin config or use default roles
+    const rolesQuery = useMemoFirebase(() => collection(firestore, 'roles'), [firestore]);
+    const { data: rolesData } = useCollection<{ id: string; name: string }>(rolesQuery);
+    const roles = rolesData && rolesData.length > 0 ? rolesData : [
+        { id: 'Admin', name: 'Administrador' },
+        { id: 'Member', name: 'Miembro' },
+        { id: 'Manager', name: 'Gerente' },
+    ];
 
     // Rule handlers
     const handleAddRule = (rule: Omit<Rule, 'id'>) => {
@@ -607,10 +715,30 @@ export function TemplateEditor({ mode, initialData, templateId }: TemplateEditor
                         <h1 className="text-2xl font-bold tracking-tight">
                             {mode === 'create' ? 'Crear Nueva Plantilla' : 'Editar Plantilla'}
                         </h1>
+                        <Badge
+                            variant={templateStatus === 'published' ? 'default' : 'secondary'}
+                            className={cn(
+                                templateStatus === 'published' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100' : ''
+                            )}
+                        >
+                            {templateStatus === 'published' ? (
+                                <><Globe className="mr-1 h-3 w-3" /> Publicada</>
+                            ) : (
+                                <><Lock className="mr-1 h-3 w-3" /> Borrador</>
+                            )}
+                        </Badge>
                         <CopilotDialog onApply={applyAiDraft} />
                     </div>
                     <div className="flex gap-2">
                         <Button variant="outline" asChild><Link href="/templates">Cancelar</Link></Button>
+                        <Button variant="outline" onClick={handlePublish} disabled={isPublishing}>
+                            {isPublishing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            {templateStatus === 'published' ? (
+                                <><EyeOff className="mr-2 h-4 w-4" /> Despublicar</>
+                            ) : (
+                                <><Eye className="mr-2 h-4 w-4" /> Publicar</>
+                            )}
+                        </Button>
                         <Button onClick={handleSave} disabled={isSaving}>
                             {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                             Guardar Plantilla
@@ -658,10 +786,11 @@ export function TemplateEditor({ mode, initialData, templateId }: TemplateEditor
 
                         {/* Right area - Tabs */}
                         <Tabs defaultValue="formulario" className="w-full">
-                            <TabsList className="grid w-full grid-cols-3">
+                            <TabsList className="grid w-full grid-cols-4">
                                 <TabsTrigger value="formulario">Formulario</TabsTrigger>
                                 <TabsTrigger value="reglas">Reglas</TabsTrigger>
                                 <TabsTrigger value="flujo">Flujo de Trabajo</TabsTrigger>
+                                <TabsTrigger value="config">Configuración</TabsTrigger>
                             </TabsList>
 
                             {/* Tab: Formulario */}
@@ -829,6 +958,248 @@ export function TemplateEditor({ mode, initialData, templateId }: TemplateEditor
                                         <Button variant="outline" className="w-full mt-4" onClick={addPool}>
                                             <Library className="mr-2 h-4 w-4" /> Añadir Piscina
                                         </Button>
+                                    </CardContent>
+                                </Card>
+                            </TabsContent>
+
+                            {/* Tab: Configuración */}
+                            <TabsContent value="config" className="space-y-4 mt-4">
+                                <Card>
+                                    <CardHeader>
+                                        <CardTitle>¿Quién puede iniciar esta solicitud?</CardTitle>
+                                        <CardDescription>
+                                            Configure quién tiene permiso para crear nuevas solicitudes usando esta plantilla.
+                                        </CardDescription>
+                                    </CardHeader>
+                                    <CardContent className="space-y-4">
+                                        <div className="space-y-4">
+                                            <div className="space-y-2">
+                                                <Label>Tipo de permiso</Label>
+                                                <Select
+                                                    value={initiatorPermissions.type}
+                                                    onValueChange={(v) => setInitiatorPermissions({ type: v as InitiatorPermission['type'] })}
+                                                >
+                                                    <SelectTrigger>
+                                                        <SelectValue placeholder="Seleccione quién puede iniciar..." />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="all">
+                                                            <div className="flex items-center gap-2">
+                                                                <Globe className="h-4 w-4" />
+                                                                <span>Todos los usuarios</span>
+                                                            </div>
+                                                        </SelectItem>
+                                                        <SelectItem value="user">
+                                                            <div className="flex items-center gap-2">
+                                                                <User className="h-4 w-4" />
+                                                                <span>Usuarios específicos</span>
+                                                            </div>
+                                                        </SelectItem>
+                                                        <SelectItem value="role">
+                                                            <div className="flex items-center gap-2">
+                                                                <UserCog className="h-4 w-4" />
+                                                                <span>Por rol</span>
+                                                            </div>
+                                                        </SelectItem>
+                                                        <SelectItem value="position">
+                                                            <div className="flex items-center gap-2">
+                                                                <Briefcase className="h-4 w-4" />
+                                                                <span>Por puesto</span>
+                                                            </div>
+                                                        </SelectItem>
+                                                        <SelectItem value="department">
+                                                            <div className="flex items-center gap-2">
+                                                                <Building2 className="h-4 w-4" />
+                                                                <span>Por departamento/área</span>
+                                                            </div>
+                                                        </SelectItem>
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+
+                                            {/* Selector de usuarios específicos */}
+                                            {initiatorPermissions.type === 'user' && (
+                                                <div className="space-y-2 rounded-md border p-4">
+                                                    <Label>Seleccionar usuarios</Label>
+                                                    <div className="space-y-2 max-h-[200px] overflow-y-auto">
+                                                        {users?.map(user => (
+                                                            <label key={user.id} className="flex items-center gap-2 cursor-pointer hover:bg-muted p-2 rounded">
+                                                                <Checkbox
+                                                                    checked={initiatorPermissions.userIds?.includes(user.id) || false}
+                                                                    onCheckedChange={(checked) => {
+                                                                        const currentIds = initiatorPermissions.userIds || [];
+                                                                        setInitiatorPermissions({
+                                                                            ...initiatorPermissions,
+                                                                            userIds: checked
+                                                                                ? [...currentIds, user.id]
+                                                                                : currentIds.filter(id => id !== user.id)
+                                                                        });
+                                                                    }}
+                                                                />
+                                                                <span className="text-sm">{user.fullName}</span>
+                                                                <span className="text-xs text-muted-foreground">({user.email})</span>
+                                                            </label>
+                                                        ))}
+                                                    </div>
+                                                    {(initiatorPermissions.userIds?.length || 0) > 0 && (
+                                                        <p className="text-xs text-muted-foreground mt-2">
+                                                            {initiatorPermissions.userIds?.length} usuario(s) seleccionado(s)
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            )}
+
+                                            {/* Selector de roles */}
+                                            {initiatorPermissions.type === 'role' && (
+                                                <div className="space-y-2 rounded-md border p-4">
+                                                    <Label>Seleccionar roles</Label>
+                                                    <div className="space-y-2">
+                                                        {roles.map(role => (
+                                                            <label key={role.id} className="flex items-center gap-2 cursor-pointer hover:bg-muted p-2 rounded">
+                                                                <Checkbox
+                                                                    checked={initiatorPermissions.roleIds?.includes(role.id) || false}
+                                                                    onCheckedChange={(checked) => {
+                                                                        const currentIds = initiatorPermissions.roleIds || [];
+                                                                        setInitiatorPermissions({
+                                                                            ...initiatorPermissions,
+                                                                            roleIds: checked
+                                                                                ? [...currentIds, role.id]
+                                                                                : currentIds.filter(id => id !== role.id)
+                                                                        });
+                                                                    }}
+                                                                />
+                                                                <span className="text-sm">{role.name}</span>
+                                                            </label>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Selector de puestos */}
+                                            {initiatorPermissions.type === 'position' && (
+                                                <div className="space-y-2 rounded-md border p-4">
+                                                    <Label>Seleccionar puestos</Label>
+                                                    <div className="space-y-2 max-h-[200px] overflow-y-auto">
+                                                        {positions?.map(position => (
+                                                            <label key={position.id} className="flex items-center gap-2 cursor-pointer hover:bg-muted p-2 rounded">
+                                                                <Checkbox
+                                                                    checked={initiatorPermissions.positionIds?.includes(position.id) || false}
+                                                                    onCheckedChange={(checked) => {
+                                                                        const currentIds = initiatorPermissions.positionIds || [];
+                                                                        setInitiatorPermissions({
+                                                                            ...initiatorPermissions,
+                                                                            positionIds: checked
+                                                                                ? [...currentIds, position.id]
+                                                                                : currentIds.filter(id => id !== position.id)
+                                                                        });
+                                                                    }}
+                                                                />
+                                                                <span className="text-sm">{position.name}</span>
+                                                            </label>
+                                                        ))}
+                                                        {(!positions || positions.length === 0) && (
+                                                            <p className="text-sm text-muted-foreground text-center py-4">
+                                                                No hay puestos configurados. Vaya a HCM → Admin → Puestos para crearlos.
+                                                            </p>
+                                                        )}
+                                                    </div>
+                                                    {(initiatorPermissions.positionIds?.length || 0) > 0 && (
+                                                        <p className="text-xs text-muted-foreground mt-2">
+                                                            {initiatorPermissions.positionIds?.length} puesto(s) seleccionado(s)
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            )}
+
+                                            {/* Selector de departamentos/áreas */}
+                                            {initiatorPermissions.type === 'department' && (
+                                                <div className="space-y-2 rounded-md border p-4">
+                                                    <Label>Seleccionar departamentos o áreas</Label>
+                                                    <div className="space-y-2 max-h-[200px] overflow-y-auto">
+                                                        {departments?.map(dept => (
+                                                            <label key={dept.id} className="flex items-center gap-2 cursor-pointer hover:bg-muted p-2 rounded">
+                                                                <Checkbox
+                                                                    checked={initiatorPermissions.departmentIds?.includes(dept.id) || false}
+                                                                    onCheckedChange={(checked) => {
+                                                                        const currentIds = initiatorPermissions.departmentIds || [];
+                                                                        setInitiatorPermissions({
+                                                                            ...initiatorPermissions,
+                                                                            departmentIds: checked
+                                                                                ? [...currentIds, dept.id]
+                                                                                : currentIds.filter(id => id !== dept.id)
+                                                                        });
+                                                                    }}
+                                                                />
+                                                                <span className="text-sm">{dept.name}</span>
+                                                                {dept.parentId && (
+                                                                    <span className="text-xs text-muted-foreground">(Sub-área)</span>
+                                                                )}
+                                                            </label>
+                                                        ))}
+                                                        {(!departments || departments.length === 0) && (
+                                                            <p className="text-sm text-muted-foreground text-center py-4">
+                                                                No hay departamentos configurados. Vaya a HCM → Admin → Departamentos para crearlos.
+                                                            </p>
+                                                        )}
+                                                    </div>
+                                                    {(initiatorPermissions.departmentIds?.length || 0) > 0 && (
+                                                        <p className="text-xs text-muted-foreground mt-2">
+                                                            {initiatorPermissions.departmentIds?.length} departamento(s) seleccionado(s)
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            )}
+
+                                            {initiatorPermissions.type === 'all' && (
+                                                <div className="rounded-md bg-muted/50 p-4 text-sm text-muted-foreground">
+                                                    <Users className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                                                    <p className="text-center">Cualquier usuario autenticado podrá crear solicitudes usando esta plantilla.</p>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </CardContent>
+                                </Card>
+
+                                <Card>
+                                    <CardHeader>
+                                        <CardTitle>Estado de Publicación</CardTitle>
+                                        <CardDescription>
+                                            Las plantillas en borrador no aparecen en "Nueva Solicitud".
+                                        </CardDescription>
+                                    </CardHeader>
+                                    <CardContent>
+                                        <div className="flex items-center justify-between p-4 rounded-md border">
+                                            <div className="flex items-center gap-3">
+                                                {templateStatus === 'published' ? (
+                                                    <div className="p-2 rounded-full bg-green-100 dark:bg-green-900">
+                                                        <Globe className="h-5 w-5 text-green-600 dark:text-green-400" />
+                                                    </div>
+                                                ) : (
+                                                    <div className="p-2 rounded-full bg-muted">
+                                                        <Lock className="h-5 w-5 text-muted-foreground" />
+                                                    </div>
+                                                )}
+                                                <div>
+                                                    <p className="font-medium">
+                                                        {templateStatus === 'published' ? 'Publicada' : 'Borrador'}
+                                                    </p>
+                                                    <p className="text-sm text-muted-foreground">
+                                                        {templateStatus === 'published'
+                                                            ? 'La plantilla está visible y disponible para crear solicitudes'
+                                                            : 'La plantilla solo es visible para administradores'
+                                                        }
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <Button
+                                                variant={templateStatus === 'published' ? 'outline' : 'default'}
+                                                onClick={handlePublish}
+                                                disabled={isPublishing}
+                                            >
+                                                {isPublishing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                                {templateStatus === 'published' ? 'Despublicar' : 'Publicar ahora'}
+                                            </Button>
+                                        </div>
                                     </CardContent>
                                 </Card>
                             </TabsContent>
