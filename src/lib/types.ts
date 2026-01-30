@@ -531,6 +531,17 @@ export type MasterList = {
   fields: MasterListField[];
 }
 
+// Configuration for who can initiate a request from a template
+export type InitiatorPermission = {
+  type: 'all' | 'user' | 'role' | 'position' | 'department' | 'area';
+  // For specific selections, store the IDs
+  userIds?: string[];
+  roleIds?: string[];
+  positionIds?: string[];
+  departmentIds?: string[];
+  areaIds?: string[];
+};
+
 export type Template = {
   id: string;
   name: string;
@@ -558,6 +569,20 @@ export type Template = {
 
   // NEW: Allow public form submissions (no authentication)
   allowPublicSubmission?: boolean;
+
+  // Publication status: draft templates are not visible in "Nueva Solicitud"
+  status?: 'draft' | 'published' | 'archived';
+
+  // Who can initiate requests from this template
+  initiatorPermissions?: InitiatorPermission;
+
+  // Metadata
+  createdAt?: string;
+  createdBy?: string;
+  updatedAt?: string;
+  publishedAt?: string;
+  publishedBy?: string;
+  version?: number;
 };
 
 export type Comment = {

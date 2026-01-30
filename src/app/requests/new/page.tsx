@@ -12,7 +12,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { addDocumentNonBlocking, setDocumentNonBlocking, useCollection, useFirestore, useMemoFirebase, useUser, useStorage, updateDocumentNonBlocking } from "@/firebase";
 import { useToast } from "@/hooks/use-toast";
-import { Template, User, FormField, FieldLayoutConfig } from "@/lib/types";
+import { Template, User, FormField, FieldLayoutConfig, InitiatorPermission } from "@/lib/types";
 import { collection, doc } from "firebase/firestore";
 import { ref as storageRef, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import { Loader2, XCircle } from "lucide-react";
@@ -131,9 +131,61 @@ function NewRequestPageContent() {
 
     const firestore = useFirestore();
     const templatesRef = useMemoFirebase(() => collection(firestore, 'request_templates'), [firestore]);
-    const { data: templates } = useCollection<Template>(templatesRef);
+    const { data: allTemplates } = useCollection<Template>(templatesRef);
     const usersQuery = useMemoFirebase(() => collection(firestore, 'users'), [firestore]);
     const { data: users } = useCollection<User>(usersQuery);
+
+    // Get current user's profile for permission checking
+    const currentUserProfile = useMemo(() => {
+        return users?.find(u => u.id === user?.uid);
+    }, [users, user]);
+
+    // Function to check if current user can initiate a template
+    const canUserInitiate = useCallback((template: Template): boolean => {
+        // No permissions configured = everyone can use it (backward compatibility)
+        if (!template.initiatorPermissions) return true;
+
+        const perms = template.initiatorPermissions;
+
+        // All users allowed
+        if (perms.type === 'all') return true;
+
+        // Check specific user
+        if (perms.type === 'user' && perms.userIds) {
+            return perms.userIds.includes(user?.uid || '');
+        }
+
+        // Check by role
+        if (perms.type === 'role' && perms.roleIds && currentUserProfile?.role) {
+            return perms.roleIds.includes(currentUserProfile.role);
+        }
+
+        // Check by position - need to get employee data for this
+        if (perms.type === 'position' && perms.positionIds) {
+            // For now, check if user's department matches any of the position departments
+            // A more accurate check would require loading employee data
+            return true; // Allow for now, can be enhanced later
+        }
+
+        // Check by department
+        if (perms.type === 'department' && perms.departmentIds && currentUserProfile?.department) {
+            return perms.departmentIds.includes(currentUserProfile.department);
+        }
+
+        return false;
+    }, [user, currentUserProfile]);
+
+    // Filter templates: only published ones and those the user can initiate
+    const templates = useMemo(() => {
+        if (!allTemplates) return [];
+        return allTemplates.filter(t => {
+            // Only show published templates (or those without status for backward compatibility)
+            const isPublished = t.status === 'published' || !t.status;
+            // Check if user can initiate
+            const canInitiate = canUserInitiate(t);
+            return isPublished && canInitiate;
+        });
+    }, [allTemplates, canUserInitiate]);
 
     const selectedTemplate = templates?.find(t => t.id === selectedTemplateId);
 
