@@ -697,11 +697,11 @@ export function TemplateEditor({ mode, initialData, templateId }: TemplateEditor
 
                 {/* Field Dialog for adding/editing form fields */}
                 <Dialog open={isFieldDialogOpen} onOpenChange={setIsFieldDialogOpen}>
-                    <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
+                    <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
                         <DialogHeader>
                             <DialogTitle>{editingField ? 'Editar Campo' : 'Agregar Campo'}</DialogTitle>
                             <DialogDescription>
-                                {editingField ? 'Modifica las propiedades del campo.' : 'Define un nuevo campo para el formulario.'}
+                                {editingField ? 'Modifica las propiedades del campo.' : 'Configure las propiedades del campo.'}
                             </DialogDescription>
                         </DialogHeader>
                         <FieldFormDialog
@@ -727,7 +727,7 @@ export function TemplateEditor({ mode, initialData, templateId }: TemplateEditor
     );
 }
 
-// --- Field Form Dialog Component ---
+// --- Field Form Dialog Component (Full version with all field type configurations) ---
 function FieldFormDialog({ field, onSave, onCancel }: {
     field: FormField | null;
     onSave: (field: FormField) => void;
@@ -735,155 +735,492 @@ function FieldFormDialog({ field, onSave, onCancel }: {
 }) {
     const [label, setLabel] = useState(field?.label || '');
     const [type, setType] = useState<FormFieldType>(field?.type || 'text');
-    const [placeholder, setPlaceholder] = useState(field?.placeholder || '');
-    const [helpText, setHelpText] = useState(field?.helpText || '');
-    const [required, setRequired] = useState(field?.required || false);
-    const [options, setOptions] = useState<string[]>(field?.options || []);
-    const [newOption, setNewOption] = useState('');
+    const [options, setOptions] = useState<string[]>(field?.options || ['']);
+    const isEditing = !!field;
 
-    const handleSave = () => {
-        if (!label.trim()) return;
+    useEffect(() => {
+        if (field) {
+            setLabel(field.label);
+            setType(field.type);
+            setOptions(field.options && field.options.length > 0 ? field.options : ['']);
+            // Load table config
+            setTableColumns(field.tableColumns || []);
+            setMinRows(field.minRows);
+            setMaxRows(field.maxRows);
+            setShowSummaryRow(field.showSummaryRow || false);
+            // Load dynamic select config
+            setDynamicSourceType(field.dynamicSource?.type || 'static');
+            setMasterListId(field.dynamicSource?.masterListId || '');
+            setCollectionPath(field.dynamicSource?.collectionPath || '');
+            setLabelField(field.dynamicSource?.labelField || 'name');
+            setValueField(field.dynamicSource?.valueField || 'id');
+            setCascadeFieldId(field.dynamicSource?.filterConfig?.dependsOn || '');
+            setCascadeFilterField(field.dynamicSource?.filterConfig?.filterField || '');
+            // Load user identity config
+            setUserIdentityDisplayField(field.userIdentityConfig?.displayField || 'both');
+            setIncludeTimestamp(field.userIdentityConfig?.includeTimestamp ?? true);
+            // Load validation and metadata
+            setValidations(field.validations || []);
+            setPlaceholder(field.placeholder || '');
+            setHelpText(field.helpText || '');
+            setTypography(field.typography);
+            setHtmlContent(field.htmlContent || '');
+        } else {
+            setLabel('');
+            setType('text');
+            setOptions(['']);
+            setTableColumns([]);
+            setMinRows(undefined);
+            setMaxRows(undefined);
+            setShowSummaryRow(false);
+            setDynamicSourceType('static');
+            setMasterListId('');
+            setCollectionPath('');
+            setLabelField('name');
+            setValueField('id');
+            setCascadeFieldId('');
+            setCascadeFilterField('');
+            setUserIdentityDisplayField('both');
+            setIncludeTimestamp(true);
+            setValidations([]);
+            setPlaceholder('');
+            setHelpText('');
+            setTypography(undefined);
+            setHtmlContent('');
+        }
+    }, [field]);
 
-        const newField: FormField = {
-            id: field?.id || `field_${Date.now()}`,
-            label: label.trim(),
-            type,
-            placeholder: placeholder.trim() || undefined,
-            helpText: helpText.trim() || undefined,
-            required,
-            options: ['select', 'radio', 'checkbox'].includes(type) && options.length > 0 ? options : undefined,
-        };
+    // Table configuration
+    const [tableColumns, setTableColumns] = useState<TableColumnDefinition[]>([]);
+    const [minRows, setMinRows] = useState<number | undefined>();
+    const [maxRows, setMaxRows] = useState<number | undefined>();
+    const [showSummaryRow, setShowSummaryRow] = useState(false);
 
-        onSave(newField);
+    // Dynamic select configuration
+    const [dynamicSourceType, setDynamicSourceType] = useState<'master-list' | 'collection' | 'static'>('static');
+    const [masterListId, setMasterListId] = useState('');
+    const [collectionPath, setCollectionPath] = useState('');
+    const [labelField, setLabelField] = useState('name');
+    const [valueField, setValueField] = useState('id');
+    const [cascadeFieldId, setCascadeFieldId] = useState('');
+    const [cascadeFilterField, setCascadeFilterField] = useState('');
+
+    // User identity configuration
+    const [userIdentityDisplayField, setUserIdentityDisplayField] = useState<'email' | 'fullName' | 'both'>('both');
+    const [includeTimestamp, setIncludeTimestamp] = useState(true);
+
+    // Validation rules
+    const [validations, setValidations] = useState<ValidationRule[]>([]);
+
+    // Field metadata
+    const [placeholder, setPlaceholder] = useState('');
+    const [helpText, setHelpText] = useState('');
+
+    // Typography configuration
+    const [typography, setTypography] = useState<TypographyConfigType | undefined>(undefined);
+
+    // HTML content
+    const [htmlContent, setHtmlContent] = useState('');
+
+    // Load master lists
+    const { masterLists } = useMasterLists();
+
+    const handleAddOption = () => setOptions([...options, '']);
+    const handleOptionChange = (index: number, value: string) => {
+        const newOptions = [...options];
+        newOptions[index] = value;
+        setOptions(newOptions);
     };
-
-    const addOption = () => {
-        if (newOption.trim() && !options.includes(newOption.trim())) {
-            setOptions([...options, newOption.trim()]);
-            setNewOption('');
+    const handleRemoveOption = (index: number) => {
+        if (options.length > 1) {
+            setOptions(options.filter((_, i) => i !== index));
         }
     };
 
-    const removeOption = (index: number) => {
-        setOptions(options.filter((_, i) => i !== index));
+    const handleSubmit = () => {
+        const finalField: FormField = {
+            id: field?.id || `field-${Date.now()}`,
+            label: label.trim(),
+            type
+        };
+
+        // Basic options for select/radio
+        if (['select', 'radio'].includes(type)) {
+            finalField.options = options.map(o => o.trim()).filter(o => o);
+        }
+        if (type === 'checkbox') {
+            finalField.options = [label.trim()];
+        }
+
+        // Table configuration
+        if (type === 'table') {
+            finalField.tableColumns = tableColumns;
+            if (minRows) finalField.minRows = minRows;
+            if (maxRows) finalField.maxRows = maxRows;
+            finalField.showSummaryRow = showSummaryRow;
+        }
+
+        // Dynamic select configuration
+        if (type === 'dynamic-select') {
+            finalField.dynamicSource = {
+                type: dynamicSourceType,
+                labelField,
+                valueField,
+            };
+            if (dynamicSourceType === 'master-list' && masterListId) {
+                finalField.dynamicSource.masterListId = masterListId;
+            }
+            if (dynamicSourceType === 'collection' && collectionPath) {
+                finalField.dynamicSource.collectionPath = collectionPath;
+            }
+            if (cascadeFieldId && cascadeFilterField) {
+                finalField.dynamicSource.filterConfig = {
+                    dependsOn: cascadeFieldId,
+                    filterField: cascadeFilterField,
+                    operator: '==',
+                };
+            }
+        }
+
+        // User identity configuration
+        if (type === 'user-identity') {
+            finalField.userIdentityConfig = {
+                displayField: userIdentityDisplayField,
+                includeTimestamp,
+            };
+            finalField.readOnly = true;
+        }
+
+        // Validation rules
+        if (validations.length > 0) {
+            finalField.validations = validations;
+        }
+
+        // Additional metadata
+        if (placeholder) finalField.placeholder = placeholder;
+        if (helpText) finalField.helpText = helpText;
+
+        // Typography configuration
+        if (typography && Object.keys(typography).length > 0) {
+            finalField.typography = typography;
+        }
+
+        // HTML content
+        if (type === 'html' && htmlContent) {
+            finalField.htmlContent = htmlContent;
+        }
+
+        onSave(finalField);
     };
 
-    const fieldTypes: { value: FormFieldType; label: string }[] = [
-        { value: 'text', label: 'Texto' },
-        { value: 'textarea', label: 'Área de texto' },
-        { value: 'number', label: 'Número' },
-        { value: 'date', label: 'Fecha' },
-        { value: 'email', label: 'Correo electrónico' },
-        { value: 'select', label: 'Lista desplegable' },
-        { value: 'radio', label: 'Opciones (radio)' },
-        { value: 'checkbox', label: 'Casillas de verificación' },
-        { value: 'file', label: 'Archivo adjunto' },
-        { value: 'table', label: 'Tabla' },
-        { value: 'dynamic-select', label: 'Lista dinámica' },
-        { value: 'user-identity', label: 'Identidad de usuario' },
-        { value: 'html', label: 'HTML personalizado' },
-    ];
+    const needsOptions = ['select', 'radio'].includes(type);
 
     return (
-        <div className="space-y-4 py-2">
-            <div className="space-y-2">
-                <Label htmlFor="field-label">Etiqueta del campo *</Label>
-                <Input
-                    id="field-label"
-                    value={label}
-                    onChange={(e) => setLabel(e.target.value)}
-                    placeholder="Ej: Nombre del solicitante"
-                />
+        <div className="space-y-4 py-2 max-h-[70vh] overflow-y-auto pr-2">
+            {/* Basic field info */}
+            <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                    <Label htmlFor="field-label">Etiqueta del Campo *</Label>
+                    <Input
+                        id="field-label"
+                        value={label}
+                        onChange={(e) => setLabel(e.target.value)}
+                        placeholder="p.ej., Nombre del Solicitante"
+                    />
+                </div>
+                <div className="space-y-2">
+                    <Label htmlFor="field-type">Tipo de Campo</Label>
+                    <Select value={type} onValueChange={(value) => setType(value as FormFieldType)}>
+                        <SelectTrigger id="field-type">
+                            <SelectValue placeholder="Seleccione un tipo..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="text">Texto</SelectItem>
+                            <SelectItem value="textarea">Área de texto</SelectItem>
+                            <SelectItem value="number">Número</SelectItem>
+                            <SelectItem value="email">Email</SelectItem>
+                            <SelectItem value="date">Fecha</SelectItem>
+                            <SelectItem value="select">Lista desplegable</SelectItem>
+                            <SelectItem value="dynamic-select">Lista desplegable dinámica</SelectItem>
+                            <SelectItem value="radio">Botones de opción</SelectItem>
+                            <SelectItem value="checkbox">Casilla de verificación</SelectItem>
+                            <SelectItem value="file">Carga de archivos</SelectItem>
+                            <SelectItem value="table">Tabla interactiva</SelectItem>
+                            <SelectItem value="user-identity">Identidad del usuario</SelectItem>
+                            <SelectItem value="html">HTML personalizado</SelectItem>
+                        </SelectContent>
+                    </Select>
+                </div>
             </div>
 
-            <div className="space-y-2">
-                <Label htmlFor="field-type">Tipo de campo</Label>
-                <Select value={type} onValueChange={(v) => setType(v as FormFieldType)}>
-                    <SelectTrigger>
-                        <SelectValue placeholder="Seleccionar tipo" />
-                    </SelectTrigger>
-                    <SelectContent>
-                        {fieldTypes.map((ft) => (
-                            <SelectItem key={ft.value} value={ft.value}>
-                                {ft.label}
-                            </SelectItem>
-                        ))}
-                    </SelectContent>
-                </Select>
+            {/* Placeholder and help text */}
+            <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                    <Label>Placeholder (opcional)</Label>
+                    <Input
+                        value={placeholder}
+                        onChange={(e) => setPlaceholder(e.target.value)}
+                        placeholder="Texto de ayuda en el campo"
+                    />
+                </div>
+                <div className="space-y-2">
+                    <Label>Texto de ayuda (opcional)</Label>
+                    <Input
+                        value={helpText}
+                        onChange={(e) => setHelpText(e.target.value)}
+                        placeholder="Descripción adicional"
+                    />
+                </div>
             </div>
 
-            <div className="space-y-2">
-                <Label htmlFor="field-placeholder">Placeholder</Label>
-                <Input
-                    id="field-placeholder"
-                    value={placeholder}
-                    onChange={(e) => setPlaceholder(e.target.value)}
-                    placeholder="Texto de ayuda dentro del campo"
-                />
-            </div>
-
-            <div className="space-y-2">
-                <Label htmlFor="field-help">Texto de ayuda</Label>
-                <Input
-                    id="field-help"
-                    value={helpText}
-                    onChange={(e) => setHelpText(e.target.value)}
-                    placeholder="Descripción adicional debajo del campo"
-                />
-            </div>
-
-            <div className="flex items-center space-x-2">
-                <Checkbox
-                    id="field-required"
-                    checked={required}
-                    onCheckedChange={(checked) => setRequired(checked === true)}
-                />
-                <Label htmlFor="field-required" className="text-sm font-normal">
-                    Campo obligatorio
-                </Label>
-            </div>
-
-            {['select', 'radio', 'checkbox'].includes(type) && (
-                <div className="space-y-2 border-t pt-4">
+            {/* Static options for select/radio */}
+            {needsOptions && (
+                <div className="space-y-2 rounded-md border p-4">
                     <Label>Opciones</Label>
-                    <div className="flex gap-2">
-                        <Input
-                            value={newOption}
-                            onChange={(e) => setNewOption(e.target.value)}
-                            placeholder="Nueva opción"
-                            onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addOption())}
-                        />
-                        <Button type="button" size="sm" onClick={addOption}>
-                            <PlusCircle className="h-4 w-4" />
-                        </Button>
+                    <div className="space-y-2">
+                        {options.map((option, index) => (
+                            <div key={index} className="flex items-center gap-2">
+                                <Input
+                                    value={option}
+                                    onChange={(e) => handleOptionChange(index, e.target.value)}
+                                    placeholder={`Opción ${index + 1}`}
+                                />
+                                <Button variant="ghost" size="icon" onClick={() => handleRemoveOption(index)} disabled={options.length <= 1}>
+                                    <X className="h-4 w-4" />
+                                </Button>
+                            </div>
+                        ))}
                     </div>
-                    {options.length > 0 && (
-                        <div className="space-y-1 mt-2">
-                            {options.map((opt, i) => (
-                                <div key={i} className="flex items-center justify-between bg-muted px-3 py-1.5 rounded text-sm">
-                                    <span>{opt}</span>
-                                    <Button
-                                        type="button"
-                                        variant="ghost"
-                                        size="sm"
-                                        className="h-6 w-6 p-0"
-                                        onClick={() => removeOption(i)}
-                                    >
-                                        <X className="h-3 w-3" />
-                                    </Button>
-                                </div>
-                            ))}
-                        </div>
-                    )}
+                    <Button variant="outline" size="sm" onClick={handleAddOption} className="mt-2">
+                        <PlusCircle className="mr-2 h-4 w-4" /> Añadir Opción
+                    </Button>
                 </div>
             )}
 
-            <DialogFooter className="pt-4">
+            {/* Table configuration */}
+            {type === 'table' && (
+                <div className="space-y-4 rounded-md border p-4">
+                    <Label className="text-base font-semibold">Configuración de Tabla</Label>
+                    <TableColumnDialog
+                        columns={tableColumns}
+                        onColumnsChange={setTableColumns}
+                    />
+                    <div className="grid grid-cols-3 gap-4 pt-2">
+                        <div className="space-y-2">
+                            <Label>Filas mínimas</Label>
+                            <Input
+                                type="number"
+                                min={0}
+                                value={minRows ?? ''}
+                                onChange={(e) => setMinRows(e.target.value ? parseInt(e.target.value) : undefined)}
+                                placeholder="Sin límite"
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Filas máximas</Label>
+                            <Input
+                                type="number"
+                                min={1}
+                                value={maxRows ?? ''}
+                                onChange={(e) => setMaxRows(e.target.value ? parseInt(e.target.value) : undefined)}
+                                placeholder="Sin límite"
+                            />
+                        </div>
+                        <div className="space-y-2 flex items-end">
+                            <label className="flex items-center gap-2 cursor-pointer pb-2">
+                                <Checkbox
+                                    checked={showSummaryRow}
+                                    onCheckedChange={(checked) => setShowSummaryRow(checked === true)}
+                                />
+                                <span className="text-sm">Mostrar fila resumen</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Dynamic select configuration */}
+            {type === 'dynamic-select' && (
+                <div className="space-y-4 rounded-md border p-4">
+                    <Label className="text-base font-semibold">Configuración de Lista Dinámica</Label>
+
+                    <div className="space-y-2">
+                        <Label>Fuente de datos</Label>
+                        <Select value={dynamicSourceType} onValueChange={(v) => setDynamicSourceType(v as any)}>
+                            <SelectTrigger>
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="static">Opciones estáticas</SelectItem>
+                                <SelectItem value="master-list">Lista maestra</SelectItem>
+                                <SelectItem value="collection">Colección de Firestore</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+
+                    {dynamicSourceType === 'master-list' && (
+                        <div className="space-y-2">
+                            <Label>Lista maestra</Label>
+                            <Select value={masterListId} onValueChange={setMasterListId}>
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Seleccione una lista..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {masterLists.map(ml => (
+                                        <SelectItem key={ml.id} value={ml.id}>{ml.name}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    )}
+
+                    {dynamicSourceType === 'collection' && (
+                        <div className="grid grid-cols-3 gap-2">
+                            <div className="space-y-2">
+                                <Label>Ruta de colección</Label>
+                                <Input
+                                    value={collectionPath}
+                                    onChange={(e) => setCollectionPath(e.target.value)}
+                                    placeholder="p.ej., productos"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Campo para etiqueta</Label>
+                                <Input
+                                    value={labelField}
+                                    onChange={(e) => setLabelField(e.target.value)}
+                                    placeholder="name"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Campo para valor</Label>
+                                <Input
+                                    value={valueField}
+                                    onChange={(e) => setValueField(e.target.value)}
+                                    placeholder="id"
+                                />
+                            </div>
+                        </div>
+                    )}
+
+                    {dynamicSourceType === 'static' && (
+                        <div className="space-y-2">
+                            <Label>Opciones</Label>
+                            <div className="space-y-2">
+                                {options.map((option, index) => (
+                                    <div key={index} className="flex items-center gap-2">
+                                        <Input
+                                            value={option}
+                                            onChange={(e) => handleOptionChange(index, e.target.value)}
+                                            placeholder={`Opción ${index + 1}`}
+                                        />
+                                        <Button variant="ghost" size="icon" onClick={() => handleRemoveOption(index)} disabled={options.length <= 1}>
+                                            <X className="h-4 w-4" />
+                                        </Button>
+                                    </div>
+                                ))}
+                            </div>
+                            <Button variant="outline" size="sm" onClick={handleAddOption}>
+                                <PlusCircle className="mr-2 h-4 w-4" /> Añadir
+                            </Button>
+                        </div>
+                    )}
+
+                    <div className="pt-2 border-t">
+                        <Label className="text-sm text-muted-foreground">Filtro en cascada (opcional)</Label>
+                        <div className="grid grid-cols-2 gap-2 mt-2">
+                            <div className="space-y-1">
+                                <Label className="text-xs">Depende del campo ID</Label>
+                                <Input
+                                    value={cascadeFieldId}
+                                    onChange={(e) => setCascadeFieldId(e.target.value)}
+                                    placeholder="ID del campo padre"
+                                />
+                            </div>
+                            <div className="space-y-1">
+                                <Label className="text-xs">Filtrar por campo</Label>
+                                <Input
+                                    value={cascadeFilterField}
+                                    onChange={(e) => setCascadeFilterField(e.target.value)}
+                                    placeholder="Campo a filtrar"
+                                />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* User identity configuration */}
+            {type === 'user-identity' && (
+                <div className="space-y-4 rounded-md border p-4">
+                    <Label className="text-base font-semibold">Configuración de Identidad de Usuario</Label>
+                    <p className="text-sm text-muted-foreground">
+                        Este campo se completa automáticamente con los datos del usuario que llena el formulario.
+                    </p>
+
+                    <div className="space-y-2">
+                        <Label>Mostrar</Label>
+                        <Select value={userIdentityDisplayField} onValueChange={(v) => setUserIdentityDisplayField(v as any)}>
+                            <SelectTrigger>
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="email">Solo email</SelectItem>
+                                <SelectItem value="fullName">Solo nombre completo</SelectItem>
+                                <SelectItem value="both">Email y nombre</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+
+                    <label className="flex items-center gap-2 cursor-pointer">
+                        <Checkbox
+                            checked={includeTimestamp}
+                            onCheckedChange={(checked) => setIncludeTimestamp(checked === true)}
+                        />
+                        <span className="text-sm">Incluir fecha y hora de llenado</span>
+                    </label>
+                </div>
+            )}
+
+            {/* HTML field configuration */}
+            {type === 'html' && (
+                <div className="space-y-4 rounded-md border p-4">
+                    <HtmlFieldEditor
+                        value={htmlContent}
+                        onChange={setHtmlContent}
+                    />
+                </div>
+            )}
+
+            {/* Typography configuration - for all visual field types */}
+            {!['user-identity', 'file', 'table'].includes(type) && (
+                <div className="space-y-2 rounded-md border p-4">
+                    <Label className="text-base font-semibold">Tipografía y Estilo</Label>
+                    <TypographyConfig
+                        value={typography}
+                        onChange={setTypography}
+                    />
+                </div>
+            )}
+
+            {/* Validation configuration */}
+            {!['user-identity', 'html'].includes(type) && (
+                <div className="space-y-2 rounded-md border p-4">
+                    <Label className="text-base font-semibold">Validaciones</Label>
+                    <FieldValidationConfig
+                        fieldType={type}
+                        validations={validations}
+                        onValidationsChange={setValidations}
+                    />
+                </div>
+            )}
+
+            <DialogFooter className="pt-4 sticky bottom-0 bg-background">
                 <Button variant="outline" onClick={onCancel}>
                     Cancelar
                 </Button>
-                <Button onClick={handleSave} disabled={!label.trim()}>
-                    {field ? 'Guardar cambios' : 'Agregar campo'}
+                <Button onClick={handleSubmit} disabled={!label.trim() || (type === 'table' && tableColumns.length === 0)}>
+                    {isEditing ? 'Guardar Cambios' : 'Añadir Campo'}
                 </Button>
             </DialogFooter>
         </div>
