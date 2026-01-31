@@ -48,6 +48,7 @@ import {
     AlertTriangle,
     Lock,
     ArrowLeft,
+    Search
 } from 'lucide-react';
 import type { PrenominaRecord, Employee } from '@/lib/types';
 import { callConsolidatePrenomina } from '@/firebase/callable-functions';
@@ -56,17 +57,24 @@ import { es } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
 import { Label } from '@/components/ui/label';
 import { formatCurrency } from '@/lib/hcm-utils';
+import { getPendingIncidences, lockPrenominaRecords } from '@/firebase/actions/prenomina-actions';
+import { usePermissions } from '@/hooks/use-permissions';
+import { hasPermission } from '@/firebase/role-actions';
 
 /**
  * Prenomina Consolidation Page
  */
 export default function PrenominaPage() {
     const { firestore, user, isUserLoading } = useFirebase();
+    const { permissions, isLoading: loadingPermissions } = usePermissions();
     const { toast } = useToast();
     const [statusFilter, setStatusFilter] = useState<string>('all');
+    const [searchTerm, setSearchTerm] = useState('');
     const [isConsolidating, setIsConsolidating] = useState(false);
     const [consolidateProgress, setConsolidateProgress] = useState(0);
     const [isConsolidateDialogOpen, setIsConsolidateDialogOpen] = useState(false);
+    const [validationErrors, setValidationErrors] = useState<string[]>([]);
+    const [isLocking, setIsLocking] = useState(false);
 
     // Consolidation form state
     const [consolidateForm, setConsolidateForm] = useState({
@@ -95,11 +103,21 @@ export default function PrenominaPage() {
 
     const { data: prenominaRecords, isLoading } = useCollection<PrenominaRecord>(prenominaQuery);
 
-    // Calculate totals
-    const totalGrossPay = prenominaRecords?.reduce((sum, r) => sum + (r.grossPay || 0), 0) ?? 0;
-    const totalNetPay = prenominaRecords?.reduce((sum, r) => sum + (r.netPay || 0), 0) ?? 0;
-    const totalOvertime = prenominaRecords?.reduce((sum, r) =>
-        sum + (r.overtimeDoubleAmount || 0) + (r.overtimeTripleAmount || 0), 0) ?? 0;
+    // Filter records client-side for search
+    const filteredRecords = prenominaRecords?.filter(record => {
+        if (!searchTerm) return true;
+        const searchLower = searchTerm.toLowerCase();
+        return (
+            record.employeeName?.toLowerCase().includes(searchLower) ||
+            record.employeeRfc?.toLowerCase().includes(searchLower)
+        );
+    }) || [];
+
+    // Calculate totals based on filtered records
+    const totalGrossPay = filteredRecords.reduce((sum, r) => sum + (r.grossPay || 0), 0);
+    const totalNetPay = filteredRecords.reduce((sum, r) => sum + (r.netPay || 0), 0);
+    const totalOvertime = filteredRecords.reduce((sum, r) =>
+        sum + (r.overtimeDoubleAmount || 0) + (r.overtimeTripleAmount || 0), 0);
 
     // Get status badge
     const getStatusBadge = (status: PrenominaRecord['status']) => {
@@ -151,6 +169,58 @@ export default function PrenominaPage() {
         } finally {
             setIsConsolidating(false);
             setConsolidateProgress(0);
+        }
+    };
+
+    // Handle Period Validation and Consolidate
+    const handleValidateAndConsolidate = async () => {
+        setValidationErrors([]);
+        setIsConsolidating(true);
+        try {
+            // 1. Validate
+            const pendingIncidences = await getPendingIncidences(consolidateForm.periodStart, consolidateForm.periodEnd);
+
+            if (pendingIncidences.length > 0) {
+                setValidationErrors([
+                    `Existen ${pendingIncidences.length} incidencias pendientes de aprobar/rechazar en este período.`
+                ]);
+                setIsConsolidating(false);
+                return;
+            }
+
+            // 2. Proceed to Consolidate
+            handleConsolidate();
+
+        } catch (error) {
+            console.error(error);
+            setIsConsolidating(false);
+        }
+    };
+
+    // Handle Locking
+    const handleLockPeriod = async () => {
+        const recordsToLock = prenominaRecords?.filter(r => r.status === 'reviewed' || r.status === 'exported')
+            .map(r => r.id) || [];
+
+        if (recordsToLock.length === 0) return;
+
+        if (!confirm(`¿Estás seguro de bloquear ${recordsToLock.length} registros? Esta acción no se puede deshacer.`)) return;
+
+        setIsLocking(true);
+        try {
+            await lockPrenominaRecords(recordsToLock);
+            toast({
+                title: 'Período Bloqueado',
+                description: 'Los registros han sido bloqueados para edición.',
+            });
+        } catch (error) {
+            toast({
+                title: 'Error',
+                description: 'No se pudo bloquear el período.',
+                variant: 'destructive'
+            });
+        } finally {
+            setIsLocking(false);
         }
     };
 
@@ -243,7 +313,7 @@ export default function PrenominaPage() {
         }
     };
 
-    // Count by status
+    // Count by status (from full list)
     const draftCount = prenominaRecords?.filter(r => r.status === 'draft').length ?? 0;
     const reviewedCount = prenominaRecords?.filter(r => r.status === 'reviewed').length ?? 0;
     const exportedCount = prenominaRecords?.filter(r => r.status === 'exported').length ?? 0;
@@ -266,14 +336,28 @@ export default function PrenominaPage() {
                         </div>
                     </div>
                     <div className="flex gap-2">
-                        <Button variant="outline" onClick={() => handleExport(prenominaRecords?.filter(r => r.status === 'draft') || [])}>
-                            <Download className="mr-2 h-4 w-4" />
-                            Exportar a Nomipaq
-                        </Button>
-                        <Button onClick={() => setIsConsolidateDialogOpen(true)}>
-                            <Calculator className="mr-2 h-4 w-4" />
-                            Consolidar Período
-                        </Button>
+                        {hasPermission(permissions, 'hcm_prenomina_export', 'write') && (
+                            <Button variant="outline" onClick={() => handleExport(filteredRecords.filter(r => r.status === 'draft'))}>
+                                <Download className="mr-2 h-4 w-4" />
+                                Exportar a Nomipaq
+                            </Button>
+                        )}
+                        {hasPermission(permissions, 'hcm_prenomina_process', 'write') && (
+                            <Button onClick={() => setIsConsolidateDialogOpen(true)}>
+                                <Calculator className="mr-2 h-4 w-4" />
+                                Consolidar Período
+                            </Button>
+                        )}
+                        {hasPermission(permissions, 'hcm_prenomina_close', 'write') && (
+                            <Button
+                                variant="destructive"
+                                onClick={handleLockPeriod}
+                                disabled={isLocking || !prenominaRecords?.some(r => r.status === 'reviewed' || r.status === 'exported')}
+                            >
+                                <Lock className="mr-2 h-4 w-4" />
+                                Bloquear
+                            </Button>
+                        )}
                     </div>
                 </header>
                 <main className="flex flex-1 flex-col gap-4 p-4 pt-0 sm:gap-8 sm:p-6 sm:pt-0">
@@ -315,7 +399,7 @@ export default function PrenominaPage() {
                                 <FileSpreadsheet className="h-4 w-4 text-muted-foreground" />
                             </CardHeader>
                             <CardContent>
-                                <div className="text-2xl font-bold">{prenominaRecords?.length ?? 0}</div>
+                                <div className="text-2xl font-bold">{filteredRecords.length}</div>
                                 <p className="text-xs text-muted-foreground">
                                     {draftCount} borrador, {exportedCount} exportados
                                 </p>
@@ -326,7 +410,16 @@ export default function PrenominaPage() {
                     {/* Filters */}
                     <Card>
                         <CardContent className="pt-6">
-                            <div className="flex gap-4">
+                            <div className="flex flex-col md:flex-row gap-4">
+                                <div className="relative flex-1">
+                                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                                    <Input
+                                        placeholder="Buscar por empleado o RFC..."
+                                        value={searchTerm}
+                                        onChange={(e) => setSearchTerm(e.target.value)}
+                                        className="pl-10"
+                                    />
+                                </div>
                                 <Select value={statusFilter} onValueChange={setStatusFilter}>
                                     <SelectTrigger className="w-[200px]">
                                         <SelectValue placeholder="Estado" />
@@ -373,8 +466,8 @@ export default function PrenominaPage() {
                                                 Cargando registros...
                                             </TableCell>
                                         </TableRow>
-                                    ) : prenominaRecords && prenominaRecords.length > 0 ? (
-                                        prenominaRecords.map((record) => (
+                                    ) : filteredRecords && filteredRecords.length > 0 ? (
+                                        filteredRecords.map((record) => (
                                             <TableRow key={record.id}>
                                                 <TableCell>
                                                     <div>
@@ -502,6 +595,20 @@ export default function PrenominaPage() {
                                         <li>• Generación de registro por empleado</li>
                                     </ul>
                                 </div>
+
+                                {validationErrors.length > 0 && (
+                                    <div className="bg-red-50 text-red-800 p-3 rounded-lg text-sm border border-red-200">
+                                        <div className="flex items-center font-bold mb-1">
+                                            <AlertTriangle className="h-4 w-4 mr-2" />
+                                            No se puede consolidar
+                                        </div>
+                                        <ul className="list-disc pl-5">
+                                            {validationErrors.map((err, i) => (
+                                                <li key={i}>{err}</li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                )}
                             </div>
 
                             <DialogFooter>
@@ -509,8 +616,8 @@ export default function PrenominaPage() {
                                     Cancelar
                                 </Button>
                                 <Button
-                                    onClick={handleConsolidate}
-                                    disabled={isConsolidating}
+                                    onClick={handleValidateAndConsolidate}
+                                    disabled={isConsolidating || validationErrors.length > 0}
                                 >
                                     {isConsolidating ? (
                                         <>

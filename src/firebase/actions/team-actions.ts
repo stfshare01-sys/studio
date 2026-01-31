@@ -21,6 +21,7 @@ import {
     query,
     where,
     orderBy,
+    limit,
     Timestamp
 } from 'firebase/firestore';
 import { initializeFirebase } from '@/firebase';
@@ -33,6 +34,7 @@ import {
     notifyShiftAssigned,
     notifyScheduleChanged
 } from './notification-actions';
+import { addDebtToHourBank } from './hour-bank-actions';
 import type {
     Employee,
     TardinessRecord,
@@ -42,8 +44,42 @@ import type {
     ScheduleChange,
     TeamDailyStats,
     EmployeeMonthlyStats,
-    CustomShift
+    CustomShift,
+    AttendanceImportBatch
 } from '@/lib/types';
+import { calculateOvertimeWithRounding } from '@/lib/hcm-utils';
+
+// =========================================================================
+// CARGA DE ASISTENCIA (BATCHES)
+// =========================================================================
+
+/**
+ * Obtiene los lotes de importación de asistencia recientes
+ */
+export async function getAttendanceImportBatches(
+    limitCount: number = 10
+): Promise<{ success: boolean; batches?: AttendanceImportBatch[]; error?: string }> {
+    try {
+        const { firestore } = initializeFirebase();
+
+        const batchesQuery = query(
+            collection(firestore, 'attendance_imports'),
+            orderBy('uploadedAt', 'desc'),
+            limit(limitCount)
+        );
+
+        const snapshot = await getDocs(batchesQuery);
+        const batches = snapshot.docs.map(d => ({
+            id: d.id,
+            ...d.data()
+        })) as AttendanceImportBatch[];
+
+        return { success: true, batches };
+    } catch (error) {
+        console.error('[Team] Error getting attendance import batches:', error);
+        return { success: false, error: 'Error obteniendo lotes de importación.' };
+    }
+}
 
 // =========================================================================
 // SUBORDINADOS DIRECTOS
@@ -51,19 +87,29 @@ import type {
 
 /**
  * Obtiene los subordinados directos de un manager
+ * Si managerId === 'all', devuelve TODOS los empleados activos (requiere permisos globales)
  */
 export async function getDirectReports(
     managerId: string
 ): Promise<{ success: boolean; employees?: Employee[]; error?: string }> {
     try {
         const { firestore } = initializeFirebase();
+        let employeesQuery;
 
-        const employeesQuery = query(
-            collection(firestore, 'employees'),
-            where('directManagerId', '==', managerId),
-            where('status', '==', 'active'),
-            orderBy('fullName')
-        );
+        if (managerId === 'all') {
+            employeesQuery = query(
+                collection(firestore, 'employees'),
+                where('status', '==', 'active'),
+                orderBy('fullName')
+            );
+        } else {
+            employeesQuery = query(
+                collection(firestore, 'employees'),
+                where('directManagerId', '==', managerId),
+                where('status', '==', 'active'),
+                orderBy('fullName')
+            );
+        }
 
         const snapshot = await getDocs(employeesQuery);
         const employees = snapshot.docs.map(d => ({
@@ -223,6 +269,14 @@ export async function recordEarlyDeparture(
             updatedAt: now
         };
 
+        // Calculate severity
+        // Assume 9 hours shift for now or pass context. For manual record we might need to fetch shift config or just default.
+        // Or if we don't have hoursWorked, we can't calculate severity accurately based on % worked unless we have shift duration.
+        // However, minutesEarly is known. Maybe we skip severity for manual records or do a rough calc?
+        // Let's rely on hoursWorked if available, but here we don't calculate hours worked yet.
+        // So we skip severity for manual record or leave it undefined to be filled later.
+
+
         if (attendanceRecordId) departureData.attendanceRecordId = attendanceRecordId;
 
         const ref = await addDoc(collection(firestore, 'early_departures'), departureData);
@@ -240,7 +294,9 @@ export async function justifyEarlyDeparture(
     departureId: string,
     reason: string,
     justifiedById: string,
-    justifiedByName: string
+    justifiedByName: string,
+    useHourBank: boolean = false,
+    justificationType?: string
 ): Promise<{ success: boolean; error?: string }> {
     try {
         const { firestore } = initializeFirebase();
@@ -248,21 +304,42 @@ export async function justifyEarlyDeparture(
 
         const ref = doc(firestore, 'early_departures', departureId);
 
+        // Get the departure record first
+        const departureSn = await getDoc(ref);
+        if (!departureSn.exists()) {
+            return { success: false, error: 'Registro no encontrado.' };
+        }
+        const departure = departureSn.data() as EarlyDeparture;
+
         await updateDoc(ref, {
             isJustified: true,
+            justificationStatus: useHourBank ? 'compensated' : 'justified',
             justificationReason: reason,
+            justificationType, // Added type
             justifiedById,
             justifiedByName,
             justifiedAt: now,
-            updatedAt: now
+            updatedAt: now,
+            hourBankApplied: useHourBank
         });
 
-        // Get the departure record to send notification
-        const departureSn = await getDoc(ref);
-        const departure = departureSn.data() as EarlyDeparture;
+        if (useHourBank) {
+            await addDebtToHourBank({
+                employeeId: departure.employeeId,
+                date: departure.date,
+                type: 'early_departure',
+                minutes: departure.minutesEarly,
+                reason: `Salida temprana justificada con bolsa de horas: ${reason}`,
+                sourceRecordId: departureId,
+                createdById: justifiedById,
+                createdByName: justifiedByName
+            });
+        }
 
         // Send notification to employee
+        // Send notification to employee
         notifyEarlyDepartureJustified(
+            firestore,
             departure.employeeId,
             departure.date,
             justifiedById,
@@ -471,9 +548,101 @@ export async function approveOvertimeRequest(
         const finalHoursApproved = hoursApproved !== undefined ? hoursApproved : request.hoursRequested;
         const isPartial = finalHoursApproved < request.hoursRequested;
 
+        // --- CALCULAR DESGLOSE DOBLES/TRIPLES (Contexto Semanal) ---
+        // 1. Obtener fecha y rango semanal (Lun-Dom) de la solicitud
+        const requestDate = new Date(request.date);
+        const dayOfWeek = requestDate.getDay(); // 0=Dom, 1=Lun, etc.
+        const diffToMon = requestDate.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1);
+        const weekStart = new Date(requestDate);
+        weekStart.setDate(diffToMon);
+        const weekEnd = new Date(weekStart);
+        weekEnd.setDate(weekStart.getDate() + 6);
+
+        const startStr = weekStart.toISOString().split('T')[0];
+        const endStr = weekEnd.toISOString().split('T')[0];
+
+        // 2. Buscar otras solicitudes APROBADAS en esa semana para el mismo empleado
+        const otherRequestsQuery = query(
+            collection(firestore, 'overtime_requests'),
+            where('employeeId', '==', request.employeeId),
+            where('status', '==', 'approved'), // Solo aprobadas
+            where('date', '>=', startStr),
+            where('date', '<=', endStr)
+        );
+        const otherDocs = await getDocs(otherRequestsQuery);
+
+        // 3. Construir array de horas diarias
+        // Agrupamos por fecha
+        const dailyTotals: Record<string, number> = {};
+
+        // Agregar las YA aprobadas
+        otherDocs.docs.forEach(d => {
+            const r = d.data() as OvertimeRequest;
+            // Excluir la actual si por error ya estaba aprobada (idempotencia)
+            if (d.id === requestId) return;
+            dailyTotals[r.date] = (dailyTotals[r.date] || 0) + (r.hoursApproved || 0);
+        });
+
+        // Agregar la ACTUAL con las horas que estamos aprobando
+        dailyTotals[request.date] = (dailyTotals[request.date] || 0) + finalHoursApproved;
+
+        // Convertir a array para la función de utilidad
+        const dailyOvertimeInput = Object.entries(dailyTotals)
+            .map(([date, hours]) => ({ date, hours }))
+            .sort((a, b) => a.date.localeCompare(b.date));
+
+        // 4. Calcular desglose con regla 3x3
+        // Usamos hourlyRate ficticio 0 porque solo nos interesan las horas
+        const calculation = calculateOvertimeWithRounding(dailyOvertimeInput, 0);
+
+        // 5. Extraer el desglose ESPECÍFICO de esta solicitud
+        // La función retorna el total semanal desglosado. Necesitamos saber cuánto aportó ESTA solicitud.
+        // Estrategia: Calcular SIN esta solicitud y restar, o mirar el dailyBreakdown del día específico.
+        // El dailyBreakdown nos dice cuánto de ese día fue doble/triple TOTAL.
+        // Si hay múltiples solicitudes el mismo día, esto asume que todas contribuyen proporcionalmente o por orden.
+        // Simplificación: Asignamos basándonos en el breakdown del día.
+
+        const dayBreakdown = calculation.dailyBreakdown.find(d => d.date === request.date);
+
+        // Si no hay breakdown (raro), fallback a todo triple
+        let doubleHours = 0;
+        let tripleHours = 0;
+
+        if (dayBreakdown) {
+            // El breakdown tiene el TOTAL del día.
+            // Si hubo otras solicitudes ese día, tenemos que ver qué parte nos "toca".
+            // Pero simplifiquemos: Recalculamos SÓLO el delta que esta solicitud añade.
+            // O mejor: Guardamos lo que el cálculo dice que es ese día, asumiendo que esta solicitud completó ese día.
+            // Si ya había horas ese día, el breakdown incluye ambas.
+
+            // Cuántas horas había ANTES de aprobar esta?
+            const previousHoursThatDay = (dailyTotals[request.date] || 0) - finalHoursApproved;
+
+            // Corremos cálculo SIN esta solicitud para ver "base"
+            const inputWithoutThis = dailyOvertimeInput.map(d => {
+                if (d.date === request.date) return { date: d.date, hours: previousHoursThatDay };
+                return d;
+            }).filter(d => d.hours > 0);
+
+            const calcWithout = calculateOvertimeWithRounding(inputWithoutThis, 0);
+            const prevDayBreakdown = calcWithout.dailyBreakdown.find(d => d.date === request.date);
+            const prevDouble = prevDayBreakdown ? prevDayBreakdown.doubleHours : 0;
+            const prevTriple = prevDayBreakdown ? prevDayBreakdown.tripleHours : 0;
+
+            // El delta son las horas de ESTA solicitud
+            doubleHours = dayBreakdown.doubleHours - prevDouble;
+            tripleHours = dayBreakdown.tripleHours - prevTriple;
+
+            // Ajustamos por redondeo error:
+            // Si la suma no da exacto, lo ponemos en triple (conservador) o doble.
+            // O mejor, confiamos en el delta.
+        }
+
         await updateDoc(ref, {
             status: isPartial ? 'partial' : 'approved',
             hoursApproved: finalHoursApproved,
+            doubleHours,
+            tripleHours,
             approvedById,
             approvedByName,
             approvedAt: now,
@@ -481,8 +650,10 @@ export async function approveOvertimeRequest(
         });
 
         // Send notification to employee
+        // Send notification to employee
         if (isPartial) {
             notifyOvertimePartial(
+                firestore,
                 request.employeeId,
                 request.date,
                 request.hoursRequested,
@@ -492,6 +663,7 @@ export async function approveOvertimeRequest(
             );
         } else {
             notifyOvertimeApproved(
+                firestore,
                 request.employeeId,
                 request.employeeName || 'Empleado',
                 request.date,
@@ -539,11 +711,12 @@ export async function rejectOvertimeRequest(
 
         // Send notification to employee
         notifyOvertimeRejected(
+            firestore,
             request.employeeId,
             request.date,
-            rejectionReason,
             rejectedById,
-            rejectedByName
+            rejectedByName,
+            rejectionReason
         );
 
         return { success: true };
@@ -617,7 +790,9 @@ export async function assignShift(
         }
 
         // Send notification to employee
+        // Send notification to employee
         notifyShiftAssigned(
+            firestore,
             employeeId,
             newShiftName,
             startDate,
@@ -638,7 +813,9 @@ export async function assignShift(
  * Cancela una asignación de turno temporal
  */
 export async function cancelShiftAssignment(
-    assignmentId: string
+    assignmentId: string,
+    cancelledById: string,
+    cancelledByName: string
 ): Promise<{ success: boolean; error?: string }> {
     try {
         const { firestore } = initializeFirebase();
@@ -648,6 +825,9 @@ export async function cancelShiftAssignment(
 
         await updateDoc(ref, {
             status: 'cancelled',
+            cancelledById,
+            cancelledByName,
+            cancelledAt: now,
             updatedAt: now
         });
 
@@ -754,7 +934,9 @@ export async function changeEmployeeSchedule(
         const ref = await addDoc(collection(firestore, 'schedule_changes'), changeData);
 
         // Send notification to employee
+        // Send notification to employee
         notifyScheduleChanged(
+            firestore,
             employeeId,
             newStartTime,
             newEndTime,

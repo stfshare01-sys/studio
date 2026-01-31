@@ -49,10 +49,12 @@ export const SYSTEM_ROLES: Record<SystemRole, ModulePermission[]> = {
     { module: 'hcm_team_overtime', level: 'write' },
     { module: 'hcm_team_shifts', level: 'write' },
     { module: 'hcm_team_hour_bank', level: 'write' },
+    { module: 'hcm_team_management_global', level: 'write' },
     // Granular prenomina
     { module: 'hcm_prenomina_process', level: 'write' },
     { module: 'hcm_prenomina_close', level: 'write' },
     { module: 'hcm_prenomina_export', level: 'write' },
+    { module: 'hcm_sla_processing', level: 'write' },
   ],
   Designer: [
     { module: 'dashboard', level: 'read' },
@@ -147,10 +149,12 @@ export const SYSTEM_ROLES: Record<SystemRole, ModulePermission[]> = {
     { module: 'hcm_team_overtime', level: 'write' },
     { module: 'hcm_team_shifts', level: 'write' },
     { module: 'hcm_team_hour_bank', level: 'write' },
+    { module: 'hcm_team_management_global', level: 'write' },
     // Full prenomina for HR
     { module: 'hcm_prenomina_process', level: 'write' },
     { module: 'hcm_prenomina_close', level: 'write' },
     { module: 'hcm_prenomina_export', level: 'write' },
+    { module: 'hcm_sla_processing', level: 'write' },
   ],
   Manager: [
     { module: 'dashboard', level: 'read' },
@@ -218,10 +222,12 @@ export const MODULE_INFO: Record<AppModule, { name: string; description: string;
   hcm_team_overtime: { name: 'Horas Extras del Equipo', description: 'Aprobar y gestionar horas extras', category: 'hcm' },
   hcm_team_shifts: { name: 'Asignación de Turnos', description: 'Asignar turnos a subordinados', category: 'hcm' },
   hcm_team_hour_bank: { name: 'Bolsa de Horas', description: 'Ver saldo de bolsa de horas del equipo', category: 'hcm' },
+  hcm_team_management_global: { name: 'Gestión Global de Equipos', description: 'Ver y gestionar equipos de todos los gerentes', category: 'hcm' },
   // Granular prenomina
   hcm_prenomina_process: { name: 'Procesar Pre-nómina', description: 'Procesar datos para pre-nómina', category: 'hcm' },
   hcm_prenomina_close: { name: 'Cerrar Período', description: 'Cerrar y bloquear período de nómina', category: 'hcm' },
   hcm_prenomina_export: { name: 'Exportar Pre-nómina', description: 'Exportar datos a sistema de nómina', category: 'hcm' },
+  hcm_sla_processing: { name: 'Procesamiento SLA', description: 'Ejecución manual de reglas de SLA', category: 'hcm' },
 };
 
 // Check if a role is a system role

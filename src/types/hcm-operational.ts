@@ -308,6 +308,8 @@ export type OvertimeRequest = {
     reason: string;
     status: 'pending' | 'approved' | 'rejected' | 'partial';
     hoursApproved?: number;
+    doubleHours?: number; // Desglose estricto LFT
+    tripleHours?: number; // Desglose estricto LFT
     approverLevel: 1 | 2;
     requestedToId: string;
     requestedToName?: string;

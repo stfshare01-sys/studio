@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import SiteLayout from '@/components/site-layout';
 import { useFirebase } from '@/firebase/provider';
 import { Button } from '@/components/ui/button';
@@ -11,7 +11,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import {
     Table,
     TableBody,
@@ -28,6 +34,7 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
+import { Switch } from '@/components/ui/switch';
 import {
     Users2,
     Clock,
@@ -39,11 +46,13 @@ import {
     Loader2,
     ChevronLeft,
     ChevronRight,
-    RefreshCw
+    RefreshCw,
+    Gavel
 } from 'lucide-react';
 
 import {
     getDirectReports,
+    hasDirectReports,
     getTeamTardiness,
     getTeamEarlyDepartures,
     getTeamOvertimeRequests,
@@ -53,11 +62,17 @@ import {
     approveOvertimeRequest,
     rejectOvertimeRequest,
     assignShift,
-    changeEmployeeSchedule,
+    getTeamShiftAssignments,
+    cancelShiftAssignment,
+    getAttendanceImportBatches,
     getAvailableShifts
 } from '@/firebase/actions/team-actions';
 import { justifyTardiness } from '@/firebase/actions/incidence-actions';
+import { runGlobalSLAProcessing } from '@/firebase/actions/sla-actions';
 import { migrateManagerIdField } from '@/firebase/actions/employee-actions';
+import { getTeamHourBanks, getHourBankMovements, formatHourBankBalance } from '@/firebase/actions/hour-bank-actions';
+import { usePermissions } from '@/hooks/use-permissions';
+import { hasPermission } from '@/firebase/role-actions';
 
 import type {
     Employee,
@@ -66,11 +81,19 @@ import type {
     OvertimeRequest,
     EmployeeMonthlyStats,
     TeamDailyStats,
-    CustomShift
+    CustomShift,
+    HourBank,
+    HourBankMovement,
+    JustificationType,
+    ShiftAssignment,
+    ShiftType,
+    AttendanceImportBatch
 } from '@/lib/types';
+import { JUSTIFICATION_TYPE_LABELS } from '@/lib/types';
 
 export default function TeamManagementPage() {
     const { user, isUserLoading } = useFirebase();
+    const { permissions, isLoading: loadingPermissions } = usePermissions();
     const [activeTab, setActiveTab] = useState('overview');
 
     // Date filters
@@ -79,6 +102,11 @@ export default function TeamManagementPage() {
         const now = new Date();
         return `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}`;
     });
+    const [dateFilter, setDateFilter] = useState(selectedMonth); // Used for month/period filtering
+
+    // Advanced Filters
+    const [searchTerm, setSearchTerm] = useState('');
+    const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'justified'>('all');
 
     // Data states
     const [employees, setEmployees] = useState<Employee[]>([]);
@@ -88,21 +116,38 @@ export default function TeamManagementPage() {
     const [monthlyStats, setMonthlyStats] = useState<EmployeeMonthlyStats[]>([]);
     const [dailyStats, setDailyStats] = useState<TeamDailyStats[]>([]);
     const [shifts, setShifts] = useState<CustomShift[]>([]);
+    const [shiftAssignments, setShiftAssignments] = useState<ShiftAssignment[]>([]);
     const [overtimeStats, setOvertimeStats] = useState({ pending: 0, approved: 0, rejected: 0, partial: 0, totalHoursApproved: 0, totalHoursPending: 0 });
+    const [hourBanks, setHourBanks] = useState<HourBank[]>([]);
+    const [hourBankMovements, setHourBankMovements] = useState<HourBankMovement[]>([]);
+
+    // Global Access State
+    const [selectedManagerId, setSelectedManagerId] = useState<string>('');
+    const [availableManagers, setAvailableManagers] = useState<{ id: string, name: string }[]>([]);
+    const [hasSubordinates, setHasSubordinates] = useState(true); // To control UI when no subordinates
 
     // Loading states
     const [loadingData, setLoadingData] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
+    const [processingSLA, setProcessingSLA] = useState(false);
+
+    // State for filters
+    const [importBatches, setImportBatches] = useState<AttendanceImportBatch[]>([]);
+    const [selectedBatchId, setSelectedBatchId] = useState<string>('all');
+    const [selectedShiftFilter, setSelectedShiftFilter] = useState<ShiftType | 'all'>('all');
 
     // Dialog states
     const [justifyTardinessDialog, setJustifyTardinessDialog] = useState<{ open: boolean; record?: TardinessRecord }>({ open: false });
     const [justifyDepartureDialog, setJustifyDepartureDialog] = useState<{ open: boolean; record?: EarlyDeparture }>({ open: false });
     const [overtimeDialog, setOvertimeDialog] = useState<{ open: boolean; request?: OvertimeRequest }>({ open: false });
     const [shiftDialog, setShiftDialog] = useState<{ open: boolean; employee?: Employee }>({ open: false });
-    const [scheduleDialog, setScheduleDialog] = useState<{ open: boolean; employee?: Employee }>({ open: false });
+    const [cancelShiftDialog, setCancelShiftDialog] = useState<{ open: boolean; assignment?: ShiftAssignment }>({ open: false });
+    const [hourBankDialog, setHourBankDialog] = useState<{ open: boolean; employee?: Employee }>({ open: false });
 
     // Form states
     const [justificationReason, setJustificationReason] = useState('');
+    const [justificationType, setJustificationType] = useState<JustificationType | undefined>(undefined);
+    const [useHourBank, setUseHourBank] = useState(false);
     const [hoursToApprove, setHoursToApprove] = useState('');
     const [rejectionReason, setRejectionReason] = useState('');
     const [shiftForm, setShiftForm] = useState({
@@ -112,80 +157,81 @@ export default function TeamManagementPage() {
         endDate: '',
         reason: ''
     });
-    const [scheduleForm, setScheduleForm] = useState({
-        newStartTime: '09:00',
-        newEndTime: '18:00',
-        type: 'temporary' as 'temporary' | 'permanent',
-        effectiveDate: new Date().toISOString().split('T')[0],
-        endDate: '',
-        reason: ''
-    });
     const [submitting, setSubmitting] = useState(false);
 
-    // Load initial data
-    const loadData = async () => {
-        if (!user?.id) return;
-
-        setLoadingData(true);
-        try {
-            const [empResult, shiftsResult] = await Promise.all([
-                getDirectReports(user.id),
-                getAvailableShifts()
-            ]);
-
-            if (empResult.success && empResult.employees) {
-                setEmployees(empResult.employees);
-            }
-            if (shiftsResult.success && shiftsResult.shifts) {
-                setShifts(shiftsResult.shifts);
-            }
-
-            // Load tab-specific data
-            await loadTabData('overview');
-        } catch (error) {
-            console.error('Error loading team data:', error);
-        } finally {
-            setLoadingData(false);
+    const loadImportBatches = useCallback(async () => {
+        const batchesResult = await getAttendanceImportBatches();
+        if (batchesResult.success && batchesResult.batches) {
+            setImportBatches(batchesResult.batches);
         }
-    };
+    }, []);
 
-    const loadTabData = async (tab: string) => {
-        if (!user?.id) return;
+    const loadTabData = useCallback(async (tab: string) => {
+        if (!user?.id || !selectedManagerId) return;
 
         setRefreshing(true);
         try {
             switch (tab) {
                 case 'overview':
-                    const [year, month] = selectedMonth.split('-').map(Number);
-                    const statsResult = await getTeamMonthlyStats(user.id, year, month);
+                    const [year, month] = dateFilter.split('-').map(Number);
+                    const statsResult = await getTeamMonthlyStats(selectedManagerId, year, month);
                     if (statsResult.success && statsResult.stats) {
                         setMonthlyStats(statsResult.stats);
                     }
-                    const dailyResult = await getTeamDailyStats(user.id, selectedDate);
+                    const dailyResult = await getTeamDailyStats(selectedManagerId, selectedDate);
                     if (dailyResult.success && dailyResult.stats) {
                         setDailyStats(dailyResult.stats);
                     }
                     break;
 
                 case 'tardiness':
-                    const tardinessResult = await getTeamTardiness(user.id, selectedMonth);
+                    const tardinessResult = await getTeamTardiness(selectedManagerId, dateFilter);
                     if (tardinessResult.success && tardinessResult.records) {
                         setTardiness(tardinessResult.records);
                     }
                     break;
 
                 case 'early-departures':
-                    const departuresResult = await getTeamEarlyDepartures(user.id, selectedMonth);
+                    const departuresResult = await getTeamEarlyDepartures(selectedManagerId, dateFilter);
                     if (departuresResult.success && departuresResult.records) {
                         setEarlyDepartures(departuresResult.records);
                     }
                     break;
 
                 case 'overtime':
-                    const otResult = await getTeamOvertimeRequests(user.id, 'all');
+                    const otResult = await getTeamOvertimeRequests(selectedManagerId, 'all'); // 'all' to get all for stats
                     if (otResult.success) {
                         setOvertimeRequests(otResult.requests || []);
                         if (otResult.stats) setOvertimeStats(otResult.stats);
+                    }
+                    break;
+
+                case 'shifts':
+                    // We use getTeamShiftAssignments for the team view
+                    const assignmentsResult = await getTeamShiftAssignments(selectedManagerId);
+                    if (assignmentsResult.success && assignmentsResult.assignments) {
+                        setShiftAssignments(assignmentsResult.assignments);
+                    }
+                    // Also get available shifts definitions just in case we need them for dropdowns
+                    const shiftsResult = await getAvailableShifts();
+                    if (shiftsResult.success && shiftsResult.shifts) {
+                        setShifts(shiftsResult.shifts);
+                    }
+                    break;
+
+                case 'hour-bank':
+                    // Hour bank needs employee IDs, so we fetch employees first
+                    const empResult = await getDirectReports(selectedManagerId);
+                    if (empResult.success && empResult.employees) {
+                        setEmployees(empResult.employees);
+                        if (empResult.employees.length > 0) {
+                            const hbResult = await getTeamHourBanks(empResult.employees.map(e => e.id));
+                            if (hbResult.success && hbResult.hourBanks) {
+                                setHourBanks(hbResult.hourBanks);
+                            }
+                        } else {
+                            setHourBanks([]);
+                        }
                     }
                     break;
             }
@@ -194,37 +240,109 @@ export default function TeamManagementPage() {
         } finally {
             setRefreshing(false);
         }
-    };
+    }, [user?.id, selectedManagerId, dateFilter, selectedDate]);
 
-    // Effect to load data on mount and when user changes
-    useMemo(() => {
-        if (user?.id && !isUserLoading) {
-            loadData();
+    // Initial data load and manager setup
+    useEffect(() => {
+        if (!user) return;
+
+        const loadInitial = async () => {
+            setLoadingData(true);
+            try {
+                // Initialize selected manager if not set
+                if (!selectedManagerId) {
+                    setSelectedManagerId(user.uid);
+                }
+
+                // Fetch permissions
+                // Use hook permissions, no need to manually fetch
+
+                // Load available managers if global permission exists
+                if (hasPermission(permissions, 'hcm_team_management_global', 'read')) {
+                    const allEmployeesRes = await getDirectReports('all'); // 'all' is a special value handled in backend
+                    if (allEmployeesRes.success && allEmployeesRes.employees) {
+                        setAvailableManagers(allEmployeesRes.employees.map(e => ({ id: e.id, name: e.fullName })));
+                    }
+                }
+
+                // Load initial employees
+                const managerIdToUse = selectedManagerId || user.uid;
+                const [empResult] = await Promise.all([
+                    getDirectReports(managerIdToUse),
+                ]);
+
+                if (empResult.success && empResult.employees) {
+                    setEmployees(empResult.employees);
+                    setHasSubordinates(empResult.employees.length > 0);
+                } else {
+                    setEmployees([]);
+                    setHasSubordinates(false);
+                }
+
+                await loadImportBatches();
+                await loadTabData(activeTab); // Load tab-specific data after initial employee data is set
+            } catch (error) {
+                console.error('Error loading initial data:', error);
+            } finally {
+                setLoadingData(false);
+            }
+        };
+
+        loadInitial();
+    }, [user, selectedManagerId, activeTab, loadImportBatches, loadTabData, permissions]);
+
+    // Handle batch selection
+    useEffect(() => {
+        if (selectedBatchId === 'all') {
+            // If 'all' is selected, revert to current month
+            const now = new Date();
+            setDateFilter(`${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}`);
+            return;
         }
-    }, [user?.id, isUserLoading]);
+
+        const batch = importBatches.find(b => b.id === selectedBatchId);
+        if (batch && batch.dateRangeStart) {
+            // Use the month of the batch's start date for filtering
+            const monthStr = batch.dateRangeStart.substring(0, 7); // YYYY-MM
+            setDateFilter(monthStr);
+        }
+    }, [selectedBatchId, importBatches]);
 
     // Effect to reload data when tab or date changes
-    useMemo(() => {
-        if (user?.id && !loadingData) {
+    useEffect(() => {
+        if (user?.id && !loadingData && selectedManagerId) {
             loadTabData(activeTab);
         }
-    }, [activeTab, selectedDate, selectedMonth]);
+    }, [activeTab, selectedDate, dateFilter, user?.id, loadingData, selectedManagerId, loadTabData]);
 
     // Handlers
+    const handleViewHourBankHistory = async (employee: Employee) => {
+        setHourBankDialog({ open: true, employee });
+        setHourBankMovements([]);
+        const result = await getHourBankMovements(employee.id);
+        if (result.success && result.movements) {
+            setHourBankMovements(result.movements);
+        }
+    };
+
     const handleJustifyTardiness = async () => {
-        if (!justifyTardinessDialog.record || !justificationReason.trim() || !user) return;
+        if (!justifyTardinessDialog.record || !justificationReason.trim() || !user || !justificationType) return;
 
         setSubmitting(true);
         try {
             const result = await justifyTardiness(
                 justifyTardinessDialog.record.id,
                 justificationReason,
-                user.id || ''
+                user.id || '',
+                useHourBank,
+                justificationType
             );
 
             if (result.success) {
                 setJustifyTardinessDialog({ open: false });
                 setJustificationReason('');
+                setJustificationType(undefined);
+                setUseHourBank(false);
                 loadTabData('tardiness');
             }
         } finally {
@@ -233,7 +351,7 @@ export default function TeamManagementPage() {
     };
 
     const handleJustifyDeparture = async () => {
-        if (!justifyDepartureDialog.record || !justificationReason.trim() || !user) return;
+        if (!justifyDepartureDialog.record || !justificationReason.trim() || !user || !justificationType) return;
 
         setSubmitting(true);
         try {
@@ -241,12 +359,15 @@ export default function TeamManagementPage() {
                 justifyDepartureDialog.record.id,
                 justificationReason,
                 user.id || '',
-                user.fullName || user.email || ''
+                user.fullName || user.email || '',
+                useHourBank,
+                justificationType
             );
 
             if (result.success) {
                 setJustifyDepartureDialog({ open: false });
                 setJustificationReason('');
+                setUseHourBank(false);
                 loadTabData('early-departures');
             }
         } finally {
@@ -321,38 +442,48 @@ export default function TeamManagementPage() {
             if (result.success) {
                 setShiftDialog({ open: false });
                 setShiftForm({ shiftId: '', type: 'temporary', startDate: new Date().toISOString().split('T')[0], endDate: '', reason: '' });
+                loadTabData('shifts');
             }
         } finally {
             setSubmitting(false);
         }
     };
 
-    const handleChangeSchedule = async () => {
-        if (!scheduleDialog.employee || !user) return;
+    const handleCancelShiftAssignment = async () => {
+        if (!cancelShiftDialog.assignment || !user) return;
 
         setSubmitting(true);
         try {
-            const result = await changeEmployeeSchedule(
-                scheduleDialog.employee.id,
-                scheduleDialog.employee.fullName,
-                '09:00', // TODO: Get from employee's current shift
-                '18:00',
-                scheduleForm.newStartTime,
-                scheduleForm.newEndTime,
-                scheduleForm.type,
-                scheduleForm.effectiveDate,
-                scheduleForm.reason,
+            const result = await cancelShiftAssignment(
+                cancelShiftDialog.assignment.id,
                 user.id || '',
-                user.fullName || user.email || '',
-                scheduleForm.type === 'temporary' ? scheduleForm.endDate : undefined
+                user.fullName || user.email || ''
             );
 
             if (result.success) {
-                setScheduleDialog({ open: false });
-                setScheduleForm({ newStartTime: '09:00', newEndTime: '18:00', type: 'temporary', effectiveDate: new Date().toISOString().split('T')[0], endDate: '', reason: '' });
+                setCancelShiftDialog({ open: false });
+                loadTabData('shifts');
             }
         } finally {
             setSubmitting(false);
+        }
+    };
+
+    const handleRunSLA = async () => {
+        if (!user) return;
+        setProcessingSLA(true);
+        try {
+            const result = await runGlobalSLAProcessing(user.uid, user.role, user.customRoleId || undefined);
+            if (result.success) {
+                // Optionally refresh data or show a success message
+                console.log('SLA processing initiated successfully.');
+            } else {
+                console.error('Failed to initiate SLA processing:', result.error);
+            }
+        } catch (error) {
+            console.error('Error running SLA processing:', error);
+        } finally {
+            setProcessingSLA(false);
         }
     };
 
@@ -361,6 +492,54 @@ export default function TeamManagementPage() {
     const pendingDepartures = earlyDepartures.filter(d => !d.isJustified);
     const pendingOvertime = overtimeRequests.filter(o => o.status === 'pending');
 
+    // Filter employees by shift in the list
+    const filteredEmployees = employees.filter(emp =>
+        selectedShiftFilter === 'all' || emp.shiftType === selectedShiftFilter
+    ).filter(emp =>
+        !searchTerm || emp.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        emp.email.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+
+    // We can build a quick map from the 'employees' list
+    const employeeShiftMap = useMemo(() => {
+        const map = new Map<string, ShiftType>();
+        employees.forEach(e => map.set(e.id, e.shiftType || 'diurnal'));
+        return map;
+    }, [employees]);
+
+    const filterByShift = (employeeId: string) => {
+        if (selectedShiftFilter === 'all') return true;
+        return employeeShiftMap.get(employeeId) === selectedShiftFilter;
+    };
+
+    const filteredTardiness = tardiness.filter(record => {
+        const matchesSearch = !searchTerm ||
+            ((record as any).employeeName || employees.find(e => e.id === record.employeeId)?.fullName || '').toLowerCase().includes(searchTerm.toLowerCase());
+        const matchesStatus = statusFilter === 'all' ||
+            (statusFilter === 'pending' ? !record.isJustified : record.isJustified);
+        return matchesSearch && matchesStatus && filterByShift(record.employeeId);
+    });
+
+    const filteredDepartures = earlyDepartures.filter(record => {
+        const matchesSearch = !searchTerm ||
+            (record.employeeName || '').toLowerCase().includes(searchTerm.toLowerCase());
+        const matchesStatus = statusFilter === 'all' ||
+            (statusFilter === 'pending' ? !record.isJustified : record.isJustified);
+        return matchesSearch && matchesStatus && filterByShift(record.employeeId);
+    });
+
+    const filteredOvertime = overtimeRequests.filter(r =>
+        filterByShift(r.employeeId)
+    );
+
+    const filteredAssignments = shiftAssignments.filter(r =>
+        filterByShift(r.employeeId)
+    );
+
+    const filteredMonthlyStats = monthlyStats.filter(stat =>
+        (!searchTerm || stat.employeeName.toLowerCase().includes(searchTerm.toLowerCase())) && filterByShift(stat.employeeId)
+    );
+
     // Helper to change date
     const changeDate = (days: number) => {
         const date = new Date(selectedDate);
@@ -368,7 +547,7 @@ export default function TeamManagementPage() {
         setSelectedDate(date.toISOString().split('T')[0]);
     };
 
-    if (isUserLoading || loadingData) {
+    if (isUserLoading || loadingPermissions || loadingData) {
         return (
             <SiteLayout>
                 <div className="flex items-center justify-center h-96">
@@ -378,14 +557,14 @@ export default function TeamManagementPage() {
         );
     }
 
-    if (employees.length === 0) {
+    if (!hasSubordinates && selectedManagerId === user?.uid) {
         const handleMigration = async () => {
             setRefreshing(true);
             try {
                 const result = await migrateManagerIdField();
                 if (result.success && result.migratedCount > 0) {
                     // Reload data after migration
-                    await loadData();
+                    await loadTabData(activeTab);
                 }
             } finally {
                 setRefreshing(false);
@@ -434,10 +613,46 @@ export default function TeamManagementPage() {
                         </p>
                     </div>
                     <div className="flex items-center gap-4">
+                        {/* Manager Selector for Global Access */}
+                        {hasPermission(permissions, 'hcm_team_management_global', 'read') && (
+                            <div className="w-[250px]">
+                                <Select value={selectedManagerId} onValueChange={(val) => { setSelectedManagerId(val); }}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Seleccionar vista..." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">-- Ver Todos (Global) --</SelectItem>
+                                        <SelectItem value={user?.uid || 'self'}>Mi Equipo (Yo)</SelectItem>
+                                        {availableManagers.filter(m => m.id !== user?.uid).map(mgr => (
+                                            <SelectItem key={mgr.id} value={mgr.id}>{mgr.name}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        )}
                         <Badge variant="outline" className="text-base py-1 px-3">
                             <Users2 className="h-4 w-4 mr-2" />
                             {employees.length} empleados
                         </Badge>
+                        {hasPermission(permissions, 'hcm_sla_processing', 'write') && (
+                            <Button
+                                variant="secondary"
+                                onClick={handleRunSLA}
+                                disabled={processingSLA}
+                            >
+                                {processingSLA ? (
+                                    <>
+                                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                        Procesando...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Gavel className="h-4 w-4 mr-2" />
+                                        Ejecutar SLA
+                                    </>
+                                )}
+                            </Button>
+                        )}
                         <Button variant="outline" onClick={() => loadTabData(activeTab)} disabled={refreshing}>
                             <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
                             Actualizar
@@ -522,7 +737,59 @@ export default function TeamManagementPage() {
                             )}
                         </TabsTrigger>
                         <TabsTrigger value="shifts">Turnos y Horarios</TabsTrigger>
+                        <TabsTrigger value="hour-bank">Bolsa de Horas</TabsTrigger>
                     </TabsList>
+
+                    {/* Filters for all tabs except daily overview */}
+                    {activeTab !== 'overview' && (
+                        <div className="flex flex-col md:flex-row gap-4 items-end md:items-center">
+                            <div className="flex-1">
+                                <Label>Periodo / Mes</Label>
+                                <Input
+                                    type="month"
+                                    value={dateFilter.length === 7 ? dateFilter : dateFilter.substring(0, 7)}
+                                    onChange={(e) => setDateFilter(e.target.value)}
+                                    className="w-full md:w-[200px]"
+                                />
+                            </div>
+                            <div className="flex-1">
+                                <Label>Cargar Periodo (Batch)</Label>
+                                <Select value={selectedBatchId} onValueChange={setSelectedBatchId}>
+                                    <SelectTrigger className="w-full md:w-[250px]">
+                                        <SelectValue placeholder="Seleccionar carga..." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">Todos</SelectItem>
+                                        {importBatches.map(batch => (
+                                            <SelectItem key={batch.id} value={batch.id}>
+                                                {new Date(batch.uploadedAt).toLocaleDateString()} - {batch.filename}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="flex-1">
+                                <Label>Turno</Label>
+                                <Select value={selectedShiftFilter} onValueChange={(val) => setSelectedShiftFilter(val as ShiftType | 'all')}>
+                                    <SelectTrigger className="w-full md:w-[200px]">
+                                        <SelectValue placeholder="Todos los turnos" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">Todos</SelectItem>
+                                        <SelectItem value="diurnal">Diurno</SelectItem>
+                                        <SelectItem value="mixed">Mixto</SelectItem>
+                                        <SelectItem value="nocturnal">Nocturno</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="flex gap-2">
+                                <Button variant="outline" onClick={() => loadTabData(activeTab)}>
+                                    <RefreshCw className="mr-2 h-4 w-4" />
+                                    Actualizar
+                                </Button>
+                            </div>
+                        </div>
+                    )}
 
                     {/* Overview Tab */}
                     <TabsContent value="overview" className="space-y-4">
@@ -614,17 +881,25 @@ export default function TeamManagementPage() {
                             <CardHeader>
                                 <div className="flex items-center justify-between">
                                     <CardTitle>Estadísticas Mensuales</CardTitle>
-                                    <Input
-                                        type="month"
-                                        value={selectedMonth}
-                                        onChange={(e) => setSelectedMonth(e.target.value)}
-                                        className="w-40"
-                                    />
+                                    <div className="flex items-center gap-2">
+                                        <Input
+                                            placeholder="Buscar empleado..."
+                                            value={searchTerm}
+                                            onChange={(e) => setSearchTerm(e.target.value)}
+                                            className="w-48"
+                                        />
+                                        <Input
+                                            type="month"
+                                            value={selectedMonth}
+                                            onChange={(e) => setSelectedMonth(e.target.value)}
+                                            className="w-40"
+                                        />
+                                    </div>
                                 </div>
                             </CardHeader>
                             <CardContent>
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                    {monthlyStats.map((stat) => (
+                                    {filteredMonthlyStats.map((stat) => (
                                         <Card key={stat.employeeId} className="border">
                                             <CardHeader className="pb-2">
                                                 <div className="flex items-center gap-3">
@@ -679,12 +954,24 @@ export default function TeamManagementPage() {
                                         <CardTitle>Retardos del Equipo</CardTitle>
                                         <CardDescription>Justifica los retardos pendientes de tu equipo</CardDescription>
                                     </div>
-                                    <Input
-                                        type="month"
-                                        value={selectedMonth}
-                                        onChange={(e) => setSelectedMonth(e.target.value)}
-                                        className="w-40"
-                                    />
+                                    <div className="flex items-center gap-2">
+                                        <Input
+                                            placeholder="Buscar empleado..."
+                                            value={searchTerm}
+                                            onChange={(e) => setSearchTerm(e.target.value)}
+                                            className="w-48"
+                                        />
+                                        <Select value={statusFilter} onValueChange={(v: any) => setStatusFilter(v)}>
+                                            <SelectTrigger className="w-32">
+                                                <SelectValue placeholder="Estado" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="all">Todos</SelectItem>
+                                                <SelectItem value="pending">Pendientes</SelectItem>
+                                                <SelectItem value="justified">Justificados</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
                                 </div>
                             </CardHeader>
                             <CardContent>
@@ -701,14 +988,14 @@ export default function TeamManagementPage() {
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
-                                        {tardiness.length === 0 ? (
+                                        {filteredTardiness.length === 0 ? (
                                             <TableRow>
                                                 <TableCell colSpan={7} className="text-center text-muted-foreground">
-                                                    Sin retardos en este período
+                                                    Sin registros para los filtros seleccionados
                                                 </TableCell>
                                             </TableRow>
                                         ) : (
-                                            tardiness.map((record) => (
+                                            filteredTardiness.map((record) => (
                                                 <TableRow key={record.id}>
                                                     <TableCell>{new Date(record.date).toLocaleDateString('es-MX')}</TableCell>
                                                     <TableCell className="font-medium">
@@ -727,12 +1014,14 @@ export default function TeamManagementPage() {
                                                         )}
                                                     </TableCell>
                                                     <TableCell className="text-right">
-                                                        {!record.isJustified && (
+                                                        {!record.isJustified && hasPermission(permissions, 'hcm_team_tardiness', 'write') && (
                                                             <Button
                                                                 size="sm"
                                                                 onClick={() => {
                                                                     setJustifyTardinessDialog({ open: true, record });
                                                                     setJustificationReason('');
+                                                                    setJustificationType(undefined);
+                                                                    setUseHourBank(false);
                                                                 }}
                                                             >
                                                                 Justificar
@@ -757,12 +1046,24 @@ export default function TeamManagementPage() {
                                         <CardTitle>Salidas Tempranas</CardTitle>
                                         <CardDescription>Justifica las salidas tempranas de tu equipo</CardDescription>
                                     </div>
-                                    <Input
-                                        type="month"
-                                        value={selectedMonth}
-                                        onChange={(e) => setSelectedMonth(e.target.value)}
-                                        className="w-40"
-                                    />
+                                    <div className="flex items-center gap-2">
+                                        <Input
+                                            placeholder="Buscar empleado..."
+                                            value={searchTerm}
+                                            onChange={(e) => setSearchTerm(e.target.value)}
+                                            className="w-48"
+                                        />
+                                        <Select value={statusFilter} onValueChange={(v: any) => setStatusFilter(v)}>
+                                            <SelectTrigger className="w-32">
+                                                <SelectValue placeholder="Estado" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="all">Todos</SelectItem>
+                                                <SelectItem value="pending">Pendientes</SelectItem>
+                                                <SelectItem value="justified">Justificados</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
                                 </div>
                             </CardHeader>
                             <CardContent>
@@ -779,14 +1080,14 @@ export default function TeamManagementPage() {
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
-                                        {earlyDepartures.length === 0 ? (
+                                        {filteredDepartures.length === 0 ? (
                                             <TableRow>
                                                 <TableCell colSpan={7} className="text-center text-muted-foreground">
-                                                    Sin salidas tempranas en este período
+                                                    Sin registros para los filtros seleccionados
                                                 </TableCell>
                                             </TableRow>
                                         ) : (
-                                            earlyDepartures.map((record) => (
+                                            filteredDepartures.map((record) => (
                                                 <TableRow key={record.id}>
                                                     <TableCell>{new Date(record.date).toLocaleDateString('es-MX')}</TableCell>
                                                     <TableCell className="font-medium">{record.employeeName}</TableCell>
@@ -803,12 +1104,14 @@ export default function TeamManagementPage() {
                                                         )}
                                                     </TableCell>
                                                     <TableCell className="text-right">
-                                                        {!record.isJustified && (
+                                                        {!record.isJustified && hasPermission(permissions, 'hcm_team_departures', 'write') && (
                                                             <Button
                                                                 size="sm"
                                                                 onClick={() => {
                                                                     setJustifyDepartureDialog({ open: true, record });
                                                                     setJustificationReason('');
+                                                                    setJustificationType(undefined);
+                                                                    setUseHourBank(false);
                                                                 }}
                                                             >
                                                                 Justificar
@@ -852,19 +1155,21 @@ export default function TeamManagementPage() {
                                             <TableHead>Horas Solicitadas</TableHead>
                                             <TableHead>Razón</TableHead>
                                             <TableHead>Estado</TableHead>
-                                            <TableHead>Horas Aprobadas</TableHead>
+                                            <TableHead>Aprobadas</TableHead>
+                                            <TableHead>Dobles</TableHead>
+                                            <TableHead>Triples</TableHead>
                                             <TableHead className="text-right">Acciones</TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
-                                        {overtimeRequests.length === 0 ? (
+                                        {filteredOvertime.length === 0 ? (
                                             <TableRow>
-                                                <TableCell colSpan={7} className="text-center text-muted-foreground">
+                                                <TableCell colSpan={9} className="text-center text-muted-foreground">
                                                     Sin solicitudes de horas extras
                                                 </TableCell>
                                             </TableRow>
                                         ) : (
-                                            overtimeRequests.map((request) => (
+                                            filteredOvertime.map((request) => (
                                                 <TableRow key={request.id}>
                                                     <TableCell>{new Date(request.date).toLocaleDateString('es-MX')}</TableCell>
                                                     <TableCell className="font-medium">{request.employeeName}</TableCell>
@@ -884,8 +1189,14 @@ export default function TeamManagementPage() {
                                                     <TableCell>
                                                         {request.hoursApproved !== undefined ? `${request.hoursApproved}h` : '-'}
                                                     </TableCell>
+                                                    <TableCell>
+                                                        {request.doubleHours !== undefined ? `${request.doubleHours}h` : '-'}
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        {request.tripleHours !== undefined ? `${request.tripleHours}h` : '-'}
+                                                    </TableCell>
                                                     <TableCell className="text-right">
-                                                        {request.status === 'pending' && (
+                                                        {request.status === 'pending' && hasPermission(permissions, 'hcm_team_overtime', 'write') && (
                                                             <Button
                                                                 size="sm"
                                                                 onClick={() => {
@@ -925,7 +1236,7 @@ export default function TeamManagementPage() {
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
-                                        {employees.map((employee) => (
+                                        {filteredEmployees.map((employee) => (
                                             <TableRow key={employee.id}>
                                                 <TableCell>
                                                     <div className="flex items-center gap-3">
@@ -945,28 +1256,19 @@ export default function TeamManagementPage() {
                                                 </TableCell>
                                                 <TableCell className="text-right">
                                                     <div className="flex gap-2 justify-end">
-                                                        <Button
-                                                            size="sm"
-                                                            variant="outline"
-                                                            onClick={() => {
-                                                                setShiftDialog({ open: true, employee });
-                                                                setShiftForm({ shiftId: '', type: 'temporary', startDate: new Date().toISOString().split('T')[0], endDate: '', reason: '' });
-                                                            }}
-                                                        >
-                                                            <CalendarDays className="h-4 w-4 mr-1" />
-                                                            Cambiar Turno
-                                                        </Button>
-                                                        <Button
-                                                            size="sm"
-                                                            variant="outline"
-                                                            onClick={() => {
-                                                                setScheduleDialog({ open: true, employee });
-                                                                setScheduleForm({ newStartTime: '09:00', newEndTime: '18:00', type: 'temporary', effectiveDate: new Date().toISOString().split('T')[0], endDate: '', reason: '' });
-                                                            }}
-                                                        >
-                                                            <Clock className="h-4 w-4 mr-1" />
-                                                            Cambiar Horario
-                                                        </Button>
+                                                        {hasPermission(permissions, 'hcm_team_shifts', 'write') && (
+                                                            <Button
+                                                                size="sm"
+                                                                variant="outline"
+                                                                onClick={() => {
+                                                                    setShiftDialog({ open: true, employee });
+                                                                    setShiftForm({ shiftId: '', type: 'temporary', startDate: new Date().toISOString().split('T')[0], endDate: '', reason: '' });
+                                                                }}
+                                                            >
+                                                                <CalendarDays className="h-4 w-4 mr-1" />
+                                                                Asignar Turno
+                                                            </Button>
+                                                        )}
                                                     </div>
                                                 </TableCell>
                                             </TableRow>
@@ -976,6 +1278,89 @@ export default function TeamManagementPage() {
                             </CardContent>
                         </Card>
                     </TabsContent>
+
+
+
+                    {/* Hour Bank Tab */}
+                    {hasPermission(permissions, 'hcm_team_hour_bank', 'read') && (
+                        <TabsContent value="hour-bank">
+                            <Card>
+                                <CardHeader>
+                                    <div className="flex items-center justify-between">
+                                        <CardTitle>Bolsa de Horas del Equipo</CardTitle>
+                                        <div className="flex items-center gap-2">
+                                            <Input
+                                                placeholder="Buscar empleado..."
+                                                value={searchTerm}
+                                                onChange={(e) => setSearchTerm(e.target.value)}
+                                                className="w-48"
+                                            />
+                                        </div>
+                                    </div>
+                                    <CardDescription>Gestiona el saldo de horas de tu equipo</CardDescription>
+                                </CardHeader>
+                                <CardContent>
+                                    <Table>
+                                        <TableHeader>
+                                            <TableRow>
+                                                <TableHead>Empleado</TableHead>
+                                                <TableHead>Puesto</TableHead>
+                                                <TableHead>Saldo Actual</TableHead>
+                                                <TableHead>Acumulado Histórico</TableHead>
+                                                <TableHead>Compensado Histórico</TableHead>
+                                                <TableHead className="text-right">Acciones</TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {employees.filter(e => !searchTerm || e.fullName.toLowerCase().includes(searchTerm.toLowerCase())).map((employee) => {
+                                                const hb = hourBanks.find(h => h.employeeId === employee.id);
+                                                const balance = hb?.balanceMinutes || 0;
+                                                const formatted = formatHourBankBalance(balance);
+
+                                                return (
+                                                    <TableRow key={employee.id}>
+                                                        <TableCell>
+                                                            <div className="flex items-center gap-3">
+                                                                <Avatar className="h-8 w-8">
+                                                                    <AvatarImage src={employee.avatarUrl} />
+                                                                    <AvatarFallback>{employee.fullName?.charAt(0)}</AvatarFallback>
+                                                                </Avatar>
+                                                                <div>
+                                                                    <div className="font-medium">{employee.fullName}</div>
+                                                                    <div className="text-xs text-muted-foreground">{employee.email}</div>
+                                                                </div>
+                                                            </div>
+                                                        </TableCell>
+                                                        <TableCell>{employee.positionTitle}</TableCell>
+                                                        <TableCell>
+                                                            <span className={`font-bold ${formatted.colorClass}`}>
+                                                                {formatted.text}
+                                                            </span>
+                                                        </TableCell>
+                                                        <TableCell className="text-red-500">
+                                                            {hb?.totalDebtAccumulated ? `${Math.floor(hb.totalDebtAccumulated / 60)}h ${hb.totalDebtAccumulated % 60}min` : '-'}
+                                                        </TableCell>
+                                                        <TableCell className="text-green-600">
+                                                            {hb?.totalCompensated ? `${Math.floor(hb.totalCompensated / 60)}h ${hb.totalCompensated % 60}min` : '-'}
+                                                        </TableCell>
+                                                        <TableCell className="text-right">
+                                                            <Button
+                                                                variant="outline"
+                                                                size="sm"
+                                                                onClick={() => handleViewHourBankHistory(employee)}
+                                                            >
+                                                                Ver Historial
+                                                            </Button>
+                                                        </TableCell>
+                                                    </TableRow>
+                                                );
+                                            })}
+                                        </TableBody>
+                                    </Table>
+                                </CardContent>
+                            </Card>
+                        </TabsContent>
+                    )}
                 </Tabs>
             </div>
 
@@ -985,67 +1370,97 @@ export default function TeamManagementPage() {
                     <DialogHeader>
                         <DialogTitle>Justificar Retardo</DialogTitle>
                         <DialogDescription>
-                            {justifyTardinessDialog.record && (
-                                <>
-                                    Empleado llegó {justifyTardinessDialog.record.minutesLate} minutos tarde el {new Date(justifyTardinessDialog.record.date).toLocaleDateString('es-MX')}
-                                </>
-                            )}
+                            Ingresa el motivo de la justificación para el retardo del {justifyTardinessDialog.record && new Date(justifyTardinessDialog.record.date).toLocaleDateString()}.
                         </DialogDescription>
                     </DialogHeader>
-                    <div className="space-y-4">
-                        <div>
-                            <Label>Razón de Justificación</Label>
+                    <div className="space-y-4 py-4">
+                        <div className="space-y-2">
+                            <Label>Tipo de Justificación</Label>
+                            <Select
+                                value={justificationType}
+                                onValueChange={(v) => setJustificationType(v as JustificationType)}
+                            >
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Seleccionar motivo..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {Object.entries(JUSTIFICATION_TYPE_LABELS).map(([key, label]) => (
+                                        <SelectItem key={key} value={key}>
+                                            {label}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Comentario / Detalle</Label>
                             <Textarea
                                 value={justificationReason}
                                 onChange={(e) => setJustificationReason(e.target.value)}
-                                placeholder="Describe la razón por la que se justifica el retardo..."
-                                rows={4}
+                                placeholder="Ej. Tráfico pesado, cita médica..."
                             />
+                        </div>
+                        <div className="flex items-center space-x-2">
+                            <Switch id="tardiness-hourbank" checked={useHourBank} onCheckedChange={setUseHourBank} />
+                            <Label htmlFor="tardiness-hourbank">Compensar con Bolsa de Horas</Label>
                         </div>
                     </div>
                     <DialogFooter>
-                        <Button variant="outline" onClick={() => setJustifyTardinessDialog({ open: false })}>
-                            Cancelar
-                        </Button>
-                        <Button onClick={handleJustifyTardiness} disabled={submitting || !justificationReason.trim()}>
-                            {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                            Justificar
+                        <Button variant="outline" onClick={() => setJustifyTardinessDialog({ open: false })}>Cancelar</Button>
+                        <Button onClick={handleJustifyTardiness} disabled={submitting || !justificationType || !justificationReason.trim()}>
+                            {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            Confirmar
                         </Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
 
             {/* Justify Early Departure Dialog */}
-            <Dialog open={justifyDepartureDialog.open} onOpenChange={(open) => setJustifyDepartureDialog({ open })}>
+            <Dialog open={justifyDepartureDialog.open} onOpenChange={(open) => setJustifyDepartureDialog({ ...justifyDepartureDialog, open })}>
                 <DialogContent>
                     <DialogHeader>
                         <DialogTitle>Justificar Salida Temprana</DialogTitle>
                         <DialogDescription>
-                            {justifyDepartureDialog.record && (
-                                <>
-                                    {justifyDepartureDialog.record.employeeName} salió {justifyDepartureDialog.record.minutesEarly} minutos antes el {new Date(justifyDepartureDialog.record.date).toLocaleDateString('es-MX')}
-                                </>
-                            )}
+                            Ingresa el motivo de la justificación para la salida temprana del {justifyDepartureDialog.record && new Date(justifyDepartureDialog.record.date).toLocaleDateString()}.
                         </DialogDescription>
                     </DialogHeader>
-                    <div className="space-y-4">
-                        <div>
-                            <Label>Razón de Justificación</Label>
+                    <div className="space-y-4 py-4">
+                        <div className="space-y-2">
+                            <Label>Tipo de Justificación</Label>
+                            <Select
+                                value={justificationType}
+                                onValueChange={(v) => setJustificationType(v as JustificationType)}
+                            >
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Seleccionar motivo..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {Object.entries(JUSTIFICATION_TYPE_LABELS).map(([key, label]) => (
+                                        <SelectItem key={key} value={key}>
+                                            {label}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Comentario / Detalle</Label>
                             <Textarea
                                 value={justificationReason}
                                 onChange={(e) => setJustificationReason(e.target.value)}
-                                placeholder="Describe la razón por la que se justifica la salida temprana..."
-                                rows={4}
+                                placeholder="Ej. Permiso personal, trabajo remoto..."
                             />
+                        </div>
+                        <div className="flex items-center space-x-2">
+                            <Switch id="departure-hourbank" checked={useHourBank} onCheckedChange={setUseHourBank} />
+                            <Label htmlFor="departure-hourbank">Compensar con Bolsa de Horas</Label>
                         </div>
                     </div>
                     <DialogFooter>
-                        <Button variant="outline" onClick={() => setJustifyDepartureDialog({ open: false })}>
-                            Cancelar
-                        </Button>
-                        <Button onClick={handleJustifyDeparture} disabled={submitting || !justificationReason.trim()}>
-                            {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                            Justificar
+                        <Button variant="outline" onClick={() => setJustifyDepartureDialog({ open: false })}>Cancelar</Button>
+                        <Button onClick={handleJustifyDeparture} disabled={submitting || !justificationType || !justificationReason.trim()}>
+                            {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            Confirmar
                         </Button>
                     </DialogFooter>
                 </DialogContent>
@@ -1199,87 +1614,90 @@ export default function TeamManagementPage() {
                 </DialogContent>
             </Dialog>
 
-            {/* Schedule Change Dialog */}
-            <Dialog open={scheduleDialog.open} onOpenChange={(open) => setScheduleDialog({ open })}>
+            {/* Cancel Shift Dialog */}
+            <Dialog open={cancelShiftDialog.open} onOpenChange={(open) => setCancelShiftDialog({ open })}>
                 <DialogContent>
                     <DialogHeader>
-                        <DialogTitle>Cambiar Horario</DialogTitle>
+                        <DialogTitle>Cancelar Asignación de Turno</DialogTitle>
                         <DialogDescription>
-                            Modificar horario de {scheduleDialog.employee?.fullName}
+                            ¿Estás seguro de cancelar esta asignación para {cancelShiftDialog.assignment?.employeeName}?
                         </DialogDescription>
                     </DialogHeader>
-                    <div className="space-y-4">
-                        <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <Label>Nueva Hora Entrada</Label>
-                                <Input
-                                    type="time"
-                                    value={scheduleForm.newStartTime}
-                                    onChange={(e) => setScheduleForm(prev => ({ ...prev, newStartTime: e.target.value }))}
-                                />
-                            </div>
-                            <div>
-                                <Label>Nueva Hora Salida</Label>
-                                <Input
-                                    type="time"
-                                    value={scheduleForm.newEndTime}
-                                    onChange={(e) => setScheduleForm(prev => ({ ...prev, newEndTime: e.target.value }))}
-                                />
-                            </div>
-                        </div>
-                        <div>
-                            <Label>Tipo de Cambio</Label>
-                            <Select value={scheduleForm.type} onValueChange={(v: 'temporary' | 'permanent') => setScheduleForm(prev => ({ ...prev, type: v }))}>
-                                <SelectTrigger>
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="temporary">Temporal</SelectItem>
-                                    <SelectItem value="permanent">Permanente</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <Label>Fecha Efectiva</Label>
-                                <Input
-                                    type="date"
-                                    value={scheduleForm.effectiveDate}
-                                    onChange={(e) => setScheduleForm(prev => ({ ...prev, effectiveDate: e.target.value }))}
-                                />
-                            </div>
-                            {scheduleForm.type === 'temporary' && (
-                                <div>
-                                    <Label>Fecha Fin</Label>
-                                    <Input
-                                        type="date"
-                                        value={scheduleForm.endDate}
-                                        onChange={(e) => setScheduleForm(prev => ({ ...prev, endDate: e.target.value }))}
-                                    />
-                                </div>
-                            )}
-                        </div>
-                        <div>
-                            <Label>Razón del Cambio</Label>
-                            <Textarea
-                                value={scheduleForm.reason}
-                                onChange={(e) => setScheduleForm(prev => ({ ...prev, reason: e.target.value }))}
-                                placeholder="Describe la razón del cambio de horario..."
-                                rows={2}
-                            />
-                        </div>
+                    <div className="py-4">
+                        <p className="text-sm text-muted-foreground">
+                            Esta acción revertirá al empleado a su turno anterior si existe, o al turno predeterminado.
+                        </p>
                     </div>
                     <DialogFooter>
-                        <Button variant="outline" onClick={() => setScheduleDialog({ open: false })}>
-                            Cancelar
+                        <Button variant="outline" onClick={() => setCancelShiftDialog({ open: false })}>
+                            No, mantener
                         </Button>
-                        <Button
-                            onClick={handleChangeSchedule}
-                            disabled={submitting || !scheduleForm.reason.trim() || (scheduleForm.type === 'temporary' && !scheduleForm.endDate)}
-                        >
+                        <Button variant="destructive" onClick={handleCancelShiftAssignment} disabled={submitting}>
                             {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                            Guardar Cambio
+                            Sí, cancelar asignación
                         </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+            {/* Hour Bank History Dialog */}
+            {/* Hour Bank History Dialog */}
+            <Dialog open={hourBankDialog.open} onOpenChange={(open) => setHourBankDialog({ open })}>
+                <DialogContent className="max-w-3xl">
+                    <DialogHeader>
+                        <DialogTitle>Historial de Bolsa de Horas</DialogTitle>
+                        <DialogDescription>
+                            Movimientos registrados para {hourBankDialog.employee?.fullName}
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="max-h-[60vh] overflow-y-auto">
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead>Fecha</TableHead>
+                                    <TableHead>Tipo</TableHead>
+                                    <TableHead>Minutos</TableHead>
+                                    <TableHead>Motivo</TableHead>
+                                    <TableHead>Registrado Por</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {hourBankMovements.length === 0 ? (
+                                    <TableRow>
+                                        <TableCell colSpan={5} className="text-center text-muted-foreground">
+                                            No hay movimientos registrados
+                                        </TableCell>
+                                    </TableRow>
+                                ) : (
+                                    hourBankMovements.map((move) => (
+                                        <TableRow key={move.id}>
+                                            <TableCell>{new Date(move.date).toLocaleDateString()}</TableCell>
+                                            <TableCell>
+                                                <Badge variant="outline">
+                                                    {move.type === 'tardiness' ? 'Retardo' :
+                                                        move.type === 'early_departure' ? 'Salida Temprana' :
+                                                            move.type === 'overtime_compensation' ? 'Compensación' :
+                                                                move.type === 'manual_adjustment' ? 'Ajuste Manual' : move.type}
+                                                </Badge>
+                                            </TableCell>
+                                            <TableCell>
+                                                <span className={move.minutes > 0 ? 'text-red-500 font-bold' : 'text-green-600 font-bold'}>
+                                                    {move.minutes > 0 ? '+' : ''}{move.minutes} min
+                                                </span>
+                                            </TableCell>
+                                            <TableCell className="max-w-[200px] truncate" title={move.reason}>
+                                                {move.reason}
+                                            </TableCell>
+                                            <TableCell className="text-xs text-muted-foreground">
+                                                {move.createdByName || 'Sistema'}
+                                            </TableCell>
+                                        </TableRow>
+                                    ))
+                                )}
+                            </TableBody>
+                        </Table>
+                    </div>
+                    <DialogFooter>
+                        <Button onClick={() => setHourBankDialog({ open: false })}>Cerrar</Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>

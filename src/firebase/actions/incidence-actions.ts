@@ -16,16 +16,25 @@ import type {
     OvertimeRequest,
     HolidayCalendar,
     OfficialHoliday,
-    ShiftType
+    ShiftType,
+    CustomShift,
+    TardinessPolicy,
+    EarlyDeparture
 } from '@/lib/types';
+
 import {
     calculateVacationDays,
     calculateYearsOfService,
     validateWorkday,
     calculateHoursWorked,
     isAnniversaryDate,
-    getNextAnniversaryDate
+    getNextAnniversaryDate,
+    evaluateEarlyDepartureSeverity
 } from '@/lib/hcm-utils';
+import { batchAutoJustify, justifyInfractionsFromIncidence } from './auto-justification-actions';
+
+import { addDebtToHourBank } from './hour-bank-actions';
+import { notifyRole, createNotification } from './notification-actions';
 
 // =========================================================================
 // INCIDENCE MANAGEMENT
@@ -86,6 +95,35 @@ export async function updateIncidenceStatus(
             action: status === 'approved' ? 'approve' : 'reject',
             rejectionReason
         });
+
+        if (result.success) {
+            const { firestore } = initializeFirebase();
+            const incidenceRef = doc(firestore, 'incidences', incidenceId);
+            const incidenceSnap = await getDoc(incidenceRef);
+
+            if (incidenceSnap.exists()) {
+                const incidence = incidenceSnap.data() as Incidence;
+
+                // Auto-justify if approved
+                if (status === 'approved') {
+                    await justifyInfractionsFromIncidence(
+                        incidenceId,
+                        incidence.employeeId,
+                        incidence.startDate,
+                        incidence.endDate,
+                        incidence.type
+                    );
+                }
+
+                // Notify Employee
+                await createNotification(firestore, incidence.employeeId, {
+                    title: `Incidencia ${status === 'approved' ? 'Aprobada' : 'Rechazada'}`,
+                    message: `Tu solicitud de ${incidence.type} del ${incidence.startDate} ha sido ${status === 'approved' ? 'aprobada' : 'rechazada'}. ${rejectionReason ? `Motivo: ${rejectionReason}` : ''}`,
+                    type: status === 'approved' ? 'success' : 'warning',
+                    link: '/hcm'
+                });
+            }
+        }
 
         console.log(`[HCM] Updated incidence ${incidenceId} to ${status}`);
         return { success: result.success };
@@ -149,17 +187,33 @@ export async function processAttendanceImport(
 
         const errors: Array<{ row: number; message: string }> = [];
         let successCount = 0;
+        const newRecordsToJustify: Array<{ id: string; employeeId: string; date: string; type: 'tardiness' | 'early_departure' }> = [];
 
-        // Get all unique employee IDs and fetch their shift types
+        // Get all unique employee IDs and fetch their shift types and time bank balances
         const employeeIds = [...new Set(rows.map(r => r.employeeId))];
-        const employeeShifts: Record<string, ShiftType> = {};
+        const employeeShifts: Record<string, { type: ShiftType; breakMinutes: number }> = {};
+        const employeeTimeBankBalances: Record<string, number> = {}; // Local cache for processing
 
         for (const empId of employeeIds) {
             const empRef = doc(firestore, 'employees', empId);
             const empSnap = await getDoc(empRef);
             if (empSnap.exists()) {
                 const empData = empSnap.data() as Employee;
-                employeeShifts[empId] = empData.shiftType || 'diurnal';
+                // Basic shift type, todo: implement CustomShift lookup
+                employeeShifts[empId] = {
+                    type: empData.shiftType || 'diurnal',
+                    breakMinutes: 0 // Default 0 for now, should come from shift config
+                };
+
+                // Fetch current time bank balance
+                const timeBankRef = doc(firestore, 'time_bank', empId);
+                const timeBankSnap = await getDoc(timeBankRef);
+                if (timeBankSnap.exists()) {
+                    const tb = timeBankSnap.data() as TimeBank;
+                    employeeTimeBankBalances[empId] = tb.hoursBalance;
+                } else {
+                    employeeTimeBankBalances[empId] = 0;
+                }
             }
         }
 
@@ -174,12 +228,45 @@ export async function processAttendanceImport(
                     continue;
                 }
 
-                // Calculate hours worked
-                const hoursWorked = calculateHoursWorked(row.checkIn, row.checkOut);
+                // Calculate hours worked with break deduction
+                const shiftConfig = employeeShifts[row.employeeId];
+                // TODO: Load breakMinutes (e.g. 60) from actual CustomShift/Config
+                // For now we assume 60 minutes break for diurnal/mixed if > 8 hours to align with standard practice,
+                // or just use 0 if not configured.
+                // Let's set a default rule: if shift is diurnal and hours > 5, deduct 60 mins (1 hour) for food.
+                const defaultBreakMinutes = (shiftConfig.type === 'diurnal' || shiftConfig.type === 'mixed') ? 60 : 30;
+
+                const hoursWorked = calculateHoursWorked(row.checkIn, row.checkOut, defaultBreakMinutes);
 
                 // Validate workday according to shift type
-                const shiftType = employeeShifts[row.employeeId];
-                const validation = validateWorkday(hoursWorked, shiftType);
+                const validation = validateWorkday(hoursWorked, shiftConfig.type);
+
+                // -------------------------------------------------------------
+                // DEBT COMPENSATION (TIME BANK)
+                // -------------------------------------------------------------
+                let hoursAppliedToDebt = 0;
+                let payableOvertimeHours = validation.overtimeHours;
+                let timeBankBalance = employeeTimeBankBalances[row.employeeId] || 0;
+
+                // If user has debt (negative balance) and earned overtime today
+                if (timeBankBalance < 0 && validation.overtimeHours > 0) {
+                    const debt = Math.abs(timeBankBalance);
+                    const overtime = validation.overtimeHours;
+
+                    // Calculate how much overtime applies to debt
+                    hoursAppliedToDebt = Math.min(debt, overtime);
+
+                    // Remaining overtime is payable
+                    payableOvertimeHours = overtime - hoursAppliedToDebt;
+
+                    // Update local balance cache
+                    employeeTimeBankBalances[row.employeeId] += hoursAppliedToDebt;
+
+                    // We will create the movement later or right here?
+                    // Better to update TimeBank locally and create a movement record
+                    // Note: Ideally we should batch these updates, but for now we do it sequentially
+                    // We will add a task to update firestore later in the flow
+                }
 
                 // Create attendance record
                 const attendanceRef = collection(firestore, 'attendance');
@@ -191,7 +278,9 @@ export async function processAttendanceImport(
                     hoursWorked,
                     regularHours: validation.regularHours,
                     overtimeHours: validation.overtimeHours,
-                    overtimeType: validation.overtimeHours > 0 ? 'double' : undefined,
+                    payableOvertimeHours,
+                    hoursAppliedToDebt,
+                    overtimeType: payableOvertimeHours > 0 ? 'double' : undefined,
                     isValid: validation.isValid,
                     validationNotes: validation.message,
                     importBatchId: batchId,
@@ -200,6 +289,130 @@ export async function processAttendanceImport(
 
                 await addDoc(attendanceRef, attendanceData);
                 successCount++;
+
+                // If we applied hours to debt, update Time Bank in Firestore
+                if (hoursAppliedToDebt > 0) {
+                    await updateTimeBank(
+                        row.employeeId,
+                        hoursAppliedToDebt,
+                        'earn', // 'earn' positive hours cancels out negative balance
+                        `Compensación automática de deuda (Asistencia ${row.date})`,
+                        'SISTEMA'
+                    );
+                }
+
+                // -------------------------------------------------------------
+                // TARDINESS & EARLY DEPARTURE DETECTION
+                // -------------------------------------------------------------
+
+                // Determine schedule based on shift type (Simplify for Phase 1)
+                // TODO: Load real CustomShift or Shift config
+                let scheduledStart = '';
+                let scheduledEnd = '';
+
+                switch (shiftConfig.type) {
+                    case 'diurnal':
+                        scheduledStart = '09:00';
+                        scheduledEnd = '18:00';
+                        break;
+                    case 'mixed':
+                        scheduledStart = '10:00';
+                        scheduledEnd = '19:00';
+                        break;
+                    case 'nocturnal':
+                        scheduledStart = '20:00';
+                        scheduledEnd = '05:00';
+                        break;
+                    default:
+                        scheduledStart = '09:00';
+                        scheduledEnd = '18:00';
+                }
+
+                // Default tolerance 10 mins (TODO: Load from TardinessPolicy)
+                const toleranceMinutes = 10;
+
+                // Check Tardiness
+                if (row.checkIn) {
+                    const checkInDate = new Date(`2000-01-01T${row.checkIn}`);
+                    const scheduledStartDate = new Date(`2000-01-01T${scheduledStart}`);
+
+                    // Add tolerance
+                    const toleranceDate = new Date(scheduledStartDate.getTime() + toleranceMinutes * 60000);
+
+                    if (checkInDate > toleranceDate) {
+                        const diffMs = checkInDate.getTime() - scheduledStartDate.getTime();
+                        const minutesLate = Math.floor(diffMs / 60000);
+
+                        // Create Tardiness Record
+                        const tardinessData: Omit<TardinessRecord, 'id'> = {
+                            employeeId: row.employeeId,
+                            date: row.date,
+                            attendanceRecordId: 'PENDING_ID', // Idealmente el ID del attendance recien creado
+                            type: 'entry',
+                            scheduledTime: scheduledStart,
+                            actualTime: row.checkIn,
+                            minutesLate,
+                            isJustified: false,
+                            justificationStatus: 'pending',
+                            periodStartDate: row.date, // Simplificado
+                            tardinessCountInPeriod: 1, // Requiere conteo real
+                            tardinessCountInWeek: 1, // Requiere conteo real
+                            sanctionApplied: false,
+                            createdAt: now,
+                            updatedAt: now
+                        };
+
+                        const tRef = await addDoc(collection(firestore, 'tardiness_records'), tardinessData);
+                        newRecordsToJustify.push({
+                            id: tRef.id,
+                            employeeId: row.employeeId,
+                            date: row.date,
+                            type: 'tardiness'
+                        });
+                    }
+                }
+
+                // Check Early Departure
+                // Aplica si checkOut < scheduledEnd y trabajó >= 6 horas (regla de negocio)
+                if (row.checkOut && hoursWorked >= 6) {
+                    const checkOutDate = new Date(`2000-01-01T${row.checkOut}`);
+                    const scheduledEndDate = new Date(`2000-01-01T${scheduledEnd}`);
+
+                    if (checkOutDate < scheduledEndDate) {
+                        const diffMs = scheduledEndDate.getTime() - checkOutDate.getTime();
+                        const minutesEarly = Math.floor(diffMs / 60000);
+
+                        if (minutesEarly > 0) { // Mínimo 1 minuto
+                            // Evaluate severity
+                            const shiftDuration = shiftConfig.type === 'diurnal' ? 9 : (shiftConfig.type === 'mixed' ? 8.5 : 8); // Assuming 1 hour break in shift
+                            const severity = evaluateEarlyDepartureSeverity(hoursWorked, shiftDuration);
+
+                            const departureData: Omit<EarlyDeparture, 'id'> = {
+                                employeeId: row.employeeId,
+                                date: row.date,
+                                scheduledEndTime: scheduledEnd,
+                                actualEndTime: row.checkOut,
+                                minutesEarly,
+                                isJustified: false,
+                                justificationStatus: 'pending',
+                                hoursWorked,
+                                isAbsence: severity === 'critical', // If critical, flag as absence
+                                severity, // Assuming we add severity field to EarlyDeparture type too, or put it in notes
+                                notes: `Severidad: ${severity}`,
+                                createdAt: now,
+                                updatedAt: now
+                            };
+
+                            const edRef = await addDoc(collection(firestore, 'early_departures'), departureData);
+                            newRecordsToJustify.push({
+                                id: edRef.id,
+                                employeeId: row.employeeId,
+                                date: row.date,
+                                type: 'early_departure'
+                            });
+                        }
+                    }
+                }
 
             } catch (rowError) {
                 errors.push({ row: rowNum, message: `Error procesando fila: ${rowError}` });
@@ -220,6 +433,19 @@ export async function processAttendanceImport(
         });
 
         console.log(`[HCM] Processed attendance import: ${successCount} success, ${errors.length} errors`);
+
+        // Auto-justify detected issues
+        if (newRecordsToJustify.length > 0) {
+            await batchAutoJustify(newRecordsToJustify);
+        }
+
+        // Notify HR Managers
+        await notifyRole(firestore, 'HRManager', {
+            title: 'Carga de Asistencia Completada',
+            message: `Se procesó el archivo ${filename}: ${successCount} registros exitosos, ${errors.length} errores.`,
+            type: errors.length > 0 ? 'warning' : 'success',
+            link: '/hcm'
+        });
 
         return {
             success: true,
@@ -525,6 +751,7 @@ export async function recordTardiness(
             actualTime,
             minutesLate,
             isJustified: false,
+            justificationStatus: 'pending',
             periodStartDate: thirtyDaysAgo.toISOString().split('T')[0],
             tardinessCountInPeriod: countInPeriod,
             tardinessCountInWeek: countInWeek,
@@ -546,21 +773,44 @@ export async function recordTardiness(
 export async function justifyTardiness(
     tardinessId: string,
     reason: string,
-    justifiedById: string
+    justifiedById: string,
+    useHourBank: boolean = false,
+    justificationType?: string
 ): Promise<{ success: boolean; error?: string }> {
     try {
         const { firestore } = initializeFirebase();
         const now = new Date().toISOString();
         const tardinessRef = doc(firestore, 'tardiness_records', tardinessId);
 
+        const tardinessSnap = await getDoc(tardinessRef);
+        if (!tardinessSnap.exists()) {
+            return { success: false, error: 'Registro de retardo no encontrado.' };
+        }
+        const tardiness = tardinessSnap.data() as TardinessRecord;
+
         await updateDoc(tardinessRef, {
             isJustified: true,
+            justificationStatus: useHourBank ? 'compensated' : 'justified',
             justificationReason: reason,
+            justificationType, // Added type
             justifiedById,
             justifiedAt: now,
             sanctionApplied: false,
             updatedAt: now,
+            hourBankApplied: useHourBank
         });
+
+        if (useHourBank) {
+            await addDebtToHourBank({
+                employeeId: tardiness.employeeId,
+                date: tardiness.date,
+                type: 'tardiness',
+                minutes: tardiness.minutesLate,
+                reason: `Retardo justificado con bolsa de horas: ${reason}`,
+                sourceRecordId: tardinessId,
+                createdById: justifiedById
+            });
+        }
 
         return { success: true };
     } catch (error) {

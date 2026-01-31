@@ -12,7 +12,7 @@ import { FilePlus, Hourglass, CheckCircle, Timer } from "lucide-react";
 import Link from "next/link";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
-import { TasksTable } from "@/components/dashboard/tasks-table";
+import { TaskCard, EnrichedTask } from "@/components/tasks/task-card";
 import React from "react";
 import { differenceInHours } from 'date-fns';
 import { BottleneckChart } from "@/components/dashboard/bottleneck-chart";
@@ -155,7 +155,18 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent>
               {isLoadingTasks && <DataTableSkeleton />}
-              {!isLoadingTasks && tasks && <TasksTable tasks={tasks} />}
+              {!isLoadingTasks && tasks && tasks.length > 0 && (
+                <div className="space-y-2">
+                  {tasks.slice(0, 5).map((task) => (
+                    <TaskCard key={task.id} task={task as EnrichedTask} variant="compact" />
+                  ))}
+                  <div className="pt-2 text-center">
+                    <Button variant="link" asChild className="text-muted-foreground">
+                      <Link href="/tasks">Ver todas las tareas</Link>
+                    </Button>
+                  </div>
+                </div>
+              )}
               {!isLoadingTasks && !tasks?.length && (
                 <EmptyState
                   variant="inbox"

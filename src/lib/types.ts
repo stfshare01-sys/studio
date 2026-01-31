@@ -48,10 +48,14 @@ export type AppModule =
   | 'hcm_team_overtime'        // Gestionar horas extras
   | 'hcm_team_shifts'          // Asignar turnos al equipo
   | 'hcm_team_hour_bank'       // Ver/gestionar bolsa de horas
+  // Granular Team Global
+  | 'hcm_team_management_global'
   // Granular prenomina permissions
   | 'hcm_prenomina_process'    // Procesar prenómina
   | 'hcm_prenomina_close'      // Cerrar período
-  | 'hcm_prenomina_export';    // Exportar prenómina
+  | 'hcm_prenomina_export'     // Exportar prenómina
+  // SLAs
+  | 'hcm_sla_processing';    // Procesar prenómina
 
 // Permission for a specific module
 export type ModulePermission = {
@@ -618,6 +622,7 @@ export type AuditLog = {
 };
 
 
+
 // Enriched types for UI
 export type EnrichedWorkflowStep = Omit<Request['steps'][0], 'assigneeId'> & {
   assignee: User | null;
@@ -649,7 +654,7 @@ export type ExtendedUserRole = UserRole | 'HRManager' | 'Manager';
 export type EmploymentType = 'full_time' | 'part_time' | 'contractor' | 'intern';
 export type ShiftType = 'diurnal' | 'nocturnal' | 'mixed';
 export type IncidenceType = 'vacation' | 'sick_leave' | 'personal_leave' | 'maternity' | 'paternity' | 'bereavement' | 'unjustified_absence';
-export type IncidenceStatus = 'pending' | 'approved' | 'rejected' | 'cancelled';
+export type IncidenceStatus = 'pending' | 'approved' | 'rejected' | 'cancelled' | 'unjustified' | 'made_up';
 export type OnboardingPhase = 'day_0' | 'day_30' | 'day_60' | 'day_90' | 'completed';
 
 /**
@@ -769,6 +774,10 @@ export type AttendanceRecord = {
 
   // Auditoría
   createdAt: string;
+
+  // Seguimiento de deuda (Bolsa de Horas)
+  hoursAppliedToDebt?: number; // Horas aplicadas para pagar deuda
+  payableOvertimeHours?: number; // Horas extras pagables (después de deducir deuda)
 };
 
 /**
@@ -1378,6 +1387,8 @@ export type OvertimeRequest = {
   // Flujo de aprobación
   status: 'pending' | 'approved' | 'rejected' | 'partial';
   hoursApproved?: number;         // Horas aprobadas (puede ser menor a solicitadas)
+  doubleHours?: number;           // Horas dobles calculadas
+  tripleHours?: number;           // Horas triples calculadas
 
   // Aprobador
   approverLevel: 1 | 2;           // Nivel 1 = jefe directo, Nivel 2 = siguiente nivel
@@ -1624,6 +1635,8 @@ export type EarlyDeparture = {
   // Regla de 6 horas
   hoursWorked?: number;             // Horas trabajadas antes de la salida
   isAbsence?: boolean;              // True si trabajó < 6 horas (se considera falta)
+  severity?: 'minor' | 'major' | 'critical'; // Severidad calculada
+  notes?: string;
 
   // Referencias
   attendanceRecordId?: string;      // Referencia al registro de asistencia
@@ -1788,6 +1801,7 @@ export type Notification = {
   relatedId?: string;               // ID del registro relacionado (incidencia, OT, etc.)
   relatedType?: 'incidence' | 'overtime' | 'tardiness' | 'early_departure' | 'shift' | 'schedule';
   actionUrl?: string;               // URL para navegar al hacer click
+  link?: string;                    // Alias for actionUrl or direct link
 
   // Quién generó la notificación
   createdById?: string;

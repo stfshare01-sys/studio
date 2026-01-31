@@ -47,14 +47,18 @@ import {
     Plus,
     FileText,
     ArrowLeft,
-    AlertTriangle
+    AlertTriangle,
+    ChevronLeft,
+    ChevronRight,
+    LayoutGrid,
+    List
 } from 'lucide-react';
 import type { Incidence, IncidenceType, IncidenceStatus, Employee, VacationBalance } from '@/lib/types';
 import { getEmployeeByUserId } from '@/firebase/hcm-actions';
 import { createIncidence, getVacationBalance } from '@/firebase/actions/incidence-actions';
 import { callApproveIncidence } from '@/firebase/callable-functions';
 import { checkDateConflict } from '@/lib/hcm-utils';
-import { format, differenceInDays } from 'date-fns';
+import { format, differenceInDays, startOfMonth, endOfMonth, eachDayOfInterval, startOfWeek, endOfWeek, isSameMonth, isSameDay, isWithinInterval, addMonths, subMonths } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
 import { Label } from '@/components/ui/label';
@@ -68,6 +72,8 @@ export default function IncidencesPage() {
     const [statusFilter, setStatusFilter] = useState<string>('all');
     const [typeFilter, setTypeFilter] = useState<string>('all');
     const [searchTerm, setSearchTerm] = useState('');
+    const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
+    const [currentMonth, setCurrentMonth] = useState(new Date());
     const [selectedIncidence, setSelectedIncidence] = useState<Incidence | null>(null);
     const [isReviewDialogOpen, setIsReviewDialogOpen] = useState(false);
     const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
@@ -202,6 +208,22 @@ export default function IncidencesPage() {
             return matchesType && matchesSearch;
         }) ?? [];
     }, [incidences, typeFilter, searchTerm, user]);
+
+    // Calendar logic
+    const calendarDays = useMemo(() => {
+        const start = startOfWeek(startOfMonth(currentMonth));
+        const end = endOfWeek(endOfMonth(currentMonth));
+        return eachDayOfInterval({ start, end });
+    }, [currentMonth]);
+
+    const getIncidencesForDay = (day: Date) => {
+        return filteredIncidences.filter(inc =>
+            isWithinInterval(day, {
+                start: new Date(inc.startDate),
+                end: new Date(inc.endDate)
+            })
+        );
+    };
 
 
     // Get incidence type label
@@ -384,6 +406,35 @@ export default function IncidencesPage() {
                     </Button>
                 </header>
                 <main className="flex flex-1 flex-col gap-4 p-4 pt-0 sm:gap-8 sm:p-6 sm:pt-0">
+
+                    {/* View Toggle and Controls */}
+                    <div className="flex items-center justify-between">
+                        <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as 'list' | 'calendar')} className="w-[400px]">
+                            <TabsList>
+                                <TabsTrigger value="list" className="flex items-center gap-2">
+                                    <List className="h-4 w-4" /> Vista Lista
+                                </TabsTrigger>
+                                <TabsTrigger value="calendar" className="flex items-center gap-2">
+                                    <LayoutGrid className="h-4 w-4" /> Calendario
+                                </TabsTrigger>
+                            </TabsList>
+                        </Tabs>
+
+                        {viewMode === 'calendar' && (
+                            <div className="flex items-center gap-2">
+                                <Button variant="outline" size="icon" onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}>
+                                    <ChevronLeft className="h-4 w-4" />
+                                </Button>
+                                <span className="font-medium min-w-[150px] text-center capitalize">
+                                    {format(currentMonth, 'MMMM yyyy', { locale: es })}
+                                </span>
+                                <Button variant="outline" size="icon" onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}>
+                                    <ChevronRight className="h-4 w-4" />
+                                </Button>
+                            </div>
+                        )}
+                    </div>
+
                     {/* Stats */}
                     <div className="grid gap-4 md:grid-cols-3">
                         <Card>
@@ -459,101 +510,105 @@ export default function IncidencesPage() {
                         </CardContent>
                     </Card>
 
-                    {/* Incidences Table */}
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Incidencias</CardTitle>
-                            <CardDescription>
-                                {isLoading ? 'Cargando...' : `${filteredIncidences.length} registros`}
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                            <Table>
-                                <TableHeader>
-                                    <TableRow>
-                                        <TableHead>Empleado</TableHead>
-                                        <TableHead>Tipo</TableHead>
-                                        <TableHead>Período</TableHead>
-                                        <TableHead>Días</TableHead>
-                                        <TableHead>Con Goce</TableHead>
-                                        <TableHead>Estado</TableHead>
-                                        <TableHead>Acciones</TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {isLoading ? (
+
+                    {viewMode === 'list' ? (
+                        /* Incidences Table */
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>Incidencias</CardTitle>
+                                <CardDescription>
+                                    {isLoading ? 'Cargando...' : `${filteredIncidences.length} registros`}
+                                </CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                <Table>
+                                    <TableHeader>
                                         <TableRow>
-                                            <TableCell colSpan={7} className="text-center py-8">
-                                                Cargando incidencias...
-                                            </TableCell>
+                                            <TableHead>Empleado</TableHead>
+                                            <TableHead>Tipo</TableHead>
+                                            <TableHead>Período</TableHead>
+                                            <TableHead>Días</TableHead>
+                                            <TableHead>Con Goce</TableHead>
+                                            <TableHead>Estado</TableHead>
+                                            <TableHead>Acciones</TableHead>
                                         </TableRow>
-                                    ) : filteredIncidences.length === 0 ? (
-                                        <TableRow>
-                                            <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                                                No se encontraron incidencias
-                                            </TableCell>
-                                        </TableRow>
-                                    ) : (
-                                        filteredIncidences.map((incidence) => (
-                                            <TableRow key={incidence.id}>
-                                                <TableCell>
-                                                    <div>
-                                                        <div className="font-medium">{incidence.employeeName}</div>
-                                                        <div className="text-xs text-muted-foreground">{incidence.employeeId}</div>
-                                                    </div>
-                                                </TableCell>
-                                                <TableCell>
-                                                    <Badge variant="outline">{getTypeLabel(incidence.type)}</Badge>
-                                                </TableCell>
-                                                <TableCell>
-                                                    <div className="flex items-center gap-1">
-                                                        <Calendar className="h-3 w-3 text-muted-foreground" />
-                                                        <span className="text-sm">
-                                                            {formatDate(incidence.startDate)} - {formatDate(incidence.endDate)}
-                                                        </span>
-                                                    </div>
-                                                </TableCell>
-                                                <TableCell>{incidence.totalDays}</TableCell>
-                                                <TableCell>
-                                                    {incidence.isPaid ? (
-                                                        <Badge className="bg-green-100 text-green-800">Sí</Badge>
-                                                    ) : (
-                                                        <Badge variant="secondary">No</Badge>
-                                                    )}
-                                                </TableCell>
-                                                <TableCell>{getStatusBadge(incidence.status)}</TableCell>
-                                                <TableCell>
-                                                    {incidence.status === 'pending' && hasHRPermissions && (
-                                                        <Button
-                                                            size="sm"
-                                                            onClick={() => {
-                                                                setSelectedIncidence(incidence);
-                                                                setIsReviewDialogOpen(true);
-                                                            }}
-                                                        >
-                                                            Revisar
-                                                        </Button>
-                                                    )}
-                                                    {incidence.status !== 'pending' && (
-                                                        <Button
-                                                            size="sm"
-                                                            variant="ghost"
-                                                            onClick={() => {
-                                                                setSelectedIncidence(incidence);
-                                                                setIsReviewDialogOpen(true);
-                                                            }}
-                                                        >
-                                                            <FileText className="h-4 w-4" />
-                                                        </Button>
-                                                    )}
+                                    </TableHeader>
+                                    <TableBody>
+                                        {isLoading ? (
+                                            <TableRow>
+                                                <TableCell colSpan={7} className="text-center py-8">
+                                                    Cargando incidencias...
                                                 </TableCell>
                                             </TableRow>
-                                        ))
-                                    )}
-                                </TableBody>
-                            </Table>
-                        </CardContent>
-                    </Card>
+                                        ) : filteredIncidences.length === 0 ? (
+                                            <TableRow>
+                                                <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                                                    No se encontraron incidencias
+                                                </TableCell>
+                                            </TableRow>
+                                        ) : (
+                                            filteredIncidences.map((incidence) => (
+                                                <TableRow key={incidence.id}>
+                                                    <TableCell>
+                                                        <div>
+                                                            <div className="font-medium">{incidence.employeeName}</div>
+                                                            <div className="text-xs text-muted-foreground">{incidence.employeeId}</div>
+                                                        </div>
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        <Badge variant="outline">{getTypeLabel(incidence.type)}</Badge>
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        <div className="flex items-center gap-1">
+                                                            <Calendar className="h-3 w-3 text-muted-foreground" />
+                                                            <span className="text-sm">
+                                                                {formatDate(incidence.startDate)} - {formatDate(incidence.endDate)}
+                                                            </span>
+                                                        </div>
+                                                    </TableCell>
+                                                    <TableCell>{incidence.totalDays}</TableCell>
+                                                    <TableCell>
+                                                        {incidence.isPaid ? (
+                                                            <Badge className="bg-green-100 text-green-800">Sí</Badge>
+                                                        ) : (
+                                                            <Badge variant="secondary">No</Badge>
+                                                        )}
+                                                    </TableCell>
+                                                    <TableCell>{getStatusBadge(incidence.status)}</TableCell>
+                                                    <TableCell>
+                                                        {incidence.status === 'pending' && hasHRPermissions && (
+                                                            <Button
+                                                                size="sm"
+                                                                onClick={() => {
+                                                                    setSelectedIncidence(incidence);
+                                                                    setIsReviewDialogOpen(true);
+                                                                }}
+                                                            >
+                                                                Revisar
+                                                            </Button>
+                                                        )}
+                                                        {incidence.status !== 'pending' && (
+                                                            <Button
+                                                                size="sm"
+                                                                variant="ghost"
+                                                                onClick={() => {
+                                                                    setSelectedIncidence(incidence);
+                                                                    setIsReviewDialogOpen(true);
+                                                                }}
+                                                            >
+                                                                <FileText className="h-4 w-4" />
+                                                            </Button>
+                                                        )}
+                                                    </TableCell>
+                                                </TableRow>
+                                            ))
+                                        )}
+                                    </TableBody>
+                                </Table>
+                            </CardContent>
+                        </Card>
+
+                    ) : null}
 
                     {/* Review Dialog */}
                     <Dialog open={isReviewDialogOpen} onOpenChange={setIsReviewDialogOpen}>

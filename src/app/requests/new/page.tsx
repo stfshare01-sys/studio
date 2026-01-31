@@ -12,14 +12,18 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { addDocumentNonBlocking, setDocumentNonBlocking, useCollection, useFirestore, useMemoFirebase, useUser, useStorage, updateDocumentNonBlocking } from "@/firebase";
 import { useToast } from "@/hooks/use-toast";
+import { usePermissions } from "@/hooks/use-permissions";
+import { hasPermission } from "@/firebase/role-actions";
 import { Template, User, FormField, FieldLayoutConfig, InitiatorPermission } from "@/lib/types";
 import { collection, doc } from "firebase/firestore";
 import { ref as storageRef, uploadBytesResumable, getDownloadURL } from "firebase/storage";
-import { Loader2, XCircle } from "lucide-react";
+import { Loader2, XCircle, Check, ChevronsUpDown, Search, User as UserIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import React, { useCallback, useMemo, Suspense } from "react";
+import React, { useCallback, useMemo, Suspense, useEffect } from "react";
 import { Progress } from "@/components/ui/progress";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
 import { intelligentTaskAssignment } from "@/ai/flows/intelligent-task-assignment";
 import { evaluateAndAddInitialSteps } from "@/lib/workflow-engine";
 import {
@@ -45,7 +49,7 @@ const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
 
 
 async function assignInitialTask(
-    request: any, 
+    request: any,
     template: Template,
     users: User[],
     firestore: any,
@@ -80,13 +84,13 @@ async function assignInitialTask(
 
         if (suggestion.suggestedUserId) {
             const assignee = users.find(u => u.id === suggestion.suggestedUserId);
-            
+
             // 1. Update the task document
             updateDocumentNonBlocking(firstTaskRef, { assigneeId: suggestion.suggestedUserId });
 
             // 2. Update the request document's steps array
             const requestRef = doc(firestore, 'users', request.submittedBy, 'requests', request.id);
-            const updatedSteps = request.steps.map((s: any) => 
+            const updatedSteps = request.steps.map((s: any) =>
                 s.id === firstStep.id ? { ...s, assigneeId: suggestion.suggestedUserId } : s
             );
             updateDocumentNonBlocking(requestRef, { steps: updatedSteps });
@@ -99,13 +103,13 @@ async function assignInitialTask(
                 userFullName: 'FlowMaster AI',
                 timestamp: new Date().toISOString(),
                 action: 'STEP_ASSIGNEE_CHANGED',
-                details: { 
+                details: {
                     stepName: firstStep.name,
                     assigneeName: assignee?.fullName || suggestion.suggestedUserId,
                     reason: suggestion.reason
                 }
             });
-             console.log(`Task '${firstStep.name}' automatically assigned to ${assignee?.fullName}. Reason: ${suggestion.reason}`);
+            console.log(`Task '${firstStep.name}' automatically assigned to ${assignee?.fullName}. Reason: ${suggestion.reason}`);
         }
     } catch (error) {
         console.error("Error during automatic task assignment:", error);
@@ -123,7 +127,7 @@ function NewRequestPageContent() {
     const templateId = searchParams.get('templateId');
     const [selectedTemplateId, setSelectedTemplateId] = React.useState<string | undefined>(templateId || undefined);
     const [isSubmitting, setIsSubmitting] = React.useState(false);
-    
+
     const [formData, setFormData] = React.useState<Record<string, any>>({});
     const [fileErrors, setFileErrors] = React.useState<Record<string, string>>({});
     const [uploadProgress, setUploadProgress] = React.useState<Record<string, number>>({});
@@ -134,6 +138,57 @@ function NewRequestPageContent() {
     const { data: allTemplates } = useCollection<Template>(templatesRef);
     const usersQuery = useMemoFirebase(() => collection(firestore, 'users'), [firestore]);
     const { data: users } = useCollection<User>(usersQuery);
+
+    const { permissions } = usePermissions();
+
+    // Request On Behalf Of State
+    const [requestOnBehalfOf, setRequestOnBehalfOf] = React.useState<string>('');
+    const [userSelectorOpen, setUserSelectorOpen] = React.useState(false);
+    const [userSearch, setUserSearch] = React.useState('');
+
+    // Default to current user
+    useEffect(() => {
+        if (user && !requestOnBehalfOf) {
+            setRequestOnBehalfOf(user.uid);
+        }
+    }, [user, requestOnBehalfOf]);
+
+    // Calculate available subjects (users capable of being requested for)
+    const availableSubjects = useMemo(() => {
+        if (!users || !user) return [];
+
+        // 1. HR / Global Admin: All users
+        const hasGlobalAccess = hasPermission(permissions, 'hcm_team_management_global', 'write') || user.role === 'Admin';
+        if (hasGlobalAccess) {
+            return users;
+        }
+
+        // 2. Manager: Direct reports + Self
+        // Check if I am anyone's manager
+        const mySubordinates = users.filter(u => u.managerId === user.uid);
+        if (mySubordinates.length > 0) {
+            // Include self
+            const self = users.find(u => u.id === user.uid);
+            return self ? [self, ...mySubordinates] : mySubordinates;
+        }
+
+        // 3. Regular Employee: Only Self
+        const self = users.find(u => u.id === user.uid);
+        return self ? [self] : [];
+    }, [users, user, permissions]);
+
+    const filteredSubjects = useMemo(() => {
+        if (!userSearch) return availableSubjects;
+        const lower = userSearch.toLowerCase();
+        return availableSubjects.filter(u =>
+            u.fullName.toLowerCase().includes(lower) ||
+            u.email.toLowerCase().includes(lower)
+        );
+    }, [availableSubjects, userSearch]);
+
+    const selectedSubject = useMemo(() => {
+        return users?.find(u => u.id === requestOnBehalfOf);
+    }, [users, requestOnBehalfOf]);
 
     // Get current user's profile for permission checking
     const currentUserProfile = useMemo(() => {
@@ -213,15 +268,15 @@ function NewRequestPageContent() {
     }
 
     const handleInputChange = useCallback((fieldId: string, value: any) => {
-        setFormData(prev => ({...prev, [fieldId]: value}));
+        setFormData(prev => ({ ...prev, [fieldId]: value }));
         // Clear validation error when user changes value
-        setValidationErrors(prev => ({...prev, [fieldId]: null}));
+        setValidationErrors(prev => ({ ...prev, [fieldId]: null }));
     }, []);
 
     // Validate a single field
     const validateField = useCallback((field: FormField, value: any): string | null => {
         const error = validateFieldValue(field, value);
-        setValidationErrors(prev => ({...prev, [field.id]: error}));
+        setValidationErrors(prev => ({ ...prev, [field.id]: error }));
         return error;
     }, []);
 
@@ -256,7 +311,7 @@ function NewRequestPageContent() {
             return;
         }
         if (Object.values(fileErrors).some(err => err)) {
-             toast({
+            toast({
                 variant: 'destructive',
                 title: 'Errores en archivos',
                 description: 'Por favor, corrija los errores en los archivos adjuntos antes de enviar.',
@@ -275,7 +330,24 @@ function NewRequestPageContent() {
 
         setIsSubmitting(true);
 
-        const requestsCollection = collection(firestore, 'users', user.uid, 'requests');
+        // Use target user ID for the collection path
+        const targetUserId = requestOnBehalfOf || user.uid;
+
+        // Security Check: Verify permission to submit for this user
+        if (targetUserId !== user.uid) {
+            const isAuthorized = availableSubjects.some(u => u.id === targetUserId);
+            if (!isAuthorized) {
+                toast({
+                    title: "Permiso denegado",
+                    description: "No tienes permiso para crear solicitudes a nombre de este usuario.",
+                    variant: "destructive"
+                });
+                setIsSubmitting(false);
+                return;
+            }
+        }
+
+        const requestsCollection = collection(firestore, 'users', targetUserId, 'requests');
         const newRequestRef = doc(requestsCollection);
         const newRequestId = newRequestRef.id;
         const now = new Date().toISOString();
@@ -283,23 +355,23 @@ function NewRequestPageContent() {
         // Handle file uploads
         const documentUploadPromises: Promise<any>[] = [];
         const fileFields = selectedTemplate.fields.filter(f => f.type === 'file');
-        const newFormData = {...formData};
+        const newFormData = { ...formData };
 
         for (const field of fileFields) {
             const file = formData[field.id] as File;
             if (file) {
                 const filePath = `requests/${newRequestId}/${file.name}`;
                 const fileStorageRef = storageRef(storage, filePath);
-                
+
                 const uploadTask = uploadBytesResumable(fileStorageRef, file, {
-                    customMetadata: { ownerId: user.uid }
+                    customMetadata: { ownerId: targetUserId }
                 });
 
                 const uploadPromise = new Promise((resolve, reject) => {
                     uploadTask.on('state_changed',
                         (snapshot) => {
                             const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-                            setUploadProgress(prev => ({...prev, [field.id]: progress}));
+                            setUploadProgress(prev => ({ ...prev, [field.id]: progress }));
                         },
                         (error) => {
                             console.error("Upload failed for", field.id, error);
@@ -308,7 +380,7 @@ function NewRequestPageContent() {
                         async () => {
                             const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
                             const docId = doc(collection(firestore, 'dummy')).id;
-                            
+
                             newFormData[field.id] = docId;
 
                             resolve({
@@ -327,16 +399,18 @@ function NewRequestPageContent() {
                 documentUploadPromises.push(uploadPromise);
             }
         }
-        
+
         const uploadedDocuments = (await Promise.all(documentUploadPromises)).filter(Boolean);
 
-        const { stepsWithTasks } = await evaluateAndAddInitialSteps(newFormData, selectedTemplate, newRequestId, user.uid, now, firestore, users);
+        const { stepsWithTasks } = await evaluateAndAddInitialSteps(newFormData, selectedTemplate, newRequestId, targetUserId, now, firestore, users);
 
         const newRequest = {
             id: newRequestId,
             title: `${selectedTemplate.name} - ${new Date().toLocaleDateString('es-ES')}`,
             templateId: selectedTemplate.id,
-            submittedBy: user.uid,
+            submittedBy: targetUserId, // The subject of the request
+            createdById: user.uid,     // The actual creator (if different)
+            createdByName: user.fullName || user.email,
             createdAt: now,
             updatedAt: now,
             status: 'In Progress',
@@ -368,7 +442,7 @@ function NewRequestPageContent() {
                 details: { title: newRequest.title }
             };
             addDocumentNonBlocking(auditLogCollection, auditLogData);
-            
+
             // Non-blocking call to assign the initial task
             assignInitialTask(newRequest, selectedTemplate, users, firestore);
 
@@ -468,7 +542,7 @@ function NewRequestPageContent() {
                 return (
                     <div className="space-y-2">
                         <Input id={field.id} type="file" onChange={(e) => handleFileChange(field.id, e.target.files?.[0])} disabled={isSubmitting} />
-                        {fileError && <p className="text-sm text-destructive flex items-center gap-1"><XCircle className="h-4 w-4"/> {fileError}</p>}
+                        {fileError && <p className="text-sm text-destructive flex items-center gap-1"><XCircle className="h-4 w-4" /> {fileError}</p>}
                         {validationError && <p className="text-sm text-destructive">{validationError}</p>}
                         {progress > 0 && progress < 100 && <Progress value={progress} className="w-full" />}
                         {progress === 100 && <p className="text-sm text-green-600">Carga completa.</p>}
@@ -621,6 +695,79 @@ function NewRequestPageContent() {
                                     </SelectContent>
                                 </Select>
                             </div>
+
+                            {/* User Selector (Only if multiple options) */}
+                            {availableSubjects.length > 1 && (
+                                <div className="space-y-2">
+                                    <Label>Solicitar para</Label>
+                                    <Popover open={userSelectorOpen} onOpenChange={setUserSelectorOpen}>
+                                        <PopoverTrigger asChild>
+                                            <Button
+                                                variant="outline"
+                                                role="combobox"
+                                                aria-expanded={userSelectorOpen}
+                                                className="w-full justify-between"
+                                                disabled={isSubmitting}
+                                            >
+                                                {selectedSubject ? (
+                                                    <div className="flex items-center gap-2">
+                                                        <UserIcon className="h-4 w-4 opacity-50" />
+                                                        <span>{selectedSubject.fullName}</span>
+                                                        <span className="text-xs text-muted-foreground ml-1">({selectedSubject.email})</span>
+                                                    </div>
+                                                ) : (
+                                                    "Seleccionar empleado..."
+                                                )}
+                                                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                            </Button>
+                                        </PopoverTrigger>
+                                        <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                                            <div className="flex items-center border-b px-3">
+                                                <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
+                                                <input
+                                                    className="flex h-11 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                                                    placeholder="Buscar empleado..."
+                                                    value={userSearch}
+                                                    onChange={(e) => setUserSearch(e.target.value)}
+                                                />
+                                            </div>
+                                            <div className="max-h-[300px] overflow-y-auto p-1">
+                                                {filteredSubjects.length === 0 ? (
+                                                    <div className="py-6 text-center text-sm">No se encontraron empleados.</div>
+                                                ) : (
+                                                    filteredSubjects.map((subject) => (
+                                                        <div
+                                                            key={subject.id}
+                                                            className={cn(
+                                                                "relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground",
+                                                                requestOnBehalfOf === subject.id && "bg-accent text-accent-foreground"
+                                                            )}
+                                                            onClick={() => {
+                                                                setRequestOnBehalfOf(subject.id);
+                                                                setUserSelectorOpen(false);
+                                                            }}
+                                                        >
+                                                            <Check
+                                                                className={cn(
+                                                                    "mr-2 h-4 w-4",
+                                                                    requestOnBehalfOf === subject.id ? "opacity-100" : "opacity-0"
+                                                                )}
+                                                            />
+                                                            <div className="flex flex-col">
+                                                                <span>{subject.fullName}</span>
+                                                                <span className="text-xs text-muted-foreground">{subject.email}</span>
+                                                            </div>
+                                                        </div>
+                                                    ))
+                                                )}
+                                            </div>
+                                        </PopoverContent>
+                                    </Popover>
+                                    <p className="text-xs text-muted-foreground">
+                                        Puede realizar esta solicitud en nombre de otro empleado.
+                                    </p>
+                                </div>
+                            )}
 
                             {selectedTemplate && (() => {
                                 const fieldLayout = selectedTemplate.fieldLayout || [];

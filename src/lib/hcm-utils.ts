@@ -28,6 +28,30 @@ export type WorkdayValidation = {
 };
 
 /**
+ * Evalúa la severidad de una salida temprana
+ * 
+ * @param hoursWorked - Horas trabajadas en el día
+ * @param expectedHours - Horas esperadas del turno
+ * @returns Nivel de severidad ('minor' | 'major' | 'critical')
+ */
+export function evaluateEarlyDepartureSeverity(
+    hoursWorked: number,
+    expectedHours: number
+): 'minor' | 'major' | 'critical' {
+    const percentage = hoursWorked / expectedHours;
+
+    if (percentage < 0.5) {
+        return 'critical'; // Menos del 50% trabajado (posible ausencia)
+    }
+
+    if (percentage < 0.8) {
+        return 'major';    // Menos del 80% trabajado (salida significativa)
+    }
+
+    return 'minor';        // Salida temprana "normal"
+}
+
+/**
  * Obtiene el máximo de horas según tipo de jornada (Art. 60, 61 LFT)
  * 
  * @param shiftType - Tipo de jornada
@@ -218,7 +242,7 @@ export function parseTimeToDecimal(timeString: string): number {
 /**
  * Calcula horas trabajadas entre entrada y salida
  */
-export function calculateHoursWorked(checkIn: string, checkOut: string): number {
+export function calculateHoursWorked(checkIn: string, checkOut: string, breakMinutes: number = 0): number {
     const inDecimal = parseTimeToDecimal(checkIn);
     let outDecimal = parseTimeToDecimal(checkOut);
 
@@ -227,7 +251,8 @@ export function calculateHoursWorked(checkIn: string, checkOut: string): number 
         outDecimal += 24;
     }
 
-    return Math.round((outDecimal - inDecimal) * 100) / 100;
+    const breakHours = breakMinutes / 60;
+    return Math.round((outDecimal - inDecimal - breakHours) * 100) / 100;
 }
 
 // =========================================================================

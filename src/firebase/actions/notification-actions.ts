@@ -1,335 +1,211 @@
-'use client';
 
-import { doc, setDoc, collection, query, where, orderBy, limit, updateDoc } from 'firebase/firestore';
-import { initializeFirebase } from '@/firebase';
-import type { Notification, NotificationType } from '@/lib/types';
+import {
+    collection,
+    doc,
+    setDoc,
+    getDocs,
+    query,
+    where,
+    addDoc,
+    serverTimestamp,
+    Firestore
+} from "firebase/firestore";
+import type { Notification } from "@/lib/types";
 
 /**
- * Creates a notification for a user
+ * Creates a notification for a specific user.
  */
 export async function createNotification(
+    firestore: Firestore,
     userId: string,
-    type: NotificationType,
-    title: string,
-    message: string,
-    options?: {
-        relatedId?: string;
-        relatedType?: Notification['relatedType'];
-        actionUrl?: string;
-        createdById?: string;
-        createdByName?: string;
+    notification: {
+        title: string;
+        message: string;
+        type: "info" | "success" | "warning" | "task";
+        link?: string;
     }
-): Promise<{ success: boolean; notificationId?: string; error?: string }> {
+) {
     try {
-        const { firestore } = initializeFirebase();
-
-        const notificationsRef = collection(firestore, 'notifications');
-        const notificationDoc = doc(notificationsRef);
-
-        const notificationData: Omit<Notification, 'id'> & { id: string } = {
-            id: notificationDoc.id,
-            userId,
-            type,
-            title,
-            message,
+        const notificationsRef = collection(firestore, "users", userId, "notifications");
+        await addDoc(notificationsRef, {
+            ...notification,
             read: false,
-            createdAt: new Date().toISOString(),
-            ...(options?.relatedId && { relatedId: options.relatedId }),
-            ...(options?.relatedType && { relatedType: options.relatedType }),
-            ...(options?.actionUrl && { actionUrl: options.actionUrl }),
-            ...(options?.createdById && { createdById: options.createdById }),
-            ...(options?.createdByName && { createdByName: options.createdByName }),
-        };
-
-        await setDoc(notificationDoc, notificationData);
-
-        console.log(`[Notifications] Created notification for user ${userId}: ${title}`);
-        return { success: true, notificationId: notificationDoc.id };
+            createdAt: new Date().toISOString()
+        });
     } catch (error) {
-        console.error('[Notifications] Error creating notification:', error);
-        return { success: false, error: 'No se pudo crear la notificación.' };
+        console.error("Error creating notification:", error);
     }
 }
 
 /**
- * Mark a notification as read
+ * Notifies all users with a specific system role (e.g., 'HRManager', 'Admin').
  */
-export async function markNotificationAsRead(
-    notificationId: string
-): Promise<{ success: boolean; error?: string }> {
-    try {
-        const { firestore } = initializeFirebase();
-
-        const notificationRef = doc(firestore, 'notifications', notificationId);
-        await updateDoc(notificationRef, { read: true });
-
-        return { success: true };
-    } catch (error) {
-        console.error('[Notifications] Error marking as read:', error);
-        return { success: false, error: 'No se pudo marcar como leída.' };
+export async function notifyRole(
+    firestore: Firestore,
+    role: string,
+    notification: {
+        title: string;
+        message: string;
+        type: "info" | "success" | "warning" | "task";
+        link?: string;
     }
-}
-
-/**
- * Mark all notifications for a user as read
- */
-export async function markAllNotificationsAsRead(
-    userId: string
-): Promise<{ success: boolean; error?: string }> {
+) {
     try {
-        const { firestore } = initializeFirebase();
+        // 1. Find all users with this role (system role or custom role)
+        // Note: This assumes users have a 'role' field or 'customRoleId' field matching the input.
+        // For System Roles, we check 'role'.
 
-        // Get all unread notifications for user
-        const notificationsRef = collection(firestore, 'notifications');
-        const q = query(
-            notificationsRef,
-            where('userId', '==', userId),
-            where('read', '==', false)
-        );
-
-        const { getDocs } = await import('firebase/firestore');
+        // We need to query users.
+        const usersRef = collection(firestore, "users");
+        const q = query(usersRef, where("role", "==", role));
         const snapshot = await getDocs(q);
 
-        // Update each notification
-        const updatePromises = snapshot.docs.map(doc =>
-            updateDoc(doc.ref, { read: true })
-        );
+        const promises = snapshot.docs.map(userDoc => {
+            return createNotification(firestore, userDoc.id, notification);
+        });
 
-        await Promise.all(updatePromises);
+        await Promise.all(promises);
+        console.log(`Notified ${snapshot.size} users with role ${role}`);
 
-        console.log(`[Notifications] Marked ${snapshot.size} notifications as read for user ${userId}`);
-        return { success: true };
     } catch (error) {
-        console.error('[Notifications] Error marking all as read:', error);
-        return { success: false, error: 'No se pudo marcar todas como leídas.' };
+        console.error("Error notifying role:", error);
     }
 }
 
 // =========================================================================
-// NOTIFICATION HELPERS FOR TEAM MANAGEMENT
+// TEAM MANAGEMENT NOTIFICATIONS
 // =========================================================================
 
-/**
- * Notify employee when their overtime request is approved
- */
 export async function notifyOvertimeApproved(
+    firestore: Firestore,
     employeeId: string,
     employeeName: string,
-    requestDate: string,
-    hoursApproved: number,
-    approvedById: string,
-    approvedByName: string
-): Promise<void> {
-    await createNotification(
-        employeeId,
-        'overtime_approved',
-        'Horas Extra Aprobadas',
-        `Tu solicitud de horas extra del ${requestDate} ha sido aprobada (${hoursApproved}h).`,
-        {
-            relatedType: 'overtime',
-            createdById: approvedById,
-            createdByName: approvedByName,
-        }
-    );
+    date: string,
+    hours: number,
+    approverId: string,
+    approverName: string
+) {
+    await createNotification(firestore, employeeId, {
+        title: 'Horas Extras Aprobadas',
+        message: `Se han aprobado ${hours} horas extras para el día ${date}.`,
+        type: 'success',
+        link: '/hcm/attendance'
+    });
 }
 
-/**
- * Notify employee when their overtime request is partially approved
- */
 export async function notifyOvertimePartial(
+    firestore: Firestore,
     employeeId: string,
-    requestDate: string,
-    hoursRequested: number,
-    hoursApproved: number,
-    approvedById: string,
-    approvedByName: string
-): Promise<void> {
-    await createNotification(
-        employeeId,
-        'overtime_partial',
-        'Horas Extra Parcialmente Aprobadas',
-        `Tu solicitud de ${hoursRequested}h del ${requestDate} fue parcialmente aprobada: ${hoursApproved}h.`,
-        {
-            relatedType: 'overtime',
-            createdById: approvedById,
-            createdByName: approvedByName,
-        }
-    );
+    date: string,
+    requested: number,
+    approved: number,
+    approverId: string,
+    approverName: string
+) {
+    await createNotification(firestore, employeeId, {
+        title: 'Horas Extras Aprobadas Parcialmente',
+        message: `Se han aprobado ${approved} de ${requested} horas solicitadas para el día ${date}.`,
+        type: 'warning',
+        link: '/hcm/attendance'
+    });
 }
 
-/**
- * Notify employee when their overtime request is rejected
- */
 export async function notifyOvertimeRejected(
+    firestore: Firestore,
     employeeId: string,
-    requestDate: string,
-    reason: string,
+    date: string,
     rejectedById: string,
-    rejectedByName: string
-): Promise<void> {
-    await createNotification(
-        employeeId,
-        'overtime_rejected',
-        'Horas Extra Rechazadas',
-        `Tu solicitud de horas extra del ${requestDate} fue rechazada. Motivo: ${reason}`,
-        {
-            relatedType: 'overtime',
-            createdById: rejectedById,
-            createdByName: rejectedByName,
-        }
-    );
+    rejectedByName: string,
+    reason: string
+) {
+    await createNotification(firestore, employeeId, {
+        title: 'Horas Extras Rechazadas',
+        message: `Tu solicitud de horas extras para el día ${date} ha sido rechazada. Razón: ${reason}`,
+        type: 'warning',
+        link: '/hcm/attendance'
+    });
 }
 
-/**
- * Notify employee when their tardiness is justified
- */
-export async function notifyTardinessJustified(
-    employeeId: string,
-    date: string,
-    justifiedById: string,
-    justifiedByName: string
-): Promise<void> {
-    await createNotification(
-        employeeId,
-        'tardiness_justified',
-        'Retardo Justificado',
-        `Tu retardo del ${date} ha sido justificado por tu supervisor.`,
-        {
-            relatedType: 'tardiness',
-            createdById: justifiedById,
-            createdByName: justifiedByName,
-        }
-    );
-}
-
-/**
- * Notify employee when their early departure is justified
- */
 export async function notifyEarlyDepartureJustified(
+    firestore: Firestore,
     employeeId: string,
     date: string,
     justifiedById: string,
     justifiedByName: string
-): Promise<void> {
-    await createNotification(
-        employeeId,
-        'early_departure_justified',
-        'Salida Temprana Justificada',
-        `Tu salida temprana del ${date} ha sido justificada por tu supervisor.`,
-        {
-            relatedType: 'early_departure',
-            createdById: justifiedById,
-            createdByName: justifiedByName,
-        }
-    );
+) {
+    await createNotification(firestore, employeeId, {
+        title: 'Salida Temprana Justificada',
+        message: `Tu salida temprana del día ${date} ha sido justificada por ${justifiedByName}.`,
+        type: 'info',
+        link: '/hcm/attendance'
+    });
 }
 
-/**
- * Notify employee when they are assigned a new shift
- */
+export async function notifyTardinessJustified(
+    firestore: Firestore,
+    employeeId: string,
+    date: string,
+    justifiedById: string,
+    justifiedByName: string
+) {
+    await createNotification(firestore, employeeId, {
+        title: 'Retardo Justificado',
+        message: `Tu retardo del día ${date} ha sido justificado por ${justifiedByName}.`,
+        type: 'info',
+        link: '/hcm/attendance'
+    });
+}
+
 export async function notifyShiftAssigned(
+    firestore: Firestore,
     employeeId: string,
     shiftName: string,
     startDate: string,
-    endDate: string | undefined,
+    endDate: string | undefined, // or string
     isPermanent: boolean,
     assignedById: string,
     assignedByName: string
-): Promise<void> {
-    const duration = isPermanent
-        ? 'de forma permanente'
-        : `hasta ${endDate}`;
-
-    await createNotification(
-        employeeId,
-        'shift_assigned',
-        'Nuevo Turno Asignado',
-        `Se te ha asignado el turno "${shiftName}" ${duration}, efectivo desde ${startDate}.`,
-        {
-            relatedType: 'shift',
-            createdById: assignedById,
-            createdByName: assignedByName,
-        }
-    );
+) {
+    const period = isPermanent ? `a partir del ${startDate}` : `del ${startDate} al ${endDate}`;
+    await createNotification(firestore, employeeId, {
+        title: 'Nuevo Turno Asignado',
+        message: `Se te ha asignado el turno ${shiftName} ${period}. Asignado por: ${assignedByName}.`,
+        type: 'info',
+        link: '/hcm/calendar'
+    });
 }
 
-/**
- * Notify employee when their schedule is changed
- */
 export async function notifyScheduleChanged(
+    firestore: Firestore,
     employeeId: string,
-    newStartTime: string,
-    newEndTime: string,
+    startTime: string,
+    endTime: string,
     effectiveDate: string,
     endDate: string | undefined,
     isPermanent: boolean,
     changedById: string,
     changedByName: string
-): Promise<void> {
-    const duration = isPermanent
-        ? 'de forma permanente'
-        : `hasta ${endDate}`;
-
-    await createNotification(
-        employeeId,
-        'schedule_changed',
-        'Cambio de Horario',
-        `Tu horario ha sido modificado a ${newStartTime} - ${newEndTime} ${duration}, efectivo desde ${effectiveDate}.`,
-        {
-            relatedType: 'schedule',
-            createdById: changedById,
-            createdByName: changedByName,
-        }
-    );
+) {
+    const period = isPermanent ? `a partir del ${effectiveDate}` : `para el día ${effectiveDate}`;
+    await createNotification(firestore, employeeId, {
+        title: 'Cambio de Horario',
+        message: `Tu horario ha sido modificado a ${startTime} - ${endTime} ${period}. Modificado por ${changedByName}.`,
+        type: 'info',
+        link: '/hcm/calendar'
+    });
 }
 
-/**
- * Notify employee when their incidence is approved
- */
-export async function notifyIncidenceApproved(
+export async function notifyShiftCancelled(
+    firestore: Firestore,
     employeeId: string,
-    incidenceType: string,
-    incidenceId: string,
-    approvedById: string,
-    approvedByName: string
-): Promise<void> {
-    await createNotification(
-        employeeId,
-        'incidence_approved',
-        'Incidencia Aprobada',
-        `Tu solicitud de ${incidenceType} ha sido aprobada.`,
-        {
-            relatedId: incidenceId,
-            relatedType: 'incidence',
-            actionUrl: `/hcm/incidences/${incidenceId}`,
-            createdById: approvedById,
-            createdByName: approvedByName,
-        }
-    );
-}
-
-/**
- * Notify employee when their incidence is rejected
- */
-export async function notifyIncidenceRejected(
-    employeeId: string,
-    incidenceType: string,
-    incidenceId: string,
-    reason: string,
-    rejectedById: string,
-    rejectedByName: string
-): Promise<void> {
-    await createNotification(
-        employeeId,
-        'incidence_rejected',
-        'Incidencia Rechazada',
-        `Tu solicitud de ${incidenceType} fue rechazada. Motivo: ${reason}`,
-        {
-            relatedId: incidenceId,
-            relatedType: 'incidence',
-            actionUrl: `/hcm/incidences/${incidenceId}`,
-            createdById: rejectedById,
-            createdByName: rejectedByName,
-        }
-    );
+    startDate: string,
+    cancelledById: string,
+    cancelledByName: string
+) {
+    await createNotification(firestore, employeeId, {
+        title: 'Asignación de Turno Cancelada',
+        message: `La asignación de turno del ${startDate} ha sido cancelada por ${cancelledByName}.`,
+        type: 'warning',
+        link: '/hcm/calendar'
+    });
 }

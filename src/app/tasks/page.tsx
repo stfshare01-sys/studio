@@ -7,11 +7,11 @@ import { useFirestore, useUser, useCollection, useMemoFirebase } from "@/firebas
 import { collection, query, where, documentId } from "firebase/firestore";
 import type { Task, Request, Template } from "@/lib/types";
 import { SERVICE_CATALOG } from "@/lib/catalog-definitions";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { LayoutDashboard, CheckSquare, Users, Laptop, Briefcase, FileText } from "lucide-react";
+import { LayoutDashboard, Users, Laptop, Briefcase, CheckSquare, Activity } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import Link from "next/link";
 import { formatDistanceToNow, isPast } from "date-fns";
@@ -19,11 +19,7 @@ import { es } from "date-fns/locale";
 
 // --- Types ---
 
-type EnrichedTask = Task & {
-    moduleTag?: string;
-    requestPriority?: string;
-    templateName?: string;
-};
+import { TaskCard, EnrichedTask } from "@/components/tasks/task-card";
 
 type TaskFilterMode = 'ALL' | 'HCM' | 'IT' | 'FIN' | 'GEN';
 
@@ -87,44 +83,9 @@ function TaskList({ tasks, isLoading }: { tasks: EnrichedTask[], isLoading: bool
 
     return (
         <div className="grid gap-4">
-            {tasks.map(task => {
-                const isOverdue = task.slaExpiresAt && isPast(new Date(task.slaExpiresAt));
-                return (
-                    <Card key={task.id} className={`transition-all hover:border-primary/50 ${isOverdue ? "border-amber-200 bg-amber-50 dark:bg-amber-950/10 dark:border-amber-900" : ""}`}>
-                        <CardHeader className="p-4 pb-2">
-                            <div className="flex justify-between items-start">
-                                <div className="space-y-1">
-                                    <CardTitle className="text-base font-medium flex items-center gap-2">
-                                        <Link href={`/requests/${task.requestId}`} className="hover:underline">
-                                            {task.name}
-                                        </Link>
-                                        {isOverdue && <Badge variant="destructive" className="text-[10px] h-5 px-1.5">Vencida</Badge>}
-                                        {task.moduleTag && <Badge variant="outline" className="text-[10px] h-5 px-1.5">{task.moduleTag}</Badge>}
-                                    </CardTitle>
-                                    <CardDescription className="text-xs">
-                                        {task.requestTitle}
-                                    </CardDescription>
-                                </div>
-                                <div className="text-right">
-                                    <span className="text-xs text-muted-foreground block">
-                                        Hace {formatDistanceToNow(new Date(task.createdAt), { locale: es })}
-                                    </span>
-                                </div>
-                            </div>
-                        </CardHeader>
-                        <CardContent className="p-4 pt-2 flex justify-between items-center">
-                            <div className="text-sm text-muted-foreground">
-                                {task.stepId && <span className="flex items-center gap-1"><FileText className="h-3 w-3" /> Paso: {task.name}</span>}
-                            </div>
-                            <Button size="sm" asChild>
-                                <Link href={`/requests/${task.requestId}`}>
-                                    Atender
-                                </Link>
-                            </Button>
-                        </CardContent>
-                    </Card>
-                );
-            })}
+            {tasks.map(task => (
+                <TaskCard key={task.id} task={task} />
+            ))}
         </div>
     );
 }
@@ -232,6 +193,52 @@ export default function InboxPage() {
                         </div>
 
                         <TaskList tasks={filteredTasks} isLoading={tasksLoading} />
+
+                        {/* Bottleneck Analysis */}
+                        <div className="mt-8 border-t pt-6">
+                            <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                                <Activity className="h-5 w-5 text-muted-foreground" />
+                                Análisis de Cuellos de Botella
+                            </h2>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <Card>
+                                    <CardHeader className="pb-2">
+                                        <CardTitle className="text-sm font-medium text-muted-foreground">Vencidas (SLA)</CardTitle>
+                                    </CardHeader>
+                                    <CardContent>
+                                        <div className="text-2xl font-bold text-destructive">
+                                            {filteredTasks.filter(t => t.slaExpiresAt && isPast(new Date(t.slaExpiresAt))).length}
+                                        </div>
+                                        <p className="text-xs text-muted-foreground">Requieren atención inmediata</p>
+                                    </CardContent>
+                                </Card>
+                                <Card>
+                                    <CardHeader className="pb-2">
+                                        <CardTitle className="text-sm font-medium text-muted-foreground">Antigüedad &gt; 7 días</CardTitle>
+                                    </CardHeader>
+                                    <CardContent>
+                                        <div className="text-2xl font-bold text-orange-500">
+                                            {filteredTasks.filter(t => {
+                                                const days = (new Date().getTime() - new Date(t.createdAt).getTime()) / (1000 * 3600 * 24);
+                                                return days > 7;
+                                            }).length}
+                                        </div>
+                                        <p className="text-xs text-muted-foreground">Posible estancamiento</p>
+                                    </CardContent>
+                                </Card>
+                                <Card>
+                                    <CardHeader className="pb-2">
+                                        <CardTitle className="text-sm font-medium text-muted-foreground">Carga Total</CardTitle>
+                                    </CardHeader>
+                                    <CardContent>
+                                        <div className="text-2xl font-bold">
+                                            {filteredTasks.length}
+                                        </div>
+                                        <p className="text-xs text-muted-foreground">Tareas activas en esta vista</p>
+                                    </CardContent>
+                                </Card>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
