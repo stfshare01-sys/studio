@@ -25,6 +25,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import {
     ArrowLeft,
     Save,
@@ -343,6 +344,7 @@ export default function EditEmployeePage({ params }: { params: Promise<{ id: str
                                         </SelectContent>
                                     </Select>
                                 </div>
+
                             </div>
                         </CardContent>
                     </Card>
@@ -418,7 +420,7 @@ export default function EditEmployeePage({ params }: { params: Promise<{ id: str
                         </CardContent>
                     </Card>
                 </main>
-            </div>
-        </SiteLayout>
+            </div >
+        </SiteLayout >
     );
 }

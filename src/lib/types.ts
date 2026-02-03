@@ -694,6 +694,7 @@ export type Employee = User & {
 
   // Información jerárquica
   directManagerId?: string;    // ID del jefe directo
+  positionId?: string;         // ID del puesto asociado
 };
 
 /**
@@ -1188,6 +1189,7 @@ export type Position = {
   // Configuración de horas extras
   generatesOvertime?: boolean;    // Si el puesto genera horas extras pagadas
   overtimePreApprovalRequired?: boolean; // Si requiere pre-autorización para HE
+  allowTimeBank?: boolean;        // Permitir uso de bolsa de horas (Nuevo: reemplaza config por empleado)
 
   // Límites de aprobación
   approvalLimits?: ApprovalLimits; // Límites máximos que puede aprobar sin escalar

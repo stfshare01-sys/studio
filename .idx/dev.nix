@@ -30,6 +30,12 @@
         ];
       };
     };
+    mcpServers = {
+      notebooklm = {
+        command = "npx";
+        args = ["-y" "@google-labs/notebooklm-mcp-server"];
+      };
+    };
     # Enable previews and customize configuration
     previews = {
       enable = true;

@@ -35,7 +35,7 @@ import { Logo } from "@/components/icons";
 import { Button } from "./ui/button";
 import { useAuth, useUser } from "@/firebase";
 import { signOut } from "firebase/auth";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { NotificationCenter } from "@/components/notifications/notification-center";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { GlobalSearch } from "@/components/global-search";
@@ -58,6 +58,7 @@ const ALL_NAV_ITEMS: NavItem[] = [
   { href: "/hcm", icon: Briefcase, label: "Capital Humano", module: "hcm_employees" },
   { href: "/reports", icon: BarChart3, label: "Informes", module: "reports" },
   { href: "/process-mining", icon: Activity, label: "Minería de Procesos", module: "process_mining" },
+  { href: "/hcm/team-management", icon: Users, label: "Gestión de Equipo", module: "hcm_team_management" },
   { href: "/templates", icon: FolderKanban, label: "Plantillas", module: "templates" },
   { href: "/master-lists", icon: Database, label: "Listas Maestras", module: "master_lists" },
   { href: "/requests/new", icon: FilePlus, label: "Nueva Solicitud", module: "requests" },
@@ -66,11 +67,21 @@ const ALL_NAV_ITEMS: NavItem[] = [
   { href: "/admin/roles", icon: Shield, label: "Roles y Permisos", module: "admin_roles" },
 ];
 
+import { hasDirectReports } from "@/firebase/actions/team-actions";
+
 export default function SiteLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const auth = useAuth();
   const { user, isUserLoading } = useUser();
   const router = useRouter();
+  const [isManager, setIsManager] = useState(false);
+
+  // Checks if user has direct reports to show Team Management link
+  useEffect(() => {
+    if (user?.uid) {
+      hasDirectReports(user.uid).then(setIsManager);
+    }
+  }, [user]);
 
   // Use the permissions hook for dynamic filtering
   const { canRead, isAdmin, isLoading: permissionsLoading } = usePermissions();
@@ -108,6 +119,9 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
   const navItems = ALL_NAV_ITEMS.filter(item => {
     // Admin sees everything (redundant check if hasPermission handles isAdmin, but good for clarity)
     if (isAdmin) return true;
+
+    // Special check for Team Management based on actual reports
+    if (item.href === '/hcm/team-management' && isManager) return true;
 
     // Check read permission for the module
     return canRead(item.module);

@@ -50,6 +50,7 @@ async function safeCreateAuthUser(uid: string, email: string, displayName: strin
         email,
         emailVerified: true,
         displayName,
+        password: 'prueba123',
     });
 }
 
@@ -1497,6 +1498,9 @@ async function seedDatabase() {
                 // 9.3 Overtime Requests
                 if (rec.overtimeHours > 0) {
                     const overtimeId = `ot-${rec.id}`;
+                    // Approve some requests (approx 20%) to test flows
+                    const isApproved = isTarget && Math.random() > 0.8;
+
                     await db.collection('overtime_requests').doc(overtimeId).set({
                         id: overtimeId,
                         employeeId: rec.employeeId,
@@ -1504,7 +1508,13 @@ async function seedDatabase() {
                         date: rec.date,
                         hoursRequested: rec.overtimeHours,
                         reason: 'Cierre de mes y proyectos urgentes',
-                        status: 'pending',
+                        status: isApproved ? 'approved' : 'pending',
+                        hoursApproved: isApproved ? rec.overtimeHours : null,
+                        doubleHours: isApproved ? rec.overtimeHours : null,
+                        tripleHours: isApproved ? 0 : null,
+                        paymentMethod: 'paid',
+                        approvedBy: isApproved ? 'emp-director' : null,
+                        approvedAt: isApproved ? rec.updatedAt : null,
                         createdAt: rec.createdAt,
                         updatedAt: rec.updatedAt
                     });
@@ -1512,6 +1522,30 @@ async function seedDatabase() {
                 }
             }
         }
+
+        // 9.5 Crear Bolsas de Horas (Hour Banks)
+        console.log('⏳ Creando Bolsas de Horas...');
+        let hourBankCount = 0;
+        for (const emp of EMPLOYEES) {
+            // Mock random balance for managers
+            const isManager = emp.role === 'Manager' || emp.role === 'HRManager';
+            const balance = isManager ? Math.floor(Math.random() * 600) - 300 : 0; // -300 to +300 mins
+
+            const hourBank: any = {
+                id: emp.id,
+                employeeId: emp.id,
+                employeeName: emp.fullName,
+                balanceMinutes: balance,
+                totalDebtAccumulated: balance > 0 ? balance : 0,
+                totalCompensated: 0,
+                createdAt: NOW,
+                updatedAt: NOW
+            };
+
+            await db.collection('hour_banks').doc(emp.id).set(hourBank);
+            hourBankCount++;
+        }
+        console.log(`   ✅ ${hourBankCount} bolsas de horas creadas`);
         console.log(`   ✅ ${attendanceCount} registros de asistencia creados`);
         console.log(`   ✅ ${tardinessCount} registros de retardos creados`);
         console.log(`   ✅ ${departureCount} registros de salidas tempranas creados`);

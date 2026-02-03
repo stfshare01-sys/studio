@@ -61,6 +61,7 @@ const initialFormState = {
     salaryMax: '',
     canApproveOvertime: false,
     canApproveIncidences: false,
+    allowTimeBank: false,
 };
 
 export default function PositionsAdminPage() {
@@ -109,6 +110,7 @@ export default function PositionsAdminPage() {
                 salaryMax: position.salaryMax?.toString() || '',
                 canApproveOvertime: position.canApproveOvertime || false,
                 canApproveIncidences: position.canApproveIncidences || false,
+                allowTimeBank: position.allowTimeBank || false,
             });
         } else {
             setIsEditing(false);
@@ -143,6 +145,7 @@ export default function PositionsAdminPage() {
                 level: formData.level,
                 canApproveOvertime: formData.canApproveOvertime,
                 canApproveIncidences: formData.canApproveIncidences,
+                allowTimeBank: formData.allowTimeBank,
                 isActive: true,
                 updatedAt: now,
             };
@@ -464,6 +467,18 @@ export default function PositionsAdminPage() {
                                             />
                                             <Label htmlFor="canApproveIncidences">
                                                 Puede aprobar incidencias
+                                            </Label>
+                                        </div>
+                                        <div className="flex items-center space-x-2">
+                                            <Checkbox
+                                                id="allowTimeBank"
+                                                checked={formData.allowTimeBank}
+                                                onCheckedChange={(checked) =>
+                                                    setFormData(prev => ({ ...prev, allowTimeBank: !!checked }))
+                                                }
+                                            />
+                                            <Label htmlFor="allowTimeBank">
+                                                Permitir Bolsa de Horas
                                             </Label>
                                         </div>
                                     </div>

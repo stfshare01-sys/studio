@@ -2,7 +2,9 @@
 
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import SiteLayout from '@/components/site-layout';
-import { useFirebase } from '@/firebase/provider';
+import { useFirebase, useMemoFirebase } from '@/firebase/provider';
+import { useCollection } from '@/firebase/firestore/use-collection';
+import { collection, query, where } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -70,7 +72,7 @@ import {
 import { justifyTardiness } from '@/firebase/actions/incidence-actions';
 import { runGlobalSLAProcessing } from '@/firebase/actions/sla-actions';
 import { migrateManagerIdField } from '@/firebase/actions/employee-actions';
-import { getTeamHourBanks, getHourBankMovements, formatHourBankBalance } from '@/firebase/actions/hour-bank-actions';
+import { getTeamHourBanks, getHourBankMovements, formatHourBankBalance, manualHourBankAdjustment, formatMinutesToReadable } from '@/firebase/actions/hour-bank-actions';
 import { usePermissions } from '@/hooks/use-permissions';
 import { hasPermission } from '@/firebase/role-actions';
 
@@ -87,12 +89,13 @@ import type {
     JustificationType,
     ShiftAssignment,
     ShiftType,
-    AttendanceImportBatch
+    AttendanceImportBatch,
+    Position
 } from '@/lib/types';
 import { JUSTIFICATION_TYPE_LABELS } from '@/lib/types';
 
 export default function TeamManagementPage() {
-    const { user, isUserLoading } = useFirebase();
+    const { user, isUserLoading, firestore } = useFirebase();
     const { permissions, isLoading: loadingPermissions } = usePermissions();
     const [activeTab, setActiveTab] = useState('overview');
 
@@ -136,9 +139,31 @@ export default function TeamManagementPage() {
     const [selectedBatchId, setSelectedBatchId] = useState<string>('all');
     const [selectedShiftFilter, setSelectedShiftFilter] = useState<ShiftType | 'all'>('all');
 
+    // Fetch positions for configuration checks
+    const positionsQuery = useMemoFirebase(() => {
+        if (!firestore) return null;
+        return query(collection(firestore, 'positions'));
+    }, [firestore]);
+    const { data: positions } = useCollection<Position>(positionsQuery);
+
+    // Helper to check if employee allows time bank
+    const canEmployeeUseTimeBank = useCallback((employeeId?: string) => {
+        if (!employeeId || !employees.length || !positions?.length) return false;
+        const employee = employees.find(e => e.id === employeeId);
+        if (!employee) return false;
+
+        // Match by ID (preferred) or Name (legacy/fallback)
+        const position = positions.find(p =>
+            (employee.positionId && p.id === employee.positionId) ||
+            p.name === employee.positionTitle
+        );
+
+        return position?.allowTimeBank || false;
+    }, [employees, positions]);
+
     // Dialog states
-    const [justifyTardinessDialog, setJustifyTardinessDialog] = useState<{ open: boolean; record?: TardinessRecord }>({ open: false });
-    const [justifyDepartureDialog, setJustifyDepartureDialog] = useState<{ open: boolean; record?: EarlyDeparture }>({ open: false });
+    const [justifyTardinessDialog, setJustifyTardinessDialog] = useState<{ open: boolean; record?: TardinessRecord; employeeName?: string }>({ open: false });
+    const [justifyDepartureDialog, setJustifyDepartureDialog] = useState<{ open: boolean; record?: EarlyDeparture; employeeName?: string }>({ open: false });
     const [overtimeDialog, setOvertimeDialog] = useState<{ open: boolean; request?: OvertimeRequest }>({ open: false });
     const [shiftDialog, setShiftDialog] = useState<{ open: boolean; employee?: Employee }>({ open: false });
     const [cancelShiftDialog, setCancelShiftDialog] = useState<{ open: boolean; assignment?: ShiftAssignment }>({ open: false });
@@ -203,6 +228,20 @@ export default function TeamManagementPage() {
                     if (otResult.success) {
                         setOvertimeRequests(otResult.requests || []);
                         if (otResult.stats) setOvertimeStats(otResult.stats);
+                    }
+                    // Also fetch hour banks for debt display
+                    const empsResult = await getDirectReports(selectedManagerId);
+                    if (empsResult.success && empsResult.employees) {
+                        const employeeIds = empsResult.employees.map(e => e.id).filter(Boolean);
+
+                        if (employeeIds.length > 0) {
+                            const hbResult = await getTeamHourBanks(employeeIds);
+                            if (hbResult.success && hbResult.hourBanks) {
+                                setHourBanks(hbResult.hourBanks);
+                            }
+                        } else {
+                            setHourBanks([]);
+                        }
                     }
                     break;
 
@@ -334,6 +373,7 @@ export default function TeamManagementPage() {
                 justifyTardinessDialog.record.id,
                 justificationReason,
                 user.id || '',
+                user.fullName || user.email || 'Admin',
                 useHourBank,
                 justificationType
             );
@@ -359,7 +399,7 @@ export default function TeamManagementPage() {
                 justifyDepartureDialog.record.id,
                 justificationReason,
                 user.id || '',
-                user.fullName || user.email || '',
+                user.fullName || user.email || 'Admin',
                 useHourBank,
                 justificationType
             );
@@ -375,27 +415,69 @@ export default function TeamManagementPage() {
         }
     };
 
-    const handleApproveOvertime = async (partial: boolean = false) => {
-        if (!overtimeDialog.request || !user) return;
+    const handleApproveOvertime = async (partial: boolean) => {
+        if (!overtimeDialog.request || !user?.id) return;
 
         setSubmitting(true);
         try {
-            const hours = partial ? parseFloat(hoursToApprove) : undefined;
+            const requestedHours = overtimeDialog.request.hoursRequested;
+            let approvedHours = partial ? parseFloat(hoursToApprove) : requestedHours;
+
+            // --- DEBT DEDUCTION LOGIC ---
+            // 1. Get current debt
+            const hb = hourBanks.find(h => h.employeeId === overtimeDialog.request?.employeeId);
+            const currentDebt = hb?.balanceMinutes && hb.balanceMinutes > 0 ? hb.balanceMinutes : 0;
+            const approvedMinutes = approvedHours * 60;
+
+            // 2. Calculate amortization
+            const amortizedMinutes = Math.min(currentDebt, approvedMinutes);
+            const paidMinutes = Math.max(0, approvedMinutes - amortizedMinutes);
+            const paidHours = paidMinutes / 60;
+
+            // 3. Register movement if paying debt
+            if (amortizedMinutes > 0) {
+                const moveResult = await manualHourBankAdjustment({
+                    employeeId: overtimeDialog.request.employeeId,
+                    date: new Date().toISOString(),
+                    minutes: -amortizedMinutes, // Negative to reduce positive debt (Debe 60 -> -10 -> Debe 50)
+                    reason: `Compensación automática por Horas Extras (${formatMinutesToReadable(amortizedMinutes)})`,
+                    createdById: user.id,
+                    createdByName: user.displayName || 'Manager'
+                });
+
+                if (!moveResult.success) {
+                    console.error('Error registering debt payment:', moveResult.error);
+                    // Continue anyway? Optional: throw error
+                }
+            }
+
+            // 4. Approve only the PAID hours (net)
+            // If all went to debt (paidHours === 0), it's still "approved" but with 0 paid hours
             const result = await approveOvertimeRequest(
                 overtimeDialog.request.id,
-                user.id || '',
-                user.fullName || user.email || '',
-                hours
+                user.id,
+                user.displayName || 'Manager',
+                paidHours // Use NET hours
             );
 
             if (result.success) {
                 setOvertimeDialog({ open: false });
-                setHoursToApprove('');
                 loadTabData('overtime');
+                // Refresh hour banks too to show updated debt
+                loadTabData('hour-bank');
             }
+        } catch (error) {
+            console.error('Error approving overtime:', error);
         } finally {
             setSubmitting(false);
         }
+    };
+
+    // Helper needed inside the scope
+    const formatMins = (mins: number) => {
+        const h = Math.floor(mins / 60);
+        const m = Math.round(mins % 60);
+        return `${h}h ${m}m`;
     };
 
     const handleRejectOvertime = async () => {
@@ -473,7 +555,7 @@ export default function TeamManagementPage() {
         if (!user) return;
         setProcessingSLA(true);
         try {
-            const result = await runGlobalSLAProcessing(user.uid, user.role, user.customRoleId || undefined);
+            const result = await runGlobalSLAProcessing(user.uid, user.role, (user.customRoleId || undefined) as string | undefined);
             if (result.success) {
                 // Optionally refresh data or show a success message
                 console.log('SLA processing initiated successfully.');
@@ -1018,7 +1100,7 @@ export default function TeamManagementPage() {
                                                             <Button
                                                                 size="sm"
                                                                 onClick={() => {
-                                                                    setJustifyTardinessDialog({ open: true, record });
+                                                                    setJustifyTardinessDialog({ open: true, record, employeeName: employees.find(e => e.id === record.employeeId)?.fullName || record.employeeId });
                                                                     setJustificationReason('');
                                                                     setJustificationType(undefined);
                                                                     setUseHourBank(false);
@@ -1108,7 +1190,7 @@ export default function TeamManagementPage() {
                                                             <Button
                                                                 size="sm"
                                                                 onClick={() => {
-                                                                    setJustifyDepartureDialog({ open: true, record });
+                                                                    setJustifyDepartureDialog({ open: true, record, employeeName: employees.find(e => e.id === record.employeeId)?.fullName || record.employeeId });
                                                                     setJustificationReason('');
                                                                     setJustificationType(undefined);
                                                                     setUseHourBank(false);
@@ -1152,6 +1234,7 @@ export default function TeamManagementPage() {
                                         <TableRow>
                                             <TableHead>Fecha</TableHead>
                                             <TableHead>Empleado</TableHead>
+                                            <TableHead>Deuda B. Horas</TableHead>
                                             <TableHead>Horas Solicitadas</TableHead>
                                             <TableHead>Razón</TableHead>
                                             <TableHead>Estado</TableHead>
@@ -1173,6 +1256,23 @@ export default function TeamManagementPage() {
                                                 <TableRow key={request.id}>
                                                     <TableCell>{new Date(request.date).toLocaleDateString('es-MX')}</TableCell>
                                                     <TableCell className="font-medium">{request.employeeName}</TableCell>
+                                                    <TableCell>
+                                                        {(() => {
+                                                            const hb = hourBanks.find(h => h.employeeId === request.employeeId);
+                                                            const balance = hb?.balanceMinutes || 0;
+                                                            if (balance > 0) {
+                                                                const debt = Math.abs(balance);
+                                                                const hours = Math.floor(debt / 60);
+                                                                const mins = debt % 60;
+                                                                return (
+                                                                    <span className="font-bold text-red-600">
+                                                                        -{hours}h {mins}m
+                                                                    </span>
+                                                                );
+                                                            }
+                                                            return <span className="text-muted-foreground">-</span>;
+                                                        })()}
+                                                    </TableCell>
                                                     <TableCell>{request.hoursRequested}h</TableCell>
                                                     <TableCell className="max-w-xs truncate">{request.reason}</TableCell>
                                                     <TableCell>
@@ -1400,10 +1500,12 @@ export default function TeamManagementPage() {
                                 placeholder="Ej. Tráfico pesado, cita médica..."
                             />
                         </div>
-                        <div className="flex items-center space-x-2">
-                            <Switch id="tardiness-hourbank" checked={useHourBank} onCheckedChange={setUseHourBank} />
-                            <Label htmlFor="tardiness-hourbank">Compensar con Bolsa de Horas</Label>
-                        </div>
+                        {canEmployeeUseTimeBank(justifyTardinessDialog.record?.employeeId) && (
+                            <div className="flex items-center space-x-2">
+                                <Switch id="tardiness-hourbank" checked={useHourBank} onCheckedChange={setUseHourBank} />
+                                <Label htmlFor="tardiness-hourbank">Compensar con Bolsa de Horas</Label>
+                            </div>
+                        )}
                     </div>
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setJustifyTardinessDialog({ open: false })}>Cancelar</Button>
@@ -1451,10 +1553,12 @@ export default function TeamManagementPage() {
                                 placeholder="Ej. Permiso personal, trabajo remoto..."
                             />
                         </div>
-                        <div className="flex items-center space-x-2">
-                            <Switch id="departure-hourbank" checked={useHourBank} onCheckedChange={setUseHourBank} />
-                            <Label htmlFor="departure-hourbank">Compensar con Bolsa de Horas</Label>
-                        </div>
+                        {canEmployeeUseTimeBank(justifyDepartureDialog.record?.employeeId) && (
+                            <div className="flex items-center space-x-2">
+                                <Switch id="departure-hourbank" checked={useHourBank} onCheckedChange={setUseHourBank} />
+                                <Label htmlFor="departure-hourbank">Compensar con Bolsa de Horas</Label>
+                            </div>
+                        )}
                     </div>
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setJustifyDepartureDialog({ open: false })}>Cancelar</Button>
@@ -1468,7 +1572,7 @@ export default function TeamManagementPage() {
 
             {/* Overtime Approval Dialog */}
             <Dialog open={overtimeDialog.open} onOpenChange={(open) => setOvertimeDialog({ open })}>
-                <DialogContent className="max-w-md">
+                <DialogContent className="max-w-2xl">
                     <DialogHeader>
                         <DialogTitle>Revisar Solicitud de Horas Extras</DialogTitle>
                         <DialogDescription>
@@ -1479,21 +1583,67 @@ export default function TeamManagementPage() {
                             )}
                         </DialogDescription>
                     </DialogHeader>
-                    <div className="space-y-4">
+                    <div className="space-y-6 py-4">
                         <div className="bg-muted p-3 rounded-lg">
                             <p className="text-sm font-medium">Razón:</p>
                             <p className="text-sm text-muted-foreground">{overtimeDialog.request?.reason}</p>
                         </div>
-                        <div>
-                            <Label>Horas a Aprobar (para aprobación parcial)</Label>
-                            <Input
-                                type="number"
-                                step="0.5"
-                                min="0"
-                                max={overtimeDialog.request?.hoursRequested}
-                                value={hoursToApprove}
-                                onChange={(e) => setHoursToApprove(e.target.value)}
-                            />
+                        <div className="grid gap-4">
+                            {(() => {
+                                const hb = hourBanks.find(h => h.employeeId === overtimeDialog.request?.employeeId);
+                                const currentDebt = hb?.balanceMinutes && hb.balanceMinutes > 0 ? hb.balanceMinutes : 0;
+                                const requestedMinutes = (parseFloat(hoursToApprove || '0')) * 60;
+
+                                const amortizedMinutes = Math.min(currentDebt, requestedMinutes);
+                                const paidMinutes = Math.max(0, requestedMinutes - amortizedMinutes);
+
+                                const formatMins = (mins: number) => {
+                                    const h = Math.floor(mins / 60);
+                                    const m = Math.round(mins % 60);
+                                    return `${h}h ${m}m`;
+                                };
+
+                                return (
+                                    <>
+                                        {currentDebt > 0 && (
+                                            <div className="bg-red-50 p-3 rounded-lg border border-red-100 space-y-2">
+                                                <div className="flex justify-between items-center text-sm">
+                                                    <span className="text-red-700 font-medium">Deuda Actual:</span>
+                                                    <span className="font-bold text-red-700">{formatMins(currentDebt)}</span>
+                                                </div>
+                                                <div className="flex justify-between items-center text-sm">
+                                                    <span className="text-green-700 font-medium">Se abonará a deuda:</span>
+                                                    <span className="font-bold text-green-700">-{formatMins(amortizedMinutes)}</span>
+                                                </div>
+                                                <div className="border-t border-red-200 pt-1 mt-1 flex justify-between items-center text-sm">
+                                                    <span className="text-muted-foreground">Restante a Pagar:</span>
+                                                    <span className="font-bold text-slate-900">{formatMins(paidMinutes)}</span>
+                                                </div>
+                                            </div>
+                                        )}
+                                        <div className="space-y-2">
+                                            <Label>Horas a Aprobar (para aprobación parcial)</Label>
+                                            <div className="flex items-center gap-2">
+                                                <Input
+                                                    type="number"
+                                                    step="0.5"
+                                                    min="0"
+                                                    max={overtimeDialog.request?.hoursRequested}
+                                                    value={hoursToApprove}
+                                                    onChange={(e) => setHoursToApprove(e.target.value)}
+                                                    className={parseFloat(hoursToApprove) > (overtimeDialog.request?.hoursRequested || 0) ? "w-32 border-red-500" : "w-32"}
+                                                />
+                                                <span className="text-sm text-muted-foreground">horas</span>
+                                            </div>
+                                            {parseFloat(hoursToApprove) > (overtimeDialog.request?.hoursRequested || 0) && (
+                                                <p className="text-xs text-red-500 font-medium">
+                                                    No puedes aprobar más de las horas solicitadas ({overtimeDialog.request?.hoursRequested}h)
+                                                </p>
+                                            )}
+                                        </div>
+                                    </>
+                                );
+                            })()}
                         </div>
                         <div>
                             <Label>Razón de Rechazo (solo si rechaza)</Label>
@@ -1501,12 +1651,12 @@ export default function TeamManagementPage() {
                                 value={rejectionReason}
                                 onChange={(e) => setRejectionReason(e.target.value)}
                                 placeholder="Solo requerido si rechaza la solicitud..."
-                                rows={2}
+                                rows={4}
                             />
                         </div>
                     </div>
-                    <DialogFooter className="flex gap-2">
-                        <Button variant="outline" onClick={() => setOvertimeDialog({ open: false })}>
+                    <DialogFooter className="flex flex-col-reverse sm:flex-row gap-2 sm:justify-end">
+                        <Button variant="outline" onClick={() => setOvertimeDialog({ open: false })} className="mt-2 sm:mt-0">
                             Cancelar
                         </Button>
                         <Button
@@ -1520,7 +1670,12 @@ export default function TeamManagementPage() {
                         <Button
                             variant="secondary"
                             onClick={() => handleApproveOvertime(true)}
-                            disabled={submitting || !hoursToApprove}
+                            disabled={
+                                submitting ||
+                                !hoursToApprove ||
+                                parseFloat(hoursToApprove) > (overtimeDialog.request?.hoursRequested || 0) ||
+                                parseFloat(hoursToApprove) <= 0
+                            }
                         >
                             Aprobar Parcial
                         </Button>

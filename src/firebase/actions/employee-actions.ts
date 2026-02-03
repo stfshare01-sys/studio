@@ -58,6 +58,7 @@ export async function createEmployee(
 
         // Only add optional fields if they have values
         if (payload.managerId) employeeData.directManagerId = payload.managerId;
+        if (payload.positionId) employeeData.positionId = payload.positionId;
         if (payload.rfc_curp) employeeData.rfc_curp = payload.rfc_curp;
         if (payload.nss) employeeData.nss = payload.nss;
         if (payload.clabe) employeeData.clabe = payload.clabe;

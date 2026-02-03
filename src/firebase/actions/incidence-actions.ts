@@ -774,6 +774,7 @@ export async function justifyTardiness(
     tardinessId: string,
     reason: string,
     justifiedById: string,
+    justifiedByName: string,
     useHourBank: boolean = false,
     justificationType?: string
 ): Promise<{ success: boolean; error?: string }> {
@@ -808,7 +809,8 @@ export async function justifyTardiness(
                 minutes: tardiness.minutesLate,
                 reason: `Retardo justificado con bolsa de horas: ${reason}`,
                 sourceRecordId: tardinessId,
-                createdById: justifiedById
+                createdById: justifiedById,
+                createdByName: justifiedByName
             });
         }
 
