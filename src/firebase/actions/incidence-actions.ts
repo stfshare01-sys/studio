@@ -394,6 +394,7 @@ export async function processAttendanceImport(
                                 date: row.date,
                                 scheduledEndTime: scheduledEnd,
                                 actualEndTime: row.checkOut,
+                                checkOut: row.checkOut, // ISO Date for the checkout time
                                 minutesEarly,
                                 isJustified: false,
                                 justificationStatus: 'pending',
