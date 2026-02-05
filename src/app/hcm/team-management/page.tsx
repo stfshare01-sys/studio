@@ -345,7 +345,6 @@ export default function TeamManagementPage() {
         console.log('🚀 Initial useEffect triggered (first time only)', { user: user?.uid });
 
         const loadInitial = async () => {
-            console.log('📥 loadInitial started');
             setLoadingData(true);
 
             // Set manager ID immediately to user's ID
@@ -362,10 +361,7 @@ export default function TeamManagementPage() {
                 }
 
                 // Load initial employees
-                const [empResult] = await Promise.all([
-                    getDirectReports(managerIdToUse),
-                ]);
-
+                const empResult = await getDirectReports(managerIdToUse);
                 if (empResult.success && empResult.employees) {
                     setEmployees(empResult.employees);
                     setHasSubordinates(empResult.employees.length > 0);
@@ -376,15 +372,43 @@ export default function TeamManagementPage() {
 
                 await loadImportBatches();
 
-                // Load tab data
-                console.log('🎯 About to call loadTabData', { managerIdToUse, activeTab });
-                await loadTabData(activeTab, managerIdToUse);
-                console.log('✅ loadTabData completed in initial load');
+                // Load ALL data needed for header counters in parallel
+                // This ensures the header badges show correct values immediately
+                const [
+                    tardinessResult,
+                    departuresResult,
+                    overtimeResult,
+                    monthlyStatsResult,
+                    dailyStatsResult
+                ] = await Promise.all([
+                    getTeamTardiness(managerIdToUse, dateFilter),
+                    getTeamEarlyDepartures(managerIdToUse, dateFilter),
+                    getTeamOvertimeRequests(managerIdToUse, 'all'),
+                    getTeamMonthlyStats(managerIdToUse, ...dateFilter.split('-').map(Number) as [number, number]),
+                    getTeamDailyStats(managerIdToUse, selectedDate)
+                ]);
+
+                // Set all data states
+                if (tardinessResult.success && tardinessResult.records) {
+                    setTardiness(tardinessResult.records);
+                }
+                if (departuresResult.success && departuresResult.records) {
+                    setEarlyDepartures(departuresResult.records);
+                }
+                if (overtimeResult.success) {
+                    setOvertimeRequests(overtimeResult.requests || []);
+                    if (overtimeResult.stats) setOvertimeStats(overtimeResult.stats);
+                }
+                if (monthlyStatsResult.success && monthlyStatsResult.stats) {
+                    setMonthlyStats(monthlyStatsResult.stats);
+                }
+                if (dailyStatsResult.success && dailyStatsResult.stats) {
+                    setDailyStats(dailyStatsResult.stats);
+                }
 
             } catch (error) {
                 console.error('Error loading initial data:', error);
             } finally {
-                console.log('✅ loadInitial completed, setting loadingData to false');
                 setLoadingData(false);
                 setInitialLoadDone(true);
             }
