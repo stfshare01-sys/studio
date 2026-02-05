@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect, useCallback } from 'react';
 import SiteLayout from '@/components/site-layout';
 import { useFirebase, useMemoFirebase } from '@/firebase/provider';
 import { useCollection } from '@/firebase/firestore/use-collection';
-import { collection, query, where } from 'firebase/firestore';
+import { getFirestore, doc, getDoc, setDoc, Timestamp, collection, query, where, getDocs, orderBy, limit as firestoreLimit, limit } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -49,7 +49,10 @@ import {
     ChevronLeft,
     ChevronRight,
     RefreshCw,
-    Gavel
+    Gavel,
+    CheckCircle2,
+    Calculator,
+    Lock
 } from 'lucide-react';
 
 import {
@@ -75,6 +78,10 @@ import { migrateManagerIdField } from '@/firebase/actions/employee-actions';
 import { getTeamHourBanks, getHourBankMovements, formatHourBankBalance, manualHourBankAdjustment, formatMinutesToReadable } from '@/firebase/actions/hour-bank-actions';
 import { usePermissions } from '@/hooks/use-permissions';
 import { hasPermission } from '@/firebase/role-actions';
+import { useToast } from '@/hooks/use-toast';
+import { callConsolidatePrenomina } from '@/firebase/callable-functions';
+import { getPendingIncidences } from '@/firebase/actions/prenomina-actions';
+import { format, startOfMonth, endOfMonth } from 'date-fns';
 
 import type {
     Employee,
@@ -97,6 +104,7 @@ import { JUSTIFICATION_TYPE_LABELS } from '@/lib/types';
 export default function TeamManagementPage() {
     const { user, isUserLoading, firestore } = useFirebase();
     const { permissions, isLoading: loadingPermissions } = usePermissions();
+    const { toast } = useToast();
     const [activeTab, setActiveTab] = useState('overview');
 
     // Date filters
@@ -132,7 +140,10 @@ export default function TeamManagementPage() {
     // Loading states
     const [loadingData, setLoadingData] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
-    const [processingSLA, setProcessingSLA] = useState(false);
+    const [closingPeriod, setClosingPeriod] = useState(false);
+    const [periodClosed, setPeriodClosed] = useState(false);
+    const [isPeriodClosed, setIsPeriodClosed] = useState(false);
+    const [loadingPeriodStatus, setLoadingPeriodStatus] = useState(false);
 
     // State for filters
     const [importBatches, setImportBatches] = useState<AttendanceImportBatch[]>([]);
@@ -191,46 +202,111 @@ export default function TeamManagementPage() {
         }
     }, []);
 
-    const loadTabData = useCallback(async (tab: string) => {
-        if (!user?.id || !selectedManagerId) return;
+    // Debug: Track state changes
+    useEffect(() => {
+        console.log('📊 monthlyStats changed:', monthlyStats.length, 'records', monthlyStats);
+    }, [monthlyStats]);
+
+    useEffect(() => {
+        console.log('📅 dailyStats changed:', dailyStats.length, 'records', dailyStats);
+    }, [dailyStats]);
+
+    useEffect(() => {
+        console.log('🔄 activeTab changed to:', activeTab);
+        console.trace('Stack trace for activeTab change');
+    }, [activeTab]);
+
+    // Check if current period is closed (global check, not user-specific)
+    useEffect(() => {
+        const checkPeriodClosure = async () => {
+            if (!firestore || !dateFilter) return;
+
+            // Extract YYYY-MM from dateFilter
+            const periodToCheck = dateFilter.length === 7 ? dateFilter : dateFilter.substring(0, 7);
+
+            setLoadingPeriodStatus(true);
+            try {
+                // Query for ANY period closure for this period (not user-specific)
+                const closuresRef = collection(firestore, 'period_closures');
+                const q = query(closuresRef,
+                    where('period', '==', periodToCheck),
+                    limit(1)
+                );
+                const closureSnap = await getDocs(q);
+
+                if (!closureSnap.empty) {
+                    setIsPeriodClosed(true);
+                    console.log('🔒 Period is closed:', periodToCheck);
+                } else {
+                    setIsPeriodClosed(false);
+                    console.log('✅ Period is open:', periodToCheck);
+                }
+            } catch (error) {
+                console.error('Error checking period closure:', error);
+                setIsPeriodClosed(false);
+            } finally {
+                setLoadingPeriodStatus(false);
+            }
+        };
+
+        checkPeriodClosure();
+    }, [firestore, dateFilter]);
+
+    const loadTabData = useCallback(async (tab: string, managerId?: string) => {
+        const managerToUse = managerId || selectedManagerId;
+        console.log('🔄 loadTabData called:', { tab, userId: user?.id, selectedManagerId, managerId, managerToUse });
+        if (!user?.id || !managerToUse) {
+            console.log('❌ loadTabData aborted: missing user or manager', { userId: user?.id, managerToUse });
+            return;
+        }
 
         setRefreshing(true);
         try {
             switch (tab) {
                 case 'overview':
                     const [year, month] = dateFilter.split('-').map(Number);
-                    const statsResult = await getTeamMonthlyStats(selectedManagerId, year, month);
+                    console.log('📊 Fetching monthly stats:', { managerToUse, year, month });
+                    const statsResult = await getTeamMonthlyStats(managerToUse, year, month);
+                    console.log('📊 Monthly stats result:', statsResult);
                     if (statsResult.success && statsResult.stats) {
+                        console.log('✅ Setting monthly stats:', statsResult.stats.length, 'records');
                         setMonthlyStats(statsResult.stats);
+                    } else {
+                        console.log('❌ No monthly stats returned');
                     }
-                    const dailyResult = await getTeamDailyStats(selectedManagerId, selectedDate);
+                    console.log('📅 Fetching daily stats:', { managerToUse, selectedDate });
+                    const dailyResult = await getTeamDailyStats(managerToUse, selectedDate);
+                    console.log('📅 Daily stats result:', dailyResult);
                     if (dailyResult.success && dailyResult.stats) {
+                        console.log('✅ Setting daily stats:', dailyResult.stats.length, 'records');
                         setDailyStats(dailyResult.stats);
+                    } else {
+                        console.log('❌ No daily stats returned');
                     }
                     break;
 
                 case 'tardiness':
-                    const tardinessResult = await getTeamTardiness(selectedManagerId, dateFilter);
+                    const tardinessResult = await getTeamTardiness(managerToUse, dateFilter);
                     if (tardinessResult.success && tardinessResult.records) {
                         setTardiness(tardinessResult.records);
                     }
                     break;
 
                 case 'early-departures':
-                    const departuresResult = await getTeamEarlyDepartures(selectedManagerId, dateFilter);
+                    const departuresResult = await getTeamEarlyDepartures(managerToUse, dateFilter);
                     if (departuresResult.success && departuresResult.records) {
                         setEarlyDepartures(departuresResult.records);
                     }
                     break;
 
                 case 'overtime':
-                    const otResult = await getTeamOvertimeRequests(selectedManagerId, 'all'); // 'all' to get all for stats
+                    const otResult = await getTeamOvertimeRequests(managerToUse, 'all'); // 'all' to get all for stats
                     if (otResult.success) {
                         setOvertimeRequests(otResult.requests || []);
                         if (otResult.stats) setOvertimeStats(otResult.stats);
                     }
                     // Also fetch hour banks for debt display
-                    const empsResult = await getDirectReports(selectedManagerId);
+                    const empsResult = await getDirectReports(managerToUse);
                     if (empsResult.success && empsResult.employees) {
                         const employeeIds = empsResult.employees.map(e => e.id).filter(Boolean);
 
@@ -247,7 +323,7 @@ export default function TeamManagementPage() {
 
                 case 'shifts':
                     // We use getTeamShiftAssignments for the team view
-                    const assignmentsResult = await getTeamShiftAssignments(selectedManagerId);
+                    const assignmentsResult = await getTeamShiftAssignments(managerToUse);
                     if (assignmentsResult.success && assignmentsResult.assignments) {
                         setShiftAssignments(assignmentsResult.assignments);
                     }
@@ -260,7 +336,7 @@ export default function TeamManagementPage() {
 
                 case 'hour-bank':
                     // Hour bank needs employee IDs, so we fetch employees first
-                    const empResult = await getDirectReports(selectedManagerId);
+                    const empResult = await getDirectReports(managerToUse);
                     if (empResult.success && empResult.employees) {
                         setEmployees(empResult.employees);
                         if (empResult.employees.length > 0) {
@@ -283,9 +359,14 @@ export default function TeamManagementPage() {
 
     // Initial data load and manager setup
     useEffect(() => {
-        if (!user) return;
+        console.log('🚀 Initial useEffect triggered', { user: user?.uid, selectedManagerId, activeTab });
+        if (!user) {
+            console.log('⏸️ Initial useEffect aborted: no user');
+            return;
+        }
 
         const loadInitial = async () => {
+            console.log('📥 loadInitial started');
             setLoadingData(true);
             try {
                 // Initialize selected manager if not set
@@ -319,16 +400,27 @@ export default function TeamManagementPage() {
                 }
 
                 await loadImportBatches();
-                await loadTabData(activeTab); // Load tab-specific data after initial employee data is set
             } catch (error) {
                 console.error('Error loading initial data:', error);
             } finally {
+                console.log('✅ loadInitial completed, setting loadingData to false');
                 setLoadingData(false);
+            }
+
+            // Load tab data AFTER loadingData is set to false
+            const managerIdToUse = selectedManagerId || user.uid;
+            console.log('🎯 About to call loadTabData', { managerIdToUse, activeTab });
+            if (managerIdToUse) {
+                await loadTabData(activeTab, managerIdToUse);
+                console.log('✅ loadTabData completed in initial load');
+            } else {
+                console.log('❌ No managerIdToUse, skipping loadTabData');
             }
         };
 
         loadInitial();
-    }, [user, selectedManagerId, activeTab, loadImportBatches, loadTabData, permissions]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [user, selectedManagerId, permissions]); // Removed activeTab and loadTabData to break circular dependency
 
     // Handle batch selection
     useEffect(() => {
@@ -349,8 +441,19 @@ export default function TeamManagementPage() {
 
     // Effect to reload data when tab or date changes
     useEffect(() => {
+        console.log('🔁 Reload useEffect triggered', {
+            userId: user?.id,
+            loadingData,
+            selectedManagerId,
+            activeTab,
+            selectedDate,
+            dateFilter
+        });
         if (user?.id && !loadingData && selectedManagerId) {
+            console.log('✅ Reload useEffect calling loadTabData');
             loadTabData(activeTab);
+        } else {
+            console.log('⏸️ Reload useEffect conditions not met');
         }
     }, [activeTab, selectedDate, dateFilter, user?.id, loadingData, selectedManagerId, loadTabData]);
 
@@ -551,23 +654,124 @@ export default function TeamManagementPage() {
         }
     };
 
-    const handleRunSLA = async () => {
-        if (!user) return;
-        setProcessingSLA(true);
+
+
+
+
+    const handleClosePeriod = async () => {
+        if (!user || !firestore) return;
+
+        // Confirmar acción
+        const confirmed = window.confirm(
+            '¿Estás seguro de cerrar el período y consolidar?\\n\\n' +
+            'Este proceso:\\n' +
+            '1. Validará que no haya incidencias pendientes\\n' +
+            '2. Ejecutará SLA para infracciones no justificadas\\n' +
+            '3. Consolidará la prenómina del período\\n' +
+            '4. Marcará tu revisión como completa\\n\\n' +
+            'Esta acción no se puede deshacer.'
+        );
+
+        if (!confirmed) return;
+
+        setClosingPeriod(true);
+
         try {
-            const result = await runGlobalSLAProcessing(user.uid, user.role, (user.customRoleId || undefined) as string | undefined);
-            if (result.success) {
-                // Optionally refresh data or show a success message
-                console.log('SLA processing initiated successfully.');
-            } else {
-                console.error('Failed to initiate SLA processing:', result.error);
+            // Calcular rango de fechas del período actual
+            const periodStart = format(startOfMonth(new Date(selectedMonth)), 'yyyy-MM-dd');
+            const periodEnd = format(endOfMonth(new Date(selectedMonth)), 'yyyy-MM-dd');
+
+            // 1. Validar incidencias pendientes
+            toast({
+                title: "Validando incidencias",
+                description: "Verificando que no haya incidencias pendientes...",
+            });
+
+            const pendingIncidences = await getPendingIncidences(periodStart, periodEnd);
+
+            if (pendingIncidences.length > 0) {
+                toast({
+                    title: "Incidencias pendientes",
+                    description: `Existen ${pendingIncidences.length} incidencias pendientes de aprobar/rechazar en este período. Por favor, revísalas antes de continuar.`,
+                    variant: "destructive"
+                });
+                setClosingPeriod(false);
+                return;
             }
+
+            // 2. Ejecutar SLA
+            toast({
+                title: "Ejecutando SLA",
+                description: "Procesando infracciones no justificadas...",
+            });
+
+            const slaResult = await runGlobalSLAProcessing(user.uid, user.role as string, user.customRoleId);
+
+            if (!slaResult.success) {
+                throw new Error(slaResult.error || 'Error al ejecutar SLA');
+            }
+
+            // 3. Consolidar prenómina
+            toast({
+                title: "Consolidando prenómina",
+                description: "Generando registros de prenómina...",
+            });
+
+            const consolidateResult = await callConsolidatePrenomina({
+                periodStart,
+                periodEnd,
+                periodType: 'monthly' // Asumiendo período mensual, ajustar si es necesario
+            });
+
+            if (!consolidateResult.success) {
+                throw new Error(consolidateResult.errors?.[0]?.message || 'Error al consolidar');
+            }
+
+            // 4. Marcar revisión como completa
+            const currentPeriod = selectedMonth;
+            await setDoc(doc(firestore, 'period_closures', `${user.uid}_${currentPeriod}`), {
+                managerId: user.uid,
+                managerName: user.fullName || user.email,
+                period: currentPeriod,
+                closedAt: new Date().toISOString(),
+                pendingInfractionsCount: 0
+            });
+
+            // Completar la tarea de RH
+            const taskId = `MANAGER_${user.uid}_infractions`;
+            const taskRef = doc(firestore, 'tasks', taskId);
+
+            try {
+                await updateDoc(taskRef, {
+                    status: 'completed',
+                    updatedAt: new Date().toISOString()
+                });
+            } catch (taskError) {
+                // Si la tarea no existe, no es crítico
+                console.log('Task not found or already completed:', taskError);
+            }
+
+            setPeriodClosed(true);
+
+            // Toast de éxito con resumen
+            toast({
+                title: "Período cerrado exitosamente",
+                description: `Se procesaron ${slaResult.stats?.processedTardiness || 0} retardos y ${slaResult.stats?.processedDepartures || 0} salidas tempranas. Se generaron ${consolidateResult.recordIds?.length || 0} registros de prenómina.`,
+                variant: "default"
+            });
+
         } catch (error) {
-            console.error('Error running SLA processing:', error);
+            console.error('Error closing period:', error);
+            toast({
+                title: "Error al cerrar período",
+                description: error instanceof Error ? error.message : "No se pudo completar el proceso.",
+                variant: "destructive"
+            });
         } finally {
-            setProcessingSLA(false);
+            setClosingPeriod(false);
         }
     };
+
 
     // Computed values
     const pendingTardiness = tardiness.filter(t => !t.isJustified);
@@ -716,25 +920,7 @@ export default function TeamManagementPage() {
                             <Users2 className="h-4 w-4 mr-2" />
                             {employees.length} empleados
                         </Badge>
-                        {hasPermission(permissions, 'hcm_sla_processing', 'write') && (
-                            <Button
-                                variant="secondary"
-                                onClick={handleRunSLA}
-                                disabled={processingSLA}
-                            >
-                                {processingSLA ? (
-                                    <>
-                                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                        Procesando...
-                                    </>
-                                ) : (
-                                    <>
-                                        <Gavel className="h-4 w-4 mr-2" />
-                                        Ejecutar SLA
-                                    </>
-                                )}
-                            </Button>
-                        )}
+
                         <Button variant="outline" onClick={() => loadTabData(activeTab)} disabled={refreshing}>
                             <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
                             Actualizar
@@ -827,12 +1013,20 @@ export default function TeamManagementPage() {
                         <div className="flex flex-col md:flex-row gap-4 items-end md:items-center">
                             <div className="flex-1">
                                 <Label>Periodo / Mes</Label>
-                                <Input
-                                    type="month"
-                                    value={dateFilter.length === 7 ? dateFilter : dateFilter.substring(0, 7)}
-                                    onChange={(e) => setDateFilter(e.target.value)}
-                                    className="w-full md:w-[200px]"
-                                />
+                                <div className="flex items-center gap-2">
+                                    <Input
+                                        type="month"
+                                        value={dateFilter.length === 7 ? dateFilter : dateFilter.substring(0, 7)}
+                                        onChange={(e) => setDateFilter(e.target.value)}
+                                        className="w-full md:w-[200px]"
+                                    />
+                                    {isPeriodClosed && (
+                                        <Badge className="bg-red-100 text-red-800 border-red-300 whitespace-nowrap">
+                                            <Lock className="w-3 h-3 mr-1" />
+                                            Período Cerrado
+                                        </Badge>
+                                    )}
+                                </div>
                             </div>
                             <div className="flex-1">
                                 <Label>Cargar Periodo (Batch)</Label>
@@ -1099,6 +1293,7 @@ export default function TeamManagementPage() {
                                                         {!record.isJustified && hasPermission(permissions, 'hcm_team_tardiness', 'write') && (
                                                             <Button
                                                                 size="sm"
+                                                                disabled={isPeriodClosed}
                                                                 onClick={() => {
                                                                     setJustifyTardinessDialog({ open: true, record, employeeName: employees.find(e => e.id === record.employeeId)?.fullName || record.employeeId });
                                                                     setJustificationReason('');
@@ -1189,6 +1384,7 @@ export default function TeamManagementPage() {
                                                         {!record.isJustified && hasPermission(permissions, 'hcm_team_departures', 'write') && (
                                                             <Button
                                                                 size="sm"
+                                                                disabled={isPeriodClosed}
                                                                 onClick={() => {
                                                                     setJustifyDepartureDialog({ open: true, record, employeeName: employees.find(e => e.id === record.employeeId)?.fullName || record.employeeId });
                                                                     setJustificationReason('');
@@ -1299,6 +1495,7 @@ export default function TeamManagementPage() {
                                                         {request.status === 'pending' && hasPermission(permissions, 'hcm_team_overtime', 'write') && (
                                                             <Button
                                                                 size="sm"
+                                                                disabled={isPeriodClosed}
                                                                 onClick={() => {
                                                                     setOvertimeDialog({ open: true, request });
                                                                     setHoursToApprove(request.hoursRequested.toString());
@@ -1462,6 +1659,61 @@ export default function TeamManagementPage() {
                         </TabsContent>
                     )}
                 </Tabs>
+
+                {/* Botón de Marcar Revisión Completa */}
+                <div className="mt-8 border-t pt-6">
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Revisión de Infracciones</CardTitle>
+                            <CardDescription>
+                                Marca que has completado la revisión de infracciones del período {selectedMonth}
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="space-y-4">
+                                <div>
+                                    <p className="text-sm text-muted-foreground mb-2">
+                                        Al marcar como completa, notificas a RH que has terminado de revisar las infracciones.
+                                    </p>
+                                    <p className="text-sm text-muted-foreground">
+                                        Solo se habilita cuando todas las infracciones han sido atendidas (justificadas o dejadas pendientes conscientemente).
+                                    </p>
+                                </div>
+                                <div className="flex justify-center pt-2">
+                                    <Button
+                                        onClick={handleClosePeriod}
+                                        disabled={closingPeriod || periodClosed || (pendingTardiness.length + pendingDepartures.length) > 0}
+                                        variant={periodClosed ? "outline" : "default"}
+                                        size="lg"
+                                        className="min-w-[280px]"
+                                    >
+                                        {closingPeriod ? (
+                                            <>
+                                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                Procesando...
+                                            </>
+                                        ) : periodClosed ? (
+                                            <>
+                                                <CheckCircle2 className="mr-2 h-4 w-4" />
+                                                Revisión Completa
+                                            </>
+                                        ) : (
+                                            <>Cerrar Período y Consolidar</>
+                                        )}
+                                    </Button>
+                                </div>
+                            </div>
+                            {(pendingTardiness.length + pendingDepartures.length) > 0 && (
+                                <div className="mt-4 p-3 bg-orange-50 border border-orange-200 rounded-lg">
+                                    <p className="text-sm text-orange-800">
+                                        ⚠️ Tienes {pendingTardiness.length + pendingDepartures.length} infracciones pendientes de atender.
+                                        Revisa las tabs de Retardos y Salidas Tempranas.
+                                    </p>
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
+                </div>
             </div>
 
             {/* Justify Tardiness Dialog */}

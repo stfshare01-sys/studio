@@ -104,6 +104,7 @@ export async function autoJustifyFromIncidences(
         // Pero para mantener consistencia, podríamos notificar
         if (recordType === 'tardiness') {
             await notifyTardinessJustified(
+                firestore,
                 employeeId,
                 date,
                 'SYSTEM',
@@ -111,6 +112,7 @@ export async function autoJustifyFromIncidences(
             );
         } else {
             await notifyEarlyDepartureJustified(
+                firestore,
                 employeeId,
                 date,
                 'SYSTEM',
@@ -207,6 +209,7 @@ export async function justifyInfractionsFromIncidence(
 
                 // Notificar
                 await notifyTardinessJustified(
+                    firestore,
                     employeeId,
                     recordData.date,
                     'SYSTEM',
@@ -248,6 +251,7 @@ export async function justifyInfractionsFromIncidence(
                 });
 
                 await notifyEarlyDepartureJustified(
+                    firestore,
                     employeeId,
                     recordData.date,
                     'SYSTEM',

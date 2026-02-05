@@ -47,13 +47,13 @@ import {
     Users,
 } from 'lucide-react';
 
-import type { Department, Employee, Location } from '@/lib/types';
+import type { Department, Position, Location } from '@/lib/types';
 
 const initialFormState = {
     name: '',
     code: '',
     description: '',
-    managerId: '',
+    managerPositionId: '',
     parentDepartmentId: '',
     costCenter: '',
     locationId: '',
@@ -77,13 +77,13 @@ export default function DepartmentsAdminPage() {
 
     const { data: departments, isLoading } = useCollection<Department>(departmentsQuery);
 
-    // Fetch employees for manager selection
-    const employeesQuery = useMemoFirebase(() => {
+    // Fetch positions for manager selection
+    const positionsQuery = useMemoFirebase(() => {
         if (!firestore) return null;
-        return query(collection(firestore, 'employees'));
+        return query(collection(firestore, 'positions'));
     }, [firestore]);
 
-    const { data: employees } = useCollection<Employee>(employeesQuery);
+    const { data: positions } = useCollection<Position>(positionsQuery);
 
     // Fetch locations
     const locationsQuery = useMemoFirebase(() => {
@@ -101,7 +101,7 @@ export default function DepartmentsAdminPage() {
                 name: department.name,
                 code: department.code,
                 description: department.description || '',
-                managerId: department.managerId || '',
+                managerPositionId: department.managerPositionId || '',
                 parentDepartmentId: department.parentDepartmentId || '',
                 costCenter: department.costCenter || '',
                 locationId: department.locationId || '',
@@ -141,8 +141,8 @@ export default function DepartmentsAdminPage() {
             if (formData.description) {
                 departmentData.description = formData.description;
             }
-            if (formData.managerId && formData.managerId !== '_none') {
-                departmentData.managerId = formData.managerId;
+            if (formData.managerPositionId && formData.managerPositionId !== '_none') {
+                departmentData.managerPositionId = formData.managerPositionId;
             }
             if (formData.parentDepartmentId && formData.parentDepartmentId !== '_none') {
                 departmentData.parentDepartmentId = formData.parentDepartmentId;
@@ -199,10 +199,10 @@ export default function DepartmentsAdminPage() {
         }
     };
 
-    const getManagerName = (managerId?: string) => {
-        if (!managerId) return '-';
-        const manager = employees?.find(e => e.id === managerId);
-        return manager?.fullName || '-';
+    const getManagerPositionName = (managerPositionId?: string) => {
+        if (!managerPositionId) return '-';
+        const position = positions?.find(p => p.id === managerPositionId);
+        return position?.name || '-';
     };
 
     const getParentDepartmentName = (parentId?: string) => {
@@ -284,7 +284,7 @@ export default function DepartmentsAdminPage() {
                                                 <TableCell>
                                                     <div className="flex items-center gap-2">
                                                         <Users className="h-4 w-4 text-muted-foreground" />
-                                                        {getManagerName(department.managerId)}
+                                                        {getManagerPositionName(department.managerPositionId)}
                                                     </div>
                                                 </TableCell>
                                                 <TableCell>{getParentDepartmentName(department.parentDepartmentId)}</TableCell>
@@ -368,17 +368,17 @@ export default function DepartmentsAdminPage() {
                                     <div className="space-y-2">
                                         <Label>Responsable / Jefe</Label>
                                         <Select
-                                            value={formData.managerId || '_none'}
-                                            onValueChange={(v) => setFormData(prev => ({ ...prev, managerId: v === '_none' ? '' : v }))}
+                                            value={formData.managerPositionId || '_none'}
+                                            onValueChange={(v) => setFormData(prev => ({ ...prev, managerPositionId: v === '_none' ? '' : v }))}
                                         >
                                             <SelectTrigger>
-                                                <SelectValue placeholder="Seleccionar responsable" />
+                                                <SelectValue placeholder="Seleccionar puesto responsable" />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                <SelectItem value="_none">Sin responsable asignado</SelectItem>
-                                                {employees?.filter(e => e.status === 'active').map((employee) => (
-                                                    <SelectItem key={employee.id} value={employee.id}>
-                                                        {employee.fullName} - {employee.positionTitle}
+                                                <SelectItem value="_none">Sin puesto responsable asignado</SelectItem>
+                                                {positions?.filter(p => p.isActive).map((position) => (
+                                                    <SelectItem key={position.id} value={position.id}>
+                                                        {position.code} - {position.name}
                                                     </SelectItem>
                                                 ))}
                                             </SelectContent>

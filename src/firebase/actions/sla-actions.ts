@@ -241,8 +241,6 @@ export async function runGlobalSLAProcessing(
 
         await batch.commit();
 
-        await batch.commit();
-
         return {
             success: true,
             stats: {

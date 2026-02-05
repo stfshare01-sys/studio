@@ -9,6 +9,7 @@
  * - Users
  * - Employees with hierarchical relationships
  * - Workflow Templates (Vacations, Reimbursements, etc.)
+ * - Period Closures (Para probar detección de períodos cerrados)
  * 
  * Run: npx tsx scripts/seed-database.ts
  */
@@ -1551,6 +1552,111 @@ async function seedDatabase() {
         console.log(`   ✅ ${departureCount} registros de salidas tempranas creados`);
         console.log(`   ✅ ${overtimeCount} solicitudes de horas extras creadas\n`);
 
+        // =============================================================================
+        // 9.6 Crear Datos de Asistencia para Períodos Cerrados
+        // =============================================================================
+        console.log('🔒 Creando datos de asistencia para períodos cerrados...');
+
+        const closedPeriods = [
+            { year: 2026, month: 0, label: '2026-01' },  // Enero 2026
+            { year: 2025, month: 11, label: '2025-12' }  // Diciembre 2025
+        ];
+
+        let closedTardinessCount = 0;
+        let closedDepartureCount = 0;
+        let closedOvertimeCount = 0;
+
+        // Solo crear datos para gerentes y supervisores (quienes tienen period_closures)
+        const managersForClosedPeriods = EMPLOYEES.filter(emp =>
+            emp.role === 'Manager' || emp.role === 'Supervisor' || emp.role === 'HRManager'
+        );
+
+        for (const period of closedPeriods) {
+            for (const emp of managersForClosedPeriods) {
+                // Generar 3-5 retardos por período
+                const tardinessToCreate = Math.floor(Math.random() * 3) + 3;
+                for (let i = 0; i < tardinessToCreate; i++) {
+                    const day = Math.floor(Math.random() * 28) + 1;
+                    const date = new Date(period.year, period.month, day);
+                    const dateStr = date.toISOString().split('T')[0];
+                    const tardinessId = `tardiness-${emp.id}-${dateStr}`;
+
+                    await db.collection('tardiness_records').doc(tardinessId).set({
+                        id: tardinessId,
+                        employeeId: emp.id,
+                        employeeName: emp.fullName,
+                        date: dateStr,
+                        scheduledTime: '09:00:00',
+                        actualTime: `09:${15 + Math.floor(Math.random() * 45)}:00`,
+                        minutesLate: 15 + Math.floor(Math.random() * 45),
+                        isJustified: Math.random() > 0.5, // 50% justificados
+                        justificationReason: Math.random() > 0.5 ? 'Tráfico' : null,
+                        createdAt: date.toISOString(),
+                        updatedAt: date.toISOString()
+                    });
+                    closedTardinessCount++;
+                }
+
+                // Generar 1-2 salidas tempranas por período
+                const departuresToCreate = Math.floor(Math.random() * 2) + 1;
+                for (let i = 0; i < departuresToCreate; i++) {
+                    const day = Math.floor(Math.random() * 28) + 1;
+                    const date = new Date(period.year, period.month, day);
+                    const dateStr = date.toISOString().split('T')[0];
+                    const departureId = `departure-${emp.id}-${dateStr}`;
+
+                    await db.collection('early_departures').doc(departureId).set({
+                        id: departureId,
+                        employeeId: emp.id,
+                        employeeName: emp.fullName,
+                        date: dateStr,
+                        scheduledTime: '18:00:00',
+                        actualTime: `${15 + Math.floor(Math.random() * 2)}:${Math.floor(Math.random() * 60)}:00`,
+                        minutesEarly: 30 + Math.floor(Math.random() * 90),
+                        isJustified: Math.random() > 0.6, // 40% justificados
+                        justificationReason: Math.random() > 0.5 ? 'Cita médica' : null,
+                        createdAt: date.toISOString(),
+                        updatedAt: date.toISOString()
+                    });
+                    closedDepartureCount++;
+                }
+
+                // Generar 2-4 solicitudes de horas extra por período
+                const overtimesToCreate = Math.floor(Math.random() * 3) + 2;
+                for (let i = 0; i < overtimesToCreate; i++) {
+                    const day = Math.floor(Math.random() * 28) + 1;
+                    const date = new Date(period.year, period.month, day);
+                    const dateStr = date.toISOString().split('T')[0];
+                    const overtimeId = `overtime-${emp.id}-${dateStr}`;
+                    const hoursRequested = Math.floor(Math.random() * 3) + 1; // 1-3 horas
+                    const isApproved = Math.random() > 0.3; // 70% aprobadas
+
+                    await db.collection('overtime_requests').doc(overtimeId).set({
+                        id: overtimeId,
+                        employeeId: emp.id,
+                        employeeName: emp.fullName,
+                        date: dateStr,
+                        hoursRequested: hoursRequested,
+                        reason: 'Cierre de período',
+                        status: isApproved ? 'approved' : 'pending',
+                        hoursApproved: isApproved ? hoursRequested : null,
+                        doubleHours: isApproved ? hoursRequested : null,
+                        tripleHours: 0,
+                        paymentMethod: 'paid',
+                        approvedBy: isApproved ? 'emp-director' : null,
+                        approvedAt: isApproved ? date.toISOString() : null,
+                        createdAt: date.toISOString(),
+                        updatedAt: date.toISOString()
+                    });
+                    closedOvertimeCount++;
+                }
+            }
+        }
+
+        console.log(`   ✅ ${closedTardinessCount} retardos en períodos cerrados`);
+        console.log(`   ✅ ${closedDepartureCount} salidas tempranas en períodos cerrados`);
+        console.log(`   ✅ ${closedOvertimeCount} horas extra en períodos cerrados\n`);
+
         // 10. Create Admin Test User
         console.log('👤 Creando Usuario Administrador de Prueba...');
         const ADMIN_UID = 'admin-user';
@@ -1602,6 +1708,52 @@ async function seedDatabase() {
         console.log('   │   └── Recepcionista');
         console.log('   └── Gerente TI');
         console.log('       └── Desarrollador');
+        console.log('\n');
+
+        // =============================================================================
+        // 10. PERIOD CLOSURES (Para probar detección de períodos cerrados)
+        // =============================================================================
+        console.log('🔒 Creando Period Closures...');
+
+        // Crear cierres para los últimos 2 meses (dejando el actual abierto)
+        const now = new Date();
+        const periods = [];
+
+        for (let i = 1; i <= 2; i++) {
+            const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
+            const period = `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}`;
+            periods.push(period);
+        }
+
+        let closuresCreated = 0;
+
+        // Crear cierres para gerentes y supervisores
+        const managersAndSupervisors = EMPLOYEES.filter(emp =>
+            emp.role === 'Manager' || emp.role === 'Supervisor' || emp.role === 'HRManager'
+        );
+
+        for (const manager of managersAndSupervisors) {
+            for (const period of periods) {
+                const closureId = `${manager.uid}_${period}`;
+
+                await db.collection('period_closures').doc(closureId).set({
+                    managerId: manager.uid,
+                    managerName: manager.fullName,
+                    period: period,
+                    closedAt: new Date(
+                        parseInt(period.split('-')[0]),
+                        parseInt(period.split('-')[1]) - 1,
+                        28, 17, 30, 0
+                    ).toISOString(),
+                    pendingInfractionsCount: 0
+                });
+                closuresCreated++;
+            }
+        }
+
+        console.log(`   ✅ ${closuresCreated} cierres de período creados`);
+        console.log(`   📅 Períodos cerrados: ${periods.join(', ')}`);
+        console.log(`   📅 Período actual (${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}): ABIERTO`);
         console.log('\n');
 
         process.exit(0);

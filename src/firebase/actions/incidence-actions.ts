@@ -191,7 +191,7 @@ export async function processAttendanceImport(
 
         // Get all unique employee IDs and fetch their shift types and time bank balances
         const employeeIds = [...new Set(rows.map(r => r.employeeId))];
-        const employeeShifts: Record<string, { type: ShiftType; breakMinutes: number }> = {};
+        const employeeShifts: Record<string, { type: ShiftType; breakMinutes: number; fullName: string }> = {};
         const employeeTimeBankBalances: Record<string, number> = {}; // Local cache for processing
 
         for (const empId of employeeIds) {
@@ -202,7 +202,8 @@ export async function processAttendanceImport(
                 // Basic shift type, todo: implement CustomShift lookup
                 employeeShifts[empId] = {
                     type: empData.shiftType || 'diurnal',
-                    breakMinutes: 0 // Default 0 for now, should come from shift config
+                    breakMinutes: 0, // Default 0 for now, should come from shift config
+                    fullName: empData.fullName || empId // Capture employee name
                 };
 
                 // Fetch current time bank balance
@@ -272,6 +273,7 @@ export async function processAttendanceImport(
                 const attendanceRef = collection(firestore, 'attendance');
                 const attendanceData: Omit<AttendanceRecord, 'id'> = {
                     employeeId: row.employeeId,
+                    employeeName: employeeShifts[row.employeeId]?.fullName, // Denormalize employee name
                     date: row.date,
                     checkIn: row.checkIn,
                     checkOut: row.checkOut,

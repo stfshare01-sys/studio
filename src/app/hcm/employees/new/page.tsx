@@ -9,7 +9,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { Calendar as CalendarIcon, Loader2, ArrowLeft, Save } from 'lucide-react';
+import { Calendar as CalendarIcon, Loader2, ArrowLeft, Save, Clock } from 'lucide-react';
 import Link from 'next/link';
 
 import { Button } from '@/components/ui/button';
@@ -30,6 +30,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
     Popover,
@@ -58,6 +59,7 @@ const employeeSchema = z.object({
     rfc: z.string().min(12, 'RFC inválido').max(13, 'RFC inválido').optional().or(z.literal('')),
     curp: z.string().length(18, 'CURP debe tener 18 caracteres').optional().or(z.literal('')),
     nss: z.string().length(11, 'NSS debe tener 11 dígitos').optional().or(z.literal('')),
+    allowTimeForTime: z.boolean().optional(),
 });
 
 type EmployeeFormValues = z.infer<typeof employeeSchema>;
@@ -112,6 +114,7 @@ export default function NewEmployeePage() {
             rfc: '',
             curp: '',
             nss: '',
+            allowTimeForTime: false,
         },
     });
 
@@ -176,6 +179,7 @@ export default function NewEmployeePage() {
                 managerId: data.managerId || undefined,
                 rfc_curp: `${data.rfc || ''} ${data.curp || ''}`.trim() || undefined,
                 nss: data.nss || undefined,
+                allowTimeForTime: data.allowTimeForTime || false,
             });
 
             if (result.success) {
@@ -506,6 +510,29 @@ export default function NewEmployeePage() {
                                                             <Input placeholder="11 Dígitos" {...field} />
                                                         </FormControl>
                                                         <FormMessage />
+                                                    </FormItem>
+                                                )}
+                                            />
+                                            <FormField
+                                                control={form.control}
+                                                name="allowTimeForTime"
+                                                render={({ field }) => (
+                                                    <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4">
+                                                        <FormControl>
+                                                            <Checkbox
+                                                                checked={field.value}
+                                                                onCheckedChange={field.onChange}
+                                                            />
+                                                        </FormControl>
+                                                        <div className="space-y-1 leading-none">
+                                                            <FormLabel className="flex items-center gap-2">
+                                                                <Clock className="h-4 w-4" />
+                                                                Permitir Tiempo por Tiempo
+                                                            </FormLabel>
+                                                            <FormDescription>
+                                                                Permite compensar tiempo extra trabajado en la bolsa de horas (solo RH puede modificar)
+                                                            </FormDescription>
+                                                        </div>
                                                     </FormItem>
                                                 )}
                                             />

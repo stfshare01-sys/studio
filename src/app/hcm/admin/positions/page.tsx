@@ -47,6 +47,7 @@ import {
     Loader2,
     Shield,
     DollarSign,
+    Clock,
 } from 'lucide-react';
 
 import type { Position, Department } from '@/lib/types';
@@ -59,6 +60,7 @@ const initialFormState = {
     level: 3,
     salaryMin: '',
     salaryMax: '',
+    generatesOvertime: false,
     canApproveOvertime: false,
     canApproveIncidences: false,
     allowTimeBank: false,
@@ -108,6 +110,7 @@ export default function PositionsAdminPage() {
                 level: position.level,
                 salaryMin: position.salaryMin?.toString() || '',
                 salaryMax: position.salaryMax?.toString() || '',
+                generatesOvertime: position.generatesOvertime || false,
                 canApproveOvertime: position.canApproveOvertime || false,
                 canApproveIncidences: position.canApproveIncidences || false,
                 allowTimeBank: position.allowTimeBank || false,
@@ -143,6 +146,7 @@ export default function PositionsAdminPage() {
                 departmentId: formData.departmentId,
                 department: selectedDept?.name || '', // Denormalized for display
                 level: formData.level,
+                generatesOvertime: formData.generatesOvertime,
                 canApproveOvertime: formData.canApproveOvertime,
                 canApproveIncidences: formData.canApproveIncidences,
                 allowTimeBank: formData.allowTimeBank,
@@ -287,14 +291,17 @@ export default function PositionsAdminPage() {
                                                     {position.salaryMax ? formatCurrency(position.salaryMax) : '-'}
                                                 </TableCell>
                                                 <TableCell className="text-center">
-                                                    <div className="flex justify-center gap-1">
+                                                    <div className="flex justify-center gap-1 flex-wrap">
+                                                        {position.generatesOvertime && (
+                                                            <Badge className="bg-green-100 text-green-800 text-[10px]">HE</Badge>
+                                                        )}
                                                         {position.canApproveOvertime && (
-                                                            <Badge className="bg-orange-100 text-orange-800 text-[10px]">HE</Badge>
+                                                            <Badge className="bg-orange-100 text-orange-800 text-[10px]">Aprueba HE</Badge>
                                                         )}
                                                         {position.canApproveIncidences && (
-                                                            <Badge className="bg-blue-100 text-blue-800 text-[10px]">INC</Badge>
+                                                            <Badge className="bg-blue-100 text-blue-800 text-[10px]">Aprueba INC</Badge>
                                                         )}
-                                                        {!position.canApproveOvertime && !position.canApproveIncidences && '-'}
+                                                        {!position.generatesOvertime && !position.canApproveOvertime && !position.canApproveIncidences && '-'}
                                                     </div>
                                                 </TableCell>
                                                 <TableCell>
@@ -447,6 +454,18 @@ export default function PositionsAdminPage() {
                                     <div className="space-y-3">
                                         <div className="flex items-center space-x-2">
                                             <Checkbox
+                                                id="generatesOvertime"
+                                                checked={formData.generatesOvertime}
+                                                onCheckedChange={(checked) =>
+                                                    setFormData(prev => ({ ...prev, generatesOvertime: !!checked }))
+                                                }
+                                            />
+                                            <Label htmlFor="generatesOvertime">
+                                                Genera Horas Extras
+                                            </Label>
+                                        </div>
+                                        <div className="flex items-center space-x-2">
+                                            <Checkbox
                                                 id="canApproveOvertime"
                                                 checked={formData.canApproveOvertime}
                                                 onCheckedChange={(checked) =>
@@ -502,6 +521,6 @@ export default function PositionsAdminPage() {
                     </Dialog>
                 </main>
             </div>
-        </SiteLayout>
+        </SiteLayout >
     );
 }

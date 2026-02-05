@@ -275,7 +275,7 @@ interface CreateDepartmentPayload {
     name: string;
     code: string;
     description?: string;
-    managerId?: string;
+    managerPositionId?: string;
     parentDepartmentId?: string;
     costCenter?: string;
     budget?: number;
@@ -315,12 +315,12 @@ export async function createDepartment(
             }
         }
 
-        // Validate manager exists if provided
-        if (payload.managerId) {
-            const managerRef = doc(firestore, 'employees', payload.managerId);
-            const managerSnap = await getDoc(managerRef);
-            if (!managerSnap.exists()) {
-                return { success: false, error: 'Responsable no encontrado.' };
+        // Validate manager position exists if provided
+        if (payload.managerPositionId) {
+            const managerPositionRef = doc(firestore, 'positions', payload.managerPositionId);
+            const managerPositionSnap = await getDoc(managerPositionRef);
+            if (!managerPositionSnap.exists()) {
+                return { success: false, error: 'Puesto responsable no encontrado.' };
             }
         }
 
@@ -328,7 +328,7 @@ export async function createDepartment(
             name: payload.name,
             code: payload.code,
             description: payload.description,
-            managerId: payload.managerId,
+            managerPositionId: payload.managerPositionId,
             parentDepartmentId: payload.parentDepartmentId,
             costCenter: payload.costCenter,
             budget: payload.budget,
@@ -353,7 +353,7 @@ export async function createDepartment(
 interface UpdateDepartmentPayload {
     name?: string;
     description?: string;
-    managerId?: string;
+    managerPositionId?: string;
     parentDepartmentId?: string;
     costCenter?: string;
     budget?: number;
@@ -394,12 +394,12 @@ export async function updateDepartment(
             }
         }
 
-        // Validate manager exists if changing
-        if (payload.managerId) {
-            const managerRef = doc(firestore, 'employees', payload.managerId);
-            const managerSnap = await getDoc(managerRef);
-            if (!managerSnap.exists()) {
-                return { success: false, error: 'Responsable no encontrado.' };
+        // Validate manager position exists if changing
+        if (payload.managerPositionId) {
+            const managerPositionRef = doc(firestore, 'positions', payload.managerPositionId);
+            const managerPositionSnap = await getDoc(managerPositionRef);
+            if (!managerPositionSnap.exists()) {
+                return { success: false, error: 'Puesto responsable no encontrado.' };
             }
         }
 

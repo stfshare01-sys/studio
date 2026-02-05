@@ -20,7 +20,7 @@ export {
 export { verifyRole, getUserRole } from './utils/auth-middleware';
 
 // HCM Triggers
-export { onIncidenceUpdate } from './triggers/hcm-triggers';
+export { onIncidenceUpdate, onAttendanceCreated } from './triggers/hcm-triggers';
 
 // Workflow Triggers
 export { onTaskComplete } from './triggers/workflow-triggers';

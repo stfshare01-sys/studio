@@ -695,6 +695,10 @@ export type Employee = User & {
   // Información jerárquica
   directManagerId?: string;    // ID del jefe directo
   positionId?: string;         // ID del puesto asociado
+  locationId?: string;         // ID de la ubicación física
+
+  // Configuración de compensación
+  allowTimeForTime?: boolean;  // Permite tiempo por tiempo (solo RH puede modificar)
 };
 
 /**
@@ -751,11 +755,23 @@ export type Compensation = {
 export type AttendanceRecord = {
   id: string;
   employeeId: string;
+  employeeName?: string;        // Denormalized for display (optional for legacy data)
 
   // Fecha y hora
   date: string;                 // YYYY-MM-DD
   checkIn?: string;             // HH:mm:ss (hora de entrada)
   checkOut?: string;            // HH:mm:ss (hora de salida)
+
+  // Check-in/out detallado
+  checkInLocation?: {
+    latitude: number;
+    longitude: number;
+  };
+  checkOutLocation?: {
+    latitude: number;
+    longitude: number;
+  };
+  locationId?: string; // Ubicacion asignada o donde hizo check-in
 
   // Cálculos automáticos
   hoursWorked: number;          // Total horas trabajadas
@@ -858,6 +874,7 @@ export type PrenominaRecord = {
   sickLeaveDays: number;
   paidLeaveDays: number;
   unpaidLeaveDays: number;
+  companyBenefitDaysTaken?: number; // Días de beneficio tomados (pagados)
 
   // Totales
   grossPay: number;             // Total percepciones
@@ -1084,7 +1101,7 @@ export type Department = {
   description?: string;           // Descripción del departamento
 
   // Jerarquía organizacional
-  managerId?: string;             // ID del empleado responsable/jefe del departamento
+  managerPositionId?: string;     // ID del puesto responsable/jefe del departamento
   parentDepartmentId?: string;    // Departamento padre (para jerarquías)
 
   // Contabilidad
@@ -1187,9 +1204,9 @@ export type Position = {
   canApproveIncidences?: boolean; // Puede aprobar incidencias
 
   // Configuración de horas extras
-  generatesOvertime?: boolean;    // Si el puesto genera horas extras pagadas
+  generatesOvertime?: boolean;    // Si el puesto puede generar horas extras pagadas
   overtimePreApprovalRequired?: boolean; // Si requiere pre-autorización para HE
-  allowTimeBank?: boolean;        // Permitir uso de bolsa de horas (Nuevo: reemplaza config por empleado)
+  allowTimeBank?: boolean;        // Permitir uso de bolsa de horas
 
   // Límites de aprobación
   approvalLimits?: ApprovalLimits; // Límites máximos que puede aprobar sin escalar
@@ -1635,9 +1652,20 @@ export type EarlyDeparture = {
   compensatedToHourBank?: boolean;  // Si se envió a bolsa de horas
 
   // Regla de 6 horas
-  hoursWorked?: number;             // Horas trabajadas antes de la salida
-  isAbsence?: boolean;              // True si trabajó < 6 horas (se considera falta)
-  severity?: 'minor' | 'major' | 'critical'; // Severidad calculada
+  checkOut: string;             // ISO Date
+
+  // Check-in/out detallado
+  checkInLocation?: {
+    latitude: number;
+    longitude: number;
+  };
+  checkOutLocation?: {
+    latitude: number;
+    longitude: number;
+  };
+  locationId?: string; // Ubicacion asignada o donde hizo check-in
+
+  hoursWorked: number;            // Horas trabajadas (HH.dd)
   notes?: string;
 
   // Referencias
@@ -1835,6 +1863,7 @@ export type JustificationType =
   | 'weather_conditions'        // Condiciones climáticas
   | 'official_business'         // Asuntos oficiales
   | 'manager_authorization'     // Autorización del jefe
+  | 'unjustified'               // Injustificado (marcado explícitamente)
   | 'other';                    // Otros (requiere comentario)
 
 /**
@@ -1848,6 +1877,7 @@ export const JUSTIFICATION_TYPE_LABELS: Record<JustificationType, string> = {
   weather_conditions: 'Condiciones climáticas',
   official_business: 'Asuntos oficiales',
   manager_authorization: 'Autorización del jefe',
+  unjustified: 'Injustificado',
   other: 'Otros',
 };
 

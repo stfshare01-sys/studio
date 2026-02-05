@@ -1,12 +1,12 @@
 
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import SiteLayout from '@/components/site-layout';
 import Link from 'next/link';
 import { useFirebase, useMemoFirebase } from '@/firebase/provider';
 import { useCollection } from '@/firebase/firestore/use-collection';
-import { collection, query, orderBy, limit } from 'firebase/firestore';
+import { collection, query, orderBy, limit, doc, getDoc } from 'firebase/firestore';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -49,6 +49,7 @@ export default function AttendancePage() {
         message: string;
         details?: string;
     } | null>(null);
+    const [employeeNames, setEmployeeNames] = useState<Record<string, string>>({});
 
     // Fetch recent imports
     const importsQuery = useMemoFirebase(() => {
@@ -73,6 +74,41 @@ export default function AttendancePage() {
     }, [firestore]);
 
     const { data: attendanceRecords, isLoading: attendanceLoading } = useCollection<AttendanceRecord>(attendanceQuery);
+
+    // Fetch employee names for records that don't have employeeName (legacy data)
+    useEffect(() => {
+        if (!firestore || !attendanceRecords) return;
+
+        const fetchEmployeeNames = async () => {
+            const namesToFetch = attendanceRecords
+                .filter(record => !record.employeeName && record.employeeId)
+                .map(record => record.employeeId);
+
+            const uniqueIds = [...new Set(namesToFetch)];
+            const newNames: Record<string, string> = {};
+
+            for (const empId of uniqueIds) {
+                if (employeeNames[empId]) continue; // Skip if already fetched
+
+                try {
+                    const empRef = doc(firestore, 'employees', empId);
+                    const empSnap = await getDoc(empRef);
+                    if (empSnap.exists()) {
+                        const empData = empSnap.data();
+                        newNames[empId] = empData.fullName || empId;
+                    }
+                } catch (error) {
+                    console.error(`Error fetching employee ${empId}:`, error);
+                }
+            }
+
+            if (Object.keys(newNames).length > 0) {
+                setEmployeeNames(prev => ({ ...prev, ...newNames }));
+            }
+        };
+
+        fetchEmployeeNames();
+    }, [firestore, attendanceRecords, employeeNames]);
 
     // Handle file upload
     const handleFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -420,7 +456,7 @@ export default function AttendancePage() {
                                     ) : attendanceRecords && attendanceRecords.length > 0 ? (
                                         attendanceRecords.slice(0, 10).map((record) => (
                                             <TableRow key={record.id}>
-                                                <TableCell>{record.employeeId}</TableCell>
+                                                <TableCell>{record.employeeName || employeeNames[record.employeeId] || record.employeeId}</TableCell>
                                                 <TableCell>{record.date}</TableCell>
                                                 <TableCell>{record.checkIn || '-'}</TableCell>
                                                 <TableCell>{record.checkOut || '-'}</TableCell>

@@ -222,7 +222,7 @@ export default function HCMPage() {
                                         -
                                     </div>
                                     <p className="text-xs text-muted-foreground">
-                                        <Link href="/prenomina" className="text-primary hover:underline">
+                                        <Link href="/hcm/prenomina" className="text-primary hover:underline">
                                             Ir a consolidación →
                                         </Link>
                                     </p>
@@ -316,7 +316,7 @@ export default function HCMPage() {
                                             <Button asChild variant="outline" className="justify-start">
                                                 <Link href="/hcm/prenomina">
                                                     <Calculator className="mr-2 h-4 w-4" />
-                                                    Pre-Nomina
+                                                    Consolidación de Asistencia
                                                 </Link>
                                             </Button>
                                         )}
