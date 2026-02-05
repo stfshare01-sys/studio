@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect, useCallback } from 'react';
 import SiteLayout from '@/components/site-layout';
 import { useFirebase, useMemoFirebase } from '@/firebase/provider';
 import { useCollection } from '@/firebase/firestore/use-collection';
-import { getFirestore, doc, getDoc, setDoc, Timestamp, collection, query, where, getDocs, orderBy, limit as firestoreLimit, limit } from 'firebase/firestore';
+import { getFirestore, doc, getDoc, setDoc, updateDoc, Timestamp, collection, query, where, getDocs, orderBy, limit as firestoreLimit, limit } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -202,19 +202,6 @@ export default function TeamManagementPage() {
         }
     }, []);
 
-    // Debug: Track state changes
-    useEffect(() => {
-        console.log('📊 monthlyStats changed:', monthlyStats.length, 'records', monthlyStats);
-    }, [monthlyStats]);
-
-    useEffect(() => {
-        console.log('📅 dailyStats changed:', dailyStats.length, 'records', dailyStats);
-    }, [dailyStats]);
-
-    useEffect(() => {
-        console.log('🔄 activeTab changed to:', activeTab);
-        console.trace('Stack trace for activeTab change');
-    }, [activeTab]);
 
     // Check if current period is closed (global check, not user-specific)
     useEffect(() => {
@@ -254,9 +241,7 @@ export default function TeamManagementPage() {
 
     const loadTabData = useCallback(async (tab: string, managerId?: string) => {
         const managerToUse = managerId || selectedManagerId;
-        console.log('🔄 loadTabData called:', { tab, userId: user?.id, selectedManagerId, managerId, managerToUse });
         if (!user?.id || !managerToUse) {
-            console.log('❌ loadTabData aborted: missing user or manager', { userId: user?.id, managerToUse });
             return;
         }
 
@@ -265,23 +250,13 @@ export default function TeamManagementPage() {
             switch (tab) {
                 case 'overview':
                     const [year, month] = dateFilter.split('-').map(Number);
-                    console.log('📊 Fetching monthly stats:', { managerToUse, year, month });
                     const statsResult = await getTeamMonthlyStats(managerToUse, year, month);
-                    console.log('📊 Monthly stats result:', statsResult);
                     if (statsResult.success && statsResult.stats) {
-                        console.log('✅ Setting monthly stats:', statsResult.stats.length, 'records');
                         setMonthlyStats(statsResult.stats);
-                    } else {
-                        console.log('❌ No monthly stats returned');
                     }
-                    console.log('📅 Fetching daily stats:', { managerToUse, selectedDate });
                     const dailyResult = await getTeamDailyStats(managerToUse, selectedDate);
-                    console.log('📅 Daily stats result:', dailyResult);
                     if (dailyResult.success && dailyResult.stats) {
-                        console.log('✅ Setting daily stats:', dailyResult.stats.length, 'records');
                         setDailyStats(dailyResult.stats);
-                    } else {
-                        console.log('❌ No daily stats returned');
                     }
                     break;
 
@@ -357,36 +332,36 @@ export default function TeamManagementPage() {
         }
     }, [user?.id, selectedManagerId, dateFilter, selectedDate]);
 
-    // Initial data load and manager setup
+    // Flag to track if initial load has been done
+    const [initialLoadDone, setInitialLoadDone] = useState(false);
+
+    // Initial data load and manager setup - runs ONCE when user is available
     useEffect(() => {
-        console.log('🚀 Initial useEffect triggered', { user: user?.uid, selectedManagerId, activeTab });
-        if (!user) {
-            console.log('⏸️ Initial useEffect aborted: no user');
+        // Skip if already loaded or no user
+        if (initialLoadDone || !user) {
             return;
         }
+
+        console.log('🚀 Initial useEffect triggered (first time only)', { user: user?.uid });
 
         const loadInitial = async () => {
             console.log('📥 loadInitial started');
             setLoadingData(true);
+
+            // Set manager ID immediately to user's ID
+            const managerIdToUse = user.uid;
+            setSelectedManagerId(managerIdToUse);
+
             try {
-                // Initialize selected manager if not set
-                if (!selectedManagerId) {
-                    setSelectedManagerId(user.uid);
-                }
-
-                // Fetch permissions
-                // Use hook permissions, no need to manually fetch
-
                 // Load available managers if global permission exists
                 if (hasPermission(permissions, 'hcm_team_management_global', 'read')) {
-                    const allEmployeesRes = await getDirectReports('all'); // 'all' is a special value handled in backend
+                    const allEmployeesRes = await getDirectReports('all');
                     if (allEmployeesRes.success && allEmployeesRes.employees) {
                         setAvailableManagers(allEmployeesRes.employees.map(e => ({ id: e.id, name: e.fullName })));
                     }
                 }
 
                 // Load initial employees
-                const managerIdToUse = selectedManagerId || user.uid;
                 const [empResult] = await Promise.all([
                     getDirectReports(managerIdToUse),
                 ]);
@@ -400,27 +375,24 @@ export default function TeamManagementPage() {
                 }
 
                 await loadImportBatches();
+
+                // Load tab data
+                console.log('🎯 About to call loadTabData', { managerIdToUse, activeTab });
+                await loadTabData(activeTab, managerIdToUse);
+                console.log('✅ loadTabData completed in initial load');
+
             } catch (error) {
                 console.error('Error loading initial data:', error);
             } finally {
                 console.log('✅ loadInitial completed, setting loadingData to false');
                 setLoadingData(false);
-            }
-
-            // Load tab data AFTER loadingData is set to false
-            const managerIdToUse = selectedManagerId || user.uid;
-            console.log('🎯 About to call loadTabData', { managerIdToUse, activeTab });
-            if (managerIdToUse) {
-                await loadTabData(activeTab, managerIdToUse);
-                console.log('✅ loadTabData completed in initial load');
-            } else {
-                console.log('❌ No managerIdToUse, skipping loadTabData');
+                setInitialLoadDone(true);
             }
         };
 
         loadInitial();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [user, selectedManagerId, permissions]); // Removed activeTab and loadTabData to break circular dependency
+    }, [user, permissions]); // Only depend on user and permissions, NOT selectedManagerId
 
     // Handle batch selection
     useEffect(() => {
@@ -439,23 +411,23 @@ export default function TeamManagementPage() {
         }
     }, [selectedBatchId, importBatches]);
 
-    // Effect to reload data when tab or date changes
+    // Effect to reload data when tab, date, or manager changes (AFTER initial load)
     useEffect(() => {
+        // Only run after initial load is complete
+        if (!initialLoadDone || !user?.id || !selectedManagerId) {
+            console.log('⏸️ Reload useEffect skipped (waiting for initial load)', { initialLoadDone, userId: user?.id, selectedManagerId });
+            return;
+        }
+
         console.log('🔁 Reload useEffect triggered', {
-            userId: user?.id,
-            loadingData,
-            selectedManagerId,
             activeTab,
             selectedDate,
-            dateFilter
+            dateFilter,
+            selectedManagerId
         });
-        if (user?.id && !loadingData && selectedManagerId) {
-            console.log('✅ Reload useEffect calling loadTabData');
-            loadTabData(activeTab);
-        } else {
-            console.log('⏸️ Reload useEffect conditions not met');
-        }
-    }, [activeTab, selectedDate, dateFilter, user?.id, loadingData, selectedManagerId, loadTabData]);
+
+        loadTabData(activeTab);
+    }, [activeTab, selectedDate, dateFilter, selectedManagerId, initialLoadDone]); // Removed loadingData and loadTabData from deps
 
     // Handlers
     const handleViewHourBankHistory = async (employee: Employee) => {

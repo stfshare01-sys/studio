@@ -1668,6 +1668,10 @@ export type EarlyDeparture = {
   hoursWorked: number;            // Horas trabajadas (HH.dd)
   notes?: string;
 
+  // Regla de 6 horas
+  isAbsence?: boolean;              // True si trabajó < 6 horas (se considera falta)
+  severity?: 'minor' | 'major' | 'critical';  // Severidad de la salida temprana
+
   // Referencias
   attendanceRecordId?: string;      // Referencia al registro de asistencia
 
