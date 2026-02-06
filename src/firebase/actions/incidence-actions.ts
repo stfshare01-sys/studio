@@ -824,6 +824,34 @@ export async function justifyTardiness(
     }
 }
 
+export async function markTardinessUnjustified(
+    tardinessId: string,
+    justifiedById: string,
+    justifiedByName: string
+): Promise<{ success: boolean; error?: string }> {
+    try {
+        const { firestore } = initializeFirebase();
+        const now = new Date().toISOString();
+        const tardinessRef = doc(firestore, 'tardiness_records', tardinessId);
+
+        await updateDoc(tardinessRef, {
+            isJustified: false, // Remains false so it counts as infraction/strike
+            justificationStatus: 'unjustified',
+            justificationType: 'unjustified',
+            justificationReason: 'Marcado como injustificado por supervisor',
+            justifiedById,
+            // justifiedByName not stored in TardinessRecord type by default but kept for parity if schema evolves or for auditing in logs
+            justifiedAt: now,
+            updatedAt: now
+        });
+
+        return { success: true };
+    } catch (error) {
+        console.error('[HCM] Error marking tardiness unjustified:', error);
+        return { success: false, error: 'Error marcando retardo como injustificado.' };
+    }
+}
+
 export async function resetTardinessCounter(
     employeeId: string,
     resetById: string

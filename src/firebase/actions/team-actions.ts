@@ -353,6 +353,34 @@ export async function justifyEarlyDeparture(
     }
 }
 
+export async function markEarlyDepartureUnjustified(
+    departureId: string,
+    justifiedById: string,
+    justifiedByName: string
+): Promise<{ success: boolean; error?: string }> {
+    try {
+        const { firestore } = initializeFirebase();
+        const now = new Date().toISOString();
+        const ref = doc(firestore, 'early_departures', departureId);
+
+        await updateDoc(ref, {
+            isJustified: false,
+            justificationStatus: 'unjustified',
+            justificationType: 'unjustified',
+            justificationReason: 'Marcado como injustificado por supervisor',
+            justifiedById,
+            justifiedByName,
+            justifiedAt: now,
+            updatedAt: now
+        });
+
+        return { success: true };
+    } catch (error) {
+        console.error('[Team] Error marking early departure unjustified:', error);
+        return { success: false, error: 'Error marcando salida temprana como injustificada.' };
+    }
+}
+
 /**
  * Obtiene las salidas tempranas del equipo
  */

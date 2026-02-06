@@ -70,9 +70,10 @@ import {
     getTeamShiftAssignments,
     cancelShiftAssignment,
     getAttendanceImportBatches,
-    getAvailableShifts
+    getAvailableShifts,
+    markEarlyDepartureUnjustified
 } from '@/firebase/actions/team-actions';
-import { justifyTardiness } from '@/firebase/actions/incidence-actions';
+import { justifyTardiness, markTardinessUnjustified } from '@/firebase/actions/incidence-actions';
 import { runGlobalSLAProcessing } from '@/firebase/actions/sla-actions';
 import { migrateManagerIdField } from '@/firebase/actions/employee-actions';
 import { getTeamHourBanks, getHourBankMovements, formatHourBankBalance, manualHourBankAdjustment, formatMinutesToReadable } from '@/firebase/actions/hour-bank-actions';
@@ -162,6 +163,11 @@ export default function TeamManagementPage() {
         if (!employeeId || !employees.length || !positions?.length) return false;
         const employee = employees.find(e => e.id === employeeId);
         if (!employee) return false;
+
+        // Check for specific employee override first
+        if (typeof employee.allowTimeForTime === 'boolean') {
+            return employee.allowTimeForTime;
+        }
 
         // Match by ID (preferred) or Name (legacy/fallback)
         const position = positions.find(p =>
@@ -508,6 +514,64 @@ export default function TeamManagementPage() {
                 setJustificationReason('');
                 setUseHourBank(false);
                 loadTabData('early-departures');
+            }
+        } finally {
+            setSubmitting(false);
+        }
+    };
+
+    const handleMarkTardinessUnjustified = async (record: TardinessRecord) => {
+        if (!user) return;
+        setSubmitting(true);
+        try {
+            const result = await markTardinessUnjustified(
+                record.id,
+                user.id || '',
+                user.fullName || 'Admin'
+            );
+
+            if (result.success) {
+                loadTabData('tardiness');
+                toast({
+                    title: "Marcado como injustificado",
+                    description: "El retardo ha sido marcado como injustificado.",
+                    variant: "default"
+                });
+            } else {
+                toast({
+                    title: "Error",
+                    description: "No se pudo marcar como injustificado.",
+                    variant: "destructive"
+                });
+            }
+        } finally {
+            setSubmitting(false);
+        }
+    };
+
+    const handleMarkDepartureUnjustified = async (record: EarlyDeparture) => {
+        if (!user) return;
+        setSubmitting(true);
+        try {
+            const result = await markEarlyDepartureUnjustified(
+                record.id,
+                user.id || '',
+                user.fullName || 'Admin'
+            );
+
+            if (result.success) {
+                loadTabData('early-departures');
+                toast({
+                    title: "Marcado como injustificado",
+                    description: "La salida temprana ha sido marcada como injustificada.",
+                    variant: "default"
+                });
+            } else {
+                toast({
+                    title: "Error",
+                    description: "No se pudo marcar como injustificada.",
+                    variant: "destructive"
+                });
             }
         } finally {
             setSubmitting(false);
@@ -1279,26 +1343,39 @@ export default function TeamManagementPage() {
                                                         <Badge variant="outline">{record.minutesLate} min</Badge>
                                                     </TableCell>
                                                     <TableCell>
-                                                        {record.isJustified ? (
+                                                        {record.justificationStatus === 'unjustified' ? (
+                                                            <Badge variant="destructive">Injustificado</Badge>
+                                                        ) : record.isJustified ? (
                                                             <Badge variant="secondary">Justificado</Badge>
                                                         ) : (
-                                                            <Badge variant="destructive">Pendiente</Badge>
+                                                            <Badge variant="outline">Pendiente</Badge>
                                                         )}
                                                     </TableCell>
                                                     <TableCell className="text-right">
-                                                        {!record.isJustified && hasPermission(permissions, 'hcm_team_tardiness', 'write') && (
-                                                            <Button
-                                                                size="sm"
-                                                                disabled={isPeriodClosed}
-                                                                onClick={() => {
-                                                                    setJustifyTardinessDialog({ open: true, record, employeeName: employees.find(e => e.id === record.employeeId)?.fullName || record.employeeId });
-                                                                    setJustificationReason('');
-                                                                    setJustificationType(undefined);
-                                                                    setUseHourBank(false);
-                                                                }}
-                                                            >
-                                                                Justificar
-                                                            </Button>
+                                                        {!record.isJustified && record.justificationStatus !== 'unjustified' && hasPermission(permissions, 'hcm_team_tardiness', 'write') && (
+                                                            <div className="flex justify-end gap-2">
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="sm"
+                                                                    className="text-destructive hover:text-destructive/90 hover:bg-destructive/10"
+                                                                    disabled={isPeriodClosed || submitting}
+                                                                    onClick={() => handleMarkTardinessUnjustified(record)}
+                                                                >
+                                                                    Injustificado
+                                                                </Button>
+                                                                <Button
+                                                                    size="sm"
+                                                                    disabled={isPeriodClosed}
+                                                                    onClick={() => {
+                                                                        setJustifyTardinessDialog({ open: true, record, employeeName: employees.find(e => e.id === record.employeeId)?.fullName || record.employeeId });
+                                                                        setJustificationReason('');
+                                                                        setJustificationType(undefined);
+                                                                        setUseHourBank(false);
+                                                                    }}
+                                                                >
+                                                                    Justificar
+                                                                </Button>
+                                                            </div>
                                                         )}
                                                     </TableCell>
                                                 </TableRow>
@@ -1370,26 +1447,39 @@ export default function TeamManagementPage() {
                                                         <Badge variant="outline">{record.minutesEarly} min</Badge>
                                                     </TableCell>
                                                     <TableCell>
-                                                        {record.isJustified ? (
+                                                        {record.justificationStatus === 'unjustified' ? (
+                                                            <Badge variant="destructive">Injustificado</Badge>
+                                                        ) : record.isJustified ? (
                                                             <Badge variant="secondary">Justificado</Badge>
                                                         ) : (
                                                             <Badge variant="outline">Pendiente</Badge>
                                                         )}
                                                     </TableCell>
                                                     <TableCell className="text-right">
-                                                        {!record.isJustified && hasPermission(permissions, 'hcm_team_departures', 'write') && (
-                                                            <Button
-                                                                size="sm"
-                                                                disabled={isPeriodClosed}
-                                                                onClick={() => {
-                                                                    setJustifyDepartureDialog({ open: true, record, employeeName: employees.find(e => e.id === record.employeeId)?.fullName || record.employeeId });
-                                                                    setJustificationReason('');
-                                                                    setJustificationType(undefined);
-                                                                    setUseHourBank(false);
-                                                                }}
-                                                            >
-                                                                Justificar
-                                                            </Button>
+                                                        {!record.isJustified && record.justificationStatus !== 'unjustified' && hasPermission(permissions, 'hcm_team_departures', 'write') && (
+                                                            <div className="flex justify-end gap-2">
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="sm"
+                                                                    className="text-destructive hover:text-destructive/90 hover:bg-destructive/10"
+                                                                    disabled={isPeriodClosed || submitting}
+                                                                    onClick={() => handleMarkDepartureUnjustified(record)}
+                                                                >
+                                                                    Injustificado
+                                                                </Button>
+                                                                <Button
+                                                                    size="sm"
+                                                                    disabled={isPeriodClosed}
+                                                                    onClick={() => {
+                                                                        setJustifyDepartureDialog({ open: true, record, employeeName: employees.find(e => e.id === record.employeeId)?.fullName || record.employeeId });
+                                                                        setJustificationReason('');
+                                                                        setJustificationType(undefined);
+                                                                        setUseHourBank(false);
+                                                                    }}
+                                                                >
+                                                                    Justificar
+                                                                </Button>
+                                                            </div>
                                                         )}
                                                     </TableCell>
                                                 </TableRow>
