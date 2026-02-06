@@ -559,7 +559,19 @@ service cloud.firestore {
     }
 
     /**
-     * @description Custom shifts catalog
+     * @description Shifts catalog (turnos)
+     * Read: All authenticated users
+     * Write: HR Managers and Admins
+     * @path /shifts/{shiftId}
+     */
+    match /shifts/{shiftId} {
+      allow get, list: if isSignedIn();
+      allow create, update: if isHRManager();
+      allow delete: if hasRole('Admin');
+    }
+
+    /**
+     * @description Custom shifts catalog (DEPRECATED - use /shifts instead)
      * Read: All authenticated users
      * Write: HR Managers and Admins
      * @path /custom_shifts/{shiftId}
