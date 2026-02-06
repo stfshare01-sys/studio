@@ -106,10 +106,10 @@ export default function EmployeeDetailPage({ params }: { params: Promise<{ id: s
 
     const { data: shiftAssignments } = useCollection<ShiftAssignment>(shiftAssignmentsQuery);
 
-    // 7. Fetch Custom Shifts (to resolve names)
+    // 7. Fetch Shifts (to resolve names)
     const shiftsQuery = useMemoFirebase(() => {
         if (!firestore) return null;
-        return query(collection(firestore, 'custom_shifts'));
+        return query(collection(firestore, 'shifts'));
     }, [firestore]);
 
     const { data: shifts } = useCollection<CustomShift>(shiftsQuery);

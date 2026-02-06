@@ -15,7 +15,8 @@
       "Bash(npm run build:*)",
       "Bash(set NODE_ENV=production)",
       "Bash(npx next build)",
-      "Bash(git pull:*)"
+      "Bash(git pull:*)",
+      "Bash(firebase deploy:*)"
     ]
   }
 }
