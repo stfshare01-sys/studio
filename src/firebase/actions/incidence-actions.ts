@@ -1031,3 +1031,443 @@ export async function isHoliday(
         return { isHoliday: false, error: 'Error verificando dia festivo.' };
     }
 }
+
+// =========================================================================
+// SALIDAS TEMPRANAS (EARLY DEPARTURES)
+// =========================================================================
+
+/**
+ * Tipo importado desde hcm-operational
+ * (mantenemos aquí para referencia, el tipo real está en types)
+ */
+interface EarlyDepartureRecord {
+    id: string;
+    employeeId: string;
+    employeeName?: string;
+    date: string;
+    attendanceRecordId: string;
+    scheduledTime: string;
+    actualTime: string;
+    minutesEarly: number;
+    isJustified: boolean;
+    justificationReason?: string;
+    justifiedById?: string;
+    justifiedByName?: string;
+    justifiedAt?: string;
+    resultedInAbsence: boolean;
+    linkedAbsenceId?: string;
+    createdAt: string;
+    updatedAt: string;
+}
+
+/**
+ * Registra una salida temprana
+ * Se crea cuando un empleado sale antes de su hora programada
+ *
+ * @param employeeId - ID del empleado
+ * @param employeeName - Nombre del empleado
+ * @param date - Fecha (YYYY-MM-DD)
+ * @param attendanceRecordId - ID del registro de asistencia
+ * @param scheduledTime - Hora programada de salida
+ * @param actualTime - Hora real de salida
+ * @returns Resultado con ID del registro creado
+ */
+export async function recordEarlyDeparture(
+    employeeId: string,
+    employeeName: string,
+    date: string,
+    attendanceRecordId: string,
+    scheduledTime: string,
+    actualTime: string
+): Promise<{ success: boolean; earlyDepartureId?: string; minutesEarly?: number; error?: string }> {
+    try {
+        const { firestore } = initializeFirebase();
+        const now = new Date().toISOString();
+
+        // Calcular minutos de salida anticipada
+        const [schedH, schedM] = scheduledTime.split(':').map(Number);
+        const [actH, actM] = actualTime.split(':').map(Number);
+        const scheduledMinutes = schedH * 60 + schedM;
+        const actualMinutes = actH * 60 + actM;
+        const minutesEarly = scheduledMinutes - actualMinutes;
+
+        if (minutesEarly <= 0) {
+            return { success: false, error: 'No hay salida temprana (salió a tiempo o después).' };
+        }
+
+        const earlyDepartureData: Omit<EarlyDepartureRecord, 'id'> = {
+            employeeId,
+            employeeName,
+            date,
+            attendanceRecordId,
+            scheduledTime,
+            actualTime,
+            minutesEarly,
+            isJustified: false,
+            resultedInAbsence: true, // Por defecto, salida temprano injustificada = falta
+            createdAt: now,
+            updatedAt: now,
+        };
+
+        const earlyDepartureRef = await addDoc(
+            collection(firestore, 'early_departures'),
+            earlyDepartureData
+        );
+
+        console.log(`[HCM] Recorded early departure ${earlyDepartureRef.id} for ${employeeName} - ${minutesEarly} min early`);
+        return { success: true, earlyDepartureId: earlyDepartureRef.id, minutesEarly };
+    } catch (error) {
+        console.error('[HCM] Error recording early departure:', error);
+        return { success: false, error: 'No se pudo registrar la salida temprana.' };
+    }
+}
+
+/**
+ * Justifica una salida temprana
+ * Si se justifica, el día NO se marca como falta
+ *
+ * @param earlyDepartureId - ID del registro de salida temprana
+ * @param reason - Motivo de justificación
+ * @param justifiedById - ID del usuario que justifica
+ * @param justifiedByName - Nombre del usuario que justifica
+ * @returns Resultado de la operación
+ */
+export async function justifyEarlyDeparture(
+    earlyDepartureId: string,
+    reason: string,
+    justifiedById: string,
+    justifiedByName: string
+): Promise<{ success: boolean; error?: string }> {
+    try {
+        const { firestore } = initializeFirebase();
+        const now = new Date().toISOString();
+
+        const earlyDepartureRef = doc(firestore, 'early_departures', earlyDepartureId);
+        const earlyDepartureSnap = await getDoc(earlyDepartureRef);
+
+        if (!earlyDepartureSnap.exists()) {
+            return { success: false, error: 'Registro de salida temprana no encontrado.' };
+        }
+
+        await updateDoc(earlyDepartureRef, {
+            isJustified: true,
+            justificationReason: reason,
+            justifiedById,
+            justifiedByName,
+            justifiedAt: now,
+            resultedInAbsence: false, // Ya no es falta
+            updatedAt: now,
+        });
+
+        console.log(`[HCM] Justified early departure ${earlyDepartureId}`);
+        return { success: true };
+    } catch (error) {
+        console.error('[HCM] Error justifying early departure:', error);
+        return { success: false, error: 'No se pudo justificar la salida temprana.' };
+    }
+}
+
+/**
+ * Obtiene las salidas tempranas pendientes de justificar para un período
+ *
+ * @param startDate - Fecha inicio del período
+ * @param endDate - Fecha fin del período
+ * @param employeeId - Opcional: filtrar por empleado
+ * @returns Lista de salidas tempranas pendientes
+ */
+export async function getPendingEarlyDepartures(
+    startDate: string,
+    endDate: string,
+    employeeId?: string
+): Promise<{ success: boolean; records?: EarlyDepartureRecord[]; error?: string }> {
+    try {
+        const { firestore } = initializeFirebase();
+
+        let earlyDeparturesQuery = query(
+            collection(firestore, 'early_departures'),
+            where('isJustified', '==', false),
+            where('date', '>=', startDate),
+            where('date', '<=', endDate)
+        );
+
+        if (employeeId) {
+            earlyDeparturesQuery = query(
+                collection(firestore, 'early_departures'),
+                where('employeeId', '==', employeeId),
+                where('isJustified', '==', false),
+                where('date', '>=', startDate),
+                where('date', '<=', endDate)
+            );
+        }
+
+        const snapshot = await getDocs(earlyDeparturesQuery);
+        const records = snapshot.docs.map(d => ({ id: d.id, ...d.data() })) as EarlyDepartureRecord[];
+
+        return { success: true, records };
+    } catch (error) {
+        console.error('[HCM] Error getting pending early departures:', error);
+        return { success: false, error: 'Error obteniendo salidas tempranas pendientes.' };
+    }
+}
+
+// =========================================================================
+// MARCAJES FALTANTES (MISSING PUNCHES)
+// =========================================================================
+
+/**
+ * Tipo de marcaje faltante
+ */
+type MissingPunchType = 'entry' | 'exit' | 'both';
+
+/**
+ * Tipo importado desde hcm-operational
+ */
+interface MissingPunchRecord {
+    id: string;
+    employeeId: string;
+    employeeName?: string;
+    date: string;
+    attendanceRecordId?: string;
+    missingType: MissingPunchType;
+    isJustified: boolean;
+    justificationReason?: string;
+    providedEntryTime?: string;
+    providedExitTime?: string;
+    generatedTardinessId?: string;
+    generatedEarlyDepartureId?: string;
+    justifiedById?: string;
+    justifiedByName?: string;
+    justifiedAt?: string;
+    resultedInAbsence: boolean;
+    linkedAbsenceId?: string;
+    createdAt: string;
+    updatedAt: string;
+}
+
+/**
+ * Registra un marcaje faltante
+ *
+ * @param employeeId - ID del empleado
+ * @param employeeName - Nombre del empleado
+ * @param date - Fecha (YYYY-MM-DD)
+ * @param missingType - Qué marcaje falta
+ * @param attendanceRecordId - ID del registro de asistencia (si existe)
+ * @returns Resultado con ID del registro creado
+ */
+export async function recordMissingPunch(
+    employeeId: string,
+    employeeName: string,
+    date: string,
+    missingType: MissingPunchType,
+    attendanceRecordId?: string
+): Promise<{ success: boolean; missingPunchId?: string; error?: string }> {
+    try {
+        const { firestore } = initializeFirebase();
+        const now = new Date().toISOString();
+
+        // Verificar que no exista ya un registro para esta fecha y empleado
+        const existingQuery = query(
+            collection(firestore, 'missing_punches'),
+            where('employeeId', '==', employeeId),
+            where('date', '==', date),
+            limit(1)
+        );
+        const existingSnap = await getDocs(existingQuery);
+
+        if (!existingSnap.empty) {
+            // Actualizar el registro existente si el tipo de falta es mayor
+            const existing = existingSnap.docs[0].data() as MissingPunchRecord;
+            if (missingType === 'both' || (existing.missingType !== 'both' && existing.missingType !== missingType)) {
+                await updateDoc(existingSnap.docs[0].ref, {
+                    missingType: missingType === 'both' ? 'both' : (existing.missingType === 'entry' && missingType === 'exit' ? 'both' : missingType),
+                    updatedAt: now,
+                });
+                return { success: true, missingPunchId: existingSnap.docs[0].id };
+            }
+            return { success: true, missingPunchId: existingSnap.docs[0].id };
+        }
+
+        const missingPunchData: Omit<MissingPunchRecord, 'id'> = {
+            employeeId,
+            employeeName,
+            date,
+            attendanceRecordId,
+            missingType,
+            isJustified: false,
+            resultedInAbsence: true, // Por defecto, marcaje faltante = falta
+            createdAt: now,
+            updatedAt: now,
+        };
+
+        const missingPunchRef = await addDoc(
+            collection(firestore, 'missing_punches'),
+            missingPunchData
+        );
+
+        console.log(`[HCM] Recorded missing punch ${missingPunchRef.id} for ${employeeName} - type: ${missingType}`);
+        return { success: true, missingPunchId: missingPunchRef.id };
+    } catch (error) {
+        console.error('[HCM] Error recording missing punch:', error);
+        return { success: false, error: 'No se pudo registrar el marcaje faltante.' };
+    }
+}
+
+/**
+ * Justifica un marcaje faltante
+ * Requiere proporcionar la hora del marcaje faltante
+ * Si la hora no cuadra con el horario, se genera retardo o salida temprana
+ *
+ * @param missingPunchId - ID del registro de marcaje faltante
+ * @param reason - Motivo de justificación
+ * @param providedEntryTime - Hora de entrada proporcionada (si faltaba entrada)
+ * @param providedExitTime - Hora de salida proporcionada (si faltaba salida)
+ * @param scheduledEntryTime - Hora programada de entrada (para comparar)
+ * @param scheduledExitTime - Hora programada de salida (para comparar)
+ * @param justifiedById - ID del usuario que justifica
+ * @param justifiedByName - Nombre del usuario que justifica
+ * @param toleranceMinutes - Minutos de tolerancia para entrada
+ * @returns Resultado de la operación
+ */
+export async function justifyMissingPunch(
+    missingPunchId: string,
+    reason: string,
+    providedEntryTime: string | undefined,
+    providedExitTime: string | undefined,
+    scheduledEntryTime: string,
+    scheduledExitTime: string,
+    justifiedById: string,
+    justifiedByName: string,
+    toleranceMinutes: number = 10
+): Promise<{
+    success: boolean;
+    generatedTardinessId?: string;
+    generatedEarlyDepartureId?: string;
+    error?: string
+}> {
+    try {
+        const { firestore } = initializeFirebase();
+        const now = new Date().toISOString();
+
+        const missingPunchRef = doc(firestore, 'missing_punches', missingPunchId);
+        const missingPunchSnap = await getDoc(missingPunchRef);
+
+        if (!missingPunchSnap.exists()) {
+            return { success: false, error: 'Registro de marcaje faltante no encontrado.' };
+        }
+
+        const missingPunch = missingPunchSnap.data() as MissingPunchRecord;
+        let generatedTardinessId: string | undefined;
+        let generatedEarlyDepartureId: string | undefined;
+
+        // Verificar si la hora proporcionada genera retardo
+        if (providedEntryTime && (missingPunch.missingType === 'entry' || missingPunch.missingType === 'both')) {
+            const [schedH, schedM] = scheduledEntryTime.split(':').map(Number);
+            const [provH, provM] = providedEntryTime.split(':').map(Number);
+            const scheduledMinutes = schedH * 60 + schedM;
+            const providedMinutes = provH * 60 + provM;
+            const lateMinutes = providedMinutes - scheduledMinutes;
+
+            if (lateMinutes > toleranceMinutes) {
+                // Generar registro de retardo
+                const tardinessResult = await recordTardiness(
+                    missingPunch.employeeId,
+                    missingPunch.date,
+                    missingPunch.attendanceRecordId || missingPunchId,
+                    scheduledEntryTime,
+                    providedEntryTime
+                );
+                if (tardinessResult.success && tardinessResult.tardinessId) {
+                    generatedTardinessId = tardinessResult.tardinessId;
+                }
+            }
+        }
+
+        // Verificar si la hora proporcionada genera salida temprana
+        if (providedExitTime && (missingPunch.missingType === 'exit' || missingPunch.missingType === 'both')) {
+            const [schedH, schedM] = scheduledExitTime.split(':').map(Number);
+            const [provH, provM] = providedExitTime.split(':').map(Number);
+            const scheduledMinutes = schedH * 60 + schedM;
+            const providedMinutes = provH * 60 + provM;
+            const earlyMinutes = scheduledMinutes - providedMinutes;
+
+            if (earlyMinutes > 0) {
+                // Generar registro de salida temprana
+                const earlyResult = await recordEarlyDeparture(
+                    missingPunch.employeeId,
+                    missingPunch.employeeName || '',
+                    missingPunch.date,
+                    missingPunch.attendanceRecordId || missingPunchId,
+                    scheduledExitTime,
+                    providedExitTime
+                );
+                if (earlyResult.success && earlyResult.earlyDepartureId) {
+                    generatedEarlyDepartureId = earlyResult.earlyDepartureId;
+                }
+            }
+        }
+
+        // Actualizar el registro de marcaje faltante
+        await updateDoc(missingPunchRef, {
+            isJustified: true,
+            justificationReason: reason,
+            providedEntryTime,
+            providedExitTime,
+            generatedTardinessId,
+            generatedEarlyDepartureId,
+            justifiedById,
+            justifiedByName,
+            justifiedAt: now,
+            resultedInAbsence: false, // Ya no es falta automática
+            updatedAt: now,
+        });
+
+        console.log(`[HCM] Justified missing punch ${missingPunchId}`);
+        return { success: true, generatedTardinessId, generatedEarlyDepartureId };
+    } catch (error) {
+        console.error('[HCM] Error justifying missing punch:', error);
+        return { success: false, error: 'No se pudo justificar el marcaje faltante.' };
+    }
+}
+
+/**
+ * Obtiene los marcajes faltantes pendientes de justificar para un período
+ *
+ * @param startDate - Fecha inicio del período
+ * @param endDate - Fecha fin del período
+ * @param employeeId - Opcional: filtrar por empleado
+ * @returns Lista de marcajes faltantes pendientes
+ */
+export async function getPendingMissingPunches(
+    startDate: string,
+    endDate: string,
+    employeeId?: string
+): Promise<{ success: boolean; records?: MissingPunchRecord[]; error?: string }> {
+    try {
+        const { firestore } = initializeFirebase();
+
+        let missingPunchesQuery = query(
+            collection(firestore, 'missing_punches'),
+            where('isJustified', '==', false),
+            where('date', '>=', startDate),
+            where('date', '<=', endDate)
+        );
+
+        if (employeeId) {
+            missingPunchesQuery = query(
+                collection(firestore, 'missing_punches'),
+                where('employeeId', '==', employeeId),
+                where('isJustified', '==', false),
+                where('date', '>=', startDate),
+                where('date', '<=', endDate)
+            );
+        }
+
+        const snapshot = await getDocs(missingPunchesQuery);
+        const records = snapshot.docs.map(d => ({ id: d.id, ...d.data() })) as MissingPunchRecord[];
+
+        return { success: true, records };
+    } catch (error) {
+        console.error('[HCM] Error getting pending missing punches:', error);
+        return { success: false, error: 'Error obteniendo marcajes faltantes pendientes.' };
+    }
+}

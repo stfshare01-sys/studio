@@ -441,10 +441,17 @@ export function shouldApplyTardinessSanction(
 // =========================================================================
 
 /**
- * Política de redondeo basada en fracciones de 30 minutos
- * - 1-14 minutos: se redondea a 0
- * - 15-44 minutos: se redondea a 0.5 (media hora)
- * - 45-59 minutos: se redondea a 1 (hora completa)
+ * Política de redondeo de minutos extra según reglas de nómina
+ *
+ * REGLAS DE REDONDEO (Actualizado):
+ * - 0-29 minutos: se redondea a 0 (se descarta)
+ * - 30-44 minutos: se redondea a 0.5 (media hora)
+ * - 45-60 minutos: se redondea a 1 (hora completa)
+ *
+ * EJEMPLO:
+ * - 1h 15min extra → 1h (los 15min se descartan)
+ * - 1h 35min extra → 1.5h (los 35min se redondean a 30min)
+ * - 1h 50min extra → 2h (los 50min se redondean a 60min)
  *
  * @param decimalHours - Horas en decimal
  * @returns Horas redondeadas según política
@@ -454,11 +461,14 @@ export function roundOvertimeHours(decimalHours: number): number {
     const minutes = Math.round((decimalHours - hours) * 60);
 
     let roundedMinutes: number;
-    if (minutes < 15) {
+    if (minutes < 30) {
+        // 0-29 minutos: se descartan
         roundedMinutes = 0;
     } else if (minutes < 45) {
+        // 30-44 minutos: se redondean a media hora
         roundedMinutes = 30;
     } else {
+        // 45-60 minutos: se redondean a hora completa
         roundedMinutes = 60;
     }
 
@@ -579,6 +589,204 @@ export function convertCarryoverToPayable(minutes: number): {
     const remainingMinutes = minutes % 30;
 
     return { payableHours, remainingMinutes };
+}
+
+// =========================================================================
+// BOLSA DE HORAS - ORDEN DE OPERACIONES
+// =========================================================================
+
+/**
+ * Resultado del procesamiento de horas extras con bolsa de horas
+ */
+export type OvertimeWithTimeBankResult = {
+    // Horas extras a pagar (después de redondeo)
+    paidOvertimeMinutes: number;
+    paidOvertimeHours: number;
+
+    // Estado de la bolsa de horas
+    previousBalance: number;         // Balance anterior (negativo = debe)
+    minutesUsedToPayDebt: number;    // Minutos usados para saldar deuda
+    newBalance: number;              // Nuevo balance de la bolsa
+
+    // Minutos descartados
+    discardedMinutes: number;        // Minutos < 30 que se descartan
+
+    // Detalle del procesamiento
+    processingSteps: string[];
+};
+
+/**
+ * Procesa minutos extra considerando la bolsa de horas primero
+ *
+ * ORDEN DE OPERACIONES:
+ * 1. Si el empleado debe horas (balance negativo):
+ *    - Restar minutos extra de su deuda
+ *    - Si sobran minutos después de saldar, pasan al redondeo
+ * 2. Si el puesto NO hace horas extras:
+ *    - Solo se usa para saldar deuda
+ *    - Cualquier excedente se descarta (balance queda en 0 máximo)
+ * 3. Aplicar redondeo sobre el remanente:
+ *    - 0-29 min: 0 (descartar)
+ *    - 30-44 min: 0.5h
+ *    - 45-60 min: 1h
+ *
+ * NOTA: La tolerancia de entrada NO afecta la bolsa de horas
+ * (si llegó dentro de tolerancia, esos minutos no se procesan)
+ *
+ * @param rawOvertimeMinutes - Minutos extra trabajados (ya sin considerar tolerancia)
+ * @param timeBankBalance - Balance actual de bolsa (negativo = debe, positivo = favor)
+ * @param positionCanEarnOvertime - Si el puesto puede generar horas extras pagadas
+ * @returns Resultado del procesamiento con detalle
+ *
+ * @example
+ * // Empleado debe 30 min, trabajó 45 min extra, puesto SÍ genera HE
+ * processOvertimeWithTimeBank(45, -30, true)
+ * // → { paidOvertimeMinutes: 0, newBalance: 0, discardedMinutes: 15 }
+ * // Explicación: 45 - 30 = 15 min restantes → se descartan (< 30)
+ *
+ * @example
+ * // Empleado debe 30 min, trabajó 90 min extra, puesto SÍ genera HE
+ * processOvertimeWithTimeBank(90, -30, true)
+ * // → { paidOvertimeMinutes: 60, newBalance: 0, discardedMinutes: 0 }
+ * // Explicación: 90 - 30 = 60 min restantes → 1h pagada
+ */
+export function processOvertimeWithTimeBank(
+    rawOvertimeMinutes: number,
+    timeBankBalance: number,
+    positionCanEarnOvertime: boolean
+): OvertimeWithTimeBankResult {
+    const steps: string[] = [];
+    let remainingMinutes = rawOvertimeMinutes;
+    let minutesUsedToPayDebt = 0;
+    let newBalance = timeBankBalance;
+
+    steps.push(`Minutos extra trabajados: ${rawOvertimeMinutes}`);
+    steps.push(`Balance de bolsa actual: ${timeBankBalance} (${timeBankBalance < 0 ? 'debe' : 'favor'})`);
+
+    // Paso 1: Cruce con bolsa de horas si hay deuda
+    if (timeBankBalance < 0) {
+        const debt = Math.abs(timeBankBalance);
+        minutesUsedToPayDebt = Math.min(remainingMinutes, debt);
+        remainingMinutes -= minutesUsedToPayDebt;
+        newBalance += minutesUsedToPayDebt;
+
+        steps.push(`Deuda en bolsa: ${debt} min`);
+        steps.push(`Minutos usados para saldar: ${minutesUsedToPayDebt}`);
+        steps.push(`Minutos restantes: ${remainingMinutes}`);
+        steps.push(`Nuevo balance de bolsa: ${newBalance}`);
+    }
+
+    // Paso 2: Si el puesto NO hace horas extras
+    if (!positionCanEarnOvertime) {
+        steps.push('Puesto NO genera horas extras');
+
+        // Si aún hay deuda, los minutos extra la reducen
+        // Si no hay deuda, los minutos positivos se descartan (no se guardan)
+        if (newBalance < 0 && remainingMinutes > 0) {
+            // Sigue saldando deuda
+            const additionalPayment = Math.min(remainingMinutes, Math.abs(newBalance));
+            newBalance += additionalPayment;
+            const discarded = remainingMinutes - additionalPayment;
+
+            steps.push(`Minutos adicionales para deuda: ${additionalPayment}`);
+            steps.push(`Minutos descartados (puesto no genera HE): ${discarded}`);
+
+            return {
+                paidOvertimeMinutes: 0,
+                paidOvertimeHours: 0,
+                previousBalance: timeBankBalance,
+                minutesUsedToPayDebt: minutesUsedToPayDebt + additionalPayment,
+                newBalance: Math.min(newBalance, 0), // No puede quedar positivo
+                discardedMinutes: discarded,
+                processingSteps: steps,
+            };
+        }
+
+        // No hay deuda y no genera HE: todo se descarta
+        steps.push(`Minutos descartados (sin deuda, puesto no genera HE): ${remainingMinutes}`);
+        return {
+            paidOvertimeMinutes: 0,
+            paidOvertimeHours: 0,
+            previousBalance: timeBankBalance,
+            minutesUsedToPayDebt,
+            newBalance: 0, // Queda en 0, no se acumulan a favor
+            discardedMinutes: remainingMinutes,
+            processingSteps: steps,
+        };
+    }
+
+    // Paso 3: Puesto SÍ hace horas extras - aplicar redondeo
+    steps.push('Puesto SÍ genera horas extras');
+    steps.push(`Aplicando redondeo a ${remainingMinutes} minutos`);
+
+    let paidMinutes = 0;
+    let discardedMinutes = 0;
+
+    if (remainingMinutes < 30) {
+        // 0-29 min: se descartan
+        discardedMinutes = remainingMinutes;
+        paidMinutes = 0;
+        steps.push(`Redondeo: ${remainingMinutes} min < 30 → 0 (descartados)`);
+    } else if (remainingMinutes < 45) {
+        // 30-44 min: media hora
+        paidMinutes = 30;
+        discardedMinutes = remainingMinutes - 30;
+        steps.push(`Redondeo: ${remainingMinutes} min → 30 min (0.5h)`);
+    } else if (remainingMinutes < 60) {
+        // 45-59 min: hora completa
+        paidMinutes = 60;
+        discardedMinutes = remainingMinutes - 60; // Puede ser negativo, lo manejamos
+        if (discardedMinutes < 0) discardedMinutes = 0;
+        steps.push(`Redondeo: ${remainingMinutes} min → 60 min (1h)`);
+    } else {
+        // 60+ minutos: hora completa + redondeo del resto
+        const fullHours = Math.floor(remainingMinutes / 60);
+        const fractionalMinutes = remainingMinutes % 60;
+
+        paidMinutes = fullHours * 60;
+
+        // Aplicar redondeo a la fracción
+        if (fractionalMinutes >= 45) {
+            paidMinutes += 60;
+            discardedMinutes = fractionalMinutes - 60;
+            if (discardedMinutes < 0) discardedMinutes = 0;
+        } else if (fractionalMinutes >= 30) {
+            paidMinutes += 30;
+            discardedMinutes = fractionalMinutes - 30;
+        } else {
+            discardedMinutes = fractionalMinutes;
+        }
+
+        steps.push(`${remainingMinutes} min = ${fullHours}h + ${fractionalMinutes} min`);
+        steps.push(`Redondeo fracción: ${fractionalMinutes} min → ${paidMinutes - (fullHours * 60)} min`);
+    }
+
+    steps.push(`Total a pagar: ${paidMinutes} min (${paidMinutes / 60}h)`);
+    steps.push(`Descartados: ${discardedMinutes} min`);
+
+    return {
+        paidOvertimeMinutes: paidMinutes,
+        paidOvertimeHours: paidMinutes / 60,
+        previousBalance: timeBankBalance,
+        minutesUsedToPayDebt,
+        newBalance,
+        discardedMinutes,
+        processingSteps: steps,
+    };
+}
+
+/**
+ * Registra tiempo en la bolsa de horas (para deuda por salir temprano, etc.)
+ *
+ * @param currentBalance - Balance actual
+ * @param minutesToAdd - Minutos a agregar (positivo = favor, negativo = deuda)
+ * @returns Nuevo balance
+ */
+export function updateTimeBankBalance(
+    currentBalance: number,
+    minutesToAdd: number
+): number {
+    return currentBalance + minutesToAdd;
 }
 
 // =========================================================================
@@ -954,5 +1162,237 @@ export function validateIncidenceRequest(params: {
     return {
         valid: errors.length === 0,
         errors
+    };
+}
+
+// =========================================================================
+// DETERMINACIÓN DE ESTADO DEL DÍA - REGLA DE ORO
+// =========================================================================
+
+/**
+ * Estado de un marcaje (entrada o salida)
+ */
+export type PunchStatus = 'on_time' | 'late' | 'early' | 'justified' | 'missing';
+
+/**
+ * Estado final del día para nómina
+ */
+export type FinalDayStatus =
+    | 'worked_complete'      // Día trabajado completo (ASI)
+    | 'worked_with_tardiness' // Día trabajado con retardo (ASI + RET)
+    | 'absence_unjustified'  // Falta injustificada (FINJ)
+    | 'absence_justified'    // Permiso/Incidencia aprobada
+    | 'pending_justification'; // Pendiente de justificar
+
+/**
+ * Datos de entrada y salida del día
+ */
+export type DayPunchData = {
+    // Estado de entrada
+    entryStatus: PunchStatus;
+    entryIsJustified: boolean;
+
+    // Estado de salida
+    exitStatus: PunchStatus;
+    exitIsJustified: boolean;
+
+    // Si hay incidencia aprobada que cubre el día
+    hasApprovedIncidence: boolean;
+    incidenceType?: IncidenceType;
+};
+
+/**
+ * Resultado de la evaluación del día
+ */
+export type DayStatusResult = {
+    status: FinalDayStatus;
+    primaryNomipaqCode: string;
+    additionalCodes: string[];
+    hasTardiness: boolean;
+    hasEarlyDeparture: boolean;
+    isFault: boolean;               // Si el día cuenta como falta
+    requiresAction: boolean;        // Si requiere acción del jefe
+    explanation: string;
+};
+
+/**
+ * Determina el estado final de un día para efectos de nómina
+ *
+ * REGLA DE ORO - Día Trabajado Completo SOLO si:
+ * - (Entrada OK + Salida OK)
+ * - (Entrada OK + Salida Justificada)
+ * - (Retardo Justificado + Salida OK)
+ * - (Retardo Justificado + Salida Justificada)
+ *
+ * ESCENARIOS DE CONFLICTO:
+ * - Retardo Justificado + Salida Injustificada = FALTA
+ * - Entrada OK + Salida Injustificada = FALTA
+ * - Retardo Injustificado + Salida OK/Justificada = RETARDO (no falta)
+ * - Retardo Injustificado + Salida Injustificada = FALTA
+ *
+ * PRIORIDAD: La FALTA siempre domina sobre el día trabajado
+ *
+ * @param dayData - Datos de entrada y salida del día
+ * @returns Resultado con estado y códigos de nómina
+ *
+ * @example
+ * // Entrada tarde justificada + Salida temprano injustificada = FALTA
+ * determineDayStatus({
+ *   entryStatus: 'late',
+ *   entryIsJustified: true,
+ *   exitStatus: 'early',
+ *   exitIsJustified: false,
+ *   hasApprovedIncidence: false
+ * })
+ * // → { status: 'absence_unjustified', primaryNomipaqCode: '1FINJ', isFault: true }
+ */
+export function determineDayStatus(dayData: DayPunchData): DayStatusResult {
+    // Caso 1: Hay incidencia aprobada que cubre el día
+    if (dayData.hasApprovedIncidence && dayData.incidenceType) {
+        const incidenceCodeMap: Record<IncidenceType, { code: string; name: string }> = {
+            vacation: { code: 'VAC', name: 'Vacaciones' },
+            sick_leave: { code: 'INC', name: 'Incapacidad' },
+            personal_leave: { code: '1PCS', name: 'Permiso con sueldo' },
+            maternity: { code: 'INC', name: 'Maternidad' },
+            paternity: { code: '1PCS', name: 'Paternidad' },
+            bereavement: { code: '1PCS', name: 'Duelo' },
+            unjustified_absence: { code: '1FINJ', name: 'Falta injustificada' },
+        };
+
+        const incidenceInfo = incidenceCodeMap[dayData.incidenceType];
+        return {
+            status: 'absence_justified',
+            primaryNomipaqCode: incidenceInfo.code,
+            additionalCodes: [],
+            hasTardiness: false,
+            hasEarlyDeparture: false,
+            isFault: dayData.incidenceType === 'unjustified_absence',
+            requiresAction: false,
+            explanation: `Día cubierto por ${incidenceInfo.name}`,
+        };
+    }
+
+    // Caso 2: Falta algún marcaje (entrada o salida)
+    if (dayData.entryStatus === 'missing' || dayData.exitStatus === 'missing') {
+        const missingEntry = dayData.entryStatus === 'missing';
+        const missingExit = dayData.exitStatus === 'missing';
+        const bothMissing = missingEntry && missingExit;
+
+        // Si alguno está justificado, el otro determina el estado
+        if (bothMissing) {
+            if (dayData.entryIsJustified && dayData.exitIsJustified) {
+                return {
+                    status: 'worked_complete',
+                    primaryNomipaqCode: 'ASI',
+                    additionalCodes: [],
+                    hasTardiness: false,
+                    hasEarlyDeparture: false,
+                    isFault: false,
+                    requiresAction: false,
+                    explanation: 'Ambos marcajes faltantes justificados',
+                };
+            }
+            return {
+                status: 'pending_justification',
+                primaryNomipaqCode: '1FINJ',
+                additionalCodes: [],
+                hasTardiness: false,
+                hasEarlyDeparture: false,
+                isFault: true,
+                requiresAction: true,
+                explanation: 'Faltan ambos marcajes - pendiente de justificar',
+            };
+        }
+
+        // Solo falta uno
+        if (missingEntry && !dayData.entryIsJustified) {
+            return {
+                status: 'pending_justification',
+                primaryNomipaqCode: '1FINJ',
+                additionalCodes: [],
+                hasTardiness: false,
+                hasEarlyDeparture: false,
+                isFault: true,
+                requiresAction: true,
+                explanation: 'Falta marcaje de entrada - pendiente de justificar',
+            };
+        }
+
+        if (missingExit && !dayData.exitIsJustified) {
+            return {
+                status: 'pending_justification',
+                primaryNomipaqCode: '1FINJ',
+                additionalCodes: [],
+                hasTardiness: false,
+                hasEarlyDeparture: false,
+                isFault: true,
+                requiresAction: true,
+                explanation: 'Falta marcaje de salida - pendiente de justificar',
+            };
+        }
+    }
+
+    // Caso 3: Evaluar combinación de entrada y salida
+    const entryOK = dayData.entryStatus === 'on_time' ||
+        (dayData.entryStatus === 'late' && dayData.entryIsJustified);
+
+    const exitOK = dayData.exitStatus === 'on_time' ||
+        (dayData.exitStatus === 'early' && dayData.exitIsJustified);
+
+    const hasUnjustifiedTardiness = dayData.entryStatus === 'late' && !dayData.entryIsJustified;
+    const hasUnjustifiedEarlyDeparture = dayData.exitStatus === 'early' && !dayData.exitIsJustified;
+
+    // REGLA: Salida temprano injustificada = FALTA (siempre)
+    if (hasUnjustifiedEarlyDeparture) {
+        return {
+            status: 'absence_unjustified',
+            primaryNomipaqCode: '1FINJ',
+            additionalCodes: hasUnjustifiedTardiness ? ['1RET'] : [],
+            hasTardiness: hasUnjustifiedTardiness,
+            hasEarlyDeparture: true,
+            isFault: true,
+            requiresAction: false, // Ya se registró como falta
+            explanation: 'Salida temprano injustificada - día se marca como FALTA',
+        };
+    }
+
+    // REGLA: Retardo injustificado + Salida OK/Justificada = Solo retardo (no falta)
+    if (hasUnjustifiedTardiness && exitOK) {
+        return {
+            status: 'worked_with_tardiness',
+            primaryNomipaqCode: 'ASI',
+            additionalCodes: ['1RET'],
+            hasTardiness: true,
+            hasEarlyDeparture: false,
+            isFault: false,
+            requiresAction: false,
+            explanation: 'Día trabajado con retardo injustificado',
+        };
+    }
+
+    // REGLA: Entrada OK + Salida OK = Día completo
+    if (entryOK && exitOK) {
+        return {
+            status: 'worked_complete',
+            primaryNomipaqCode: 'ASI',
+            additionalCodes: [],
+            hasTardiness: false,
+            hasEarlyDeparture: false,
+            isFault: false,
+            requiresAction: false,
+            explanation: 'Día trabajado completo',
+        };
+    }
+
+    // Caso por defecto: algo está pendiente
+    return {
+        status: 'pending_justification',
+        primaryNomipaqCode: '1FINJ',
+        additionalCodes: [],
+        hasTardiness: hasUnjustifiedTardiness,
+        hasEarlyDeparture: hasUnjustifiedEarlyDeparture,
+        isFault: true,
+        requiresAction: true,
+        explanation: 'Estado del día pendiente de resolver',
     };
 }

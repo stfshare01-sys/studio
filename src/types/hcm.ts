@@ -119,6 +119,16 @@ export type Position = {
     departmentId?: string;          // Referencia a departments/{id}
     level: number;                  // Nivel jerárquico (1 = director, 2 = gerente, etc.)
 
+    // Configuración de horas extras
+    canEarnOvertime: boolean;       // Si el puesto puede generar horas extras pagadas
+    // Si false: minutos extra solo saldan deuda en bolsa de horas, luego se descartan
+
+    // Permisos de aprobación
+    canApproveOvertime?: boolean;   // Puede aprobar horas extras de subordinados
+    canApproveIncidences?: boolean; // Puede aprobar incidencias de subordinados
+    canApproveTardiness?: boolean;  // Puede justificar retardos de subordinados
+    canApproveEarlyDepartures?: boolean; // Puede justificar salidas tempranas de subordinados
+    canApproveMissingPunches?: boolean;  // Puede justificar marcajes faltantes de subordinados
     // Permisos especiales
     canApproveOvertime?: boolean;   // Puede aprobar horas extras
     canApproveIncidences?: boolean; // Puede aprobar incidencias
