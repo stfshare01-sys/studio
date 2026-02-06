@@ -338,7 +338,14 @@ export default function RolesPage() {
       if (!firestore) return;
       try {
         const allRoles = await getAllRoles(firestore);
-        setRoles(allRoles);
+        // Client-side deduplication to ensure unique keys
+        const uniqueRolesMap = new Map();
+        allRoles.forEach(role => {
+          if (!uniqueRolesMap.has(role.id)) {
+            uniqueRolesMap.set(role.id, role);
+          }
+        });
+        setRoles(Array.from(uniqueRolesMap.values()));
       } catch (error) {
         console.error("Error loading roles:", error);
         toast({

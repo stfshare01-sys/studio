@@ -64,7 +64,9 @@ export async function createEmployee(
         if (payload.nss) employeeData.nss = payload.nss;
         if (payload.clabe) employeeData.clabe = payload.clabe;
         if (payload.costCenter) employeeData.costCenter = payload.costCenter;
+        if (payload.costCenter) employeeData.costCenter = payload.costCenter;
         if (payload.allowTimeForTime !== undefined) employeeData.allowTimeForTime = payload.allowTimeForTime;
+        if (payload.shiftId) employeeData.customShiftId = payload.shiftId;
 
         await setDoc(employeeRef, employeeData, {});
 

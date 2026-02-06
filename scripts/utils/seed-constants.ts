@@ -279,6 +279,7 @@ export const INCIDENCE_TYPES = [
     { value: 'vacation', label: 'Vacaciones', probability: 0.15 },
     { value: 'bereavement_leave', label: 'Permiso por Duelo', probability: 0.1 },
     { value: 'paternity_leave', label: 'Permiso de Paternidad', probability: 0.05 },
+    { value: 'unjustified_absence', label: 'Falta Injustificada', probability: 0.1 },
 ] as const;
 
 // =============================================================================

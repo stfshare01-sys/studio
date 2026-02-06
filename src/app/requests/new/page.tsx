@@ -36,6 +36,9 @@ import {
     isValidNumber,
     isValidEmail,
 } from "@/components/form-fields";
+// Import incidence form
+import { NewIncidenceForm } from "@/components/hcm/new-incidence-form";
+import { SYSTEM_TEMPLATES } from "@/lib/system-templates";
 
 const ALLOWED_FILE_TYPES = [
     'image/jpeg',
@@ -135,7 +138,22 @@ function NewRequestPageContent() {
 
     const firestore = useFirestore();
     const templatesRef = useMemoFirebase(() => collection(firestore, 'request_templates'), [firestore]);
-    const { data: allTemplates } = useCollection<Template>(templatesRef);
+    const { data: firestoreTemplates } = useCollection<Template>(templatesRef);
+
+    // Merge Firestore templates with System templates (fallbacks)
+    const allTemplates = useMemo(() => {
+        const dbTemplates = firestoreTemplates || [];
+        const merged = [...dbTemplates];
+
+        SYSTEM_TEMPLATES.forEach(sysTpl => {
+            // Only add system template if not already present in DB (DB takes precedence)
+            if (!merged.find(t => t.id === sysTpl.id)) {
+                merged.push(sysTpl);
+            }
+        });
+        return merged;
+    }, [firestoreTemplates]);
+
     const usersQuery = useMemoFirebase(() => collection(firestore, 'users'), [firestore]);
     const { data: users } = useCollection<User>(usersQuery);
 
@@ -770,6 +788,29 @@ function NewRequestPageContent() {
                             )}
 
                             {selectedTemplate && (() => {
+                                // Check if this is an Incidence template (Vacation, Leave, etc.)
+                                const isIncidenceTemplate = ['vacaciones', 'permiso', 'incapacidad', 'ausencia'].some(type =>
+                                    selectedTemplate.name.toLowerCase().includes(type)
+                                );
+
+                                if (isIncidenceTemplate && user) {
+                                    return (
+                                        <div className="border-t pt-6">
+                                            <NewIncidenceForm
+                                                userId={user.uid}
+                                                targetUserId={requestOnBehalfOf || user.uid}
+                                                onSuccess={() => {
+                                                    // Router push handled by component or we can add it here
+                                                    router.push('/hcm/incidences');
+                                                }}
+                                                onCancel={() => {
+                                                    setSelectedTemplateId(undefined);
+                                                }}
+                                            />
+                                        </div>
+                                    );
+                                }
+
                                 const fieldLayout = selectedTemplate.fieldLayout || [];
                                 const hasLayout = fieldLayout.length > 0;
 

@@ -4,7 +4,7 @@
       "Bash(git fetch:*)",
       "Bash(npm run typecheck:*)",
       "Bash(npx tsc:*)",
-      "Bash(./node_modules/.bin/tsc:*)"
+      "Bash(./node_modules/.bin/tsc:*)",
       "Bash(tree:*)",
       "Bash(find:*)",
       "Bash(grep:*)",

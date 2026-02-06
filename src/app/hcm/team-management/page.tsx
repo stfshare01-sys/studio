@@ -52,7 +52,8 @@ import {
     Gavel,
     CheckCircle2,
     Calculator,
-    Lock
+    Lock,
+    History
 } from 'lucide-react';
 
 import {
@@ -68,12 +69,14 @@ import {
     rejectOvertimeRequest,
     assignShift,
     getTeamShiftAssignments,
+    getEmployeeShiftHistory,
     cancelShiftAssignment,
     getAttendanceImportBatches,
     getAvailableShifts,
-    markEarlyDepartureUnjustified
+    markEarlyDepartureUnjustified,
+    getTeamMissingPunches
 } from '@/firebase/actions/team-actions';
-import { justifyTardiness, markTardinessUnjustified } from '@/firebase/actions/incidence-actions';
+import { justifyTardiness, markTardinessUnjustified, justifyMissingPunch } from '@/firebase/actions/incidence-actions';
 import { runGlobalSLAProcessing } from '@/firebase/actions/sla-actions';
 import { migrateManagerIdField } from '@/firebase/actions/employee-actions';
 import { getTeamHourBanks, getHourBankMovements, formatHourBankBalance, manualHourBankAdjustment, formatMinutesToReadable } from '@/firebase/actions/hour-bank-actions';
@@ -119,6 +122,7 @@ export default function TeamManagementPage() {
     // Advanced Filters
     const [searchTerm, setSearchTerm] = useState('');
     const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'justified'>('all');
+    const [selectedEmployeeFilter, setSelectedEmployeeFilter] = useState<string>('all'); // Filtro por empleado
 
     // Data states
     const [employees, setEmployees] = useState<Employee[]>([]);
@@ -132,6 +136,11 @@ export default function TeamManagementPage() {
     const [overtimeStats, setOvertimeStats] = useState({ pending: 0, approved: 0, rejected: 0, partial: 0, totalHoursApproved: 0, totalHoursPending: 0 });
     const [hourBanks, setHourBanks] = useState<HourBank[]>([]);
     const [hourBankMovements, setHourBankMovements] = useState<HourBankMovement[]>([]);
+    const [hourBankAdjustment, setHourBankAdjustment] = useState({ hours: 0, reason: '' });
+    const [providedEntryTime, setProvidedEntryTime] = useState('');
+    const [providedExitTime, setProvidedExitTime] = useState('');
+    const [missingPunches, setMissingPunches] = useState<any[]>([]); // MissingPunchRecord[]
+
 
     // Global Access State
     const [selectedManagerId, setSelectedManagerId] = useState<string>('');
@@ -150,6 +159,9 @@ export default function TeamManagementPage() {
     const [importBatches, setImportBatches] = useState<AttendanceImportBatch[]>([]);
     const [selectedBatchId, setSelectedBatchId] = useState<string>('all');
     const [selectedShiftFilter, setSelectedShiftFilter] = useState<ShiftType | 'all'>('all');
+
+    const [shiftHistoryDialog, setShiftHistoryDialog] = useState<{ open: boolean; employee?: Employee }>({ open: false });
+    const [shiftHistory, setShiftHistory] = useState<ShiftAssignment[]>([]);
 
     // Fetch positions for configuration checks
     const positionsQuery = useMemoFirebase(() => {
@@ -185,6 +197,11 @@ export default function TeamManagementPage() {
     const [shiftDialog, setShiftDialog] = useState<{ open: boolean; employee?: Employee }>({ open: false });
     const [cancelShiftDialog, setCancelShiftDialog] = useState<{ open: boolean; assignment?: ShiftAssignment }>({ open: false });
     const [hourBankDialog, setHourBankDialog] = useState<{ open: boolean; employee?: Employee }>({ open: false });
+    const [justifyMissingPunchDialog, setJustifyMissingPunchDialog] = useState<{
+        open: boolean;
+        punch?: any; // MissingPunchRecord
+        employeeName?: string;
+    }>({ open: false });
 
     // Form states
     const [justificationReason, setJustificationReason] = useState('');
@@ -330,6 +347,13 @@ export default function TeamManagementPage() {
                         }
                     }
                     break;
+
+                case 'missing-punches':
+                    const punchesResult = await getTeamMissingPunches(managerToUse, dateFilter);
+                    if (punchesResult.success && punchesResult.records) {
+                        setMissingPunches(punchesResult.records);
+                    }
+                    break;
             }
         } catch (error) {
             console.error('Error loading tab data:', error);
@@ -385,13 +409,15 @@ export default function TeamManagementPage() {
                     departuresResult,
                     overtimeResult,
                     monthlyStatsResult,
-                    dailyStatsResult
+                    dailyStatsResult,
+                    missingPunchesResult
                 ] = await Promise.all([
                     getTeamTardiness(managerIdToUse, dateFilter),
                     getTeamEarlyDepartures(managerIdToUse, dateFilter),
                     getTeamOvertimeRequests(managerIdToUse, 'all'),
                     getTeamMonthlyStats(managerIdToUse, ...dateFilter.split('-').map(Number) as [number, number]),
-                    getTeamDailyStats(managerIdToUse, selectedDate)
+                    getTeamDailyStats(managerIdToUse, selectedDate),
+                    getTeamMissingPunches(managerIdToUse, dateFilter)
                 ]);
 
                 // Set all data states
@@ -400,6 +426,9 @@ export default function TeamManagementPage() {
                 }
                 if (departuresResult.success && departuresResult.records) {
                     setEarlyDepartures(departuresResult.records);
+                }
+                if (missingPunchesResult.success && missingPunchesResult.records) {
+                    setMissingPunches(missingPunchesResult.records);
                 }
                 if (overtimeResult.success) {
                     setOvertimeRequests(overtimeResult.requests || []);
@@ -714,6 +743,48 @@ export default function TeamManagementPage() {
         }
     };
 
+    const handleViewShiftHistory = async (employee: Employee) => {
+        setShiftHistoryDialog({ open: true, employee });
+        setShiftHistory([]);
+        const result = await getEmployeeShiftHistory(employee.id);
+        if (result.success && result.history) {
+            setShiftHistory(result.history);
+        }
+    };
+
+    const getCurrentShift = (employee: Employee) => {
+        // 1. Check for active temporary assignments covering today
+        const today = new Date().toISOString().split('T')[0];
+        // Sort by start date desc to get latest
+        const activeAssignment = shiftAssignments
+            .filter(a =>
+                a.employeeId === employee.id &&
+                a.status === 'active' &&
+                a.startDate <= today &&
+                (!a.endDate || a.endDate >= today)
+            )
+            .sort((a, b) => b.startDate.localeCompare(a.startDate))[0];
+
+        if (activeAssignment) {
+            return {
+                name: activeAssignment.newShiftName,
+                isTemp: activeAssignment.assignmentType === 'temporary', // It could be permanent too if permanent assignment is stored as 'active'
+                isOverride: true
+            };
+        }
+
+        // 2. Fallback to employee's permanent shift (customShiftId)
+        if (employee.customShiftId) {
+            const customShift = shifts.find(s => s.id === employee.customShiftId);
+            if (customShift) return { name: customShift.name, isTemp: false, isOverride: false };
+        }
+
+        // 3. Fallback to legacy shiftType
+        const legacyName = employee.shiftType === 'diurnal' ? 'Diurno' :
+            employee.shiftType === 'nocturnal' ? 'Nocturno' : 'Mixto';
+        return { name: legacyName, isTemp: false, isOverride: false };
+    };
+
 
 
 
@@ -723,12 +794,13 @@ export default function TeamManagementPage() {
 
         // Confirmar acción
         const confirmed = window.confirm(
-            '¿Estás seguro de cerrar el período y consolidar?\\n\\n' +
-            'Este proceso:\\n' +
-            '1. Validará que no haya incidencias pendientes\\n' +
-            '2. Ejecutará SLA para infracciones no justificadas\\n' +
-            '3. Consolidará la prenómina del período\\n' +
-            '4. Marcará tu revisión como completa\\n\\n' +
+            '¿Estás seguro de cerrar el período y consolidar?\n\n' +
+            'Este proceso:\n' +
+            '1. Auto-rechazará HE pendientes\n' +
+            '2. Auto-injustificará retardos sin bitácora\n' +
+            '3. Auto-marcará faltas por salidas tempranas injustificadas\n' +
+            '4. Auto-marcará faltas por marcajes faltantes\n' +
+            '5. Generará archivo NOMIPAQ para exportación\n\n' +
             'Esta acción no se puede deshacer.'
         );
 
@@ -740,85 +812,62 @@ export default function TeamManagementPage() {
             // Calcular rango de fechas del período actual
             const periodStart = format(startOfMonth(new Date(selectedMonth)), 'yyyy-MM-dd');
             const periodEnd = format(endOfMonth(new Date(selectedMonth)), 'yyyy-MM-dd');
+            const period = `${periodStart}_${periodEnd}`;
 
-            // 1. Validar incidencias pendientes
+            // Ejecutar consolidación de período
             toast({
-                title: "Validando incidencias",
-                description: "Verificando que no haya incidencias pendientes...",
-            });
-
-            const pendingIncidences = await getPendingIncidences(periodStart, periodEnd);
-
-            if (pendingIncidences.length > 0) {
-                toast({
-                    title: "Incidencias pendientes",
-                    description: `Existen ${pendingIncidences.length} incidencias pendientes de aprobar/rechazar en este período. Por favor, revísalas antes de continuar.`,
-                    variant: "destructive"
-                });
-                setClosingPeriod(false);
-                return;
-            }
-
-            // 2. Ejecutar SLA
-            toast({
-                title: "Ejecutando SLA",
-                description: "Procesando infracciones no justificadas...",
-            });
-
-            const slaResult = await runGlobalSLAProcessing(user.uid, user.role as string, user.customRoleId);
-
-            if (!slaResult.success) {
-                throw new Error(slaResult.error || 'Error al ejecutar SLA');
-            }
-
-            // 3. Consolidar prenómina
-            toast({
-                title: "Consolidando prenómina",
-                description: "Generando registros de prenómina...",
+                title: "Consolidando período",
+                description: "Procesando incidencias pendientes y generando pre-nómina...",
             });
 
             const consolidateResult = await callConsolidatePrenomina({
-                periodStart,
-                periodEnd,
-                periodType: 'monthly' // Asumiendo período mensual, ajustar si es necesario
+                period,
+                closedBy: user.uid
             });
 
             if (!consolidateResult.success) {
-                throw new Error(consolidateResult.errors?.[0]?.message || 'Error al consolidar');
+                throw new Error('Error al consolidar período');
             }
 
-            // 4. Marcar revisión como completa
+            // Marcar revisión como completa
             const currentPeriod = selectedMonth;
             await setDoc(doc(firestore, 'period_closures', `${user.uid}_${currentPeriod}`), {
                 managerId: user.uid,
                 managerName: user.fullName || user.email,
                 period: currentPeriod,
                 closedAt: new Date().toISOString(),
-                pendingInfractionsCount: 0
+                summary: consolidateResult.summary,
+                prenominaUrl: consolidateResult.prenominaUrl
             });
-
-            // Completar la tarea de RH
-            const taskId = `MANAGER_${user.uid}_infractions`;
-            const taskRef = doc(firestore, 'tasks', taskId);
-
-            try {
-                await updateDoc(taskRef, {
-                    status: 'completed',
-                    updatedAt: new Date().toISOString()
-                });
-            } catch (taskError) {
-                // Si la tarea no existe, no es crítico
-                console.log('Task not found or already completed:', taskError);
-            }
 
             setPeriodClosed(true);
 
             // Toast de éxito con resumen
+            const { summary } = consolidateResult;
             toast({
                 title: "Período cerrado exitosamente",
-                description: `Se procesaron ${slaResult.stats?.processedTardiness || 0} retardos y ${slaResult.stats?.processedDepartures || 0} salidas tempranas. Se generaron ${consolidateResult.recordIds?.length || 0} registros de prenómina.`,
-                variant: "default"
+                description: (
+                    `Resumen:\n` +
+                    `• ${summary.overtimeRejected} HE rechazadas\n` +
+                    `• ${summary.tardinessMarked} retardos injustificados\n` +
+                    `• ${summary.earlyDeparturesMarked} salidas tempranas procesadas\n` +
+                    `• ${summary.missingPunchesMarked} marcajes faltantes procesados\n` +
+                    `• ${summary.faultsMarked} faltas marcadas\n\n` +
+                    `Archivo NOMIPAQ generado.`
+                ),
+                variant: "default",
+                duration: 10000,
             });
+
+            // Preguntar si desea descargar el archivo NOMIPAQ
+            const download = window.confirm(
+                '¿Deseas descargar el archivo NOMIPAQ ahora?\n\n' +
+                'El archivo estará disponible por 7 días.'
+            );
+
+            if (download) {
+                window.open(consolidateResult.prenominaUrl, '_blank');
+            }
 
         } catch (error) {
             console.error('Error closing period:', error);
@@ -832,6 +881,142 @@ export default function TeamManagementPage() {
         }
     };
 
+    // Missing Punches Handlers
+    const handleJustifyMissingPunch = async () => {
+        if (!justifyMissingPunchDialog.punch || !user) return;
+
+        const punch = justifyMissingPunchDialog.punch;
+        const employee = employees.find(e => e.id === punch.employeeId);
+
+        if (!employee) {
+            toast({
+                title: "Error",
+                description: "No se encontró el empleado",
+                variant: "destructive"
+            });
+            return;
+        }
+
+        // Validar que se haya proporcionado al menos una hora
+        if (!providedEntryTime && !providedExitTime) {
+            toast({
+                title: "Error",
+                description: "Debes proporcionar al menos una hora (entrada o salida)",
+                variant: "destructive"
+            });
+            return;
+        }
+
+        setSubmitting(true);
+        try {
+            // Obtener horarios del shift del empleado desde shiftAssignments
+            const employeeAssignment = shiftAssignments.find(sa =>
+                sa.employeeId === punch.employeeId &&
+                sa.status === 'active'
+            );
+
+            if (!employeeAssignment) {
+                throw new Error('No se encontró asignación de turno activa para el empleado');
+            }
+
+            const shift = shifts.find(s => s.id === employeeAssignment.newShiftId);
+            if (!shift) {
+                throw new Error('No se encontró el turno del empleado');
+            }
+
+            const result = await justifyMissingPunch(
+                punch.id,
+                justificationReason || 'Justificado por manager',
+                providedEntryTime || undefined,
+                providedExitTime || undefined,
+                shift.startTime,
+                shift.endTime,
+                user.id || '',
+                user.fullName || user.email || '',
+                10 // toleranceMinutes - TODO: obtener de location
+            );
+
+            if (result.success) {
+                toast({
+                    title: "Marcaje justificado",
+                    description: result.generatedTardinessId || result.generatedEarlyDepartureId
+                        ? "Se generó un registro de retardo/salida temprana automáticamente"
+                        : "El marcaje fue justificado exitosamente",
+                });
+
+                setJustifyMissingPunchDialog({ open: false });
+                setJustificationReason('');
+                setProvidedEntryTime('');
+                setProvidedExitTime('');
+
+                // Recargar datos
+                loadTabData('missing-punches');
+            } else {
+                throw new Error(result.error || 'Error al justificar marcaje');
+            }
+        } catch (error) {
+            console.error('Error justifying missing punch:', error);
+            toast({
+                title: "Error",
+                description: error instanceof Error ? error.message : "No se pudo justificar el marcaje",
+                variant: "destructive"
+            });
+        } finally {
+            setSubmitting(false);
+        }
+    };
+
+    const handleMarkMissingPunchAsFault = async (punch: any) => {
+        if (!user || !firestore) return;
+
+        const confirmed = window.confirm(
+            '¿Estás seguro de marcar este marcaje faltante como FALTA?\n\n' +
+            'Esta acción generará una falta injustificada para el empleado.'
+        );
+
+        if (!confirmed) return;
+
+        setSubmitting(true);
+        try {
+            const punchRef = doc(firestore, 'missing_punches', punch.id);
+
+            await updateDoc(punchRef, {
+                resultedInAbsence: true,
+                processedAt: new Date().toISOString(),
+                processedBy: user.id,
+                updatedAt: new Date().toISOString(),
+            });
+
+            // Si existe attendanceRecordId, marcar como falta
+            if (punch.attendanceRecordId) {
+                const attendanceRef = doc(firestore, 'attendance', punch.attendanceRecordId);
+                await updateDoc(attendanceRef, {
+                    status: 'absence_unjustified',
+                    nomipaqCode: '1FINJ',
+                    updatedAt: new Date().toISOString(),
+                });
+            }
+
+            toast({
+                title: "Marcaje marcado como falta",
+                description: "El marcaje faltante se marcó como falta injustificada",
+            });
+
+            // Recargar datos
+            loadTabData('missing-punches');
+
+        } catch (error) {
+            console.error('Error marking missing punch as fault:', error);
+            toast({
+                title: "Error",
+                description: error instanceof Error ? error.message : "No se pudo marcar como falta",
+                variant: "destructive"
+            });
+        } finally {
+            setSubmitting(false);
+        }
+    };
+
 
     // Computed values
     const pendingTardiness = tardiness.filter(t => !t.isJustified);
@@ -840,7 +1025,8 @@ export default function TeamManagementPage() {
 
     // Filter employees by shift in the list
     const filteredEmployees = employees.filter(emp =>
-        selectedShiftFilter === 'all' || emp.shiftType === selectedShiftFilter
+        (selectedShiftFilter === 'all' || emp.shiftType === selectedShiftFilter) &&
+        (selectedEmployeeFilter === 'all' || emp.id === selectedEmployeeFilter)
     ).filter(emp =>
         !searchTerm || emp.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
         emp.email.toLowerCase().includes(searchTerm.toLowerCase())
@@ -863,7 +1049,8 @@ export default function TeamManagementPage() {
             ((record as any).employeeName || employees.find(e => e.id === record.employeeId)?.fullName || '').toLowerCase().includes(searchTerm.toLowerCase());
         const matchesStatus = statusFilter === 'all' ||
             (statusFilter === 'pending' ? !record.isJustified : record.isJustified);
-        return matchesSearch && matchesStatus && filterByShift(record.employeeId);
+        const matchesEmployee = selectedEmployeeFilter === 'all' || record.employeeId === selectedEmployeeFilter;
+        return matchesSearch && matchesStatus && filterByShift(record.employeeId) && matchesEmployee;
     });
 
     const filteredDepartures = earlyDepartures.filter(record => {
@@ -871,20 +1058,26 @@ export default function TeamManagementPage() {
             (record.employeeName || '').toLowerCase().includes(searchTerm.toLowerCase());
         const matchesStatus = statusFilter === 'all' ||
             (statusFilter === 'pending' ? !record.isJustified : record.isJustified);
-        return matchesSearch && matchesStatus && filterByShift(record.employeeId);
+        const matchesEmployee = selectedEmployeeFilter === 'all' || record.employeeId === selectedEmployeeFilter;
+        return matchesSearch && matchesStatus && filterByShift(record.employeeId) && matchesEmployee;
     });
 
-    const filteredOvertime = overtimeRequests.filter(r =>
-        filterByShift(r.employeeId)
-    );
+    const filteredOvertime = overtimeRequests.filter(r => {
+        const matchesEmployee = selectedEmployeeFilter === 'all' || r.employeeId === selectedEmployeeFilter;
+        return filterByShift(r.employeeId) && matchesEmployee;
+    });
 
-    const filteredAssignments = shiftAssignments.filter(r =>
-        filterByShift(r.employeeId)
-    );
+    const filteredAssignments = shiftAssignments.filter(r => {
+        const matchesEmployee = selectedEmployeeFilter === 'all' || r.employeeId === selectedEmployeeFilter;
+        return filterByShift(r.employeeId) && matchesEmployee;
+    });
 
-    const filteredMonthlyStats = monthlyStats.filter(stat =>
-        (!searchTerm || stat.employeeName.toLowerCase().includes(searchTerm.toLowerCase())) && filterByShift(stat.employeeId)
-    );
+
+    const filteredMonthlyStats = monthlyStats.filter(stat => {
+        const matchesSearch = !searchTerm || stat.employeeName.toLowerCase().includes(searchTerm.toLowerCase());
+        const matchesEmployee = selectedEmployeeFilter === 'all' || stat.employeeId === selectedEmployeeFilter;
+        return matchesSearch && filterByShift(stat.employeeId) && matchesEmployee;
+    });
 
     // Helper to change date
     const changeDate = (days: number) => {
@@ -1058,7 +1251,14 @@ export default function TeamManagementPage() {
                                 <Badge variant="secondary" className="ml-2">{pendingDepartures.length}</Badge>
                             )}
                         </TabsTrigger>
+                        <TabsTrigger value="missing-punches">
+                            Sin Registro
+                            {missingPunches.filter(p => !p.isJustified).length > 0 && (
+                                <Badge variant="destructive" className="ml-2">{missingPunches.filter(p => !p.isJustified).length}</Badge>
+                            )}
+                        </TabsTrigger>
                         <TabsTrigger value="overtime">
+
                             Horas Extras
                             {pendingOvertime.length > 0 && (
                                 <Badge className="ml-2">{pendingOvertime.length}</Badge>
@@ -1297,6 +1497,19 @@ export default function TeamManagementPage() {
                                             onChange={(e) => setSearchTerm(e.target.value)}
                                             className="w-48"
                                         />
+                                        <Select value={selectedEmployeeFilter} onValueChange={setSelectedEmployeeFilter}>
+                                            <SelectTrigger className="w-48">
+                                                <SelectValue placeholder="Filtrar por empleado" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="all">Todos los empleados</SelectItem>
+                                                {employees.map(emp => (
+                                                    <SelectItem key={emp.id} value={emp.id}>
+                                                        {emp.fullName}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
                                         <Select value={statusFilter} onValueChange={(v: any) => setStatusFilter(v)}>
                                             <SelectTrigger className="w-32">
                                                 <SelectValue placeholder="Estado" />
@@ -1403,6 +1616,19 @@ export default function TeamManagementPage() {
                                             onChange={(e) => setSearchTerm(e.target.value)}
                                             className="w-48"
                                         />
+                                        <Select value={selectedEmployeeFilter} onValueChange={setSelectedEmployeeFilter}>
+                                            <SelectTrigger className="w-48">
+                                                <SelectValue placeholder="Filtrar por empleado" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="all">Todos los empleados</SelectItem>
+                                                {employees.map(emp => (
+                                                    <SelectItem key={emp.id} value={emp.id}>
+                                                        {emp.fullName}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
                                         <Select value={statusFilter} onValueChange={(v: any) => setStatusFilter(v)}>
                                             <SelectTrigger className="w-32">
                                                 <SelectValue placeholder="Estado" />
@@ -1491,7 +1717,131 @@ export default function TeamManagementPage() {
                         </Card>
                     </TabsContent>
 
+                    {/* Missing Punches Tab */}
+                    <TabsContent value="missing-punches">
+                        <Card>
+                            <CardHeader>
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <CardTitle>Marcajes Faltantes</CardTitle>
+                                        <CardDescription>Justifica o marca como falta los registros incompletos de entrada/salida</CardDescription>
+                                    </div>
+                                    <Select value={selectedEmployeeFilter} onValueChange={setSelectedEmployeeFilter}>
+                                        <SelectTrigger className="w-48">
+                                            <SelectValue placeholder="Filtrar por empleado" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="all">Todos los empleados</SelectItem>
+                                            {employees.map(emp => (
+                                                <SelectItem key={emp.id} value={emp.id}>
+                                                    {emp.fullName}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            </CardHeader>
+                            <CardContent>
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead>Fecha</TableHead>
+                                            <TableHead>Empleado</TableHead>
+                                            <TableHead>Tipo Faltante</TableHead>
+                                            <TableHead>Estado</TableHead>
+                                            <TableHead className="text-right">Acciones</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {missingPunches.filter(p => selectedEmployeeFilter === 'all' || p.employeeId === selectedEmployeeFilter).length === 0 ? (
+                                            <TableRow>
+                                                <TableCell colSpan={5} className="text-center text-muted-foreground">
+                                                    Sin marcajes faltantes para los filtros seleccionados
+                                                </TableCell>
+                                            </TableRow>
+                                        ) : (
+                                            missingPunches
+                                                .filter(p => selectedEmployeeFilter === 'all' || p.employeeId === selectedEmployeeFilter)
+                                                .map((punch) => {
+                                                    const employee = employees.find(e => e.id === punch.employeeId);
+                                                    const missingTypeLabels = {
+                                                        entry: 'Entrada',
+                                                        exit: 'Salida',
+                                                        both: 'Ambos'
+                                                    };
+
+                                                    return (
+                                                        <TableRow key={punch.id}>
+                                                            <TableCell>{punch.date}</TableCell>
+                                                            <TableCell>
+                                                                <div className="flex items-center gap-3">
+                                                                    <Avatar className="h-8 w-8">
+                                                                        <AvatarImage src={employee?.avatarUrl} />
+                                                                        <AvatarFallback>{employee?.fullName?.charAt(0)}</AvatarFallback>
+                                                                    </Avatar>
+                                                                    <div>
+                                                                        <div className="font-medium">{employee?.fullName || punch.employeeName}</div>
+                                                                        <div className="text-xs text-muted-foreground">{employee?.email}</div>
+                                                                    </div>
+                                                                </div>
+                                                            </TableCell>
+                                                            <TableCell>
+                                                                <Badge variant="outline">
+                                                                    {missingTypeLabels[punch.missingType as keyof typeof missingTypeLabels]}
+                                                                </Badge>
+                                                            </TableCell>
+                                                            <TableCell>
+                                                                {punch.isJustified ? (
+                                                                    <Badge variant="default">Justificado</Badge>
+                                                                ) : punch.resultedInAbsence ? (
+                                                                    <Badge variant="destructive">Falta</Badge>
+                                                                ) : (
+                                                                    <Badge variant="secondary">Pendiente</Badge>
+                                                                )}
+                                                            </TableCell>
+                                                            <TableCell className="text-right">
+                                                                {!punch.isJustified && !punch.resultedInAbsence && hasPermission(permissions, 'hcm_team_tardiness', 'write') && (
+                                                                    <div className="flex justify-end gap-2">
+                                                                        <Button
+                                                                            variant="ghost"
+                                                                            size="sm"
+                                                                            className="text-destructive hover:text-destructive/90 hover:bg-destructive/10"
+                                                                            disabled={isPeriodClosed || submitting}
+                                                                            onClick={() => handleMarkMissingPunchAsFault(punch)}
+                                                                        >
+                                                                            Marcar Falta
+                                                                        </Button>
+                                                                        <Button
+                                                                            size="sm"
+                                                                            disabled={isPeriodClosed || submitting}
+                                                                            onClick={() => {
+                                                                                setJustifyMissingPunchDialog({
+                                                                                    open: true,
+                                                                                    punch,
+                                                                                    employeeName: employee?.fullName || punch.employeeName
+                                                                                });
+                                                                                setJustificationReason('');
+                                                                                setProvidedEntryTime('');
+                                                                                setProvidedExitTime('');
+                                                                            }}
+                                                                        >
+                                                                            Justificar
+                                                                        </Button>
+                                                                    </div>
+                                                                )}
+                                                            </TableCell>
+                                                        </TableRow>
+                                                    );
+                                                })
+                                        )}
+                                    </TableBody>
+                                </Table>
+                            </CardContent>
+                        </Card>
+                    </TabsContent>
+
                     {/* Overtime Tab */}
+
                     <TabsContent value="overtime">
                         <Card>
                             <CardHeader>
@@ -1504,6 +1854,19 @@ export default function TeamManagementPage() {
                                         </CardDescription>
                                     </div>
                                     <div className="flex gap-2">
+                                        <Select value={selectedEmployeeFilter} onValueChange={setSelectedEmployeeFilter}>
+                                            <SelectTrigger className="w-48">
+                                                <SelectValue placeholder="Filtrar por empleado" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="all">Todos los empleados</SelectItem>
+                                                {employees.map(emp => (
+                                                    <SelectItem key={emp.id} value={emp.id}>
+                                                        {emp.fullName}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
                                         <Badge variant="default">{overtimeStats.approved} aprobadas</Badge>
                                         <Badge variant="outline">{overtimeStats.pending} pendientes</Badge>
                                         <Badge variant="destructive">{overtimeStats.rejected} rechazadas</Badge>
@@ -1605,8 +1968,25 @@ export default function TeamManagementPage() {
                     <TabsContent value="shifts">
                         <Card>
                             <CardHeader>
-                                <CardTitle>Turnos y Horarios del Equipo</CardTitle>
-                                <CardDescription>Asigna turnos o modifica horarios de tus subordinados</CardDescription>
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <CardTitle>Turnos y Horarios del Equipo</CardTitle>
+                                        <CardDescription>Asigna turnos o modifica horarios de tus subordinados</CardDescription>
+                                    </div>
+                                    <Select value={selectedEmployeeFilter} onValueChange={setSelectedEmployeeFilter}>
+                                        <SelectTrigger className="w-48">
+                                            <SelectValue placeholder="Filtrar por empleado" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="all">Todos los empleados</SelectItem>
+                                            {employees.map(emp => (
+                                                <SelectItem key={emp.id} value={emp.id}>
+                                                    {emp.fullName}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
                             </CardHeader>
                             <CardContent>
                                 <Table>
@@ -1619,43 +1999,55 @@ export default function TeamManagementPage() {
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
-                                        {filteredEmployees.map((employee) => (
-                                            <TableRow key={employee.id}>
-                                                <TableCell>
-                                                    <div className="flex items-center gap-3">
-                                                        <Avatar className="h-8 w-8">
-                                                            <AvatarImage src={employee.avatarUrl} />
-                                                            <AvatarFallback>{employee.fullName?.charAt(0)}</AvatarFallback>
-                                                        </Avatar>
-                                                        <span className="font-medium">{employee.fullName}</span>
-                                                    </div>
-                                                </TableCell>
-                                                <TableCell>{employee.positionTitle}</TableCell>
-                                                <TableCell>
-                                                    <Badge variant="outline">
-                                                        {employee.shiftType === 'diurnal' ? 'Diurno' :
-                                                            employee.shiftType === 'nocturnal' ? 'Nocturno' : 'Mixto'}
-                                                    </Badge>
-                                                </TableCell>
-                                                <TableCell className="text-right">
-                                                    <div className="flex gap-2 justify-end">
-                                                        {hasPermission(permissions, 'hcm_team_shifts', 'write') && (
+                                        {filteredEmployees.map((employee) => {
+                                            const currentShift = getCurrentShift(employee);
+                                            return (
+                                                <TableRow key={employee.id}>
+                                                    <TableCell>
+                                                        <div className="flex items-center gap-3">
+                                                            <Avatar className="h-8 w-8">
+                                                                <AvatarImage src={employee.avatarUrl} />
+                                                                <AvatarFallback>{employee.fullName?.charAt(0)}</AvatarFallback>
+                                                            </Avatar>
+                                                            <span className="font-medium">{employee.fullName}</span>
+                                                        </div>
+                                                    </TableCell>
+                                                    <TableCell>{employee.positionTitle}</TableCell>
+                                                    <TableCell>
+                                                        <div className="flex flex-col">
+                                                            <Badge variant={currentShift.isOverride ? (currentShift.isTemp ? "secondary" : "default") : "outline"} className="w-fit">
+                                                                {currentShift.name}
+                                                            </Badge>
+                                                            {currentShift.isTemp && <span className="text-xs text-muted-foreground mt-1">Temporal</span>}
+                                                        </div>
+                                                    </TableCell>
+                                                    <TableCell className="text-right">
+                                                        <div className="flex gap-2 justify-end">
                                                             <Button
                                                                 size="sm"
-                                                                variant="outline"
-                                                                onClick={() => {
-                                                                    setShiftDialog({ open: true, employee });
-                                                                    setShiftForm({ shiftId: '', type: 'temporary', startDate: new Date().toISOString().split('T')[0], endDate: '', reason: '' });
-                                                                }}
+                                                                variant="ghost"
+                                                                onClick={() => handleViewShiftHistory(employee)}
                                                             >
-                                                                <CalendarDays className="h-4 w-4 mr-1" />
-                                                                Asignar Turno
+                                                                <History className="h-4 w-4 mr-1" />
                                                             </Button>
-                                                        )}
-                                                    </div>
-                                                </TableCell>
-                                            </TableRow>
-                                        ))}
+                                                            {hasPermission(permissions, 'hcm_team_shifts', 'write') && (
+                                                                <Button
+                                                                    size="sm"
+                                                                    variant="outline"
+                                                                    onClick={() => {
+                                                                        setShiftDialog({ open: true, employee });
+                                                                        setShiftForm({ shiftId: '', type: 'temporary', startDate: new Date().toISOString().split('T')[0], endDate: '', reason: '' });
+                                                                    }}
+                                                                >
+                                                                    <CalendarDays className="h-4 w-4 mr-1" />
+                                                                    Asignar Turno
+                                                                </Button>
+                                                            )}
+                                                        </div>
+                                                    </TableCell>
+                                                </TableRow>
+                                            );
+                                        })}
                                     </TableBody>
                                 </Table>
                             </CardContent>
@@ -1671,14 +2063,19 @@ export default function TeamManagementPage() {
                                 <CardHeader>
                                     <div className="flex items-center justify-between">
                                         <CardTitle>Bolsa de Horas del Equipo</CardTitle>
-                                        <div className="flex items-center gap-2">
-                                            <Input
-                                                placeholder="Buscar empleado..."
-                                                value={searchTerm}
-                                                onChange={(e) => setSearchTerm(e.target.value)}
-                                                className="w-48"
-                                            />
-                                        </div>
+                                        <Select value={selectedEmployeeFilter} onValueChange={setSelectedEmployeeFilter}>
+                                            <SelectTrigger className="w-48">
+                                                <SelectValue placeholder="Filtrar por empleado" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="all">Todos los empleados</SelectItem>
+                                                {employees.map(emp => (
+                                                    <SelectItem key={emp.id} value={emp.id}>
+                                                        {emp.fullName}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
                                     </div>
                                     <CardDescription>Gestiona el saldo de horas de tu equipo</CardDescription>
                                 </CardHeader>
@@ -1695,7 +2092,7 @@ export default function TeamManagementPage() {
                                             </TableRow>
                                         </TableHeader>
                                         <TableBody>
-                                            {employees.filter(e => !searchTerm || e.fullName.toLowerCase().includes(searchTerm.toLowerCase())).map((employee) => {
+                                            {employees.filter(e => selectedEmployeeFilter === 'all' || e.id === selectedEmployeeFilter).map((employee) => {
                                                 const hb = hourBanks.find(h => h.employeeId === employee.id);
                                                 const balance = hb?.balanceMinutes || 0;
                                                 const formatted = formatHourBankBalance(balance);
@@ -2132,6 +2529,70 @@ export default function TeamManagementPage() {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+
+            {/* Shift History Dialog */}
+            <Dialog open={shiftHistoryDialog.open} onOpenChange={(open) => setShiftHistoryDialog({ open })}>
+                <DialogContent className="max-w-3xl">
+                    <DialogHeader>
+                        <DialogTitle>Historial de Turnos</DialogTitle>
+                        <DialogDescription>
+                            Historial de asignaciones de turno para {shiftHistoryDialog.employee?.fullName}
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="max-h-[60vh] overflow-y-auto">
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead>Turno</TableHead>
+                                    <TableHead>Tipo</TableHead>
+                                    <TableHead>Fecha Inicio</TableHead>
+                                    <TableHead>Fecha Fin</TableHead>
+                                    <TableHead>Razón</TableHead>
+                                    <TableHead>Asignado Por</TableHead>
+                                    <TableHead>Estado</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {shiftHistory.length === 0 ? (
+                                    <TableRow>
+                                        <TableCell colSpan={7} className="text-center text-muted-foreground">
+                                            No hay historial de turnos
+                                        </TableCell>
+                                    </TableRow>
+                                ) : (
+                                    shiftHistory.map((assign) => (
+                                        <TableRow key={assign.id}>
+                                            <TableCell className="font-medium">{assign.newShiftName}</TableCell>
+                                            <TableCell>
+                                                <Badge variant={assign.assignmentType === 'permanent' ? 'default' : 'secondary'}>
+                                                    {assign.assignmentType === 'permanent' ? 'Permanente' : 'Temporal'}
+                                                </Badge>
+                                            </TableCell>
+                                            <TableCell>{assign.startDate}</TableCell>
+                                            <TableCell>{assign.endDate || '-'}</TableCell>
+                                            <TableCell className="max-w-[200px] truncate" title={assign.reason}>
+                                                {assign.reason}
+                                            </TableCell>
+                                            <TableCell className="text-xs text-muted-foreground">
+                                                {assign.assignedByName}
+                                                <div className="text-[10px]">{new Date(assign.createdAt).toLocaleDateString()}</div>
+                                            </TableCell>
+                                            <TableCell>
+                                                <Badge variant={assign.status === 'active' ? 'outline' : 'destructive'} className="text-[10px]">
+                                                    {assign.status === 'active' ? 'Activo' : 'Cancelado'}
+                                                </Badge>
+                                            </TableCell>
+                                        </TableRow>
+                                    ))
+                                )}
+                            </TableBody>
+                        </Table>
+                    </div>
+                    <DialogFooter>
+                        <Button onClick={() => setShiftHistoryDialog({ open: false })}>Cerrar</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
             {/* Hour Bank History Dialog */}
             {/* Hour Bank History Dialog */}
             <Dialog open={hourBankDialog.open} onOpenChange={(open) => setHourBankDialog({ open })}>
@@ -2194,6 +2655,95 @@ export default function TeamManagementPage() {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+
+            {/* Justify Missing Punch Dialog */}
+            <Dialog open={justifyMissingPunchDialog.open} onOpenChange={(open) => setJustifyMissingPunchDialog({ open })}>
+                <DialogContent className="max-w-2xl">
+                    <DialogHeader>
+                        <DialogTitle>Justificar Marcaje Faltante</DialogTitle>
+                        <DialogDescription>
+                            Proporciona la hora de entrada/salida para {justifyMissingPunchDialog.employeeName}
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                        {justifyMissingPunchDialog.punch && (
+                            <div className="bg-muted p-3 rounded-lg space-y-2">
+                                <div className="flex justify-between">
+                                    <span className="font-medium">Fecha:</span>
+                                    <span>{justifyMissingPunchDialog.punch.date}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                    <span className="font-medium">Tipo Faltante:</span>
+                                    <span>
+                                        {justifyMissingPunchDialog.punch.missingType === 'entry' && 'Entrada'}
+                                        {justifyMissingPunchDialog.punch.missingType === 'exit' && 'Salida'}
+                                        {justifyMissingPunchDialog.punch.missingType === 'both' && 'Ambos (Entrada y Salida)'}
+                                    </span>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Entrada */}
+                        {justifyMissingPunchDialog.punch?.missingType !== 'exit' && (
+                            <div className="space-y-2">
+                                <Label htmlFor="provided-entry-time">Hora de Entrada</Label>
+                                <Input
+                                    id="provided-entry-time"
+                                    type="time"
+                                    value={providedEntryTime}
+                                    onChange={(e) => setProvidedEntryTime(e.target.value)}
+                                    placeholder="HH:mm"
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                    Si la hora genera retardo, se creará automáticamente un registro de retardo
+                                </p>
+                            </div>
+                        )}
+
+                        {/* Salida */}
+                        {justifyMissingPunchDialog.punch?.missingType !== 'entry' && (
+                            <div className="space-y-2">
+                                <Label htmlFor="provided-exit-time">Hora de Salida</Label>
+                                <Input
+                                    id="provided-exit-time"
+                                    type="time"
+                                    value={providedExitTime}
+                                    onChange={(e) => setProvidedExitTime(e.target.value)}
+                                    placeholder="HH:mm"
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                    Si la hora genera salida temprana, se creará automáticamente un registro
+                                </p>
+                            </div>
+                        )}
+
+                        {/* Razón */}
+                        <div className="space-y-2">
+                            <Label htmlFor="missing-punch-reason">Razón de la Justificación</Label>
+                            <Textarea
+                                id="missing-punch-reason"
+                                value={justificationReason}
+                                onChange={(e) => setJustificationReason(e.target.value)}
+                                placeholder="Explica por qué se justifica este marcaje faltante..."
+                                rows={3}
+                            />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setJustifyMissingPunchDialog({ open: false })}>
+                            Cancelar
+                        </Button>
+                        <Button
+                            onClick={handleJustifyMissingPunch}
+                            disabled={submitting || (!providedEntryTime && !providedExitTime) || !justificationReason.trim()}
+                        >
+                            {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            Confirmar
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
         </SiteLayout>
     );
 }

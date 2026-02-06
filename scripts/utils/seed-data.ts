@@ -3,18 +3,27 @@ const NOW = new Date().toISOString();
 const formatDate = (d: Date) => d.toISOString().split('T')[0];
 
 export const SEED_TEMPLATES = [
-    // Solicitud de Vacaciones
+    // Solicitud de Vacaciones (Mantenemos por compatibilidad, pero idealmente se usa la de permisos para todo)
     {
         id: 'tpl-vacaciones',
-        name: 'Solicitud de Vacaciones',
-        description: 'Proceso para solicitar días de vacaciones con aprobación del jefe directo y RH.',
+        name: 'Solicitud de Vacaciones', // El usuario pidió una general, pero mantenemos esta. La nueva será la principal.
+        description: 'Proceso para solicitar días de vacaciones.',
         fields: [
             { id: 'fecha_inicio', label: 'Fecha de Inicio', type: 'date', required: true },
             { id: 'fecha_fin', label: 'Fecha de Fin', type: 'date', required: true },
-            { id: 'dias_totales', label: 'Días Totales', type: 'number', readOnly: true },
-            { id: 'motivo', label: 'Motivo', type: 'textarea', placeholder: 'Describa el motivo de sus vacaciones...' },
-            { id: 'contacto_emergencia', label: 'Contacto de Emergencia', type: 'text' },
+            { id: 'motivo', label: 'Motivo', type: 'textarea' },
         ],
+        steps: [
+            { id: 'step-1', name: 'Aprobación Jefe Directo', type: 'task', assigneeRole: 'Manager', slaHours: 48, outcomes: ['Aprobar', 'Rechazar'] },
+        ],
+        rules: [],
+    },
+    // Solicitud de Permisos (NUEVA - Solicitada por usuario)
+    {
+        id: 'tpl-solicitud-permisos',
+        name: 'Solicitud de Permisos',
+        description: 'Solicitud unificada para Vacaciones, Incapacidades, Permisos Personales, etc.',
+        fields: [], // Los campos son manejados dinámicamente por NewIncidenceForm
         steps: [
             { id: 'step-1', name: 'Aprobación Jefe Directo', type: 'task', assigneeRole: 'Manager', slaHours: 48, outcomes: ['Aprobar', 'Rechazar'] },
             { id: 'step-2', name: 'Validación RH', type: 'task', assigneeRole: 'HRManager', slaHours: 24 },
@@ -166,6 +175,21 @@ export const SEED_SAMPLE_INCIDENCES = [
         createdAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
         updatedAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
     },
+    // Faltante - Injustificada
+    {
+        id: 'inc-unjustified-1',
+        employeeId: 'emp-ops-3',
+        employeeName: 'Daniela Jiménez Ramírez',
+        type: 'unjustified_absence',
+        startDate: formatDate(new Date(Date.now() - 5 * 24 * 60 * 60 * 1000)), // -5 days
+        endDate: formatDate(new Date(Date.now() - 5 * 24 * 60 * 60 * 1000)), // -5 days
+        totalDays: 1,
+        isPaid: false,
+        status: 'unjustified',
+        reason: 'No se presentó a trabajar',
+        createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
+        updatedAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
+    }
 ];
 
 export const SEED_MASTER_LISTS = [

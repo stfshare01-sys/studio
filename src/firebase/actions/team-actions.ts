@@ -909,6 +909,34 @@ export async function getTeamShiftAssignments(
     }
 }
 
+/**
+ * Obtiene el historial de turnos de un empleado
+ */
+export async function getEmployeeShiftHistory(
+    employeeId: string
+): Promise<{ success: boolean; history?: ShiftAssignment[]; error?: string }> {
+    try {
+        const { firestore } = initializeFirebase();
+
+        const q = query(
+            collection(firestore, 'shift_assignments'),
+            where('employeeId', '==', employeeId),
+            orderBy('createdAt', 'desc')
+        );
+
+        const snapshot = await getDocs(q);
+        const history = snapshot.docs.map(d => ({
+            id: d.id,
+            ...d.data()
+        })) as ShiftAssignment[];
+
+        return { success: true, history };
+    } catch (error) {
+        console.error('[Team] Error getting employee shift history:', error);
+        return { success: false, error: 'Error obteniendo historial de turnos.' };
+    }
+}
+
 // =========================================================================
 // CAMBIO DE HORARIO
 // =========================================================================
@@ -1253,5 +1281,73 @@ export async function getAvailableShifts(): Promise<{ success: boolean; shifts?:
     } catch (error) {
         console.error('[Team] Error getting available shifts:', error);
         return { success: false, error: 'Error obteniendo turnos disponibles.' };
+    }
+}
+
+export async function getTeamMissingPunches(
+    managerId: string,
+    dateFilter?: string
+): Promise<{ success: boolean; records?: any[]; error?: string }> {
+    try {
+        const { firestore } = initializeFirebase();
+
+        const subordinatesResult = await getDirectReports(managerId);
+        if (!subordinatesResult.success || !subordinatesResult.employees?.length) {
+            return { success: true, records: [] };
+        }
+
+        const subordinateIds = subordinatesResult.employees.map(e => e.id);
+        const subordinateMap = new Map(subordinatesResult.employees.map(e => [e.id, e.fullName]));
+
+        let dateStart = '';
+        let dateEnd = '';
+
+        if (dateFilter) {
+            if (dateFilter.length === 10) {
+                dateStart = dateFilter;
+                dateEnd = dateFilter;
+            } else if (dateFilter.length === 7) {
+                dateStart = `${dateFilter}-01`;
+                const [year, month] = dateFilter.split('-').map(Number);
+                const lastDay = new Date(year, month, 0).getDate();
+                dateEnd = `${dateFilter}-${lastDay.toString().padStart(2, '0')}`;
+            }
+        } else {
+            const today = new Date();
+            const thirtyDaysAgo = new Date(today);
+            thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+            dateStart = thirtyDaysAgo.toISOString().split('T')[0];
+            dateEnd = today.toISOString().split('T')[0];
+        }
+
+        const allRecords: any[] = [];
+
+        for (let i = 0; i < subordinateIds.length; i += 30) {
+            const batch = subordinateIds.slice(i, i + 30);
+
+            const q = query(
+                collection(firestore, 'missing_punches'),
+                where('employeeId', 'in', batch),
+                where('date', '>=', dateStart),
+                where('date', '<=', dateEnd),
+                orderBy('date', 'desc')
+            );
+
+            const snapshot = await getDocs(q);
+            snapshot.forEach(doc => {
+                const data = doc.data();
+                allRecords.push({
+                    id: doc.id,
+                    ...data,
+                    employeeName: subordinateMap.get(data.employeeId) || data.employeeName // Asegurar nombre actualizado
+                });
+            });
+        }
+
+        return { success: true, records: allRecords };
+
+    } catch (error) {
+        console.error('Error getting team missing punches:', error);
+        return { success: false, error: 'Error al obtener marcajes faltantes del equipo.' };
     }
 }

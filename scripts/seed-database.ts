@@ -257,14 +257,71 @@ async function seedDatabase() {
                 const shiftId = employee.shiftId;
                 const shift = SEED_SHIFTS_STRUCT.find(s => s.id === shiftId) || SEED_SHIFTS_STRUCT[0];
 
+                // Get tolerance from employee's location
+                const location = SEED_LOCATIONS_STRUCT.find(l => l.id === employee.locationId);
+                const toleranceMinutes = location?.toleranceMinutes || 10; // Default 10 min
+
                 for (const date of workingDays) {
                     const scenario = Math.random();
-                    let checkIn, checkOut;
+                    let checkIn: string | undefined, checkOut: string | undefined;
+                    let isMissingPunch = false;
+                    let missingType: 'entry' | 'exit' | 'both' | null = null;
+
+                    // 5% chance of missing punch (Simulación de Sin Registro)
+                    if (scenario < 0.05) {
+                        isMissingPunch = true;
+                        const subScenario = Math.random();
+                        if (subScenario < 0.4) {
+                            // Missing Exit (Marked entry, forgot exit)
+                            missingType = 'exit';
+                            checkIn = generateRandomTime(shift.startTime, 3);
+                        } else if (subScenario < 0.8) {
+                            // Missing Entry (Forgot entry, marked exit)
+                            missingType = 'entry';
+                            checkOut = generateRandomTime(shift.endTime, 3);
+                        } else {
+                            // Missing Both (but marked present? usually treated as absence, but let's simulate)
+                            missingType = 'both';
+                        }
+
+                        // Create Missing Punch Record
+                        await db.collection('missing_punches').add({
+                            employeeId: employee.id,
+                            employeeName: employee.fullName,
+                            date,
+                            missingType,
+                            isJustified: false,
+                            justificationStatus: 'pending',
+                            importBatchId: batchId,
+                            locationId: employee.locationId,
+                            shiftId: employee.shiftId,
+                            createdAt: date,
+                            updatedAt: date
+                        });
+
+                        // Note: We intentionally DO NOT create a full attendance record, 
+                        // or we create a partial one depending on system logic. 
+                        // For this seed, we assume missing_punches is the source of truth for these errors.
+                        // However, to show up in some reports, we might need a partial attendance.
+                        // Let's create a partial attendance if we have at least one time.
+                        if (checkIn || checkOut) {
+                            await db.collection('attendance').add({
+                                employeeId: employee.id, employeeName: employee.fullName, date,
+                                checkIn: checkIn || null, checkOut: checkOut || null,
+                                importBatchId: batchId, locationId: employee.locationId, shiftId: employee.shiftId,
+                                hoursWorked: 0, regularHours: 0, overtimeHours: 0,
+                                isValid: false, hasError: true, errorType: 'missing_punch',
+                                createdAt: date, updatedAt: date,
+                            });
+                        }
+                        continue; // Skip regular processing
+                    }
+
                     if (scenario < 0.7) {
                         checkIn = generateRandomTime(shift.startTime, 3);
                         checkOut = generateRandomTime(shift.endTime, 3);
                     } else if (scenario < 0.9) {
-                        const lateMinutes = randomInt(shift.toleranceMinutes + 1, 30);
+                        const lateMinutes = randomInt(toleranceMinutes + 1, 30);
                         checkIn = addMinutesToTime(shift.startTime, lateMinutes);
                         checkOut = shift.endTime;
                     } else {
@@ -272,8 +329,12 @@ async function seedDatabase() {
                         const earlyMinutes = randomInt(15, 60);
                         checkOut = addMinutesToTime(shift.endTime, -earlyMinutes);
                     }
+
+                    // Ensure checkIn/checkOut are strings for regular processing
+                    if (!checkIn || !checkOut) continue;
+
                     const hoursWorked = calculateHoursWorked(checkIn, checkOut);
-                    const infraction = detectInfraction(checkIn, checkOut, shift.startTime, shift.endTime, shift.toleranceMinutes);
+                    const infraction = detectInfraction(checkIn, checkOut, shift.startTime, shift.endTime, toleranceMinutes);
 
                     await db.collection('attendance').add({
                         employeeId: employee.id, employeeName: employee.fullName, date, checkIn, checkOut,
@@ -330,10 +391,22 @@ async function seedDatabase() {
             for (const employee of employeesWithIncidences) {
                 const incidenceType = weightedRandom(INCIDENCE_TYPES);
                 const startDate = randomElement(workingDays);
+
+                let status = 'approved';
+                let approvedBy: string | undefined = 'emp-gerente-rh';
+                let reason = 'Approved Incidence';
+
+                if (incidenceType.value === 'unjustified_absence') {
+                    status = 'unjustified';
+                    approvedBy = undefined;
+                    reason = 'Ausencia no justificada';
+                }
+
                 await db.collection('incidences').add({
                     employeeId: employee.id, employeeName: employee.fullName, type: incidenceType.value,
-                    startDate, endDate: startDate, status: 'approved', reason: 'Approved Incidence',
-                    approvedBy: 'emp-gerente-rh', approvedAt: startDate, createdAt: startDate, updatedAt: startDate,
+                    startDate, endDate: startDate, status, reason,
+                    approvedBy, approvedAt: status === 'approved' ? startDate : undefined,
+                    createdAt: startDate, updatedAt: startDate,
                 });
             }
         }

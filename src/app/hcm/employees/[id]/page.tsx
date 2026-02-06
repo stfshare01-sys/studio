@@ -31,7 +31,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 
 import { KardexTimeline, EmployeeMovement } from '@/components/hcm/kardex-timeline';
 
-import type { Employee, AttendanceRecord, Incidence } from '@/lib/types';
+import type { Employee, AttendanceRecord, Incidence, ShiftAssignment, CustomShift } from '@/lib/types';
 
 export default function EmployeeDetailPage({ params }: { params: Promise<{ id: string }> }) {
     const router = useRouter();
@@ -90,6 +90,58 @@ export default function EmployeeDetailPage({ params }: { params: Promise<{ id: s
     }, [firestore, isUserLoading, employeeId]);
 
     const { data: movements, isLoading: isLoadingMovements } = useCollection<EmployeeMovement>(movementsQuery);
+
+    // 6. Fetch Active Shift Assignments
+    const shiftAssignmentsQuery = useMemoFirebase(() => {
+        if (!firestore || isUserLoading) return null;
+        const now = new Date();
+        const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString().split('T')[0];
+
+        return query(
+            collection(firestore, 'shift_assignments'),
+            where('employeeId', '==', employeeId),
+            where('status', '==', 'active')
+        );
+    }, [firestore, isUserLoading, employeeId]);
+
+    const { data: shiftAssignments } = useCollection<ShiftAssignment>(shiftAssignmentsQuery);
+
+    // 7. Fetch Custom Shifts (to resolve names)
+    const shiftsQuery = useMemoFirebase(() => {
+        if (!firestore) return null;
+        return query(collection(firestore, 'custom_shifts'));
+    }, [firestore]);
+
+    const { data: shifts } = useCollection<CustomShift>(shiftsQuery);
+
+    // Helper: Calculate Current Shift
+    const getCurrentShift = () => {
+        if (!employee) return 'No asignado';
+
+        const today = new Date().toISOString().split('T')[0];
+
+        // 1. Check for Active Temporary Shift
+        const activeTempShift = shiftAssignments?.find(assignment =>
+            assignment.assignmentType === 'temporary' &&
+            assignment.startDate <= today &&
+            (assignment.endDate ? assignment.endDate >= today : true)
+        );
+
+        if (activeTempShift && shifts) {
+            const shiftDetails = shifts.find(s => s.id === activeTempShift.newShiftId);
+            if (shiftDetails) return `${shiftDetails.name} (Temporal)`;
+        }
+
+        // 2. Check for Permanent Custom Shift
+        if (employee.customShiftId && shifts) {
+            const shiftDetails = shifts.find(s => s.id === employee.customShiftId);
+            if (shiftDetails) return shiftDetails.name;
+        }
+
+        // 3. Fallback to Legacy Shift Type
+        return employee.shiftType === 'diurnal' ? 'Diurno' :
+            employee.shiftType === 'nocturnal' ? 'Nocturno' : 'Mixto';
+    };
 
     const getInitials = (name: string) => {
         return name?.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || '??';
@@ -217,7 +269,7 @@ export default function EmployeeDetailPage({ params }: { params: Promise<{ id: s
                                                 <p className="text-sm font-medium text-muted-foreground mb-1">Turno</p>
                                                 <div className="flex items-center gap-2">
                                                     <Clock className="h-4 w-4 text-muted-foreground" />
-                                                    <span className="capitalize">{employee.shiftType === 'diurnal' ? 'Diurno' : employee.shiftType === 'nocturnal' ? 'Nocturno' : 'Mixto'}</span>
+                                                    <span className="capitalize">{getCurrentShift()}</span>
                                                 </div>
                                             </div>
                                             <div>

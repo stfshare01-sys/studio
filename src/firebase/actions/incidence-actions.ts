@@ -51,6 +51,10 @@ interface CreateIncidencePayload {
     imssReference?: string;
 }
 
+import { calculateEffectiveLeaveDays } from '@/lib/hcm-calculations';
+
+// ... other imports ...
+
 export async function createIncidence(
     payload: CreateIncidencePayload
 ): Promise<{ success: boolean; incidenceId?: string; error?: string }> {
@@ -58,14 +62,32 @@ export async function createIncidence(
         const { firestore } = initializeFirebase();
         const now = new Date().toISOString();
 
-        // Calculate total days
-        const start = new Date(payload.startDate);
-        const end = new Date(payload.endDate);
-        const totalDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+        // Calculate effective days (excluding weekends and holidays)
+        let totalDays = 0;
+        let effectiveDetails = null;
+
+        try {
+            const calculation = await calculateEffectiveLeaveDays(
+                firestore,
+                payload.employeeId,
+                payload.startDate,
+                payload.endDate
+            );
+            totalDays = calculation.effectiveDays;
+            effectiveDetails = calculation;
+        } catch (calcError) {
+            console.warn('[HCM] Error calculating effective days, falling back to calendar days:', calcError);
+            // Fallback: Calculate total calendar days
+            const start = new Date(payload.startDate);
+            const end = new Date(payload.endDate);
+            totalDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+        }
 
         const incidenceData: Omit<Incidence, 'id'> = {
             ...payload,
             totalDays,
+            // Store breakdown in notes if not present? Or just rely on totalDays.
+            // Appending to notes is handled in frontend, but good to ensure here if needed.
             status: 'pending',
             createdAt: now,
             updatedAt: now

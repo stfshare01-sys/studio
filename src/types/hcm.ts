@@ -129,9 +129,6 @@ export type Position = {
     canApproveTardiness?: boolean;  // Puede justificar retardos de subordinados
     canApproveEarlyDepartures?: boolean; // Puede justificar salidas tempranas de subordinados
     canApproveMissingPunches?: boolean;  // Puede justificar marcajes faltantes de subordinados
-    // Permisos especiales
-    canApproveOvertime?: boolean;   // Puede aprobar horas extras
-    canApproveIncidences?: boolean; // Puede aprobar incidencias
 
     // Límites de aprobación
     approvalLimits?: ApprovalLimits;

@@ -2,7 +2,8 @@
 "use client";
 
 import React, { useState, useMemo, useEffect, useCallback } from "react";
-import type { User, UserRole, UserStatus } from "@/lib/types";
+import { getAllRoles } from "@/firebase/role-actions";
+import type { User, UserRole, UserStatus, Role } from "@/lib/types";
 import {
     Table,
     TableBody,
@@ -35,7 +36,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/
 import { toggleUserStatus, updateUserRole } from "@/firebase/admin-actions";
 import { TableSkeleton } from "../ui/table-skeleton";
 
-function EditUserDialog({ user, allUsers, isOpen, onOpenChange }: { user: User | null, allUsers: User[], isOpen: boolean, onOpenChange: (open: boolean) => void }) {
+function EditUserDialog({ user, allUsers, roles, isOpen, onOpenChange }: { user: User | null, allUsers: User[], roles: Role[], isOpen: boolean, onOpenChange: (open: boolean) => void }) {
     const { toast } = useToast();
     const [formData, setFormData] = useState({
         fullName: user?.fullName || '',
@@ -74,7 +75,12 @@ function EditUserDialog({ user, allUsers, isOpen, onOpenChange }: { user: User |
         onOpenChange(false);
     };
 
-    const potentialManagers = allUsers.filter(u => u.id !== user.id && u.role === 'Admin');
+    // Filter potential managers: Anyone who is not the user themselves and is not a "Member"
+    // This allows Admin, Manager, HRManager, Director, and Custom Roles to be managers.
+    const potentialManagers = allUsers.filter(u =>
+        u.id !== user.id &&
+        (u.role && u.role !== 'Member')
+    );
 
     return (
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
@@ -107,28 +113,13 @@ function EditUserDialog({ user, allUsers, isOpen, onOpenChange }: { user: User |
                                 <SelectValue placeholder="Seleccionar rol" />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="Admin">Admin</SelectItem>
-                                <SelectItem value="Designer">Diseñador de Procesos</SelectItem>
-                                <SelectItem value="Member">Miembro</SelectItem>
-                            </SelectContent>
-                        </Select>
-                    </div>
-                    <div className="grid gap-2 sm:grid-cols-4 sm:items-center sm:gap-4">
-                        <Label htmlFor="manager" className="sm:text-right">
-                            Gerente
-                        </Label>
-                        <Select disabled value={formData.managerId || "none"} onValueChange={(value) => handleInputChange('managerId', value === "none" ? '' : value)}>
-                            <SelectTrigger className="sm:col-span-3">
-                                <SelectValue placeholder="Seleccionar gerente..." />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="none">Sin Gerente</SelectItem>
-                                {potentialManagers.map(manager => (
-                                    <SelectItem key={manager.id} value={manager.id}>{manager.fullName}</SelectItem>
+                                {roles.map(role => (
+                                    <SelectItem key={role.id} value={role.name}>{role.name}</SelectItem>
                                 ))}
                             </SelectContent>
                         </Select>
                     </div>
+
                 </div>
                 <DialogFooter className="flex-col gap-2 sm:flex-row">
                     <DialogClose asChild>
@@ -160,6 +151,7 @@ export function UsersTable() {
 
     // Data state
     const [users, setUsers] = useState<User[]>([]);
+    const [roles, setRoles] = useState<Role[]>([]); // roles state
     const [isLoading, setIsLoading] = useState(true);
     const [lastDoc, setLastDoc] = useState<DocumentSnapshot | null>(null);
     const [hasMore, setHasMore] = useState(true);
@@ -231,6 +223,28 @@ export function UsersTable() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [sortField, sortOrder, statusFilter, roleFilter]); // `fetchUsers` is memoized, so we list dependencies here
 
+    // Load roles
+    useEffect(() => {
+        async function loadRoles() {
+            if (!firestore) return;
+            try {
+                const allRoles = await getAllRoles(firestore);
+                // Client-side deduplication to ensure unique keys
+                // Prefer system roles (which come first) ensuring no duplicates based on ID
+                const uniqueRolesMap = new Map();
+                allRoles.forEach(role => {
+                    if (!uniqueRolesMap.has(role.id)) {
+                        uniqueRolesMap.set(role.id, role);
+                    }
+                });
+                setRoles(Array.from(uniqueRolesMap.values()));
+            } catch (error) {
+                console.error("Error loading roles:", error);
+            }
+        }
+        loadRoles();
+    }, [firestore]);
+
 
     const handleFilterChange = (setter: React.Dispatch<React.SetStateAction<string>>) => (value: string) => {
         setter(value);
@@ -289,9 +303,9 @@ export function UsersTable() {
                         <SelectTrigger className="w-full sm:w-[150px]"><SelectValue placeholder="Filtrar por rol" /></SelectTrigger>
                         <SelectContent>
                             <SelectItem value="all">Todos los roles</SelectItem>
-                            <SelectItem value="Admin">Admin</SelectItem>
-                            <SelectItem value="Designer">Diseñador</SelectItem>
-                            <SelectItem value="Member">Miembro</SelectItem>
+                            {roles.map(role => (
+                                <SelectItem key={role.id} value={role.name}>{role.name}</SelectItem>
+                            ))}
                         </SelectContent>
                     </Select>
                 </div>
@@ -417,7 +431,7 @@ export function UsersTable() {
                 )}
                 <p className="text-sm text-muted-foreground">Mostrando {filteredUsers.length} usuarios.</p>
             </div>
-            <EditUserDialog user={selectedUser} allUsers={allUsersData || []} isOpen={isEditDialogOpen} onOpenChange={setIsEditDialogOpen} />
+            <EditUserDialog user={selectedUser} allUsers={allUsersData || []} roles={roles} isOpen={isEditDialogOpen} onOpenChange={setIsEditDialogOpen} />
         </TooltipProvider>
     );
 }

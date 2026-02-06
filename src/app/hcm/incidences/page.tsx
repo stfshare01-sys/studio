@@ -62,6 +62,7 @@ import { format, differenceInDays, startOfMonth, endOfMonth, eachDayOfInterval, 
 import { es } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
 import { Label } from '@/components/ui/label';
+import { NewIncidenceForm } from '@/components/hcm/new-incidence-form';
 
 /**
  * Incidences Management Page
@@ -80,53 +81,7 @@ export default function IncidencesPage() {
     const [rejectionReason, setRejectionReason] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
 
-    // New incidence form state
-    const [newIncidence, setNewIncidence] = useState({
-        type: 'vacation' as IncidenceType,
-        startDate: '',
-        endDate: '',
-        notes: '',
-        isPaid: true
-    });
 
-    // Date conflict validation state
-    const [dateConflictError, setDateConflictError] = useState<string | null>(null);
-    const [isValidatingDates, setIsValidatingDates] = useState(false);
-
-    // Employee data for autocompletion
-    const [currentEmployee, setCurrentEmployee] = useState<Employee | null>(null);
-    const [vacationBalance, setVacationBalance] = useState<VacationBalance | null>(null);
-    const [isLoadingEmployeeData, setIsLoadingEmployeeData] = useState(false);
-
-    // Load employee data and vacation balance when dialog opens
-    useEffect(() => {
-        if (!isCreateDialogOpen || !user) {
-            return;
-        }
-
-        const loadEmployeeData = async () => {
-            setIsLoadingEmployeeData(true);
-            try {
-                // Load employee data
-                const empResult = await getEmployeeByUserId(user.uid);
-                if (empResult.success && empResult.employee) {
-                    setCurrentEmployee(empResult.employee);
-
-                    // Load vacation balance for this employee
-                    const balanceResult = await getVacationBalance(empResult.employee.id);
-                    if (balanceResult.success && balanceResult.balance) {
-                        setVacationBalance(balanceResult.balance);
-                    }
-                }
-            } catch (error) {
-                console.error('Error loading employee data:', error);
-            } finally {
-                setIsLoadingEmployeeData(false);
-            }
-        };
-
-        loadEmployeeData();
-    }, [isCreateDialogOpen, user]);
 
     const hasHRPermissions = useMemo(() => ['Admin', 'HRManager', 'Manager'].includes(user?.role || ''), [user]);
 
@@ -154,48 +109,7 @@ export default function IncidencesPage() {
 
     const { data: incidences, isLoading } = useCollection<Incidence>(incidencesQuery);
 
-    // Real-time date conflict validation
-    useEffect(() => {
-        // Only validate when both dates are set and the dialog is open
-        if (!isCreateDialogOpen || !newIncidence.startDate || !newIncidence.endDate || !user) {
-            setDateConflictError(null);
-            return;
-        }
 
-        // Validate that end date is not before start date
-        if (new Date(newIncidence.endDate) < new Date(newIncidence.startDate)) {
-            setDateConflictError('La fecha de fin no puede ser anterior a la fecha de inicio.');
-            return;
-        }
-
-        setIsValidatingDates(true);
-
-        // Get user's existing incidences for conflict check
-        const userIncidences = incidences?.filter(inc => inc.employeeId === user.uid) || [];
-
-        // Check for date conflicts
-        const conflictResult = checkDateConflict(
-            user.uid,
-            newIncidence.startDate,
-            newIncidence.endDate,
-            userIncidences.map(inc => ({
-                id: inc.id,
-                employeeId: inc.employeeId,
-                type: inc.type,
-                startDate: inc.startDate,
-                endDate: inc.endDate,
-                status: inc.status
-            }))
-        );
-
-        if (conflictResult.hasConflict) {
-            setDateConflictError(conflictResult.message || 'Las fechas seleccionadas se solapan con otra incidencia.');
-        } else {
-            setDateConflictError(null);
-        }
-
-        setIsValidatingDates(false);
-    }, [newIncidence.startDate, newIncidence.endDate, isCreateDialogOpen, incidences, user]);
 
     // Filter incidences client-side for type and search
     const filteredIncidences = useMemo(() => {
@@ -326,48 +240,7 @@ export default function IncidencesPage() {
         }
     };
 
-    // Handle create new incidence
-    const handleCreateIncidence = async () => {
-        if (!user || !newIncidence.startDate || !newIncidence.endDate) return;
 
-        setIsSubmitting(true);
-        try {
-            const result = await createIncidence({
-                employeeId: user.uid,
-                employeeName: user.fullName || user.email || 'Unknown',
-                type: newIncidence.type,
-                startDate: newIncidence.startDate,
-                endDate: newIncidence.endDate,
-                isPaid: newIncidence.isPaid,
-                notes: newIncidence.notes
-            });
-
-            if (result.success) {
-                toast({
-                    title: 'Solicitud creada',
-                    description: 'Tu solicitud ha sido enviada para aprobación.',
-                });
-                setIsCreateDialogOpen(false);
-                setNewIncidence({
-                    type: 'vacation',
-                    startDate: '',
-                    endDate: '',
-                    notes: '',
-                    isPaid: true
-                });
-            } else {
-                throw new Error(result.error);
-            }
-        } catch (error) {
-            toast({
-                title: 'Error',
-                description: 'No se pudo crear la solicitud.',
-                variant: 'destructive',
-            });
-        } finally {
-            setIsSubmitting(false);
-        }
-    };
 
     // Format date
     const formatDate = (dateStr: string) => {
@@ -713,143 +586,13 @@ export default function IncidencesPage() {
                                 </DialogDescription>
                             </DialogHeader>
 
-                            <div className="space-y-4">
-                                {/* Employee Info - Autocompletado */}
-                                {isLoadingEmployeeData ? (
-                                    <div className="bg-muted/50 p-4 rounded-lg text-center text-sm text-muted-foreground">
-                                        Cargando datos del empleado...
-                                    </div>
-                                ) : currentEmployee && (
-                                    <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/30 p-4 rounded-lg border border-blue-100 dark:border-blue-800/50">
-                                        <div className="grid grid-cols-2 gap-3 text-sm">
-                                            <div>
-                                                <span className="text-muted-foreground block text-xs">Empleado</span>
-                                                <span className="font-medium">{currentEmployee.fullName}</span>
-                                            </div>
-                                            <div>
-                                                <span className="text-muted-foreground block text-xs">Puesto</span>
-                                                <span className="font-medium">{currentEmployee.positionTitle || 'N/A'}</span>
-                                            </div>
-                                            <div>
-                                                <span className="text-muted-foreground block text-xs">Departamento</span>
-                                                <span className="font-medium">{currentEmployee.department || 'N/A'}</span>
-                                            </div>
-                                            <div>
-                                                <span className="text-muted-foreground block text-xs">Saldo vacaciones</span>
-                                                <span className={`font-bold ${vacationBalance && vacationBalance.daysAvailable > 0 ? 'text-green-600' : 'text-orange-600'}`}>
-                                                    {vacationBalance ? `${vacationBalance.daysAvailable} días` : 'N/A'}
-                                                </span>
-                                                {vacationBalance && newIncidence.type === 'vacation' && (
-                                                    <span className="text-xs text-muted-foreground ml-1">
-                                                        de {vacationBalance.daysEntitled}
-                                                    </span>
-                                                )}
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-
-                                <div>
-                                    <Label>Tipo de incidencia</Label>
-                                    <Select
-                                        value={newIncidence.type}
-                                        onValueChange={(v) => setNewIncidence({ ...newIncidence, type: v as IncidenceType })}
-                                    >
-                                        <SelectTrigger className="mt-1">
-                                            <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="vacation">Vacaciones</SelectItem>
-                                            <SelectItem value="sick_leave">Incapacidad</SelectItem>
-                                            <SelectItem value="personal_leave">Permiso Personal</SelectItem>
-                                            <SelectItem value="bereavement">Duelo</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <Label>Fecha inicio</Label>
-                                        <Input
-                                            type="date"
-                                            value={newIncidence.startDate}
-                                            onChange={(e) => setNewIncidence({ ...newIncidence, startDate: e.target.value })}
-                                            className={`mt-1 ${dateConflictError ? 'border-red-500' : ''}`}
-                                        />
-                                    </div>
-                                    <div>
-                                        <Label>Fecha fin</Label>
-                                        <Input
-                                            type="date"
-                                            value={newIncidence.endDate}
-                                            onChange={(e) => setNewIncidence({ ...newIncidence, endDate: e.target.value })}
-                                            className={`mt-1 ${dateConflictError ? 'border-red-500' : ''}`}
-                                        />
-                                    </div>
-                                </div>
-
-                                {/* Date conflict warning */}
-                                {dateConflictError && (
-                                    <Alert variant="destructive">
-                                        <AlertTriangle className="h-4 w-4" />
-                                        <AlertDescription>
-                                            {dateConflictError}
-                                        </AlertDescription>
-                                    </Alert>
-                                )}
-
-                                {/* Calculate and show days requested */}
-                                {newIncidence.startDate && newIncidence.endDate && !dateConflictError && (() => {
-                                    const daysRequested = Math.ceil((new Date(newIncidence.endDate).getTime() - new Date(newIncidence.startDate).getTime()) / (1000 * 60 * 60 * 24)) + 1;
-                                    const exceedsBalance = newIncidence.type === 'vacation' && vacationBalance && daysRequested > vacationBalance.daysAvailable;
-
-                                    return (
-                                        <div className={`text-sm p-2 rounded ${exceedsBalance ? 'bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800' : 'bg-muted text-muted-foreground'}`}>
-                                            <div className="flex items-center justify-between">
-                                                <span>
-                                                    <span className={`font-medium ${exceedsBalance ? 'text-orange-700 dark:text-orange-300' : ''}`}>
-                                                        {daysRequested}
-                                                    </span> días solicitados
-                                                </span>
-                                                {exceedsBalance && (
-                                                    <Badge variant="outline" className="text-orange-700 border-orange-300 bg-orange-100 dark:bg-orange-900/50">
-                                                        <AlertTriangle className="h-3 w-3 mr-1" />
-                                                        Excede saldo
-                                                    </Badge>
-                                                )}
-                                            </div>
-                                            {exceedsBalance && (
-                                                <p className="text-xs text-orange-600 dark:text-orange-400 mt-1">
-                                                    Solo tienes {vacationBalance?.daysAvailable} días disponibles.
-                                                    La solicitud puede requerir aprobación especial.
-                                                </p>
-                                            )}
-                                        </div>
-                                    );
-                                })()}
-
-                                <div>
-                                    <Label>Notas (opcional)</Label>
-                                    <Textarea
-                                        placeholder="Información adicional..."
-                                        value={newIncidence.notes}
-                                        onChange={(e) => setNewIncidence({ ...newIncidence, notes: e.target.value })}
-                                        className="mt-1"
-                                    />
-                                </div>
-                            </div>
-
-                            <DialogFooter>
-                                <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
-                                    Cancelar
-                                </Button>
-                                <Button
-                                    onClick={handleCreateIncidence}
-                                    disabled={isSubmitting || !newIncidence.startDate || !newIncidence.endDate || !!dateConflictError || isValidatingDates}
-                                >
-                                    {isValidatingDates ? 'Validando...' : 'Enviar Solicitud'}
-                                </Button>
-                            </DialogFooter>
+                            {user && (
+                                <NewIncidenceForm
+                                    userId={user.uid}
+                                    onSuccess={() => setIsCreateDialogOpen(false)}
+                                    onCancel={() => setIsCreateDialogOpen(false)}
+                                />
+                            )}
                         </DialogContent>
                     </Dialog>
                 </main>

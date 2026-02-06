@@ -17,13 +17,12 @@ import {
     canApproveForEmployee,
     ApprovalType
 } from '../utils/hierarchy-validator';
-import {
+import type {
+    PrenominaRecord,
     Employee,
     AttendanceRecord,
-    Incidence,
-    PrenominaRecord
+    Incidence
 } from '../types/firestore-types';
-import type { PrenominaRecord, Employee, AttendanceRecord, Incidence } from '../types/firestore-types';
 
 /**
  * Obtiene el día de reinicio de HE según configuración de ubicación
@@ -684,3 +683,262 @@ export const approveIncidence = onCall<ApproveIncidenceRequest>(
         }
     }
 );
+
+// =========================================================================
+// CONSOLIDACIÓN DE PERÍODO (CIERRE AUTOMÁTICO)
+// =========================================================================
+
+/**
+ * Consolida el período de nómina y genera archivo para NOMIPAQ
+ * 
+ * AUTOMATIZACIÓN AL CIERRE:
+ * 1. Auto-rechaza HE pendientes
+ * 2. Auto-injustifica retardos sin bitácora
+ * 3. Auto-marca faltas por salidas tempranas injustificadas
+ * 4. Auto-marca faltas por marcajes faltantes
+ * 5. Genera códigos NOMIPAQ para exportación
+ * 
+ * Solo HR/Admin pueden ejecutar esta función
+ */
+export const consolidatePrenomina = onCall(
+    { enforceAppCheck: true },
+    async (request: CallableRequest) => {
+        const db = admin.firestore();
+        const { period, closedBy } = request.data;
+
+        if (!period) {
+            throw new HttpsError('invalid-argument', 'El período es requerido');
+        }
+
+        try {
+            // Validar permisos (solo HR/Admin)
+            const caller = await db.collection('users').doc(request.auth!.uid).get();
+            const callerRole = caller.data()?.role;
+
+            if (!['Admin', 'HRManager'].includes(callerRole || '')) {
+                throw new HttpsError(
+                    'permission-denied',
+                    'Solo HR/Admin pueden cerrar períodos de nómina'
+                );
+            }
+
+            const summary = {
+                overtimeRejected: 0,
+                tardinessMarked: 0,
+                earlyDeparturesMarked: 0,
+                missingPunchesMarked: 0,
+                faultsMarked: 0,
+            };
+
+            console.log(`[Consolidate] Starting period consolidation for ${period}`);
+
+            // Fase 1: Auto-rechazar HE pendientes
+            const pendingOT = await db.collection('overtime_requests')
+                .where('period', '==', period)
+                .where('status', '==', 'pending')
+                .get();
+
+            for (const doc of pendingOT.docs) {
+                await doc.ref.update({
+                    status: 'rejected',
+                    rejectionReason: 'Auto-rechazado por cierre de período sin aprobación',
+                    rejectedAt: new Date().toISOString(),
+                    rejectedBy: closedBy || request.auth!.uid,
+                    updatedAt: new Date().toISOString(),
+                });
+                summary.overtimeRejected++;
+            }
+
+            console.log(`[Consolidate] Rejected ${summary.overtimeRejected} pending overtime requests`);
+
+            // Fase 2: Auto-injustificar retardos pendientes
+            const pendingTardiness = await db.collection('tardiness')
+                .where('date', '>=', period.split('_')[0])
+                .where('date', '<=', period.split('_')[1] || period.split('_')[0])
+                .where('isJustified', '==', false)
+                .get();
+
+            for (const doc of pendingTardiness.docs) {
+                const data = doc.data();
+                if (data.justificationStatus === 'pending') {
+                    await doc.ref.update({
+                        justificationStatus: 'unjustified',
+                        processedAt: new Date().toISOString(),
+                        processedBy: 'system',
+                        updatedAt: new Date().toISOString(),
+                    });
+                    summary.tardinessMarked++;
+                }
+            }
+
+            console.log(`[Consolidate] Marked ${summary.tardinessMarked} tardiness as unjustified`);
+
+            // Fase 3: Auto-marcar faltas por salidas tempranas injustificadas
+            const pendingDepartures = await db.collection('early_departures')
+                .where('date', '>=', period.split('_')[0])
+                .where('date', '<=', period.split('_')[1] || period.split('_')[0])
+                .where('isJustified', '==', false)
+                .get();
+
+            for (const doc of pendingDepartures.docs) {
+                const data = doc.data();
+
+                await doc.ref.update({
+                    resultedInAbsence: true,
+                    processedAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString(),
+                });
+
+                // Marcar como falta en attendance si existe
+                if (data.attendanceRecordId) {
+                    const attendanceRef = db.collection('attendance').doc(data.attendanceRecordId);
+                    const attendanceDoc = await attendanceRef.get();
+
+                    if (attendanceDoc.exists) {
+                        await attendanceRef.update({
+                            status: 'absence_unjustified',
+                            nomipaqCode: '1FINJ',
+                            updatedAt: new Date().toISOString(),
+                        });
+                        summary.faultsMarked++;
+                    }
+                }
+
+                summary.earlyDeparturesMarked++;
+            }
+
+            console.log(`[Consolidate] Processed ${summary.earlyDeparturesMarked} early departures, marked ${summary.faultsMarked} as faults`);
+
+            // Fase 4: Auto-marcar faltas por marcajes faltantes
+            const pendingPunches = await db.collection('missing_punches')
+                .where('date', '>=', period.split('_')[0])
+                .where('date', '<=', period.split('_')[1] || period.split('_')[0])
+                .where('isJustified', '==', false)
+                .get();
+
+            for (const doc of pendingPunches.docs) {
+                const data = doc.data();
+
+                await doc.ref.update({
+                    resultedInAbsence: true,
+                    processedAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString(),
+                });
+
+                // Marcar como falta en attendance si existe
+                if (data.attendanceRecordId) {
+                    const attendanceRef = db.collection('attendance').doc(data.attendanceRecordId);
+                    const attendanceDoc = await attendanceRef.get();
+
+                    if (attendanceDoc.exists) {
+                        await attendanceRef.update({
+                            status: 'absence_unjustified',
+                            nomipaqCode: '1FINJ',
+                            updatedAt: new Date().toISOString(),
+                        });
+                        summary.faultsMarked++;
+                    }
+                }
+
+                summary.missingPunchesMarked++;
+            }
+
+            console.log(`[Consolidate] Processed ${summary.missingPunchesMarked} missing punches`);
+
+            // Fase 5: Generar archivo NOMIPAQ (placeholder - implementar según formato específico)
+            const prenominaUrl = await generatePrenominaFile(db, period);
+
+            // Guardar registro de cierre
+            await db.collection('period_closures').add({
+                period,
+                closedAt: new Date().toISOString(),
+                closedBy: closedBy || request.auth!.uid,
+                summary,
+                prenominaFileUrl: prenominaUrl,
+                createdAt: new Date().toISOString(),
+            });
+
+            console.log(`[Consolidate] Period ${period} consolidated successfully`);
+
+            return {
+                success: true,
+                summary,
+                prenominaUrl,
+            };
+
+        } catch (error: any) {
+            console.error('[Consolidate] Error consolidating period:', error);
+            if (error instanceof HttpsError) throw error;
+            throw new HttpsError('internal', `Error consolidando período: ${error.message}`);
+        }
+    }
+);
+
+/**
+ * Genera archivo de pre-nómina para NOMIPAQ
+ * Formato: EMPLEADO_ID|FECHA|CODIGO|VALOR
+ */
+async function generatePrenominaFile(
+    db: admin.firestore.Firestore,
+    period: string
+): Promise<string> {
+    try {
+        const [startDate, endDate] = period.split('_');
+
+        // Obtener todos los registros de asistencia del período
+        const attendanceQuery = await db.collection('attendance')
+            .where('date', '>=', startDate)
+            .where('date', '<=', endDate || startDate)
+            .get();
+
+        const lines: string[] = [];
+        lines.push('EMPLEADO|FECHA|CODIGO|VALOR'); // Header
+
+        for (const doc of attendanceQuery.docs) {
+            const data = doc.data();
+
+            // Obtener datos del empleado
+            const employeeDoc = await db.collection('employees').doc(data.employeeId).get();
+            const empData = employeeDoc.data();
+
+            if (!empData) continue;
+
+            const employeeNumber = empData.employeeNumber || empData.id;
+            const nomipaqCode = data.nomipaqCode || 'ASI';
+            const nomipaqValue = data.nomipaqValue || '';
+
+            // Formato: EMPLEADO_ID|FECHA|CODIGO|VALOR
+            const line = `${employeeNumber}|${data.date}|${nomipaqCode}|${nomipaqValue}`;
+            lines.push(line);
+        }
+
+        // Guardar archivo en Storage
+        const fileName = `prenomina_${period}.txt`;
+        const bucket = admin.storage().bucket();
+        const file = bucket.file(`prenomina/${fileName}`);
+
+        await file.save(lines.join('\n'), {
+            contentType: 'text/plain',
+            metadata: {
+                metadata: {
+                    period,
+                    generatedAt: new Date().toISOString(),
+                }
+            }
+        });
+
+        // Generar URL firmada (válida por 7 días)
+        const [url] = await file.getSignedUrl({
+            action: 'read',
+            expires: Date.now() + 7 * 24 * 60 * 60 * 1000,
+        });
+
+        console.log(`[Prenomina] File generated: ${fileName} (${lines.length - 1} records)`);
+
+        return url;
+
+    } catch (error: any) {
+        console.error('[Prenomina] Error generating file:', error);
+        throw new HttpsError('internal', `Error generando archivo NOMIPAQ: ${error.message}`);
+    }
+}

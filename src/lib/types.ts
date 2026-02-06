@@ -696,6 +696,8 @@ export type Employee = User & {
   directManagerId?: string;    // ID del jefe directo
   positionId?: string;         // ID del puesto asociado
   locationId?: string;         // ID de la ubicación física
+  customShiftId?: string;      // ID del turno personalizado (si aplica)
+  shiftId?: string;            // Legacy: ID del turno (usado en seed data)
 
   // Configuración de compensación
   allowTimeForTime?: boolean;  // Permite tiempo por tiempo (solo RH puede modificar)
