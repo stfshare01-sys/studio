@@ -163,7 +163,7 @@ function SortableStep({
     }
 
     return (
-        <div ref={setNodeRef} style={style} className="group flex items-start gap-3 rounded-md p-2 border text-sm bg-card hover:bg-muted">
+        <div ref={setNodeRef} style={style} className="group flex items-start gap-3 rounded-md p-2 border text-sm bg-card hover:bg-muted liquid-node">
             <button {...attributes} {...listeners} className="cursor-grab p-1 mt-1"><GripVertical className="h-4 w-4 text-muted-foreground" /></button>
             <BpmnIcon type={step.type} className="h-4 w-4 mt-1.5" />
             <div className="flex-1 space-y-1">
@@ -934,7 +934,7 @@ export function TemplateEditor({ mode, initialData, templateId }: TemplateEditor
                                         </CardDescription>
                                     </CardHeader>
                                     <CardContent className="space-y-4">
-                                        <div className="space-y-4 rounded-md bg-muted/50 p-4 min-h-[300px]">
+                                        <div className="space-y-4 rounded-md bg-muted/50 p-4 min-h-[300px] glass-panel">
                                             <SortableContext items={pools.map(p => p.id)} strategy={verticalListSortingStrategy} id="pools">
                                                 {pools.map((pool, index) => (
                                                     <PoolItem
@@ -1751,11 +1751,11 @@ function RuleConditionDisplay({ condition, fields, steps }: { condition: RuleCon
     };
 
     const getSourceTypeIcon = (type: FormFieldType | 'outcome' | undefined) => {
-        switch(type) {
-            case 'number': return <Hash className="h-4 w-4 text-muted-foreground"/>;
+        switch (type) {
+            case 'number': return <Hash className="h-4 w-4 text-muted-foreground" />;
             case 'text':
             case 'textarea':
-                return <CaseSensitive className="h-4 w-4 text-muted-foreground"/>;
+                return <CaseSensitive className="h-4 w-4 text-muted-foreground" />;
             case 'select':
             case 'radio':
             case 'checkbox':
@@ -1780,16 +1780,16 @@ function RuleConditionDisplay({ condition, fields, steps }: { condition: RuleCon
 
 function RuleActionDisplay({ action, steps, users }: { action: RuleAction, steps: WorkflowStepDefinition[], users: UserType[] }) {
     const getActionIcon = (type: RuleAction['type']) => {
-        switch(type) {
+        switch (type) {
             case 'REQUIRE_ADDITIONAL_STEP':
             case 'ROUTE_TO_STEP':
-                return <GitBranch className="h-5 w-5 text-primary"/>;
+                return <GitBranch className="h-5 w-5 text-primary" />;
             case 'ASSIGN_USER':
-                return <User className="h-5 w-5 text-primary"/>;
+                return <User className="h-5 w-5 text-primary" />;
             case 'SEND_NOTIFICATION':
-                return <Bell className="h-5 w-5 text-primary"/>;
+                return <Bell className="h-5 w-5 text-primary" />;
             case 'CHANGE_REQUEST_PRIORITY':
-                return <AlertTriangle className="h-5 w-5 text-primary"/>;
+                return <AlertTriangle className="h-5 w-5 text-primary" />;
         }
     }
 
@@ -1885,13 +1885,13 @@ function RuleBuilderDialog({ fields, steps, users, onAddRule, onUpdateRule, rule
         if (type === 'outcome') return [{ value: '==', label: 'es igual a' }];
         switch (type) {
             case 'number':
-                return [ { value: '==', label: 'es igual a' }, { value: '!=', label: 'no es igual a' }, { value: '>', label: 'es mayor que' }, { value: '<', label: 'es menor que' }, { value: '>=', label: 'es mayor o igual que' }, { value: '<=', label: 'es menor o igual que' } ];
+                return [{ value: '==', label: 'es igual a' }, { value: '!=', label: 'no es igual a' }, { value: '>', label: 'es mayor que' }, { value: '<', label: 'es menor que' }, { value: '>=', label: 'es mayor o igual que' }, { value: '<=', label: 'es menor o igual que' }];
             case 'text':
             case 'textarea':
-                return [ { value: 'is', label: 'es igual a' }, { value: 'is_not', label: 'no es igual a' }, { value: 'contains', label: 'contiene' }, { value: 'not_contains', label: 'no contiene' }];
+                return [{ value: 'is', label: 'es igual a' }, { value: 'is_not', label: 'no es igual a' }, { value: 'contains', label: 'contiene' }, { value: 'not_contains', label: 'no contiene' }];
             case 'select':
             case 'radio':
-                return [ { value: 'is', label: 'es' }, { value: 'is_not', label: 'no es' } ];
+                return [{ value: 'is', label: 'es' }, { value: 'is_not', label: 'no es' }];
             default: return [];
         }
     };
@@ -1922,12 +1922,12 @@ function RuleBuilderDialog({ fields, steps, users, onAddRule, onUpdateRule, rule
             </DialogHeader>
             <div className="grid gap-6 py-4">
                 <div className="p-4 rounded-md border">
-                    <h3 className="mb-4 text-lg font-medium flex items-center"><ShieldCheck className="mr-2 h-5 w-5 text-primary"/> Condición (SI)</h3>
+                    <h3 className="mb-4 text-lg font-medium flex items-center"><ShieldCheck className="mr-2 h-5 w-5 text-primary" /> Condición (SI)</h3>
                     <div className="grid grid-cols-4 gap-4">
                         <div className="space-y-2 col-span-1">
                             <Label>Tipo de Condición</Label>
                             <Select value={condition.type} onValueChange={(v) => setCondition({ type: v as any })}>
-                                <SelectTrigger><SelectValue/></SelectTrigger>
+                                <SelectTrigger><SelectValue /></SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="form">Basada en Campo de Formulario</SelectItem>
                                     <SelectItem value="outcome">Basada en Resultado de Tarea</SelectItem>
@@ -1937,8 +1937,8 @@ function RuleBuilderDialog({ fields, steps, users, onAddRule, onUpdateRule, rule
                         <div className="space-y-2 col-span-3 grid grid-cols-3 gap-4">
                             <div className="space-y-2">
                                 <Label>Fuente</Label>
-                                <Select value={condition.fieldId} onValueChange={(v) => setCondition(c => ({...c, fieldId: v }))}>
-                                    <SelectTrigger><SelectValue placeholder="Seleccione fuente..."/></SelectTrigger>
+                                <Select value={condition.fieldId} onValueChange={(v) => setCondition(c => ({ ...c, fieldId: v }))}>
+                                    <SelectTrigger><SelectValue placeholder="Seleccione fuente..." /></SelectTrigger>
                                     <SelectContent>
                                         {condition.type === 'form' && formFieldsForRules.map(field => <SelectItem key={field.id} value={field.id}>{field.label}</SelectItem>)}
                                         {condition.type === 'outcome' && decisionTasks.map(task => <SelectItem key={task.id} value={task.id}>{task.name}</SelectItem>)}
@@ -1947,18 +1947,18 @@ function RuleBuilderDialog({ fields, steps, users, onAddRule, onUpdateRule, rule
                             </div>
                             <div className="space-y-2">
                                 <Label>Operador</Label>
-                                <Select value={condition.operator} onValueChange={(v) => setCondition(c => ({...c, operator: v as any }))} disabled={!selectedSource}>
-                                    <SelectTrigger><SelectValue placeholder="Seleccione..."/></SelectTrigger>
+                                <Select value={condition.operator} onValueChange={(v) => setCondition(c => ({ ...c, operator: v as any }))} disabled={!selectedSource}>
+                                    <SelectTrigger><SelectValue placeholder="Seleccione..." /></SelectTrigger>
                                     <SelectContent>{availableOperators.map(op => <SelectItem key={op.value} value={op.value}>{op.label}</SelectItem>)}</SelectContent>
                                 </Select>
                             </div>
                             <div className="space-y-2">
                                 <Label>Valor</Label>
                                 {selectedSource && (selectedSource.type === 'number' || selectedSource.type === 'text' || selectedSource.type === 'textarea') ? (
-                                    <Input type={selectedSource?.type === 'number' ? 'number' : 'text'} placeholder="p.ej., 5000" value={condition.value || ''} onChange={(e) => setCondition(c => ({...c, value: e.target.value}))} />
+                                    <Input type={selectedSource?.type === 'number' ? 'number' : 'text'} placeholder="p.ej., 5000" value={condition.value || ''} onChange={(e) => setCondition(c => ({ ...c, value: e.target.value }))} />
                                 ) : (
-                                    <Select value={condition.value} onValueChange={(v) => setCondition(c => ({...c, value: v}))} disabled={!selectedSource}>
-                                        <SelectTrigger><SelectValue placeholder="Seleccione valor..."/></SelectTrigger>
+                                    <Select value={condition.value} onValueChange={(v) => setCondition(c => ({ ...c, value: v }))} disabled={!selectedSource}>
+                                        <SelectTrigger><SelectValue placeholder="Seleccione valor..." /></SelectTrigger>
                                         <SelectContent>
                                             {((selectedSource as any)?.options || (selectedSource as any)?.outcomes)?.map((opt: string) => <SelectItem key={opt} value={opt}>{opt}</SelectItem>)}
                                         </SelectContent>
@@ -1970,12 +1970,12 @@ function RuleBuilderDialog({ fields, steps, users, onAddRule, onUpdateRule, rule
                 </div>
 
                 <div className="p-4 rounded-md border">
-                    <h3 className="mb-4 text-lg font-medium flex items-center"><GitBranch className="mr-2 h-5 w-5 text-primary"/> Acción (ENTONCES)</h3>
+                    <h3 className="mb-4 text-lg font-medium flex items-center"><GitBranch className="mr-2 h-5 w-5 text-primary" /> Acción (ENTONCES)</h3>
                     <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
                             <Label>Tipo de Acción</Label>
                             <Select value={action.type} onValueChange={(v) => setAction({ type: v as any })}>
-                                <SelectTrigger><SelectValue/></SelectTrigger>
+                                <SelectTrigger><SelectValue /></SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="REQUIRE_ADDITIONAL_STEP">Añadir Paso Requerido</SelectItem>
                                     <SelectItem value="ROUTE_TO_STEP">Enrutar a Paso</SelectItem>
@@ -1986,17 +1986,17 @@ function RuleBuilderDialog({ fields, steps, users, onAddRule, onUpdateRule, rule
                             </Select>
                         </div>
                         <div className="space-y-2">
-                            { (action.type === 'REQUIRE_ADDITIONAL_STEP' || action.type === 'ROUTE_TO_STEP') &&
-                                <><Label>Paso de Destino</Label><Select value={(action as any).stepId} onValueChange={(v) => setAction(a => ({...a, stepId: v}))}><SelectTrigger><SelectValue placeholder="Seleccione un paso..."/></SelectTrigger><SelectContent>{steps.map(step => <SelectItem key={step.id} value={step.id}>{step.name}</SelectItem>)}</SelectContent></Select></>
+                            {(action.type === 'REQUIRE_ADDITIONAL_STEP' || action.type === 'ROUTE_TO_STEP') &&
+                                <><Label>Paso de Destino</Label><Select value={(action as any).stepId} onValueChange={(v) => setAction(a => ({ ...a, stepId: v }))}><SelectTrigger><SelectValue placeholder="Seleccione un paso..." /></SelectTrigger><SelectContent>{steps.map(step => <SelectItem key={step.id} value={step.id}>{step.name}</SelectItem>)}</SelectContent></Select></>
                             }
-                            { action.type === 'ASSIGN_USER' &&
-                                <div className="grid grid-cols-2 gap-2"><div className="space-y-2"><Label>Tarea</Label><Select value={(action as any).stepId} onValueChange={(v) => setAction(a => ({...a, stepId: v}))}><SelectTrigger><SelectValue placeholder="Seleccione tarea..."/></SelectTrigger><SelectContent>{steps.map(step => <SelectItem key={step.id} value={step.id}>{step.name}</SelectItem>)}</SelectContent></Select></div><div className="space-y-2"><Label>Usuario</Label><Select value={(action as any).userId} onValueChange={(v) => setAction(a => ({...a, userId: v}))}><SelectTrigger><SelectValue placeholder="Seleccione usuario..."/></SelectTrigger><SelectContent>{users.map(user => <SelectItem key={user.id} value={user.id}>{user.fullName}</SelectItem>)}</SelectContent></Select></div></div>
+                            {action.type === 'ASSIGN_USER' &&
+                                <div className="grid grid-cols-2 gap-2"><div className="space-y-2"><Label>Tarea</Label><Select value={(action as any).stepId} onValueChange={(v) => setAction(a => ({ ...a, stepId: v }))}><SelectTrigger><SelectValue placeholder="Seleccione tarea..." /></SelectTrigger><SelectContent>{steps.map(step => <SelectItem key={step.id} value={step.id}>{step.name}</SelectItem>)}</SelectContent></Select></div><div className="space-y-2"><Label>Usuario</Label><Select value={(action as any).userId} onValueChange={(v) => setAction(a => ({ ...a, userId: v }))}><SelectTrigger><SelectValue placeholder="Seleccione usuario..." /></SelectTrigger><SelectContent>{users.map(user => <SelectItem key={user.id} value={user.id}>{user.fullName}</SelectItem>)}</SelectContent></Select></div></div>
                             }
-                            { action.type === 'SEND_NOTIFICATION' &&
-                                <div className="grid grid-cols-2 gap-2"><div className="space-y-2"><Label>Destinatario</Label><Select value={(action as any).target} onValueChange={(v) => setAction(a => ({...a, target: v}) as Partial<RuleAction>)}><SelectTrigger><SelectValue placeholder="Seleccione..."/></SelectTrigger><SelectContent><SelectItem value="submitter">Creador de la solicitud</SelectItem><SelectItem value="Admin">Admin</SelectItem><SelectItem value="Member">Miembro</SelectItem></SelectContent></Select></div><div className="space-y-2"><Label>Mensaje</Label><Input placeholder="Tu mensaje aquí" value={(action as any).message || ''} onChange={(e) => setAction(a => ({...a, message: e.target.value}) as Partial<RuleAction>)}/></div></div>
+                            {action.type === 'SEND_NOTIFICATION' &&
+                                <div className="grid grid-cols-2 gap-2"><div className="space-y-2"><Label>Destinatario</Label><Select value={(action as any).target} onValueChange={(v) => setAction(a => ({ ...a, target: v }) as Partial<RuleAction>)}><SelectTrigger><SelectValue placeholder="Seleccione..." /></SelectTrigger><SelectContent><SelectItem value="submitter">Creador de la solicitud</SelectItem><SelectItem value="Admin">Admin</SelectItem><SelectItem value="Member">Miembro</SelectItem></SelectContent></Select></div><div className="space-y-2"><Label>Mensaje</Label><Input placeholder="Tu mensaje aquí" value={(action as any).message || ''} onChange={(e) => setAction(a => ({ ...a, message: e.target.value }) as Partial<RuleAction>)} /></div></div>
                             }
-                            { action.type === 'CHANGE_REQUEST_PRIORITY' &&
-                                <><Label>Nueva Prioridad</Label><Select value={(action as any).priority} onValueChange={(v) => setAction(a => ({...a, priority: v}) as Partial<RuleAction>)}><SelectTrigger><SelectValue placeholder="Seleccione prioridad..."/></SelectTrigger><SelectContent><SelectItem value="Alta">Alta</SelectItem><SelectItem value="Media">Media</SelectItem><SelectItem value="Baja">Baja</SelectItem></SelectContent></Select></>
+                            {action.type === 'CHANGE_REQUEST_PRIORITY' &&
+                                <><Label>Nueva Prioridad</Label><Select value={(action as any).priority} onValueChange={(v) => setAction(a => ({ ...a, priority: v }) as Partial<RuleAction>)}><SelectTrigger><SelectValue placeholder="Seleccione prioridad..." /></SelectTrigger><SelectContent><SelectItem value="Alta">Alta</SelectItem><SelectItem value="Media">Media</SelectItem><SelectItem value="Baja">Baja</SelectItem></SelectContent></Select></>
                             }
                         </div>
                     </div>

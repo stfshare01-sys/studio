@@ -159,9 +159,9 @@ export default function HCMPage() {
                 </header>
                 <main className="flex flex-1 flex-col gap-4 p-4 pt-0 sm:gap-8 sm:p-6 sm:pt-0">
                     {/* Stats Cards */}
-                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 bento-grid">
                         {hasHRPermissions && (
-                            <Card>
+                            <Card className="bento-item">
                                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                                     <CardTitle className="text-sm font-medium">Empleados Activos</CardTitle>
                                     <Users className="h-4 w-4 text-muted-foreground" />
@@ -177,7 +177,7 @@ export default function HCMPage() {
                             </Card>
                         )}
 
-                        <Card>
+                        <Card className="bento-item">
                             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                                 <CardTitle className="text-sm font-medium">Incidencias Pendientes</CardTitle>
                                 <Timer className="h-4 w-4 text-muted-foreground" />
@@ -193,7 +193,7 @@ export default function HCMPage() {
                         </Card>
 
                         {hasHRPermissions && (
-                            <Card>
+                            <Card className="bento-item">
                                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                                     <CardTitle className="text-sm font-medium">Última Importación</CardTitle>
                                     <FileSpreadsheet className="h-4 w-4 text-muted-foreground" />
@@ -212,7 +212,7 @@ export default function HCMPage() {
                         )}
 
                         {canRead('hcm_prenomina') && (
-                            <Card>
+                            <Card className="bento-item">
                                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                                     <CardTitle className="text-sm font-medium">Pre-Nómina</CardTitle>
                                     <Calculator className="h-4 w-4 text-muted-foreground" />
@@ -240,9 +240,9 @@ export default function HCMPage() {
                         </TabsList>
 
                         <TabsContent value="overview" className="space-y-4">
-                            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 bento-grid">
                                 {/* Quick Actions */}
-                                <Card>
+                                <Card className="bento-item">
                                     <CardHeader>
                                         <CardTitle>Acciones Rápidas</CardTitle>
                                         <CardDescription>Operaciones frecuentes del módulo HCM</CardDescription>
@@ -325,7 +325,7 @@ export default function HCMPage() {
 
                                 {/* Admin Section */}
                                 {hasHRPermissions && (
-                                    <Card>
+                                    <Card className="bento-item">
                                         <CardHeader>
                                             <CardTitle className="flex items-center gap-2">
                                                 <Settings className="h-5 w-5" />
@@ -363,7 +363,7 @@ export default function HCMPage() {
                                 )}
 
                                 {/* Recent Imports */}
-                                <Card>
+                                <Card className="bento-item">
                                     <CardHeader>
                                         <CardTitle>Importaciones Recientes</CardTitle>
                                         <CardDescription>Últimos archivos de asistencia cargados</CardDescription>
@@ -400,7 +400,7 @@ export default function HCMPage() {
                                 </Card>
 
                                 {/* Alerts */}
-                                <Card>
+                                <Card className="bento-item">
                                     <CardHeader>
                                         <CardTitle>Alertas</CardTitle>
                                         <CardDescription>Notificaciones importantes</CardDescription>
@@ -427,7 +427,7 @@ export default function HCMPage() {
                         </TabsContent>
 
                         <TabsContent value="incidences" className="space-y-4">
-                            <Card>
+                            <Card className="bento-item">
                                 <CardHeader>
                                     <CardTitle>Incidencias Pendientes de Aprobación</CardTitle>
                                     <CardDescription>
@@ -482,7 +482,7 @@ export default function HCMPage() {
                         </TabsContent>
 
                         <TabsContent value="onboarding" className="space-y-4">
-                            <Card>
+                            <Card className="bento-item">
                                 <CardHeader>
                                     <CardTitle>Empleados en Onboarding</CardTitle>
                                     <CardDescription>

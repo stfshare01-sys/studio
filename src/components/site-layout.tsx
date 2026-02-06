@@ -38,6 +38,7 @@ import { signOut } from "firebase/auth";
 import { useEffect, useState } from "react";
 import { NotificationCenter } from "@/components/notifications/notification-center";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { StyleSelector } from "@/components/style-selector";
 import { GlobalSearch } from "@/components/global-search";
 
 import { usePermissions } from "@/hooks/use-permissions";
@@ -180,6 +181,7 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
           </div>
           <div className="flex items-center gap-1 ml-auto">
             <GlobalSearch />
+            <StyleSelector />
             <ThemeToggle />
             <NotificationCenter />
           </div>
