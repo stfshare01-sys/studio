@@ -14,6 +14,10 @@ import {
     calculateOvertime,
 } from '../utils/lft-calculations';
 import {
+    canApproveForEmployee,
+    ApprovalType
+} from '../utils/hierarchy-validator';
+import {
     Employee,
     AttendanceRecord,
     Incidence,
@@ -75,6 +79,75 @@ export const consolidatePrenomina = onCall<ConsolidatePrenominaRequest>(
         let skippedCount = 0;
 
         try {
+            // =====================================================================
+            // PHASE 1: AUTO-PROCESS PENDING REQUESTS
+            // At period close, all pending items become rejected/unjustified
+            // =====================================================================
+            console.log(`[HCM] Phase 1: Auto-processing pending items for period ${periodStart} to ${periodEnd}`);
+
+            // 1a. Reject pending overtime requests
+            const pendingOvertimeQuery = await db.collection('overtime_requests')
+                .where('status', '==', 'pending')
+                .where('date', '>=', periodStart)
+                .where('date', '<=', periodEnd)
+                .get();
+
+            for (const doc of pendingOvertimeQuery.docs) {
+                await doc.ref.update({
+                    status: 'rejected',
+                    hoursApproved: 0,
+                    rejectionReason: 'Auto-rechazado al cierre de período (sin autorización)',
+                    approvedById: request.auth?.uid,
+                    approvedByName: `${userData?.fullName || 'Sistema'} (Auto-cierre)`,
+                    approvedAt: nowISO,
+                    updatedAt: nowISO,
+                });
+            }
+            console.log(`[HCM] Auto-rejected ${pendingOvertimeQuery.size} pending overtime requests`);
+
+            // 1b. Mark unjustified tardiness records (they stay as is, but log)
+            const unjustifiedTardinessQuery = await db.collection('tardiness_records')
+                .where('isJustified', '==', false)
+                .where('date', '>=', periodStart)
+                .where('date', '<=', periodEnd)
+                .get();
+            console.log(`[HCM] Found ${unjustifiedTardinessQuery.size} unjustified tardiness records - will affect puntualidad`);
+
+            // 1c. Process unjustified early departures -> Mark as FALTA
+            const unjustifiedEarlyDeparturesQuery = await db.collection('early_departures')
+                .where('isJustified', '==', false)
+                .where('date', '>=', periodStart)
+                .where('date', '<=', periodEnd)
+                .get();
+
+            for (const doc of unjustifiedEarlyDeparturesQuery.docs) {
+                await doc.ref.update({
+                    resultedInAbsence: true,
+                    updatedAt: nowISO,
+                });
+            }
+            console.log(`[HCM] Marked ${unjustifiedEarlyDeparturesQuery.size} unjustified early departures as FALTA`);
+
+            // 1d. Process unjustified missing punches -> Mark as FALTA
+            const unjustifiedMissingPunchesQuery = await db.collection('missing_punches')
+                .where('isJustified', '==', false)
+                .where('date', '>=', periodStart)
+                .where('date', '<=', periodEnd)
+                .get();
+
+            for (const doc of unjustifiedMissingPunchesQuery.docs) {
+                await doc.ref.update({
+                    resultedInAbsence: true,
+                    updatedAt: nowISO,
+                });
+            }
+            console.log(`[HCM] Marked ${unjustifiedMissingPunchesQuery.size} unjustified missing punches as FALTA`);
+
+            // =====================================================================
+            // PHASE 2: CONSOLIDATE PRENOMINA
+            // =====================================================================
+            console.log(`[HCM] Phase 2: Consolidating prenomina records`);
+
             // Get employees to process
             let employeesQuery = db.collection('employees').where('status', '==', 'active');
             const employeesSnap = await employeesQuery.get();
@@ -404,16 +477,24 @@ function datesOverlap(start1: string, end1: string, start2: string, end2: string
 /**
  * Approves or rejects an incidence request.
  *
- * Includes server-side validation to prevent approving incidences
- * that overlap with other approved/pending incidences for the same employee.
+ * Includes server-side validation for:
+ * 1. HIERARCHICAL AUTHORIZATION: Only direct managers, chain managers, or HR/Admin can approve
+ * 2. DATE CONFLICTS: Prevents approving overlapping incidences
  *
- * @requires Role: Admin, HRManager, or Manager
+ * AUTHORIZATION RULES:
+ * - HR/Admin can approve ANY employee's incidences
+ * - Managers can only approve subordinates (direct or indirect in chain)
+ * - Manager must have canApproveIncidences permission in their position
+ *
+ * @requires Role: Admin, HRManager, or Manager (with hierarchy validation)
  */
 export const approveIncidence = onCall<ApproveIncidenceRequest>(
     { region: 'us-central1' },
     async (request): Promise<ApproveIncidenceResponse> => {
+        // First verify the user has one of the required roles
         await verifyRole(request.auth?.uid, MANAGER_ROLES, 'aprobar incidencia');
         const userData = await getUserData(request.auth!.uid);
+        const approverId = request.auth!.uid;
 
         const { incidenceId, action, rejectionReason } = request.data;
 
@@ -432,6 +513,24 @@ export const approveIncidence = onCall<ApproveIncidenceRequest>(
             }
 
             const incidenceData = incidenceSnap.data() as Incidence;
+
+            // VALIDATION 1: Hierarchical authorization
+            // Check if the approver can approve for this employee
+            const hierarchyCheck = await canApproveForEmployee(
+                approverId,
+                incidenceData.employeeId,
+                'incidence' as ApprovalType
+            );
+
+            if (!hierarchyCheck.canApprove) {
+                throw new HttpsError(
+                    'permission-denied',
+                    hierarchyCheck.reason || 'No tienes permiso para aprobar solicitudes de este empleado.'
+                );
+            }
+
+            console.log(`[HCM] Hierarchy check passed: ${hierarchyCheck.approvalMethod} (level ${hierarchyCheck.approverLevel || 'N/A'})`);
+            console.log(`[HCM] Reason: ${hierarchyCheck.reason}`);
 
             // Only validate date conflicts when approving (not when rejecting)
             if (action === 'approve') {

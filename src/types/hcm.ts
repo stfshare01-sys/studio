@@ -105,17 +105,16 @@ export type Position = {
     department: string;             // Departamento
     level: number;                  // Nivel jerárquico (1 = director, 2 = gerente, etc.)
 
-    // Configuración salarial - REMOVED salaryMin/Max as per Purge?
-    // Keeping as reference data is usually fine, but strictly "Operation No Payroll" might imply hiding this.
-    // I will keep them as 'reference' only, or remove if strict.
-    // User said "Elimina funciones... cálculos monetarios". Reference numbers in position are borderline.
-    // I will leave them commented out to be safe/clean.
-    // salaryMin?: number;
-    // salaryMax?: number;
+    // Configuración de horas extras
+    canEarnOvertime: boolean;       // Si el puesto puede generar horas extras pagadas
+    // Si false: minutos extra solo saldan deuda en bolsa de horas, luego se descartan
 
-    // Permisos especiales
-    canApproveOvertime?: boolean;   // Puede aprobar horas extras
-    canApproveIncidences?: boolean; // Puede aprobar incidencias
+    // Permisos de aprobación
+    canApproveOvertime?: boolean;   // Puede aprobar horas extras de subordinados
+    canApproveIncidences?: boolean; // Puede aprobar incidencias de subordinados
+    canApproveTardiness?: boolean;  // Puede justificar retardos de subordinados
+    canApproveEarlyDepartures?: boolean; // Puede justificar salidas tempranas de subordinados
+    canApproveMissingPunches?: boolean;  // Puede justificar marcajes faltantes de subordinados
 
     // Estado
     isActive: boolean;

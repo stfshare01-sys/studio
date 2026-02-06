@@ -295,3 +295,154 @@ export type PeriodDuplicateAlert = {
     existingLockId: string;
     message: string;
 };
+
+// =========================================================================
+// SALIDAS TEMPRANAS (EARLY DEPARTURES)
+// =========================================================================
+
+/**
+ * Registro de salida temprana
+ * Se crea cuando un empleado sale antes de su hora programada
+ */
+export type EarlyDepartureRecord = {
+    id: string;
+    employeeId: string;
+    employeeName?: string;
+    date: string;                     // YYYY-MM-DD
+    attendanceRecordId: string;       // Referencia al registro de asistencia
+    scheduledTime: string;            // Hora programada de salida (HH:mm)
+    actualTime: string;               // Hora real de salida (HH:mm)
+    minutesEarly: number;             // Minutos de salida anticipada
+    isJustified: boolean;             // Si fue justificada
+    justificationReason?: string;     // Motivo de justificación
+    justifiedById?: string;           // ID de quien justificó
+    justifiedByName?: string;         // Nombre de quien justificó
+    justifiedAt?: string;             // Fecha/hora de justificación
+    resultedInAbsence: boolean;       // Si causó FALTA (injustificada)
+    linkedAbsenceId?: string;         // ID de la falta generada (si aplica)
+    createdAt: string;
+    updatedAt: string;
+};
+
+// =========================================================================
+// MARCAJES FALTANTES (MISSING PUNCHES)
+// =========================================================================
+
+/**
+ * Tipo de marcaje faltante
+ */
+export type MissingPunchType = 'entry' | 'exit' | 'both';
+
+/**
+ * Registro de marcaje faltante
+ * Se crea cuando falta la entrada, salida o ambas
+ */
+export type MissingPunchRecord = {
+    id: string;
+    employeeId: string;
+    employeeName?: string;
+    date: string;                     // YYYY-MM-DD
+    attendanceRecordId?: string;      // Puede no existir si faltan ambos
+    missingType: MissingPunchType;    // Qué marcaje falta
+    isJustified: boolean;             // Si fue justificado
+    justificationReason?: string;     // Motivo de justificación
+    providedEntryTime?: string;       // Hora de entrada proporcionada al justificar
+    providedExitTime?: string;        // Hora de salida proporcionada al justificar
+    generatedTardinessId?: string;    // Si se generó un retardo al justificar
+    generatedEarlyDepartureId?: string; // Si se generó salida temprana al justificar
+    justifiedById?: string;           // ID de quien justificó
+    justifiedByName?: string;         // Nombre de quien justificó
+    justifiedAt?: string;             // Fecha/hora de justificación
+    resultedInAbsence: boolean;       // Si quedó como FALTA
+    linkedAbsenceId?: string;         // ID de la falta (si aplica)
+    createdAt: string;
+    updatedAt: string;
+};
+
+// =========================================================================
+// ESTADO DEL DÍA TRABAJADO
+// =========================================================================
+
+/**
+ * Estado final del día para efectos de nómina
+ */
+export type DayWorkStatus =
+    | 'complete'              // Día trabajado completo (ASI)
+    | 'absence_unjustified'   // Falta injustificada (FINJ)
+    | 'absence_justified'     // Falta justificada (con permiso)
+    | 'tardiness_only'        // Solo retardo, día trabajado (RET + ASI)
+    | 'vacation'              // Vacaciones (VAC)
+    | 'sick_leave'            // Incapacidad (INC)
+    | 'paid_leave'            // Permiso con goce (PCS)
+    | 'unpaid_leave'          // Permiso sin goce (PSS)
+    | 'rest_day'              // Día de descanso (DD)
+    | 'rest_day_worked'       // Día de descanso laborado (DL)
+    | 'holiday'               // Día festivo (DFT si trabajado)
+    | 'pending_justification';// Pendiente de justificar
+
+/**
+ * Resultado de evaluación del estado del día
+ */
+export type DayStatusEvaluation = {
+    status: DayWorkStatus;
+    primaryCode: IncidenceCode;
+    additionalCodes: IncidenceCode[];
+    hasTardiness: boolean;
+    hasEarlyDeparture: boolean;
+    hasMissingPunch: boolean;
+    isTardinessJustified: boolean;
+    isEarlyDepartureJustified: boolean;
+    isMissingPunchJustified: boolean;
+    requiresAction: boolean;          // Si requiere acción del jefe
+    actionType?: 'justify_tardiness' | 'justify_early_departure' | 'justify_missing_punch';
+    notes?: string;
+};
+
+// =========================================================================
+// CÓDIGOS NOMIPAQ ACTUALIZADOS
+// =========================================================================
+
+/**
+ * Códigos para exportación a NOMIPAQ
+ * Formato estándar para sistemas de nómina
+ */
+export const NOMIPAQ_CODES = {
+    // Faltas y asistencia
+    FALTA_INJUSTIFICADA: '1FINJ',
+    RETARDO: '1RET',
+    DIA_TRABAJADO: 'ASI',
+
+    // Horas extras (formato: cantidad + código)
+    HORAS_EXTRAS_DOBLES: 'HE2',      // Ej: "1HE2", "0.5HE2"
+    HORAS_EXTRAS_TRIPLES: 'HE3',     // Ej: "1HE3", "0.5HE3"
+
+    // Permisos
+    PERMISO_SIN_SUELDO: '1PSS',
+    PERMISO_CON_SUELDO: '1PCS',
+
+    // Vacaciones e incapacidades
+    VACACIONES: 'VAC',
+    INCAPACIDAD: 'INC',
+
+    // Días especiales
+    DIA_DESCANSO: 'DD',
+    DIA_DESCANSO_LABORADO: 'DL',
+    DIA_FESTIVO_TRABAJADO: 'DFT',
+    PRIMA_DOMINICAL: 'PD',
+
+    // Otros
+    PRIMA_VACACIONAL: 'PV',
+    BAJA: 'BJ',
+} as const;
+
+/**
+ * Función helper para formatear horas extras para NOMIPAQ
+ * @example formatOvertimeForNomipaq(1.5, 'double') => "1.5HE2"
+ */
+export function formatOvertimeForNomipaq(
+    hours: number,
+    type: 'double' | 'triple'
+): string {
+    const code = type === 'double' ? NOMIPAQ_CODES.HORAS_EXTRAS_DOBLES : NOMIPAQ_CODES.HORAS_EXTRAS_TRIPLES;
+    return `${hours}${code}`;
+}
