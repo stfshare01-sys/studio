@@ -38,7 +38,7 @@ import {
   ArrowLeft,
 } from "lucide-react";
 
-import type { Employee, Incidence, PrenominaRecord, AttendanceRecord } from "@/lib/types";
+import type { Employee, Incidence, PrenominaRecord, AttendanceRecord, IncidenceStatus } from "@/lib/types";
 import { formatCurrency } from "@/lib/hcm-utils";
 
 // KPI Card Component
@@ -105,13 +105,12 @@ function KpiCard({
         <div className="flex items-center gap-2 mt-1">
           {trend && trendValue && (
             <span
-              className={`text-xs flex items-center gap-1 ${
-                trend === "up"
-                  ? "text-green-600"
-                  : trend === "down"
+              className={`text-xs flex items-center gap-1 ${trend === "up"
+                ? "text-green-600"
+                : trend === "down"
                   ? "text-red-600"
                   : "text-muted-foreground"
-              }`}
+                }`}
             >
               {trend === "up" ? (
                 <TrendingUp className="h-3 w-3" />
@@ -279,9 +278,10 @@ export default function CommandCenterPage() {
     const totalPendingIncidences = pendingIncidences?.length || 0;
     const oldPendingIncidences =
       pendingIncidences?.filter((inc) => {
-        const created = inc.createdAt instanceof Timestamp
-          ? inc.createdAt.toDate()
-          : new Date(inc.createdAt);
+        const createdAt = inc.createdAt as string | Timestamp | undefined;
+        const created = createdAt && typeof createdAt === 'object' && 'toDate' in createdAt
+          ? createdAt.toDate()
+          : new Date(createdAt as string);
         return differenceInDays(today, created) > 2;
       }).length || 0;
 
@@ -451,8 +451,8 @@ export default function CommandCenterPage() {
                 metrics.attendanceRate >= 90
                   ? "success"
                   : metrics.attendanceRate >= 80
-                  ? "warning"
-                  : "danger"
+                    ? "warning"
+                    : "danger"
               }
               isLoading={isLoading}
             />
@@ -545,15 +545,18 @@ export default function CommandCenterPage() {
                     </>
                   ) : recentIncidences && recentIncidences.length > 0 ? (
                     recentIncidences.map((inc) => {
-                      const createdAt = inc.createdAt instanceof Timestamp
-                        ? inc.createdAt.toDate()
-                        : new Date(inc.createdAt);
+                      const incCreatedAt = inc.createdAt as string | Timestamp | undefined;
+                      const createdAt = incCreatedAt && typeof incCreatedAt === 'object' && 'toDate' in incCreatedAt
+                        ? incCreatedAt.toDate()
+                        : new Date(incCreatedAt as string);
 
-                      const iconConfig = {
+                      const iconConfig: Record<IncidenceStatus, { icon: React.ElementType; bg: string }> = {
                         pending: { icon: Clock, bg: "bg-amber-500" },
                         approved: { icon: CheckCircle2, bg: "bg-green-500" },
                         rejected: { icon: XCircle, bg: "bg-red-500" },
                         cancelled: { icon: XCircle, bg: "bg-gray-500" },
+                        unjustified: { icon: XCircle, bg: "bg-red-600" },
+                        made_up: { icon: CheckCircle2, bg: "bg-blue-500" },
                       };
 
                       const config = iconConfig[inc.status] || iconConfig.pending;
@@ -568,10 +571,10 @@ export default function CommandCenterPage() {
                             inc.status === "pending"
                               ? "Solicitud pendiente de aprobación"
                               : inc.status === "approved"
-                              ? "Incidencia aprobada"
-                              : inc.status === "rejected"
-                              ? "Incidencia rechazada"
-                              : "Incidencia cancelada"
+                                ? "Incidencia aprobada"
+                                : inc.status === "rejected"
+                                  ? "Incidencia rechazada"
+                                  : "Incidencia cancelada"
                           }
                           timestamp={format(createdAt, "dd MMM yyyy, HH:mm", {
                             locale: es,
@@ -607,7 +610,7 @@ export default function CommandCenterPage() {
             <Button variant="outline" className="h-auto py-4" asChild>
               <Link href="/hcm/prenomina" className="flex flex-col items-center gap-2">
                 <DollarSign className="h-6 w-6" />
-                <span>Consolidar Nómina</span>
+                <span>Consolidar Asistencia</span>
               </Link>
             </Button>
             <Button variant="outline" className="h-auto py-4" asChild>

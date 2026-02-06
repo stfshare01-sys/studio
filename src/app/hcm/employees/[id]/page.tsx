@@ -46,6 +46,14 @@ export default function EmployeeDetailPage({ params }: { params: Promise<{ id: s
 
     const { data: employee, isLoading: isLoadingEmployee } = useDoc<Employee>(employeeRef);
 
+    // 2. Fetch Manager Details (if employee has directManagerId)
+    const managerRef = useMemoFirebase(() => {
+        if (!firestore || isUserLoading || !employee?.directManagerId) return null;
+        return doc(firestore, 'employees', employee.directManagerId);
+    }, [firestore, isUserLoading, employee?.directManagerId]);
+
+    const { data: manager } = useDoc<Employee>(managerRef);
+
     // 3. Fetch Recent Attendance
     const attendanceQuery = useMemoFirebase(() => {
         if (!firestore || isUserLoading) return null;
@@ -202,7 +210,7 @@ export default function EmployeeDetailPage({ params }: { params: Promise<{ id: s
                                                 <p className="text-sm font-medium text-muted-foreground mb-1">Tipo de Contrato</p>
                                                 <div className="flex items-center gap-2">
                                                     <Briefcase className="h-4 w-4 text-muted-foreground" />
-                                                    <span className="capitalize">{employee.employmentType.replace('_', ' ')}</span>
+                                                    <span className="capitalize">{employee.employmentType?.replace('_', ' ') || 'N/A'}</span>
                                                 </div>
                                             </div>
                                             <div>
@@ -216,7 +224,7 @@ export default function EmployeeDetailPage({ params }: { params: Promise<{ id: s
                                                 <p className="text-sm font-medium text-muted-foreground mb-1">Jefe Directo</p>
                                                 <div className="flex items-center gap-2">
                                                     <User className="h-4 w-4 text-muted-foreground" />
-                                                    <span>{employee.managerId || 'N/A'}</span>
+                                                    <span>{manager?.fullName || employee.directManagerId || 'Sin asignar'}</span>
                                                 </div>
                                             </div>
                                         </div>
@@ -308,7 +316,7 @@ export default function EmployeeDetailPage({ params }: { params: Promise<{ id: s
                                                         <FileText className="h-4 w-4" />
                                                     </div>
                                                     <div>
-                                                        <h4 className="font-medium capitalize">{inc.type.replace('_', ' ')}</h4>
+                                                        <h4 className="font-medium capitalize">{inc.type?.replace('_', ' ') || 'Tipo Desconocido'}</h4>
                                                         <p className="text-sm text-muted-foreground">
                                                             Del {format(new Date(inc.startDate), 'P', { locale: es })} al {format(new Date(inc.endDate), 'P', { locale: es })}
                                                         </p>

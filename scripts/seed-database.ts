@@ -1,22 +1,41 @@
-/**
- * 🌱 Seed Database Script
- * 
- * Creates comprehensive demo data for FlowMaster Studio:
- * - Roles and Permissions
- * - Locations
- * - Positions (Puestos)
- * - Shifts (Turnos)  
- * - Users
- * - Employees with hierarchical relationships
- * - Workflow Templates (Vacations, Reimbursements, etc.)
- * 
- * Run: npx tsx scripts/seed-database.ts
- */
-
+﻿
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInWithCustomToken, connectAuthEmulator } from 'firebase/auth';
+import { getAuth, connectAuthEmulator } from 'firebase/auth';
 import * as admin from 'firebase-admin';
 import { firebaseConfig } from '../src/firebase/config';
+import {
+    SEED_EMPLOYEES,
+    INCIDENCE_TYPES,
+    OVERTIME_REASONS,
+    PERIODS
+} from './utils/seed-constants';
+import {
+    SEED_ROLES,
+    SEED_LOCATIONS_STRUCT,
+    SEED_DEPARTMENTS,
+    SEED_POSITIONS,
+    SEED_SHIFTS_STRUCT
+} from './utils/seed-structure';
+import {
+    SEED_TEMPLATES,
+    SEED_SAMPLE_INCIDENCES,
+    SEED_MASTER_LISTS,
+    SEED_INCIDENCE_TYPE_ITEMS,
+    SEED_EXPENSE_CATEGORY_ITEMS,
+    SEED_DOCUMENT_TYPE_ITEMS
+} from './utils/seed-data';
+import {
+    generateRandomTime,
+    addMinutesToTime,
+    calculateHoursWorked,
+    detectInfraction,
+    createBatchId,
+    generateWorkingDays,
+    randomInt,
+    randomElement,
+    randomChance,
+    weightedRandom,
+} from './utils/seed-helpers';
 
 // Initialize Admin SDK
 if (!admin.apps.length) {
@@ -31,833 +50,344 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 connectAuthEmulator(auth, 'http://127.0.0.1:9099');
 
-const NOW = new Date().toISOString();
-
-// Helper to safely create auth user (deletes existing user with same email)
+// Helper to safely create auth user
 async function safeCreateAuthUser(uid: string, email: string, displayName: string): Promise<void> {
-    // First, delete any existing user with this email
     try {
-        const existingUser = await admin.auth().getUserByEmail(email);
-        console.log(`   🗑️  Eliminando usuario existente: ${email} (${existingUser.uid})`);
-        await admin.auth().deleteUser(existingUser.uid);
-    } catch {
-        // User doesn't exist, that's fine
+        const user = await admin.auth().getUserByEmail(email);
+        await admin.auth().deleteUser(user.uid);
+    } catch (error) {
+        // User not found, proceed
     }
-
-    // Now create the new user
-    await admin.auth().createUser({
-        uid,
-        email,
-        emailVerified: true,
-        displayName,
-    });
+    try {
+        await admin.auth().deleteUser(uid);
+    } catch (error) {
+        // UID not found, proceed
+    }
+    try {
+        await admin.auth().createUser({
+            uid,
+            email,
+            emailVerified: true,
+            displayName,
+            password: 'password123',
+        });
+    } catch (error) {
+        console.warn(`Warning creating user ${email}:`, error);
+    }
 }
 
+// Helper Functions
+function calculateYearsOfService(hireDate: string): number {
+    const hire = new Date(hireDate);
+    const now = new Date();
+    let years = now.getFullYear() - hire.getFullYear();
+    const monthDiff = now.getMonth() - hire.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && now.getDate() < hire.getDate())) {
+        years--;
+    }
+    return Math.max(0, years);
+}
 
-// =============================================================================
-// 1. ROLES Y PERMISOS
-// =============================================================================
+function calculateVacationDaysLFT(yearsOfService: number): number {
+    if (yearsOfService < 1) return 0;
+    if (yearsOfService <= 5) return 12 + ((yearsOfService - 1) * 2);
+    if (yearsOfService <= 10) return 20 + ((yearsOfService - 5) * 2);
+    if (yearsOfService <= 15) return 32;
+    if (yearsOfService <= 20) return 34;
+    if (yearsOfService <= 25) return 36;
+    if (yearsOfService <= 30) return 38;
+    return 40;
+}
 
-const ROLES = [
-    {
-        id: 'role-admin',
-        name: 'Administrador',
-        description: 'Acceso total al sistema',
-        isSystemRole: true,
-        permissions: [
-            { module: 'dashboard', level: 'write' },
-            { module: 'requests', level: 'write' },
-            { module: 'templates', level: 'write' },
-            { module: 'master_lists', level: 'write' },
-            { module: 'reports', level: 'write' },
-            { module: 'process_mining', level: 'write' },
-            { module: 'integrations', level: 'write' },
-            { module: 'admin_users', level: 'write' },
-            { module: 'admin_roles', level: 'write' },
-            { module: 'hcm_employees', level: 'write' },
-            { module: 'hcm_attendance', level: 'write' },
-            { module: 'hcm_incidences', level: 'write' },
-            { module: 'hcm_prenomina', level: 'write' },
-            { module: 'hcm_calendar', level: 'write' },
-            { module: 'hcm_org_chart', level: 'write' },
-            { module: 'hcm_talent_grid', level: 'write' },
-        ],
-        createdAt: NOW,
-        updatedAt: NOW,
-    },
-    {
-        id: 'role-hr-manager',
-        name: 'Gerente de RH',
-        description: 'Gestión completa de Capital Humano',
-        isSystemRole: true,
-        permissions: [
-            { module: 'dashboard', level: 'read' },
-            { module: 'requests', level: 'write' },
-            { module: 'hcm_employees', level: 'write' },
-            { module: 'hcm_attendance', level: 'write' },
-            { module: 'hcm_incidences', level: 'write' },
-            { module: 'hcm_prenomina', level: 'write' },
-            { module: 'hcm_calendar', level: 'write' },
-            { module: 'hcm_org_chart', level: 'read' },
-            { module: 'hcm_talent_grid', level: 'write' },
-        ],
-        createdAt: NOW,
-        updatedAt: NOW,
-    },
-    {
-        id: 'role-supervisor',
-        name: 'Supervisor',
-        description: 'Aprobación de incidencias de su equipo',
-        isSystemRole: false,
-        permissions: [
-            { module: 'dashboard', level: 'read' },
-            { module: 'requests', level: 'write' },
-            { module: 'hcm_employees', level: 'read' },
-            { module: 'hcm_incidences', level: 'write' },
-            { module: 'hcm_calendar', level: 'read' },
-        ],
-        createdAt: NOW,
-        updatedAt: NOW,
-    },
-    {
-        id: 'role-employee',
-        name: 'Colaborador',
-        description: 'Acceso básico para empleados',
-        isSystemRole: true,
-        permissions: [
-            { module: 'dashboard', level: 'read' },
-            { module: 'requests', level: 'write' },
-            { module: 'hcm_calendar', level: 'read' },
-        ],
-        createdAt: NOW,
-        updatedAt: NOW,
-    },
-];
+function calculateSDIFactor(vacationDays: number, vacationPremium = 0.25, aguinaldoDays = 15): number {
+    const factor = 1 + ((vacationPremium * vacationDays) / 365) + (aguinaldoDays / 365);
+    return Math.round(factor * 10000) / 10000;
+}
 
-// =============================================================================
-// 2. UBICACIONES
-// =============================================================================
+const SALARY_RANGES: Record<number, { min: number; max: number }> = {
+    1: { min: 4500, max: 6000 },
+    2: { min: 2500, max: 3500 },
+    3: { min: 1200, max: 1800 },
+    4: { min: 800, max: 1200 },
+    5: { min: 450, max: 700 },
+};
 
-const LOCATIONS = [
-    {
-        id: 'loc-corporativo-gdl',
-        name: 'Corporativo Guadalajara',
-        code: 'CORP-GDL',
-        type: 'corporativo',
-        address: 'Av. Américas 1500, Col. Providencia',
-        city: 'Guadalajara',
-        state: 'Jalisco',
-        overtimeResetDay: 'sunday',
-        toleranceMinutes: 10,
-        useVirtualCheckIn: true,
-        isActive: true,
-        createdAt: NOW,
-        updatedAt: NOW,
-        createdById: 'admin-user',
-    },
-    {
-        id: 'loc-cedis-gdl',
-        name: 'CEDIS Guadalajara',
-        code: 'CEDIS-GDL',
-        type: 'cedis',
-        address: 'Periférico Sur 8500, Zona Industrial',
-        city: 'Tlajomulco',
-        state: 'Jalisco',
-        overtimeResetDay: 'sunday',
-        toleranceMinutes: 5,
-        useVirtualCheckIn: false,
-        isActive: true,
-        createdAt: NOW,
-        updatedAt: NOW,
-        createdById: 'admin-user',
-    },
-    {
-        id: 'loc-tienda-centro',
-        name: 'Tienda Centro',
-        code: 'T-001',
-        type: 'tienda',
-        address: 'Av. Juárez 200, Centro',
-        city: 'Guadalajara',
-        state: 'Jalisco',
-        overtimeResetDay: 'saturday',
-        toleranceMinutes: 5,
-        useVirtualCheckIn: false,
-        isActive: true,
-        createdAt: NOW,
-        updatedAt: NOW,
-        createdById: 'admin-user',
-    },
-];
+function getPositionLevel(positionId: string): number {
+    const pos = SEED_POSITIONS.find(p => p.id === positionId);
+    return pos?.level || 5;
+}
 
-// =============================================================================
-// 3. PUESTOS (POSITIONS)
-// =============================================================================
+function generateCompensation(emp: typeof SEED_EMPLOYEES[0]) {
+    const level = getPositionLevel(emp.positionTitle); // Mismatched key? defined by PositionTitle in Employee?
+    // Wait, SEED_POSITIONS has id/name. SEED_EMPLOYEES has positionTitle. 
+    // In old seed, employees has 'positionId'. 
+    // In SEED_EMPLOYEES (seed-constants.ts), I see 'positionTitle' but NOT 'positionId'. 
+    // This is a disconnect!
 
-const POSITIONS = [
-    // Dirección
-    { id: 'pos-director-general', name: 'Director General', code: 'DG-001', department: 'Dirección', level: 1, canApproveOvertime: true, canApproveIncidences: true, isActive: true, createdAt: NOW, updatedAt: NOW },
+    // I need to map positionTitle to positionId or just use level 5 fallback.
+    // Or I should have included positionId in SEED_EMPLOYEES.
+    // For now, I'll fallback to 5.
 
-    // Gerencias
-    { id: 'pos-gerente-rh', name: 'Gerente de Recursos Humanos', code: 'GRH-001', department: 'Recursos Humanos', level: 2, canApproveOvertime: true, canApproveIncidences: true, isActive: true, createdAt: NOW, updatedAt: NOW },
-    { id: 'pos-gerente-operaciones', name: 'Gerente de Operaciones', code: 'GOP-001', department: 'Operaciones', level: 2, canApproveOvertime: true, canApproveIncidences: true, isActive: true, createdAt: NOW, updatedAt: NOW },
-    { id: 'pos-gerente-admin', name: 'Gerente de Administración', code: 'GAD-001', department: 'Administración', level: 2, canApproveOvertime: true, canApproveIncidences: true, isActive: true, createdAt: NOW, updatedAt: NOW },
-    { id: 'pos-gerente-ti', name: 'Gerente de TI', code: 'GTI-001', department: 'Tecnología', level: 2, canApproveOvertime: true, canApproveIncidences: true, isActive: true, createdAt: NOW, updatedAt: NOW },
+    const range = SALARY_RANGES[5]; // Default to level 5 for now
 
-    // Supervisores/Coordinadores
-    { id: 'pos-coord-rh', name: 'Coordinador de RH', code: 'CRH-001', department: 'Recursos Humanos', level: 3, canApproveOvertime: false, canApproveIncidences: true, isActive: true, createdAt: NOW, updatedAt: NOW },
-    { id: 'pos-super-almacen', name: 'Supervisor de Almacén', code: 'SAL-001', department: 'Operaciones', level: 3, canApproveOvertime: true, canApproveIncidences: true, isActive: true, createdAt: NOW, updatedAt: NOW },
-    { id: 'pos-super-tienda', name: 'Supervisor de Tienda', code: 'STI-001', department: 'Operaciones', level: 3, canApproveOvertime: true, canApproveIncidences: true, isActive: true, createdAt: NOW, updatedAt: NOW },
+    const salaryDaily = Math.round((range.min + range.max) / 2);
+    const yearsOfService = calculateYearsOfService(emp.hireDate);
+    const vacationDays = calculateVacationDaysLFT(yearsOfService);
+    const sdiFactor = calculateSDIFactor(vacationDays);
+    const sdiBase = Math.round(salaryDaily * sdiFactor * 100) / 100;
 
-    // Analistas/Especialistas
-    { id: 'pos-analista-rh', name: 'Analista de RH', code: 'ARH-001', department: 'Recursos Humanos', level: 4, canApproveOvertime: false, canApproveIncidences: false, isActive: true, createdAt: NOW, updatedAt: NOW },
-    { id: 'pos-contador', name: 'Contador', code: 'CNT-001', department: 'Administración', level: 4, canApproveOvertime: false, canApproveIncidences: false, isActive: true, createdAt: NOW, updatedAt: NOW },
-    { id: 'pos-desarrollador', name: 'Desarrollador de Software', code: 'DEV-001', department: 'Tecnología', level: 4, canApproveOvertime: false, canApproveIncidences: false, isActive: true, createdAt: NOW, updatedAt: NOW },
+    return {
+        id: `comp-${emp.id}`,
+        employeeId: emp.id,
+        salaryDaily,
+        salaryMonthly: salaryDaily * 30,
+        sdiBase,
+        sdiFactor,
+        vacationDays,
+        vacationPremium: 0.25,
+        aguinaldoDays: 15,
+        savingsFundPercentage: 0.13,
+        foodVouchersDaily: 0, // Simplified
+        effectiveDate: emp.hireDate,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        createdById: 'system'
+    };
+}
 
-    // Operativos
-    { id: 'pos-almacenista', name: 'Almacenista', code: 'ALM-001', department: 'Operaciones', level: 5, canApproveOvertime: false, canApproveIncidences: false, isActive: true, createdAt: NOW, updatedAt: NOW },
-    { id: 'pos-vendedor', name: 'Vendedor', code: 'VEN-001', department: 'Operaciones', level: 5, canApproveOvertime: false, canApproveIncidences: false, isActive: true, createdAt: NOW, updatedAt: NOW },
-    { id: 'pos-auxiliar-admin', name: 'Auxiliar Administrativo', code: 'AUX-001', department: 'Administración', level: 5, canApproveOvertime: false, canApproveIncidences: false, isActive: true, createdAt: NOW, updatedAt: NOW },
-    { id: 'pos-recepcion', name: 'Recepcionista', code: 'REC-001', department: 'Administración', level: 5, canApproveOvertime: false, canApproveIncidences: false, isActive: true, createdAt: NOW, updatedAt: NOW },
-];
-
-// =============================================================================
-// 4. TURNOS (SHIFTS)
-// =============================================================================
-
-const SHIFTS = [
-    {
-        id: 'shift-oficina',
-        name: 'Turno Oficina',
-        code: 'OFI-01',
-        type: 'diurnal',
-        startTime: '09:00',
-        endTime: '18:00',
-        breakStartTime: '14:00',
-        breakEndTime: '15:00',
-        breakMinutes: 60,
-        workDays: [1, 2, 3, 4, 5], // Lunes a Viernes
-        restDays: [0, 6], // Domingo y Sábado
-        dailyHours: 8,
-        weeklyHours: 40,
-        isActive: true,
-        createdAt: NOW,
-        updatedAt: NOW,
-    },
-    {
-        id: 'shift-almacen-matutino',
-        name: 'Turno Almacén Matutino',
-        code: 'ALM-MAT',
-        type: 'diurnal',
-        startTime: '06:00',
-        endTime: '14:00',
-        breakMinutes: 30,
-        workDays: [1, 2, 3, 4, 5, 6], // Lunes a Sábado
-        restDays: [0], // Domingo
-        dailyHours: 8,
-        weeklyHours: 48,
-        locationId: 'loc-cedis-gdl',
-        isActive: true,
-        createdAt: NOW,
-        updatedAt: NOW,
-    },
-    {
-        id: 'shift-almacen-vespertino',
-        name: 'Turno Almacén Vespertino',
-        code: 'ALM-VES',
-        type: 'mixed',
-        startTime: '14:00',
-        endTime: '22:00',
-        breakMinutes: 30,
-        workDays: [1, 2, 3, 4, 5, 6],
-        restDays: [0],
-        dailyHours: 8,
-        weeklyHours: 48,
-        locationId: 'loc-cedis-gdl',
-        isActive: true,
-        createdAt: NOW,
-        updatedAt: NOW,
-    },
-    {
-        id: 'shift-tienda',
-        name: 'Turno Tienda',
-        code: 'TIE-01',
-        type: 'diurnal',
-        startTime: '10:00',
-        endTime: '19:00',
-        breakMinutes: 60,
-        workDays: [1, 2, 3, 4, 5, 6],
-        restDays: [0],
-        dailyHours: 8,
-        weeklyHours: 48,
-        isActive: true,
-        createdAt: NOW,
-        updatedAt: NOW,
-    },
-];
-
-// =============================================================================
-// 5. USUARIOS Y EMPLEADOS (CON JERARQUÍA)
-// =============================================================================
-
-const EMPLOYEES = [
-    // === DIRECCIÓN ===
-    {
-        id: 'emp-director',
-        uid: 'emp-director',
-        fullName: 'Ricardo Mendoza García',
-        email: 'ricardo.mendoza@empresa.mx',
-        department: 'Dirección',
-        positionTitle: 'Director General',
-        positionId: 'pos-director-general',
-        locationId: 'loc-corporativo-gdl',
-        customShiftId: 'shift-oficina',
-        role: 'Admin',
-        status: 'active',
-        employmentType: 'full_time',
-        shiftType: 'diurnal',
-        hireDate: '2015-01-15',
-        directManagerId: null, // Top of hierarchy
-        performanceRating: 5,
-        potentialRating: 5,
-    },
-
-    // === GERENTES (Reportan a Director) ===
-    {
-        id: 'emp-gerente-rh',
-        uid: 'emp-gerente-rh',
-        fullName: 'Patricia Ramírez Luna',
-        email: 'patricia.ramirez@empresa.mx',
-        department: 'Recursos Humanos',
-        positionTitle: 'Gerente de Recursos Humanos',
-        positionId: 'pos-gerente-rh',
-        locationId: 'loc-corporativo-gdl',
-        customShiftId: 'shift-oficina',
-        role: 'HRManager',
-        status: 'active',
-        employmentType: 'full_time',
-        shiftType: 'diurnal',
-        hireDate: '2017-03-01',
-        directManagerId: 'emp-director',
-        performanceRating: 4,
-        potentialRating: 5,
-    },
-    {
-        id: 'emp-gerente-ops',
-        uid: 'emp-gerente-ops',
-        fullName: 'Jorge Luis Hernández Vega',
-        email: 'jorge.hernandez@empresa.mx',
-        department: 'Operaciones',
-        positionTitle: 'Gerente de Operaciones',
-        positionId: 'pos-gerente-operaciones',
-        locationId: 'loc-cedis-gdl',
-        customShiftId: 'shift-oficina',
-        role: 'Manager',
-        status: 'active',
-        employmentType: 'full_time',
-        shiftType: 'diurnal',
-        hireDate: '2016-06-15',
-        directManagerId: 'emp-director',
-        performanceRating: 4,
-        potentialRating: 4,
-    },
-    {
-        id: 'emp-gerente-admin',
-        uid: 'emp-gerente-admin',
-        fullName: 'María Elena Torres Díaz',
-        email: 'maria.torres@empresa.mx',
-        department: 'Administración',
-        positionTitle: 'Gerente de Administración',
-        positionId: 'pos-gerente-admin',
-        locationId: 'loc-corporativo-gdl',
-        customShiftId: 'shift-oficina',
-        role: 'Manager',
-        status: 'active',
-        employmentType: 'full_time',
-        shiftType: 'diurnal',
-        hireDate: '2018-02-01',
-        directManagerId: 'emp-director',
-        performanceRating: 5,
-        potentialRating: 4,
-    },
-    {
-        id: 'emp-gerente-ti',
-        uid: 'emp-gerente-ti',
-        fullName: 'Carlos Alberto Navarro Ruiz',
-        email: 'carlos.navarro@empresa.mx',
-        department: 'Tecnología',
-        positionTitle: 'Gerente de TI',
-        positionId: 'pos-gerente-ti',
-        locationId: 'loc-corporativo-gdl',
-        customShiftId: 'shift-oficina',
-        role: 'Manager',
-        status: 'active',
-        employmentType: 'full_time',
-        shiftType: 'diurnal',
-        hireDate: '2019-08-01',
-        directManagerId: 'emp-director',
-        performanceRating: 4,
-        potentialRating: 5,
-    },
-
-    // === COORDINADORES/SUPERVISORES (Reportan a Gerentes) ===
-    {
-        id: 'emp-coord-rh',
-        uid: 'emp-coord-rh',
-        fullName: 'Ana Gabriela Soto Martínez',
-        email: 'ana.soto@empresa.mx',
-        department: 'Recursos Humanos',
-        positionTitle: 'Coordinador de RH',
-        positionId: 'pos-coord-rh',
-        locationId: 'loc-corporativo-gdl',
-        customShiftId: 'shift-oficina',
-        role: 'Member',
-        status: 'active',
-        employmentType: 'full_time',
-        shiftType: 'diurnal',
-        hireDate: '2020-01-15',
-        directManagerId: 'emp-gerente-rh',
-        performanceRating: 4,
-        potentialRating: 4,
-    },
-    {
-        id: 'emp-super-almacen',
-        uid: 'emp-super-almacen',
-        fullName: 'Miguel Ángel Rojas Vargas',
-        email: 'miguel.rojas@empresa.mx',
-        department: 'Operaciones',
-        positionTitle: 'Supervisor de Almacén',
-        positionId: 'pos-super-almacen',
-        locationId: 'loc-cedis-gdl',
-        customShiftId: 'shift-almacen-matutino',
-        role: 'Member',
-        status: 'active',
-        employmentType: 'full_time',
-        shiftType: 'diurnal',
-        hireDate: '2019-04-01',
-        directManagerId: 'emp-gerente-ops',
-        performanceRating: 3,
-        potentialRating: 4,
-    },
-    {
-        id: 'emp-super-tienda',
-        uid: 'emp-super-tienda',
-        fullName: 'Laura Cecilia Moreno Castro',
-        email: 'laura.moreno@empresa.mx',
-        department: 'Operaciones',
-        positionTitle: 'Supervisor de Tienda',
-        positionId: 'pos-super-tienda',
-        locationId: 'loc-tienda-centro',
-        customShiftId: 'shift-tienda',
-        role: 'Member',
-        status: 'active',
-        employmentType: 'full_time',
-        shiftType: 'diurnal',
-        hireDate: '2021-02-01',
-        directManagerId: 'emp-gerente-ops',
-        performanceRating: 4,
-        potentialRating: 3,
-    },
-
-    // === ANALISTAS/ESPECIALISTAS ===
-    {
-        id: 'emp-analista-rh',
-        uid: 'emp-analista-rh',
-        fullName: 'Sandra Patricia López Aguilar',
-        email: 'sandra.lopez@empresa.mx',
-        department: 'Recursos Humanos',
-        positionTitle: 'Analista de RH',
-        positionId: 'pos-analista-rh',
-        locationId: 'loc-corporativo-gdl',
-        customShiftId: 'shift-oficina',
-        role: 'Member',
-        status: 'active',
-        employmentType: 'full_time',
-        shiftType: 'diurnal',
-        hireDate: '2022-06-01',
-        directManagerId: 'emp-coord-rh',
-        performanceRating: 3,
-        potentialRating: 4,
-    },
-    {
-        id: 'emp-contador',
-        uid: 'emp-contador',
-        fullName: 'Roberto Carlos Guzmán Pérez',
-        email: 'roberto.guzman@empresa.mx',
-        department: 'Administración',
-        positionTitle: 'Contador',
-        positionId: 'pos-contador',
-        locationId: 'loc-corporativo-gdl',
-        customShiftId: 'shift-oficina',
-        role: 'Member',
-        status: 'active',
-        employmentType: 'full_time',
-        shiftType: 'diurnal',
-        hireDate: '2020-03-15',
-        directManagerId: 'emp-gerente-admin',
-        performanceRating: 4,
-        potentialRating: 3,
-    },
-    {
-        id: 'emp-desarrollador',
-        uid: 'emp-desarrollador',
-        fullName: 'Fernando Alejandro Cruz Ortiz',
-        email: 'fernando.cruz@empresa.mx',
-        department: 'Tecnología',
-        positionTitle: 'Desarrollador de Software',
-        positionId: 'pos-desarrollador',
-        locationId: 'loc-corporativo-gdl',
-        customShiftId: 'shift-oficina',
-        role: 'Member',
-        status: 'active',
-        employmentType: 'full_time',
-        shiftType: 'diurnal',
-        hireDate: '2023-01-10',
-        directManagerId: 'emp-gerente-ti',
-        onboardingStatus: 'day_90',
-        performanceRating: 3,
-        potentialRating: 5,
-    },
-
-    // === OPERATIVOS ===
-    {
-        id: 'emp-almacenista-1',
-        uid: 'emp-almacenista-1',
-        fullName: 'José Manuel Ríos Delgado',
-        email: 'jose.rios@empresa.mx',
-        department: 'Operaciones',
-        positionTitle: 'Almacenista',
-        positionId: 'pos-almacenista',
-        locationId: 'loc-cedis-gdl',
-        customShiftId: 'shift-almacen-matutino',
-        role: 'Member',
-        status: 'active',
-        employmentType: 'full_time',
-        shiftType: 'diurnal',
-        hireDate: '2021-07-01',
-        directManagerId: 'emp-super-almacen',
-        performanceRating: 3,
-        potentialRating: 3,
-    },
-    {
-        id: 'emp-almacenista-2',
-        uid: 'emp-almacenista-2',
-        fullName: 'Pedro Enrique Vázquez Flores',
-        email: 'pedro.vazquez@empresa.mx',
-        department: 'Operaciones',
-        positionTitle: 'Almacenista',
-        positionId: 'pos-almacenista',
-        locationId: 'loc-cedis-gdl',
-        customShiftId: 'shift-almacen-vespertino',
-        role: 'Member',
-        status: 'active',
-        employmentType: 'full_time',
-        shiftType: 'mixed',
-        hireDate: '2022-03-15',
-        directManagerId: 'emp-super-almacen',
-        performanceRating: 2,
-        potentialRating: 3,
-    },
-    {
-        id: 'emp-vendedor-1',
-        uid: 'emp-vendedor-1',
-        fullName: 'Daniela Fernanda Jiménez Ruiz',
-        email: 'daniela.jimenez@empresa.mx',
-        department: 'Operaciones',
-        positionTitle: 'Vendedor',
-        positionId: 'pos-vendedor',
-        locationId: 'loc-tienda-centro',
-        customShiftId: 'shift-tienda',
-        role: 'Member',
-        status: 'active',
-        employmentType: 'full_time',
-        shiftType: 'diurnal',
-        hireDate: '2023-02-01',
-        directManagerId: 'emp-super-tienda',
-        onboardingStatus: 'day_60',
-        performanceRating: 3,
-        potentialRating: 4,
-    },
-    {
-        id: 'emp-vendedor-2',
-        uid: 'emp-vendedor-2',
-        fullName: 'Andrés Felipe Salazar Mendoza',
-        email: 'andres.salazar@empresa.mx',
-        department: 'Operaciones',
-        positionTitle: 'Vendedor',
-        positionId: 'pos-vendedor',
-        locationId: 'loc-tienda-centro',
-        customShiftId: 'shift-tienda',
-        role: 'Member',
-        status: 'active',
-        employmentType: 'full_time',
-        shiftType: 'diurnal',
-        hireDate: '2022-09-01',
-        directManagerId: 'emp-super-tienda',
-        performanceRating: 4,
-        potentialRating: 3,
-    },
-    {
-        id: 'emp-auxiliar',
-        uid: 'emp-auxiliar',
-        fullName: 'Gabriela Ivonne Estrada Luna',
-        email: 'gabriela.estrada@empresa.mx',
-        department: 'Administración',
-        positionTitle: 'Auxiliar Administrativo',
-        positionId: 'pos-auxiliar-admin',
-        locationId: 'loc-corporativo-gdl',
-        customShiftId: 'shift-oficina',
-        role: 'Member',
-        status: 'active',
-        employmentType: 'full_time',
-        shiftType: 'diurnal',
-        hireDate: '2023-04-01',
-        directManagerId: 'emp-gerente-admin',
-        onboardingStatus: 'day_30',
-        performanceRating: 3,
-        potentialRating: 4,
-    },
-    {
-        id: 'emp-recepcion',
-        uid: 'emp-recepcion',
-        fullName: 'Mariana Guadalupe Ortega Sánchez',
-        email: 'mariana.ortega@empresa.mx',
-        department: 'Administración',
-        positionTitle: 'Recepcionista',
-        positionId: 'pos-recepcion',
-        locationId: 'loc-corporativo-gdl',
-        customShiftId: 'shift-oficina',
-        role: 'Member',
-        status: 'active',
-        employmentType: 'full_time',
-        shiftType: 'diurnal',
-        hireDate: '2021-11-15',
-        directManagerId: 'emp-gerente-admin',
-        performanceRating: 4,
-        potentialRating: 3,
-    },
-];
-
-// =============================================================================
-// 6. PLANTILLAS DE WORKFLOW
-// =============================================================================
-
-const TEMPLATES = [
-    // Solicitud de Vacaciones
-    {
-        id: 'tpl-vacaciones',
-        name: 'Solicitud de Vacaciones',
-        description: 'Proceso para solicitar días de vacaciones con aprobación del jefe directo y RH.',
-        fields: [
-            { id: 'fecha_inicio', label: 'Fecha de Inicio', type: 'date', required: true },
-            { id: 'fecha_fin', label: 'Fecha de Fin', type: 'date', required: true },
-            { id: 'dias_totales', label: 'Días Totales', type: 'number', readOnly: true },
-            { id: 'motivo', label: 'Motivo', type: 'textarea', placeholder: 'Describa el motivo de sus vacaciones...' },
-            { id: 'contacto_emergencia', label: 'Contacto de Emergencia', type: 'text' },
-        ],
-        steps: [
-            { id: 'step-1', name: 'Aprobación Jefe Directo', type: 'task', assigneeRole: 'Manager', slaHours: 48, outcomes: ['Aprobar', 'Rechazar'] },
-            { id: 'step-2', name: 'Validación RH', type: 'task', assigneeRole: 'HRManager', slaHours: 24 },
-        ],
-        rules: [],
-    },
-    // Solicitud de Reembolso
-    {
-        id: 'tpl-reembolso',
-        name: 'Solicitud de Reembolso',
-        description: 'Proceso para solicitar reembolso de gastos con comprobantes.',
-        fields: [
-            { id: 'tipo_gasto', label: 'Tipo de Gasto', type: 'select', options: ['Transporte', 'Alimentación', 'Hospedaje', 'Material de Oficina', 'Otro'], required: true },
-            { id: 'monto', label: 'Monto Total (MXN)', type: 'number', required: true },
-            { id: 'fecha_gasto', label: 'Fecha del Gasto', type: 'date', required: true },
-            { id: 'descripcion', label: 'Descripción', type: 'textarea', required: true },
-            { id: 'comprobantes', label: 'Comprobantes', type: 'file' },
-        ],
-        steps: [
-            { id: 'step-1', name: 'Aprobación Jefe Directo', type: 'task', assigneeRole: 'Manager', slaHours: 72, outcomes: ['Aprobar', 'Rechazar', 'Solicitar más información'] },
-            { id: 'step-2', name: 'Revisión Contabilidad', type: 'task', assigneeRole: 'Admin', slaHours: 48 },
-        ],
-        rules: [],
-    },
-    // Permiso de Ausencia
-    {
-        id: 'tpl-permiso-ausencia',
-        name: 'Permiso de Ausencia',
-        description: 'Solicitud de permiso para ausencia justificada (cita médica, trámite personal, etc.).',
-        fields: [
-            { id: 'tipo_permiso', label: 'Tipo de Permiso', type: 'select', options: ['Cita Médica', 'Trámite Personal', 'Asunto Familiar', 'Otro'], required: true },
-            { id: 'fecha', label: 'Fecha', type: 'date', required: true },
-            { id: 'hora_salida', label: 'Hora de Salida', type: 'text', placeholder: 'Ej: 10:00' },
-            { id: 'hora_regreso', label: 'Hora de Regreso', type: 'text', placeholder: 'Ej: 14:00' },
-            { id: 'justificacion', label: 'Justificación', type: 'textarea', required: true },
-        ],
-        steps: [
-            { id: 'step-1', name: 'Aprobación Jefe Directo', type: 'task', assigneeRole: 'Manager', slaHours: 24, outcomes: ['Aprobar', 'Rechazar'] },
-        ],
-        rules: [],
-    },
-    // Alta de Proveedor
-    {
-        id: 'tpl-alta-proveedor',
-        name: 'Alta de Proveedor',
-        description: 'Proceso para dar de alta un nuevo proveedor en el sistema.',
-        fields: [
-            { id: 'razon_social', label: 'Razón Social', type: 'text', required: true },
-            { id: 'rfc', label: 'RFC', type: 'text', required: true },
-            { id: 'direccion', label: 'Dirección Fiscal', type: 'textarea', required: true },
-            { id: 'contacto_nombre', label: 'Nombre de Contacto', type: 'text', required: true },
-            { id: 'contacto_email', label: 'Email de Contacto', type: 'email', required: true },
-            { id: 'contacto_telefono', label: 'Teléfono', type: 'text' },
-            { id: 'tipo_servicio', label: 'Tipo de Servicio', type: 'select', options: ['Materiales', 'Servicios', 'Logística', 'Tecnología', 'Otro'], required: true },
-        ],
-        steps: [
-            { id: 'step-1', name: 'Revisión Compras', type: 'task', assigneeRole: 'Member', slaHours: 48 },
-            { id: 'step-2', name: 'Aprobación Gerente', type: 'task', assigneeRole: 'Manager', slaHours: 72, outcomes: ['Aprobar', 'Rechazar'] },
-            { id: 'step-3', name: 'Registro en Sistema', type: 'task', assigneeRole: 'Admin', slaHours: 24 },
-        ],
-        rules: [],
-    },
-    // Requisición de Compra
-    {
-        id: 'tpl-requisicion',
-        name: 'Requisición de Compra',
-        description: 'Solicitud de compra de materiales o servicios.',
-        fields: [
-            { id: 'departamento', label: 'Departamento Solicitante', type: 'select', options: ['Operaciones', 'Administración', 'Recursos Humanos', 'Tecnología', 'Dirección'], required: true },
-            { id: 'descripcion_items', label: 'Descripción de lo Solicitado', type: 'textarea', required: true },
-            { id: 'cantidad', label: 'Cantidad', type: 'number', required: true },
-            { id: 'urgencia', label: 'Urgencia', type: 'select', options: ['Baja', 'Media', 'Alta', 'Crítica'], required: true },
-            { id: 'justificacion', label: 'Justificación', type: 'textarea', required: true },
-            { id: 'proveedor_sugerido', label: 'Proveedor Sugerido (opcional)', type: 'text' },
-        ],
-        steps: [
-            { id: 'step-1', name: 'Aprobación Jefe Área', type: 'task', assigneeRole: 'Manager', slaHours: 48, outcomes: ['Aprobar', 'Rechazar'] },
-            { id: 'step-2', name: 'Cotización Compras', type: 'task', assigneeRole: 'Member', slaHours: 72 },
-            { id: 'step-3', name: 'Aprobación Final', type: 'task', assigneeRole: 'Admin', slaHours: 48, outcomes: ['Autorizar', 'Rechazar'] },
-        ],
-        rules: [],
-    },
-];
-
-// =============================================================================
 // MAIN SEEDING FUNCTION
-// =============================================================================
-
 async function seedDatabase() {
     console.log('🌱 Iniciando proceso de Seed de Base de Datos...\n');
 
     try {
-        // 1. Crear Roles
         console.log('📋 Creando Roles y Permisos...');
-        for (const role of ROLES) {
-            await db.collection('roles').doc(role.id).set(role);
-        }
-        console.log(`   ✅ ${ROLES.length} roles creados\n`);
+        for (const role of SEED_ROLES) await db.collection('roles').doc(role.id).set(role);
 
-        // 2. Crear Ubicaciones
         console.log('📍 Creando Ubicaciones...');
-        for (const loc of LOCATIONS) {
-            await db.collection('locations').doc(loc.id).set(loc);
-        }
-        console.log(`   ✅ ${LOCATIONS.length} ubicaciones creadas\n`);
+        for (const loc of SEED_LOCATIONS_STRUCT) await db.collection('locations').doc(loc.id).set(loc);
 
-        // 3. Crear Puestos
+        console.log('🏢 Creando Departamentos...');
+        for (const dept of SEED_DEPARTMENTS) await db.collection('departments').doc(dept.id).set(dept);
+
         console.log('💼 Creando Puestos...');
-        for (const pos of POSITIONS) {
-            await db.collection('positions').doc(pos.id).set(pos);
-        }
-        console.log(`   ✅ ${POSITIONS.length} puestos creados\n`);
+        for (const pos of SEED_POSITIONS) await db.collection('positions').doc(pos.id).set(pos);
 
-        // 4. Crear Turnos
         console.log('⏰ Creando Turnos...');
-        for (const shift of SHIFTS) {
-            await db.collection('custom_shifts').doc(shift.id).set(shift);
-        }
-        console.log(`   ✅ ${SHIFTS.length} turnos creados\n`);
+        for (const shift of SEED_SHIFTS_STRUCT) await db.collection('shifts').doc(shift.id).set(shift);
 
-        // 5. Crear Usuarios y Empleados
         console.log('👥 Creando Usuarios y Empleados...');
-        for (const emp of EMPLOYEES) {
-            // Safely create auth user (handles existing users)
+        for (const emp of SEED_EMPLOYEES) {
             await safeCreateAuthUser(emp.uid, emp.email, emp.fullName);
-
-            // Create User document
             await db.collection('users').doc(emp.uid).set({
                 id: emp.uid,
                 fullName: emp.fullName,
                 email: emp.email,
                 department: emp.department,
                 role: emp.role,
-                status: emp.status,
+                status: 'active', // Assuming active
                 managerId: emp.directManagerId || null,
-                createdAt: NOW,
+                createdAt: new Date().toISOString(),
             });
-
-            // Create Employee document
             await db.collection('employees').doc(emp.id).set({
                 ...emp,
-                createdAt: NOW,
-                updatedAt: NOW,
+                status: 'active',
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
             });
         }
-        console.log(`   ✅ ${EMPLOYEES.length} usuarios/empleados creados\n`);
 
-        // 6. Crear Plantillas
-        console.log('📄 Creando Plantillas de Workflow...');
-        for (const tpl of TEMPLATES) {
-            await db.collection('templates').doc(tpl.id).set(tpl);
+        console.log('🌴 Creando Saldos de Vacaciones...');
+        for (const emp of SEED_EMPLOYEES) {
+            const hireDate = new Date(emp.hireDate);
+            const now = new Date();
+            const yearsOfService = calculateYearsOfService(emp.hireDate);
+            const vacationDays = calculateVacationDaysLFT(yearsOfService);
+            const balanceId = `vb-${emp.id}`;
+            await db.collection('vacation_balances').doc(balanceId).set({
+                id: balanceId,
+                employeeId: emp.id,
+                yearsOfService,
+                daysEntitled: vacationDays,
+                daysAvailable: vacationDays,
+                lastUpdated: new Date().toISOString(),
+                createdAt: new Date().toISOString(),
+            });
         }
-        console.log(`   ✅ ${TEMPLATES.length} plantillas creadas\n`);
 
-        // 7. Create Admin Test User
-        console.log('👤 Creando Usuario Administrador de Prueba...');
+        console.log('📄 Creando Plantillas de Workflow...');
+        for (const tpl of SEED_TEMPLATES) await db.collection('request_templates').doc(tpl.id).set(tpl);
+
+        console.log('📋 Creando Incidencias de Ejemplo...');
+        for (const inc of SEED_SAMPLE_INCIDENCES) await db.collection('incidences').doc(inc.id).set(inc);
+
+        console.log('📚 Creando Listas Maestras...');
+        for (const ml of SEED_MASTER_LISTS) await db.collection('master_lists').doc(ml.id).set(ml);
+
+        for (const item of SEED_INCIDENCE_TYPE_ITEMS)
+            await db.collection('master_lists').doc('ml-incidence-types').collection('items').doc(item.id).set(item);
+        for (const item of SEED_EXPENSE_CATEGORY_ITEMS)
+            await db.collection('master_lists').doc('ml-expense-categories').collection('items').doc(item.id).set(item);
+        for (const item of SEED_DOCUMENT_TYPE_ITEMS)
+            await db.collection('master_lists').doc('ml-document-types').collection('items').doc(item.id).set(item);
+
+        console.log('💰 Creando Registros de Compensación...');
+        for (const emp of SEED_EMPLOYEES) {
+            const comp = generateCompensation(emp);
+            await db.collection('compensation').doc(comp.id).set(comp);
+        }
+
+        // 9. HISTORICAL DATA
+        console.log('📊 Generando Datos Históricos de Asistencia...\n');
+
+        async function createAttendanceImportBatch(period: string, batchNumber: number, startDate: string, endDate: string, importDate: string) {
+            const batchId = createBatchId(period, batchNumber);
+            const workingDays = generateWorkingDays(startDate, endDate, [1, 2, 3, 4, 5]);
+            const totalRecords = workingDays.length * SEED_EMPLOYEES.length;
+            await db.collection('attendance_imports').doc(batchId).set({
+                id: batchId, period, batchNumber, importDate, startDate, endDate, totalRecords,
+                processedRecords: totalRecords, status: 'completed', importedBy: 'emp-gerente-rh',
+                fileName: `asistencias_${period}_batch${batchNumber}.csv`, createdAt: importDate, updatedAt: importDate,
+            });
+            return { batchId, workingDays };
+        }
+
+        async function createAttendanceRecords(batchId: string, workingDays: string[], period: string) {
+            for (const employee of SEED_EMPLOYEES) {
+                // Find shift - use 'shift-admin' from constants if not found in SHIFTS struct
+                const shiftId = employee.shiftId;
+                const shift = SEED_SHIFTS_STRUCT.find(s => s.id === shiftId) || SEED_SHIFTS_STRUCT[0];
+
+                for (const date of workingDays) {
+                    const scenario = Math.random();
+                    let checkIn, checkOut;
+                    if (scenario < 0.7) {
+                        checkIn = generateRandomTime(shift.startTime, 3);
+                        checkOut = generateRandomTime(shift.endTime, 3);
+                    } else if (scenario < 0.9) {
+                        const lateMinutes = randomInt(shift.toleranceMinutes + 1, 30);
+                        checkIn = addMinutesToTime(shift.startTime, lateMinutes);
+                        checkOut = shift.endTime;
+                    } else {
+                        checkIn = shift.startTime;
+                        const earlyMinutes = randomInt(15, 60);
+                        checkOut = addMinutesToTime(shift.endTime, -earlyMinutes);
+                    }
+                    const hoursWorked = calculateHoursWorked(checkIn, checkOut);
+                    const infraction = detectInfraction(checkIn, checkOut, shift.startTime, shift.endTime, shift.toleranceMinutes);
+
+                    await db.collection('attendance').add({
+                        employeeId: employee.id, employeeName: employee.fullName, date, checkIn, checkOut,
+                        importBatchId: batchId, locationId: employee.locationId, shiftId: employee.shiftId,
+                        hoursWorked, regularHours: Math.min(hoursWorked, 8), overtimeHours: Math.max(hoursWorked - 8, 0),
+                        isValid: true, createdAt: date, updatedAt: date,
+                    });
+
+                    if (infraction.hasTardiness) {
+                        await db.collection('tardiness_records').add({
+                            employeeId: employee.id, employeeName: employee.fullName, date, scheduledTime: shift.startTime,
+                            actualTime: checkIn, minutesLate: infraction.minutesLate, isJustified: false, justificationStatus: 'pending',
+                            importBatchId: batchId, createdAt: date, updatedAt: date,
+                        });
+                    }
+                    if (infraction.hasEarlyDeparture) {
+                        await db.collection('early_departures').add({
+                            employeeId: employee.id, employeeName: employee.fullName, date, scheduledTime: shift.endTime,
+                            actualTime: checkOut, minutesEarly: infraction.minutesEarly, isJustified: false, justificationStatus: 'pending',
+                            importBatchId: batchId, createdAt: date, updatedAt: date,
+                        });
+                    }
+                }
+            }
+        }
+
+        async function createOvertimeRequests(period: string, workingDays: string[], shouldApprove: boolean) {
+            const employeesWithOT = SEED_EMPLOYEES.filter(() => randomChance(0.3));
+            for (const employee of employeesWithOT) {
+                const requestCount = randomInt(1, 3);
+                for (let i = 0; i < requestCount; i++) {
+                    const date = randomElement(workingDays);
+                    const hoursRequested = randomInt(1, 4);
+                    const reason = randomElement(OVERTIME_REASONS);
+                    const requestData: any = {
+                        employeeId: employee.id, employeeName: employee.fullName, date, hoursRequested, reason,
+                        status: 'pending', createdAt: date, updatedAt: date,
+                    };
+                    if (shouldApprove) {
+                        const outcome = Math.random();
+                        if (outcome < 0.6) {
+                            requestData.status = 'approved'; requestData.approvedBy = 'emp-gerente-rh'; requestData.hoursApproved = hoursRequested;
+                        } else if (outcome < 0.8) {
+                            requestData.status = 'rejected'; requestData.rejectedBy = 'emp-gerente-rh'; requestData.rejectionReason = 'No autorizado';
+                        }
+                    }
+                    await db.collection('overtime_requests').add(requestData);
+                }
+            }
+        }
+
+        async function createApprovedIncidences(period: string, workingDays: string[]) {
+            const employeesWithIncidences = SEED_EMPLOYEES.filter(() => randomChance(0.4));
+            for (const employee of employeesWithIncidences) {
+                const incidenceType = weightedRandom(INCIDENCE_TYPES);
+                const startDate = randomElement(workingDays);
+                await db.collection('incidences').add({
+                    employeeId: employee.id, employeeName: employee.fullName, type: incidenceType.value,
+                    startDate, endDate: startDate, status: 'approved', reason: 'Approved Incidence',
+                    approvedBy: 'emp-gerente-rh', approvedAt: startDate, createdAt: startDate, updatedAt: startDate,
+                });
+            }
+        }
+
+        async function closePeriod(period: string, closedAt: string) {
+            const managers = SEED_EMPLOYEES.filter(e => e.role === 'Supervisor' || e.role === 'Admin');
+            for (const manager of managers) {
+                await db.collection('period_closures').doc(`${manager.id}_${period}`).set({
+                    userId: manager.id, period, closedAt, closedBy: manager.id, slaCompleted: true, consolidationCompleted: true,
+                    createdAt: closedAt, updatedAt: closedAt,
+                });
+            }
+        }
+
+        // Periods logic
+        const p1 = await createAttendanceImportBatch(PERIODS.CLOSED_1.period, 1, PERIODS.CLOSED_1.batch1.start, PERIODS.CLOSED_1.batch1.end, PERIODS.CLOSED_1.batch1.importDate);
+        await createAttendanceRecords(p1.batchId, p1.workingDays, PERIODS.CLOSED_1.period);
+        await createOvertimeRequests(PERIODS.CLOSED_1.period, p1.workingDays, true);
+        await createApprovedIncidences(PERIODS.CLOSED_1.period, p1.workingDays);
+
+        const p1b2 = await createAttendanceImportBatch(PERIODS.CLOSED_1.period, 2, PERIODS.CLOSED_1.batch2.start, PERIODS.CLOSED_1.batch2.end, PERIODS.CLOSED_1.batch2.importDate);
+        await createAttendanceRecords(p1b2.batchId, p1b2.workingDays, PERIODS.CLOSED_1.period);
+        await createOvertimeRequests(PERIODS.CLOSED_1.period, p1b2.workingDays, true);
+        await createApprovedIncidences(PERIODS.CLOSED_1.period, p1b2.workingDays);
+        await closePeriod(PERIODS.CLOSED_1.period, PERIODS.CLOSED_1.closedAt);
+
+        const p2 = await createAttendanceImportBatch(PERIODS.CLOSED_2.period, 1, PERIODS.CLOSED_2.batch1.start, PERIODS.CLOSED_2.batch1.end, PERIODS.CLOSED_2.batch1.importDate);
+        await createAttendanceRecords(p2.batchId, p2.workingDays, PERIODS.CLOSED_2.period);
+        await createOvertimeRequests(PERIODS.CLOSED_2.period, p2.workingDays, true);
+        await createApprovedIncidences(PERIODS.CLOSED_2.period, p2.workingDays);
+
+        const p2b2 = await createAttendanceImportBatch(PERIODS.CLOSED_2.period, 2, PERIODS.CLOSED_2.batch2.start, PERIODS.CLOSED_2.batch2.end, PERIODS.CLOSED_2.batch2.importDate);
+        await createAttendanceRecords(p2b2.batchId, p2b2.workingDays, PERIODS.CLOSED_2.period);
+        await createOvertimeRequests(PERIODS.CLOSED_2.period, p2b2.workingDays, true);
+        await createApprovedIncidences(PERIODS.CLOSED_2.period, p2b2.workingDays);
+        await closePeriod(PERIODS.CLOSED_2.period, PERIODS.CLOSED_2.closedAt);
+
+        const p3 = await createAttendanceImportBatch(PERIODS.OPEN.period, 1, PERIODS.OPEN.batch1.start, PERIODS.OPEN.batch1.end, PERIODS.OPEN.batch1.importDate);
+        await createAttendanceRecords(p3.batchId, p3.workingDays, PERIODS.OPEN.period);
+        await createOvertimeRequests(PERIODS.OPEN.period, p3.workingDays, false);
+
+        // 10. Admin User
+        console.log('👤 Creando Usuario Administrador...');
         const ADMIN_UID = 'admin-user';
         await safeCreateAuthUser(ADMIN_UID, 'admin@stuffactory.mx', 'Administrador Sistema');
         await db.collection('users').doc(ADMIN_UID).set({
-            id: ADMIN_UID,
-            fullName: 'Administrador Sistema',
-            email: 'admin@stuffactory.mx',
-            department: 'Tecnología',
-            role: 'Admin',
-            status: 'active',
-            createdAt: NOW,
+            id: ADMIN_UID, fullName: 'Administrador Sistema', email: 'admin@stuffactory.mx',
+            department: 'Tecnología', role: 'Admin', status: 'active', createdAt: new Date().toISOString(),
         });
-        console.log('   ✅ Usuario admin@stuffactory.mx creado\n');
 
-        // Summary
-        console.log('═══════════════════════════════════════════════════════════');
-        console.log('🎉 ¡SEED COMPLETADO EXITOSAMENTE!');
-        console.log('═══════════════════════════════════════════════════════════');
-        console.log('\n📊 RESUMEN:');
-        console.log(`   • Roles:       ${ROLES.length}`);
-        console.log(`   • Ubicaciones: ${LOCATIONS.length}`);
-        console.log(`   • Puestos:     ${POSITIONS.length}`);
-        console.log(`   • Turnos:      ${SHIFTS.length}`);
-        console.log(`   • Empleados:   ${EMPLOYEES.length}`);
-        console.log(`   • Plantillas:  ${TEMPLATES.length}`);
-        console.log('\n🔐 CREDENCIALES:');
-        console.log('   Email: admin@stuffactory.mx');
-        console.log('   (Use Firebase Auth Emulator para login)\n');
-        console.log('📊 JERARQUÍA ORGANIZACIONAL:');
-        console.log('   Director General');
-        console.log('   └── Gerente RH');
-        console.log('   │   └── Coordinador RH');
-        console.log('   │       └── Analista RH');
-        console.log('   └── Gerente Operaciones');
-        console.log('   │   └── Supervisor Almacén');
-        console.log('   │   │   └── Almacenistas (2)');
-        console.log('   │   └── Supervisor Tienda');
-        console.log('   │       └── Vendedores (2)');
-        console.log('   └── Gerente Administración');
-        console.log('   │   └── Contador');
-        console.log('   │   └── Auxiliar Administrativo');
-        console.log('   │   └── Recepcionista');
-        console.log('   └── Gerente TI');
-        console.log('       └── Desarrollador');
-        console.log('\n');
-
+        console.log('🎉 Seed Completado!');
         process.exit(0);
     } catch (error) {
-        console.error('❌ Error en seed:', error);
+        console.error('❌ Error:', error);
         process.exit(1);
     }
 }

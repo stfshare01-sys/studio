@@ -5,26 +5,64 @@ import SiteLayout from "@/components/site-layout";
 import { useFirestore, useCollection, useMemoFirebase } from "@/firebase";
 import { collection, query, where, orderBy } from "firebase/firestore";
 import type { Employee } from "@/lib/types";
-import { OrgChartTree } from "@/components/hcm/org-chart";
+import { OrgChartTree, EmployeeDetailPanel } from "@/components/hcm/org-chart";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Maximize2, ZoomIn, ZoomOut } from "lucide-react";
 import Link from "next/link";
 import { Skeleton } from "@/components/ui/skeleton";
-import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
+import { useState, useRef } from "react";
 
 export default function OrgChartPage() {
     const firestore = useFirestore();
+    const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
 
     const employeesQuery = useMemoFirebase(() => {
         if (!firestore) return null;
         return query(
             collection(firestore, 'employees'),
             where('status', '==', 'active'),
-            orderBy('fullName', 'asc') // Sort matters less for tree, but good for consistency
+            orderBy('fullName', 'asc')
         );
     }, [firestore]);
 
     const { data: employees, isLoading } = useCollection<Employee>(employeesQuery);
+
+    // Zoom & Pan State
+    const [scale, setScale] = useState(0.8);
+    const [position, setPosition] = useState({ x: 0, y: 0 });
+    const [isDragging, setIsDragging] = useState(false);
+    const [startPos, setStartPos] = useState({ x: 0, y: 0 });
+    const containerRef = useRef<HTMLDivElement>(null);
+
+    const handleZoomIn = () => setScale(prev => Math.min(prev + 0.1, 2));
+    const handleZoomOut = () => setScale(prev => Math.max(prev - 0.1, 0.4));
+    const handleReset = () => {
+        setScale(0.8);
+        setPosition({ x: 0, y: 0 });
+    };
+
+    const handleMouseDown = (e: React.MouseEvent) => {
+        if ((e.target as HTMLElement).closest('[data-radix-collection-item]') ||
+            (e.target as HTMLElement).closest('.cursor-pointer')) {
+            return;
+        }
+        setIsDragging(true);
+        setStartPos({ x: e.clientX - position.x, y: e.clientY - position.y });
+    };
+
+    const handleMouseMove = (e: React.MouseEvent) => {
+        if (!isDragging) return;
+        setPosition({
+            x: e.clientX - startPos.x,
+            y: e.clientY - startPos.y
+        });
+    };
+
+    const handleMouseUp = () => setIsDragging(false);
+
+    const handleEmployeeClick = (employee: Employee) => {
+        setSelectedEmployee(employee);
+    };
 
     return (
         <SiteLayout>
@@ -39,7 +77,7 @@ export default function OrgChartPage() {
                         <div>
                             <h1 className="text-lg font-semibold">Organigrama Dinámico</h1>
                             <p className="text-sm text-muted-foreground hidden sm:block">
-                                Visualización jerárquica de la organización.
+                                Haz clic en un nodo para ver detalles del colaborador.
                             </p>
                         </div>
                     </div>
@@ -60,35 +98,53 @@ export default function OrgChartPage() {
                             </div>
                         </div>
                     ) : employees && employees.length > 0 ? (
-                        <TransformWrapper
-                            initialScale={0.8}
-                            minScale={0.4}
-                            maxScale={2}
-                            centerOnInit
-                            limitToBounds={false}
-                        >
-                            {({ zoomIn, zoomOut, resetTransform }) => (
-                                <>
-                                    <div className="absolute bottom-4 right-4 flex gap-2 z-50">
-                                        <Button variant="secondary" size="icon" onClick={() => zoomIn()}>
-                                            <ZoomIn className="h-4 w-4" />
-                                        </Button>
-                                        <Button variant="secondary" size="icon" onClick={() => zoomOut()}>
-                                            <ZoomOut className="h-4 w-4" />
-                                        </Button>
-                                        <Button variant="secondary" size="icon" onClick={() => resetTransform()}>
-                                            <Maximize2 className="h-4 w-4" />
-                                        </Button>
-                                    </div>
+                        <div className="flex h-full">
+                            {/* Org Chart Area */}
+                            <div className="flex-1 relative">
+                                <div className="absolute bottom-4 right-4 flex gap-2 z-50 shadow-lg bg-background/50 backdrop-blur rounded-lg p-1">
+                                    <Button variant="ghost" size="icon" onClick={handleZoomIn} title="Acercar">
+                                        <ZoomIn className="h-4 w-4" />
+                                    </Button>
+                                    <Button variant="ghost" size="icon" onClick={handleZoomOut} title="Alejar">
+                                        <ZoomOut className="h-4 w-4" />
+                                    </Button>
+                                    <Button variant="ghost" size="icon" onClick={handleReset} title="Restablecer">
+                                        <Maximize2 className="h-4 w-4" />
+                                    </Button>
+                                </div>
 
-                                    <TransformComponent wrapperClass="w-full h-full" contentClass="w-full h-full">
-                                        <div className="min-w-full min-h-full flex items-center justify-center p-12">
-                                            <OrgChartTree employees={employees} />
-                                        </div>
-                                    </TransformComponent>
-                                </>
+                                <div
+                                    className={`w-full h-full overflow-hidden ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+                                    onMouseDown={handleMouseDown}
+                                    onMouseMove={handleMouseMove}
+                                    onMouseUp={handleMouseUp}
+                                    onMouseLeave={handleMouseUp}
+                                    ref={containerRef}
+                                >
+                                    <div
+                                        className="w-full h-full flex items-center justify-center p-12 transition-transform duration-75 origin-center"
+                                        style={{
+                                            transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`
+                                        }}
+                                    >
+                                        <OrgChartTree
+                                            employees={employees}
+                                            onEmployeeClick={handleEmployeeClick}
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Employee Detail Panel */}
+                            {selectedEmployee && (
+                                <div className="w-80 border-l bg-background p-4 overflow-y-auto animate-in slide-in-from-right duration-300">
+                                    <EmployeeDetailPanel
+                                        employee={selectedEmployee}
+                                        onClose={() => setSelectedEmployee(null)}
+                                    />
+                                </div>
                             )}
-                        </TransformWrapper>
+                        </div>
                     ) : (
                         <div className="flex items-center justify-center h-full text-muted-foreground">
                             No se encontraron empleados activos.

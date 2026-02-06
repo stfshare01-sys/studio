@@ -98,11 +98,25 @@ export type Location = {
     createdById: string;
 };
 
+/**
+ * Límites de Aprobación por Puesto
+ */
+export type ApprovalLimits = {
+    expenses?: number;              // Reembolsos de gastos
+    purchases?: number;             // Requisiciones de compra
+    travel?: number;                // Viáticos y viajes
+    contracts?: number;             // Contratos de servicios
+    vacationDays?: number;          // Días de vacaciones que puede aprobar sin escalar
+    overtimeHours?: number;         // Horas extra semanales que puede aprobar
+    headcount?: number;             // Número de posiciones que puede aprobar contratar
+};
+
 export type Position = {
     id: string;
     name: string;                   // Nombre del puesto
     code: string;                   // Código único
     department: string;             // Departamento
+    departmentId?: string;          // Referencia a departments/{id}
     level: number;                  // Nivel jerárquico (1 = director, 2 = gerente, etc.)
 
     // Configuración de horas extras
@@ -115,6 +129,12 @@ export type Position = {
     canApproveTardiness?: boolean;  // Puede justificar retardos de subordinados
     canApproveEarlyDepartures?: boolean; // Puede justificar salidas tempranas de subordinados
     canApproveMissingPunches?: boolean;  // Puede justificar marcajes faltantes de subordinados
+    // Permisos especiales
+    canApproveOvertime?: boolean;   // Puede aprobar horas extras
+    canApproveIncidences?: boolean; // Puede aprobar incidencias
+
+    // Límites de aprobación
+    approvalLimits?: ApprovalLimits;
 
     // Estado
     isActive: boolean;

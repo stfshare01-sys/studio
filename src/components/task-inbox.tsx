@@ -78,7 +78,7 @@ export function TaskInbox({
     description = 'Tareas asignadas que requieren tu atención',
     hideCard = false,
 }: TaskInboxProps) {
-    const { firestore, auth, loading: firebaseLoading } = useFirebase();
+    const { firestore, auth, isUserLoading: firebaseLoading } = useFirebase();
 
     // Build the query based on context filter
     const tasksQuery = useMemoFirebase(

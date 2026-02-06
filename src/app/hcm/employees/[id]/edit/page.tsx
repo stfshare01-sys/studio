@@ -25,6 +25,8 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
     ArrowLeft,
     Save,
@@ -35,6 +37,7 @@ import {
     CreditCard,
     Calendar,
     MapPin,
+    Clock,
 } from 'lucide-react';
 
 import type { Employee, Location, Position, CustomShift, User as UserType } from '@/lib/types';
@@ -99,11 +102,13 @@ export default function EditEmployeePage({ params }: { params: Promise<{ id: str
                 employmentType: employee.employmentType,
                 shiftType: employee.shiftType,
                 hireDate: employee.hireDate?.split('T')[0] || '',
-                managerId: employee.managerId,
+                directManagerId: employee.directManagerId,
                 rfc_curp: employee.rfc_curp,
                 nss: employee.nss,
                 clabe: employee.clabe,
                 costCenter: employee.costCenter,
+                locationId: employee.locationId,
+                allowTimeForTime: employee.allowTimeForTime || false,
             });
         }
     }, [employee]);
@@ -327,8 +332,8 @@ export default function EditEmployeePage({ params }: { params: Promise<{ id: str
                                 <div className="space-y-2">
                                     <Label>Jefe Directo</Label>
                                     <Select
-                                        value={formData.managerId || 'none'}
-                                        onValueChange={(v) => handleInputChange('managerId', v === 'none' ? undefined : v)}
+                                        value={formData.directManagerId || 'none'}
+                                        onValueChange={(v) => handleInputChange('directManagerId', v === 'none' ? undefined : v)}
                                     >
                                         <SelectTrigger>
                                             <SelectValue placeholder="Seleccionar jefe" />
@@ -343,6 +348,7 @@ export default function EditEmployeePage({ params }: { params: Promise<{ id: str
                                         </SelectContent>
                                     </Select>
                                 </div>
+
                             </div>
                         </CardContent>
                     </Card>
@@ -358,6 +364,25 @@ export default function EditEmployeePage({ params }: { params: Promise<{ id: str
                         </CardHeader>
                         <CardContent className="space-y-4">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Label>Ubicación</Label>
+                                    <Select
+                                        value={formData.locationId || 'none'}
+                                        onValueChange={(v) => handleInputChange('locationId', v === 'none' ? undefined : v)}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Seleccionar ubicación" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="none">Sin ubicación asignada</SelectItem>
+                                            {locations?.map((location) => (
+                                                <SelectItem key={location.id} value={location.id}>
+                                                    {location.name} ({location.code})
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
                                 <div className="space-y-2">
                                     <Label htmlFor="costCenter">Centro de Costos</Label>
                                     <Input
@@ -414,11 +439,30 @@ export default function EditEmployeePage({ params }: { params: Promise<{ id: str
                                         className="font-mono"
                                     />
                                 </div>
+                                <div className="space-y-4 md:col-span-2">
+                                    <Separator />
+                                    <div className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4">
+                                        <Checkbox
+                                            id="allowTimeForTime"
+                                            checked={formData.allowTimeForTime || false}
+                                            onCheckedChange={(checked) => handleInputChange('allowTimeForTime', checked)}
+                                        />
+                                        <div className="space-y-1 leading-none">
+                                            <Label htmlFor="allowTimeForTime" className="flex items-center gap-2 cursor-pointer">
+                                                <Clock className="h-4 w-4" />
+                                                Permitir Tiempo por Tiempo
+                                            </Label>
+                                            <p className="text-sm text-muted-foreground">
+                                                Permite compensar tiempo extra trabajado en la bolsa de horas (solo RH puede modificar)
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </CardContent>
                     </Card>
                 </main>
-            </div>
-        </SiteLayout>
+            </div >
+        </SiteLayout >
     );
 }

@@ -4,19 +4,23 @@
 
 @layer base {
   :root {
-    --background: 220 13% 88%; /* #E0E0E0 */
+    --background: 220 13% 88%;
+    /* #E0E0E0 */
     --foreground: 222.2 84% 4.9%;
-    --card: 210 40% 98%; /* Lighter than background for contrast */
+    --card: 210 40% 98%;
+    /* Lighter than background for contrast */
     --card-foreground: 222.2 84% 4.9%;
     --popover: 210 40% 98%;
     --popover-foreground: 222.2 84% 4.9%;
-    --primary: 207 44% 49%; /* #4682B4 */
+    --primary: 207 44% 49%;
+    /* #4682B4 */
     --primary-foreground: 210 40% 98%;
     --secondary: 210 40% 96.1%;
     --secondary-foreground: 222.2 47.4% 11.2%;
     --muted: 210 40% 96.1%;
     --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 185 94% 71%; /* #7DF9FF */
+    --accent: 185 94% 71%;
+    /* #7DF9FF */
     --accent-foreground: 222.2 47.4% 11.2%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 210 40% 98%;
@@ -30,7 +34,41 @@
     --chart-4: 43 74% 66%;
     --chart-5: 27 87% 67%;
   }
- 
+
+  .theme-vanguard {
+    --background: 35 20% 98%;
+    --foreground: 25 35% 15%;
+    --card: 35 20% 100%;
+    --card-foreground: 25 35% 15%;
+    --primary: 25 35% 45%;
+    --primary-foreground: 35 20% 98%;
+    --accent: 85 30% 85%;
+    --accent-foreground: 25 35% 15%;
+    --radius: 1.25rem;
+    --border: 25 10% 90%;
+  }
+
+  .theme-liquid {
+    --background: 210 20% 96%;
+    --foreground: 215 90% 10%;
+    --card: 210 40% 98% / 0.7;
+    --primary: 215 90% 40%;
+    --accent: 180 70% 60%;
+    --border: 215 90% 90%;
+    --radius: 0.75rem;
+  }
+
+  .theme-cyber {
+    --background: 0 0% 7%;
+    --foreground: 0 0% 88%;
+    --card: 0 0% 10%;
+    --card-foreground: 0 0% 88%;
+    --primary: 300 100% 50%;
+    --accent: 120 100% 50%;
+    --border: 0 0% 15%;
+    --radius: 0.25rem;
+  }
+
   .dark {
     --background: 222.2 84% 4.9%;
     --foreground: 210 40% 98%;
@@ -38,13 +76,15 @@
     --card-foreground: 210 40% 98%;
     --popover: 222.2 84% 4.9%;
     --popover-foreground: 210 40% 98%;
-    --primary: 207 44% 49%; /* #4682B4 */
+    --primary: 207 44% 49%;
+    /* #4682B4 */
     --primary-foreground: 210 40% 98%;
     --secondary: 217.2 32.6% 17.5%;
     --secondary-foreground: 210 40% 98%;
     --muted: 217.2 32.6% 17.5%;
     --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 185 94% 71%; /* #7DF9FF */
+    --accent: 185 94% 71%;
+    /* #7DF9FF */
     --accent-foreground: 222.2 47.4% 11.2%;
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 210 40% 98%;
@@ -57,15 +97,55 @@
     --chart-4: 280 65% 60%;
     --chart-5: 340 75% 55%;
   }
-}
- 
-@layer base {
+
   * {
     @apply border-border;
   }
+
   body {
     @apply bg-background text-foreground;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+@layer components {
+
+  /* Bento Grid Utilities for Vanguard */
+  .theme-vanguard .bento-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 1.5rem;
+  }
+
+  .theme-vanguard .bento-item {
+    @apply transition-transform hover:scale-[1.01];
+    border: 1px solid hsl(var(--border) / 0.5);
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05);
+  }
+
+  /* Liquid Glass Effects */
+  .theme-liquid .glass-panel {
+    background: hsl(var(--card) / 0.4);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid hsl(var(--border) / 0.3);
+    box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.07);
+  }
+
+  .theme-liquid .liquid-node {
+    background: linear-gradient(135deg, hsl(var(--primary) / 0.2), hsl(var(--accent) / 0.2));
+    border: 1px solid hsl(var(--primary) / 0.3);
+    border-radius: var(--radius);
+  }
+
+  /* Cyber Admin Styles */
+  .theme-cyber .cyber-border {
+    border-left: 2px solid hsl(var(--primary));
+    background: linear-gradient(90deg, hsl(var(--primary) / 0.05) 0%, transparent 100%);
+  }
+
+  .theme-cyber .cyber-glow {
+    text-shadow: 0 0 10px hsl(var(--primary) / 0.5);
   }
 }

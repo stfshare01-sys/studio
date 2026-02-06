@@ -5,6 +5,17 @@
       "Bash(npm run typecheck:*)",
       "Bash(npx tsc:*)",
       "Bash(./node_modules/.bin/tsc:*)"
+      "Bash(tree:*)",
+      "Bash(find:*)",
+      "Bash(grep:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npm run lint)",
+      "Bash(node_modules/.bin/tsc:*)",
+      "Bash(npm install:*)",
+      "Bash(npm run build:*)",
+      "Bash(set NODE_ENV=production)",
+      "Bash(npx next build)",
+      "Bash(git pull:*)"
     ]
   }
 }

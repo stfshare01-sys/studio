@@ -42,4 +42,12 @@ next-env.d.ts
 
 # firebase
 firebase-debug.log
+firestore-debug.
 firestore-debug.log
+pubsub-debug.log
+ui-debug.log
+hub-debug.log
+*.log
+
+# Carpeta excluida de Git
+Respaldo/

@@ -1,9 +1,10 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import SiteLayout from '@/components/site-layout';
 import { useFirebase, useMemoFirebase } from '@/firebase/provider';
+import { hasDirectReports } from '@/firebase/actions/team-actions';
 import { useCollection } from '@/firebase/firestore/use-collection';
 import { collection, query, where, orderBy } from 'firebase/firestore';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -76,33 +77,53 @@ export default function TeamCalendarPage() {
     const [isDialogOpen, setIsDialogOpen] = useState(false);
 
     // Check if user has Admin permissions (only Admin role exists in current UserRole type)
-    const isManagerOrAdmin = user?.role === 'Admin';
+    const [isDirectManager, setIsDirectManager] = useState(false);
+
+    useEffect(() => {
+        if (user?.uid) {
+            hasDirectReports(user.uid).then(setIsDirectManager);
+        }
+    }, [user]);
+
+    const isGlobalManager = user?.role === 'Admin' || user?.role === 'HRManager';
+    const canAccess = isGlobalManager || isDirectManager;
 
     // Fetch active employees - only if user is loaded and has permissions
     const employeesQuery = useMemoFirebase(() => {
-        if (!firestore || isUserLoading || !isManagerOrAdmin) return null;
-        return query(
-            collection(firestore, 'employees'),
-            where('status', '==', 'active'),
-            orderBy('fullName', 'asc')
-        );
-    }, [firestore, isUserLoading, isManagerOrAdmin]);
+        if (!firestore || isUserLoading || !canAccess || !user?.uid) return null;
+
+        if (isGlobalManager) {
+            return query(
+                collection(firestore, 'employees'),
+                where('status', '==', 'active'),
+                orderBy('fullName', 'asc')
+            );
+        } else {
+            // Managers only see their direct reports
+            return query(
+                collection(firestore, 'employees'),
+                where('directManagerId', '==', user.uid),
+                where('status', '==', 'active'),
+                orderBy('fullName', 'asc')
+            );
+        }
+    }, [firestore, isUserLoading, canAccess, isGlobalManager, user?.uid]);
 
     const { data: employees, isLoading: employeesLoading } = useCollection<Employee>(employeesQuery);
 
     // Fetch approved incidences - only if user is loaded and has permissions
     const incidencesQuery = useMemoFirebase(() => {
-        if (!firestore || isUserLoading || !isManagerOrAdmin) return null;
+        if (!firestore || isUserLoading || !canAccess) return null;
         return query(
             collection(firestore, 'incidences'),
             where('status', '==', 'approved'),
             orderBy('startDate', 'desc')
         );
-    }, [firestore, isUserLoading, isManagerOrAdmin]);
+    }, [firestore, isUserLoading, canAccess]);
 
     const { data: incidences, isLoading: incidencesLoading } = useCollection<Incidence>(incidencesQuery);
 
-    const isLoading = isUserLoading || (isManagerOrAdmin && (employeesLoading || incidencesLoading));
+    const isLoading = isUserLoading || (canAccess && (employeesLoading || incidencesLoading));
 
     if (isUserLoading) {
         return (
@@ -114,7 +135,7 @@ export default function TeamCalendarPage() {
         );
     }
 
-    if (!isManagerOrAdmin) {
+    if (!canAccess) {
         return (
             <SiteLayout>
                 <div className="flex-1 flex-col p-4 sm:p-6">

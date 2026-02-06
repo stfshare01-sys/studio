@@ -338,7 +338,7 @@ export default function SettlementPage() {
                       </div>
                       <div>
                         <Label className="text-muted-foreground">SDI</Label>
-                        <p className="font-medium">{formatCurrency(compensation.sdiBase)}</p>
+                        <p className="font-medium">{compensation.sdiBase ? formatCurrency(compensation.sdiBase) : 'Pendiente'}</p>
                       </div>
                       <div>
                         <Label className="text-muted-foreground">Días Aguinaldo</Label>

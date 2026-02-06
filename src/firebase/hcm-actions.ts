@@ -37,15 +37,36 @@ import type {
     Department,
 } from '@/lib/types';
 import {
-    calculateSDIFactor,
-    calculateSDI,
     calculateVacationDays,
     calculateYearsOfService,
     validateWorkday,
-    calculateOvertime,
-    calculateHourlyRate,
     calculateHoursWorked
 } from '@/lib/hcm-utils';
+
+// =========================================================================
+// LOCAL HELPER FUNCTIONS (Compensation calculations)
+// =========================================================================
+
+/**
+ * Calcula el factor de integración del SDI según LFT
+ * SDI Factor = 1 + (prima_vacacional * dias_vacaciones / 365) + (aguinaldo / 365)
+ */
+function calculateSDIFactor(
+    vacationDays: number,
+    vacationPremium: number = 0.25,
+    aguinaldoDays: number = 15
+): number {
+    const factor = 1 + ((vacationPremium * vacationDays) / 365) + (aguinaldoDays / 365);
+    return Math.round(factor * 10000) / 10000;
+}
+
+/**
+ * Calcula el Salario Diario Integrado
+ * SDI = Salario Diario * Factor de Integración
+ */
+function calculateSDI(salaryDaily: number, sdiFactor: number): number {
+    return Math.round(salaryDaily * sdiFactor * 100) / 100;
+}
 
 // =========================================================================
 // EMPLOYEE MANAGEMENT
@@ -254,7 +275,7 @@ interface CreateDepartmentPayload {
     name: string;
     code: string;
     description?: string;
-    managerId?: string;
+    managerPositionId?: string;
     parentDepartmentId?: string;
     costCenter?: string;
     budget?: number;
@@ -294,12 +315,12 @@ export async function createDepartment(
             }
         }
 
-        // Validate manager exists if provided
-        if (payload.managerId) {
-            const managerRef = doc(firestore, 'employees', payload.managerId);
-            const managerSnap = await getDoc(managerRef);
-            if (!managerSnap.exists()) {
-                return { success: false, error: 'Responsable no encontrado.' };
+        // Validate manager position exists if provided
+        if (payload.managerPositionId) {
+            const managerPositionRef = doc(firestore, 'positions', payload.managerPositionId);
+            const managerPositionSnap = await getDoc(managerPositionRef);
+            if (!managerPositionSnap.exists()) {
+                return { success: false, error: 'Puesto responsable no encontrado.' };
             }
         }
 
@@ -307,7 +328,7 @@ export async function createDepartment(
             name: payload.name,
             code: payload.code,
             description: payload.description,
-            managerId: payload.managerId,
+            managerPositionId: payload.managerPositionId,
             parentDepartmentId: payload.parentDepartmentId,
             costCenter: payload.costCenter,
             budget: payload.budget,
@@ -332,7 +353,7 @@ export async function createDepartment(
 interface UpdateDepartmentPayload {
     name?: string;
     description?: string;
-    managerId?: string;
+    managerPositionId?: string;
     parentDepartmentId?: string;
     costCenter?: string;
     budget?: number;
@@ -373,12 +394,12 @@ export async function updateDepartment(
             }
         }
 
-        // Validate manager exists if changing
-        if (payload.managerId) {
-            const managerRef = doc(firestore, 'employees', payload.managerId);
-            const managerSnap = await getDoc(managerRef);
-            if (!managerSnap.exists()) {
-                return { success: false, error: 'Responsable no encontrado.' };
+        // Validate manager position exists if changing
+        if (payload.managerPositionId) {
+            const managerPositionRef = doc(firestore, 'positions', payload.managerPositionId);
+            const managerPositionSnap = await getDoc(managerPositionRef);
+            if (!managerPositionSnap.exists()) {
+                return { success: false, error: 'Puesto responsable no encontrado.' };
             }
         }
 
@@ -563,3 +584,263 @@ export async function getDepartmentHierarchy(): Promise<{
     }
 }
 
+// =========================================================================
+// EMPLOYEE LOOKUP SERVICES
+// =========================================================================
+
+/**
+ * Gets an employee by their Firebase Auth userId
+ * Used for getting the logged-in user's employee data
+ */
+export async function getEmployeeByUserId(
+    userId: string
+): Promise<{ success: boolean; employee?: Employee; error?: string }> {
+    try {
+        const { firestore } = initializeFirebase();
+
+        // In this system, employee ID matches user ID
+        const employeeRef = doc(firestore, 'employees', userId);
+        const employeeSnap = await getDoc(employeeRef);
+
+        if (!employeeSnap.exists()) {
+            return { success: false, error: 'Empleado no encontrado para este usuario.' };
+        }
+
+        const employee = { id: employeeSnap.id, ...employeeSnap.data() } as Employee;
+        return { success: true, employee };
+    } catch (error) {
+        console.error('[HCM] Error getting employee by userId:', error);
+        return { success: false, error: 'Error obteniendo datos del empleado.' };
+    }
+}
+
+/**
+ * Gets the approval limit for a position by limit type
+ * Used by BPMN to determine if escalation is needed
+ */
+export async function getApprovalLimit(
+    positionId: string,
+    limitType: 'expenses' | 'purchases' | 'travel' | 'contracts' | 'vacationDays' | 'overtimeHours' | 'headcount'
+): Promise<{ success: boolean; limit?: number; error?: string }> {
+    try {
+        const { firestore } = initializeFirebase();
+
+        const positionRef = doc(firestore, 'positions', positionId);
+        const positionSnap = await getDoc(positionRef);
+
+        if (!positionSnap.exists()) {
+            return { success: false, error: 'Puesto no encontrado.' };
+        }
+
+        const position = positionSnap.data();
+        const approvalLimits = position.approvalLimits;
+
+        if (!approvalLimits || approvalLimits[limitType] === undefined) {
+            // No limit defined means no restriction (or needs to escalate)
+            return { success: true, limit: undefined };
+        }
+
+        return { success: true, limit: approvalLimits[limitType] };
+    } catch (error) {
+        console.error('[HCM] Error getting approval limit:', error);
+        return { success: false, error: 'Error obteniendo límite de aprobación.' };
+    }
+}
+
+/**
+ * Gets upcoming leaves/incidences for an employee
+ * Used for calendar display and conflict detection
+ */
+export async function getUpcomingLeaves(
+    employeeId: string
+): Promise<{ success: boolean; incidences?: Incidence[]; error?: string }> {
+    try {
+        const { firestore } = initializeFirebase();
+
+        const today = new Date().toISOString().split('T')[0];
+
+        // Query for future and current approved/pending incidences
+        const incidencesQuery = query(
+            collection(firestore, 'incidences'),
+            where('employeeId', '==', employeeId),
+            where('endDate', '>=', today),
+            where('status', 'in', ['approved', 'pending']),
+            orderBy('endDate'),
+            orderBy('startDate')
+        );
+
+        const incidencesSnap = await getDocs(incidencesQuery);
+        const incidences = incidencesSnap.docs.map(d => ({
+            id: d.id,
+            ...d.data()
+        })) as Incidence[];
+
+        return { success: true, incidences };
+    } catch (error) {
+        console.error('[HCM] Error getting upcoming leaves:', error);
+        return { success: false, error: 'Error obteniendo permisos programados.' };
+    }
+}
+
+// =========================================================================
+// VACATION APPROVAL CALLBACKS
+// =========================================================================
+
+/**
+ * Callback when a vacation request is approved
+ * Deducts days from balance and updates incidence status
+ */
+export async function onVacationApproved(requestData: {
+    employeeId: string;
+    incidenceId: string;
+    startDate: string;
+    endDate: string;
+    totalDays: number;
+    approvedById: string;
+    approvedByName?: string;
+}): Promise<{ success: boolean; error?: string }> {
+    try {
+        const { firestore } = initializeFirebase();
+        const now = new Date().toISOString();
+
+        // 1. Update incidence status to approved
+        const incidenceRef = doc(firestore, 'incidences', requestData.incidenceId);
+        await updateDoc(incidenceRef, {
+            status: 'approved',
+            approvedById: requestData.approvedById,
+            approvedByName: requestData.approvedByName,
+            approvedAt: now,
+            updatedAt: now,
+        });
+
+        // 2. Get current vacation balance
+        const balanceQuery = query(
+            collection(firestore, 'vacation_balances'),
+            where('employeeId', '==', requestData.employeeId),
+            orderBy('periodStart', 'desc'),
+            limit(1)
+        );
+        const balanceSnap = await getDocs(balanceQuery);
+
+        if (!balanceSnap.empty) {
+            const balanceDoc = balanceSnap.docs[0];
+            const balanceData = balanceDoc.data();
+
+            // Update the balance - move from available to taken
+            const newDaysTaken = (balanceData.daysTaken || 0) + requestData.totalDays;
+            const newDaysScheduled = Math.max(0, (balanceData.daysScheduled || 0) - requestData.totalDays);
+            const newDaysAvailable = (balanceData.daysEntitled || 0) - newDaysTaken - newDaysScheduled;
+
+            // Add movement record
+            const movement = {
+                id: `mov-${Date.now()}`,
+                date: now,
+                type: 'taken' as const,
+                days: -requestData.totalDays,
+                description: `Vacaciones del ${requestData.startDate} al ${requestData.endDate}`,
+                incidenceId: requestData.incidenceId,
+                approvedById: requestData.approvedById,
+            };
+
+            const currentMovements = balanceData.movements || [];
+
+            await updateDoc(doc(firestore, 'vacation_balances', balanceDoc.id), {
+                daysTaken: newDaysTaken,
+                daysScheduled: newDaysScheduled,
+                daysAvailable: newDaysAvailable,
+                movements: [...currentMovements, movement],
+                lastUpdated: now,
+            });
+        }
+
+        console.log(`[HCM] Vacation approved for employee ${requestData.employeeId}, ${requestData.totalDays} days deducted`);
+        return { success: true };
+    } catch (error) {
+        console.error('[HCM] Error processing vacation approval:', error);
+        return { success: false, error: 'Error procesando aprobación de vacaciones.' };
+    }
+}
+
+/**
+ * Callback when a vacation request is rejected
+ * Updates incidence status and releases scheduled days
+ */
+export async function onVacationRejected(requestData: {
+    employeeId: string;
+    incidenceId: string;
+    rejectedById: string;
+    rejectedByName?: string;
+    reason: string;
+}): Promise<{ success: boolean; error?: string }> {
+    try {
+        const { firestore } = initializeFirebase();
+        const now = new Date().toISOString();
+
+        // 1. Get the incidence to see how many days were requested
+        const incidenceRef = doc(firestore, 'incidences', requestData.incidenceId);
+        const incidenceSnap = await getDoc(incidenceRef);
+
+        if (!incidenceSnap.exists()) {
+            return { success: false, error: 'Incidencia no encontrada.' };
+        }
+
+        const incidenceData = incidenceSnap.data();
+
+        // 2. Update incidence status to rejected
+        await updateDoc(incidenceRef, {
+            status: 'rejected',
+            approvedById: requestData.rejectedById,
+            approvedByName: requestData.rejectedByName,
+            rejectionReason: requestData.reason,
+            approvedAt: now,
+            updatedAt: now,
+        });
+
+        // 3. Release scheduled days back to available
+        if (incidenceData.type === 'vacation') {
+            const balanceQuery = query(
+                collection(firestore, 'vacation_balances'),
+                where('employeeId', '==', requestData.employeeId),
+                orderBy('periodStart', 'desc'),
+                limit(1)
+            );
+            const balanceSnap = await getDocs(balanceQuery);
+
+            if (!balanceSnap.empty) {
+                const balanceDoc = balanceSnap.docs[0];
+                const balanceData = balanceDoc.data();
+                const totalDays = incidenceData.totalDays || 0;
+
+                // Release scheduled days
+                const newDaysScheduled = Math.max(0, (balanceData.daysScheduled || 0) - totalDays);
+                const newDaysAvailable = (balanceData.daysEntitled || 0) - (balanceData.daysTaken || 0) - newDaysScheduled;
+
+                // Add movement record
+                const movement = {
+                    id: `mov-${Date.now()}`,
+                    date: now,
+                    type: 'cancelled' as const,
+                    days: totalDays,
+                    description: `Rechazo: ${requestData.reason}`,
+                    incidenceId: requestData.incidenceId,
+                    approvedById: requestData.rejectedById,
+                };
+
+                const currentMovements = balanceData.movements || [];
+
+                await updateDoc(doc(firestore, 'vacation_balances', balanceDoc.id), {
+                    daysScheduled: newDaysScheduled,
+                    daysAvailable: newDaysAvailable,
+                    movements: [...currentMovements, movement],
+                    lastUpdated: now,
+                });
+            }
+        }
+
+        console.log(`[HCM] Vacation rejected for employee ${requestData.employeeId}`);
+        return { success: true };
+    } catch (error) {
+        console.error('[HCM] Error processing vacation rejection:', error);
+        return { success: false, error: 'Error procesando rechazo de vacaciones.' };
+    }
+}

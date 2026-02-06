@@ -30,22 +30,10 @@ import {
     RefreshCw,
     ArrowLeft
 } from 'lucide-react';
-import type { EmployeeImportBatch, Employee, ShiftType } from '@/lib/types';
-import { processEmployeeImport } from '@/firebase/hcm-actions';
+import type { EmployeeImportBatch } from '@/lib/types';
+import { callProcessEmployeeImport, type EmployeeImportRow } from '@/firebase/callable-functions';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-
-interface EmployeeImportRow {
-    fullName: string;
-    email: string;
-    department: string;
-    positionTitle: string;
-    employmentType: Employee['employmentType'];
-    shiftType: ShiftType;
-    hireDate: string;
-    salaryDaily: string;
-    managerEmail?: string;
-}
 
 export default function ImportEmployeesPage() {
     const { firestore, user, isUserLoading } = useFirebase();
@@ -88,12 +76,10 @@ export default function ImportEmployeesPage() {
                 throw new Error('El archivo está vacío o no tiene el formato correcto.');
             }
 
-            const result = await processEmployeeImport(
+            const result = await callProcessEmployeeImport({
                 rows,
-                user.uid,
-                user.fullName || user.email || 'Unknown',
-                file.name
-            );
+                filename: file.name
+            });
             setUploadProgress(100);
 
             setUploadResult({

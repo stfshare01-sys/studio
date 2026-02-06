@@ -4,6 +4,47 @@ import { IncidenceType, IncidenceStatus } from './hcm';
 // OPERATIONAL HCM TYPES - Incidences, Attendance (No Money)
 // =========================================================================
 
+// -------------------------------------------------------------------------
+// Justification Types
+// -------------------------------------------------------------------------
+
+/**
+ * Estado de justificación para incidencias (retardos/salidas)
+ */
+export type IncidenceJustificationStatus =
+    | 'pending'           // Pendiente de revisión
+    | 'justified'         // Justificado por el jefe
+    | 'unjustified'       // Marcado como injustificado
+    | 'compensated'       // Repuesto (enviado a bolsa de horas)
+    | 'auto_justified';   // Auto-justificado por solicitud previa aprobada
+
+/**
+ * Tipos de justificación preconfigurados
+ */
+export type JustificationType =
+    | 'medical_appointment'       // Cita médica
+    | 'family_emergency'          // Emergencia familiar
+    | 'traffic_incident'          // Incidente de tráfico
+    | 'public_transport_delay'    // Retraso transporte público
+    | 'weather_conditions'        // Condiciones climáticas
+    | 'official_business'         // Asuntos oficiales
+    | 'manager_authorization'     // Autorización del jefe
+    | 'other';                    // Otros (requiere comentario)
+
+/**
+ * Labels para tipos de justificación (uso en UI)
+ */
+export const JUSTIFICATION_TYPE_LABELS: Record<JustificationType, string> = {
+    medical_appointment: 'Cita médica',
+    family_emergency: 'Emergencia familiar',
+    traffic_incident: 'Incidente de tráfico',
+    public_transport_delay: 'Retraso en transporte público',
+    weather_conditions: 'Condiciones climáticas',
+    official_business: 'Asuntos oficiales',
+    manager_authorization: 'Autorización del jefe',
+    other: 'Otros',
+};
+
 export type AttendanceRecord = {
     id: string;
     employeeId: string;
@@ -100,28 +141,146 @@ export type TimeBank = {
     movements: TimeBankMovement[];
 };
 
+/**
+ * Bolsa de Horas del Empleado (para compensación de retardos)
+ */
+export type HourBank = {
+    id: string;
+    employeeId: string;
+    employeeName?: string;
+
+    // Saldo actual (en minutos)
+    // Positivo = empleado debe tiempo a la empresa
+    // Negativo = empresa debe tiempo al empleado (crédito)
+    balanceMinutes: number;
+
+    // Estadísticas
+    totalDebtAccumulated: number;   // Total acumulado de deuda
+    totalCompensated: number;       // Total compensado con HE
+    lastMovementDate?: string;      // Última actualización
+
+    // Auditoría
+    createdAt: string;
+    updatedAt: string;
+};
+
+/**
+ * Movimiento en la Bolsa de Horas
+ */
+export type HourBankMovement = {
+    id: string;
+    hourBankId: string;
+    employeeId: string;
+    date: string;
+
+    type:
+    | 'tardiness'
+    | 'early_departure'
+    | 'overtime_compensation'
+    | 'manual_adjustment';
+
+    minutes: number; // Positivo = agrega deuda, Negativo = reduce deuda
+    reason: string;
+    sourceRecordId?: string;
+    sourceRecordType?: 'tardiness' | 'early_departure' | 'overtime';
+
+    createdById: string;
+    createdByName?: string;
+    createdAt: string;
+};
+
+/**
+ * Resultado del cálculo de horas extras según LFT
+ */
+export type OvertimeCalculation = {
+    rawOvertimeMinutes: number;
+    hourBankDebt: number;
+    minutesCompensated: number;
+    remainingDebt: number;
+    netOvertimeMinutes: number;
+    doubleHoursMinutes: number;
+    tripleHoursMinutes: number;
+    doubleHoursAmount?: number;
+    tripleHoursAmount?: number;
+    totalAmount?: number;
+    weeklyOvertimeAccumulated: number;
+};
+
 export type TardinessType = 'entry' | 'exit' | 'break';
 
 export type TardinessRecord = {
     id: string;
     employeeId: string;
+    employeeName?: string;
     date: string;
     attendanceRecordId: string;
     type: TardinessType;
     scheduledTime: string;
     actualTime: string;
     minutesLate: number;
-    isJustified: boolean;
-    justificationReason?: string;
+
+    // Estado de justificación
+    isJustified: boolean;           // Legacy, usar justificationStatus
+    justificationStatus: IncidenceJustificationStatus; // Nuevo estado detallado
+    justificationType?: JustificationType; // Tipo de justificación seleccionado
+    justificationReason?: string;   // Razón de justificación o comentario
     justifiedById?: string;
+    justifiedByName?: string;
     justifiedAt?: string;
+    linkedIncidenceId?: string;     // Si fue auto-justificado por una incidencia previa
+    compensatedToHourBank?: boolean; // Si se envió a bolsa de horas
+
+    // Acumulación
     periodStartDate: string;
     tardinessCountInPeriod: number;
     tardinessCountInWeek: number;
+
+    // Sanciones
     sanctionApplied: boolean;
     sanctionType?: 'suspension_1day' | 'warning';
     sanctionDate?: string;
     sanctionResetById?: string;
+
+    // Auditoría
+    createdAt: string;
+    updatedAt: string;
+};
+
+/**
+ * Salida Temprana
+ */
+export type EarlyDeparture = {
+    id: string;
+    employeeId: string;
+    employeeName?: string;
+    date: string;
+    shiftId?: string;
+
+    // Horarios
+    scheduledTime: string;            // Hora programada de salida
+    actualTime: string;               // Hora real de salida
+    minutesEarly: number;             // Minutos antes de lo programado
+
+    // Estado de justificación
+    isJustified: boolean;             // Legacy, usar justificationStatus
+    justificationStatus: IncidenceJustificationStatus; // Nuevo estado detallado
+    justificationType?: JustificationType; // Tipo de justificación seleccionado
+    justificationReason?: string;
+    justifiedById?: string;
+    justifiedByName?: string;
+    justifiedAt?: string;
+    linkedIncidenceId?: string;       // Si fue auto-justificado
+    compensatedToHourBank?: boolean;  // Si se envió a bolsa de horas
+
+    // Regla de 6 horas
+    hoursWorked?: number;             // Horas trabajadas antes de la salida
+    isAbsence?: boolean;              // True si trabajó < 6 horas (se considera falta)
+
+    // Referencias
+    attendanceRecordId?: string;      // Referencia al registro de asistencia
+    requestId?: string;               // Si fue solicitado previamente
+
+    // Auditoría
     createdAt: string;
     updatedAt: string;
 };
@@ -149,6 +308,8 @@ export type OvertimeRequest = {
     reason: string;
     status: 'pending' | 'approved' | 'rejected' | 'partial';
     hoursApproved?: number;
+    doubleHours?: number; // Desglose estricto LFT
+    tripleHours?: number; // Desglose estricto LFT
     approverLevel: 1 | 2;
     requestedToId: string;
     requestedToName?: string;

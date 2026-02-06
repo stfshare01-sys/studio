@@ -23,6 +23,49 @@ import {
     Incidence,
     PrenominaRecord
 } from '../types/firestore-types';
+import type { PrenominaRecord, Employee, AttendanceRecord, Incidence } from '../types/firestore-types';
+
+/**
+ * Obtiene el día de reinicio de HE según configuración de ubicación
+ * @returns Número del día (0-6, donde 0 = domingo)
+ */
+async function getOvertimeResetDay(
+    db: admin.firestore.Firestore,
+    employee: any
+): Promise<number> {
+    const locationId = employee.locationId;
+
+    if (!locationId) {
+        console.warn(`[Prenomina] Employee ${employee.id} has no location, using default: Sunday`);
+        return 0; // Domingo por defecto
+    }
+
+    try {
+        const locationDoc = await db.collection('locations').doc(locationId).get();
+        if (!locationDoc.exists) {
+            console.warn(`[Prenomina] Location ${locationId} not found, using default: Sunday`);
+            return 0;
+        }
+
+        const location = locationDoc.data();
+        const overtimeResetDay = location?.overtimeResetDay || 'sunday';
+
+        switch (overtimeResetDay) {
+            case 'sunday':
+                return 0;
+            case 'saturday':
+                return 6;
+            case 'custom':
+                return location?.customOvertimeResetDay || 0;
+            default:
+                console.warn(`[Prenomina] Unknown overtimeResetDay: ${overtimeResetDay}, using Sunday`);
+                return 0;
+        }
+    } catch (error) {
+        console.error(`[Prenomina] Error fetching location ${locationId}:`, error);
+        return 0;
+    }
+}
 
 // Initialize Firebase Admin SDK
 if (!admin.apps.length) {
@@ -220,10 +263,40 @@ export const consolidatePrenomina = onCall<ConsolidatePrenominaRequest>(
                                 }
                             }
 
-                            // Count Sundays worked
+                            // Count rest days worked (based on location config)
+                            const resetDay = await getOvertimeResetDay(db, employee);
+
                             for (const record of attendanceRecords) {
                                 const dayOfWeek = new Date(record.date).getDay();
-                                if (dayOfWeek === 0) sundayDays++;
+                                if (dayOfWeek === resetDay) sundayDays++;
+                            }
+
+                            // Count company benefit days
+                            let companyBenefitDays = 0;
+                            const locationId = employee.locationId;
+
+                            if (locationId) {
+                                try {
+                                    const locationDoc = await db.collection('locations').doc(locationId).get();
+                                    if (locationDoc.exists) {
+                                        const location = locationDoc.data();
+                                        const benefitDays: string[] = location?.companyBenefitDays || [];
+
+                                        for (const record of attendanceRecords) {
+                                            const dateObj = new Date(record.date);
+                                            // Usamos UTC para consistency con isCompanyBenefitDay
+                                            const month = (dateObj.getUTCMonth() + 1).toString().padStart(2, '0');
+                                            const day = dateObj.getUTCDate().toString().padStart(2, '0');
+                                            const monthDay = `${month}-${day}`;
+
+                                            if (benefitDays.includes(monthDay)) {
+                                                companyBenefitDays++;
+                                            }
+                                        }
+                                    }
+                                } catch (error) {
+                                    console.error(`[Prenomina] Error counting benefit days:`, error);
+                                }
                             }
 
                             // Calculate overtime (HOURS ONLY - Rate 0)
@@ -248,6 +321,7 @@ export const consolidatePrenomina = onCall<ConsolidatePrenominaRequest>(
                                 sickLeaveDays,
                                 paidLeaveDays,
                                 unpaidLeaveDays,
+                                companyBenefitDaysTaken: companyBenefitDays,
                                 status: 'draft',
                                 costCenter: employee.costCenter,
                                 createdAt: nowISO,

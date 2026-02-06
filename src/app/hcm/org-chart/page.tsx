@@ -5,15 +5,16 @@ import SiteLayout from "@/components/site-layout";
 import { useFirestore, useCollection, useMemoFirebase } from "@/firebase";
 import { collection, query, where, orderBy } from "firebase/firestore";
 import type { Employee } from "@/lib/types";
-import { OrgChartTree } from "@/components/hcm/org-chart";
+import { OrgChartTree, EmployeeDetailPanel } from "@/components/hcm/org-chart";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Maximize2, ZoomIn, ZoomOut, Move } from "lucide-react";
+import { ArrowLeft, Maximize2, ZoomIn, ZoomOut } from "lucide-react";
 import Link from "next/link";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef } from "react";
 
 export default function OrgChartPage() {
     const firestore = useFirestore();
+    const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
 
     const employeesQuery = useMemoFirebase(() => {
         if (!firestore) return null;
@@ -41,6 +42,11 @@ export default function OrgChartPage() {
     };
 
     const handleMouseDown = (e: React.MouseEvent) => {
+        // Only start drag if not clicking on a card
+        if ((e.target as HTMLElement).closest('[data-radix-collection-item]') ||
+            (e.target as HTMLElement).closest('.cursor-pointer')) {
+            return;
+        }
         setIsDragging(true);
         setStartPos({ x: e.clientX - position.x, y: e.clientY - position.y });
     };
@@ -55,6 +61,10 @@ export default function OrgChartPage() {
 
     const handleMouseUp = () => setIsDragging(false);
 
+    const handleEmployeeClick = (employee: Employee) => {
+        setSelectedEmployee(employee);
+    };
+
     return (
         <SiteLayout>
             <div className="flex flex-col h-[calc(100vh-65px)]">
@@ -68,7 +78,7 @@ export default function OrgChartPage() {
                         <div>
                             <h1 className="text-lg font-semibold">Organigrama Dinámico</h1>
                             <p className="text-sm text-muted-foreground hidden sm:block">
-                                Visualización jerárquica de la organización.
+                                Haz clic en un nodo para ver detalles del colaborador.
                             </p>
                         </div>
                     </div>
@@ -89,37 +99,53 @@ export default function OrgChartPage() {
                             </div>
                         </div>
                     ) : employees && employees.length > 0 ? (
-                        <>
-                            <div className="absolute bottom-4 right-4 flex gap-2 z-50 shadow-lg bg-background/50 backdrop-blur rounded-lg p-1">
-                                <Button variant="ghost" size="icon" onClick={handleZoomIn} title="Acercar">
-                                    <ZoomIn className="h-4 w-4" />
-                                </Button>
-                                <Button variant="ghost" size="icon" onClick={handleZoomOut} title="Alejar">
-                                    <ZoomOut className="h-4 w-4" />
-                                </Button>
-                                <Button variant="ghost" size="icon" onClick={handleReset} title="Restablecer">
-                                    <Maximize2 className="h-4 w-4" />
-                                </Button>
-                            </div>
+                        <div className="flex h-full">
+                            {/* Org Chart Area */}
+                            <div className="flex-1 relative">
+                                <div className="absolute bottom-4 right-4 flex gap-2 z-50 shadow-lg bg-background/50 backdrop-blur rounded-lg p-1">
+                                    <Button variant="ghost" size="icon" onClick={handleZoomIn} title="Acercar">
+                                        <ZoomIn className="h-4 w-4" />
+                                    </Button>
+                                    <Button variant="ghost" size="icon" onClick={handleZoomOut} title="Alejar">
+                                        <ZoomOut className="h-4 w-4" />
+                                    </Button>
+                                    <Button variant="ghost" size="icon" onClick={handleReset} title="Restablecer">
+                                        <Maximize2 className="h-4 w-4" />
+                                    </Button>
+                                </div>
 
-                            <div
-                                className="w-full h-full overflow-hidden cursor-grab active:cursor-grabbing"
-                                onMouseDown={handleMouseDown}
-                                onMouseMove={handleMouseMove}
-                                onMouseUp={handleMouseUp}
-                                onMouseLeave={handleMouseUp}
-                                ref={containerRef}
-                            >
                                 <div
-                                    className="w-full h-full flex items-center justify-center p-12 transition-transform duration-75 origin-center"
-                                    style={{
-                                        transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`
-                                    }}
+                                    className={`w-full h-full overflow-hidden ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+                                    onMouseDown={handleMouseDown}
+                                    onMouseMove={handleMouseMove}
+                                    onMouseUp={handleMouseUp}
+                                    onMouseLeave={handleMouseUp}
+                                    ref={containerRef}
                                 >
-                                    <OrgChartTree employees={employees} />
+                                    <div
+                                        className="w-full h-full flex items-center justify-center p-12 transition-transform duration-75 origin-center"
+                                        style={{
+                                            transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`
+                                        }}
+                                    >
+                                        <OrgChartTree
+                                            employees={employees}
+                                            onEmployeeClick={handleEmployeeClick}
+                                        />
+                                    </div>
                                 </div>
                             </div>
-                        </>
+
+                            {/* Employee Detail Panel */}
+                            {selectedEmployee && (
+                                <div className="w-80 border-l bg-background p-4 overflow-y-auto animate-in slide-in-from-right duration-300">
+                                    <EmployeeDetailPanel
+                                        employee={selectedEmployee}
+                                        onClose={() => setSelectedEmployee(null)}
+                                    />
+                                </div>
+                            )}
+                        </div>
                     ) : (
                         <div className="flex items-center justify-center h-full text-muted-foreground">
                             No se encontraron empleados activos.

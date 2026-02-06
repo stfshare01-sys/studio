@@ -47,13 +47,18 @@ import {
     Plus,
     FileText,
     ArrowLeft,
-    AlertTriangle
+    AlertTriangle,
+    ChevronLeft,
+    ChevronRight,
+    LayoutGrid,
+    List
 } from 'lucide-react';
-import type { Incidence, IncidenceType, IncidenceStatus } from '@/lib/types';
-import { createIncidence } from '@/firebase/hcm-actions';
+import type { Incidence, IncidenceType, IncidenceStatus, Employee, VacationBalance } from '@/lib/types';
+import { getEmployeeByUserId } from '@/firebase/hcm-actions';
+import { createIncidence, getVacationBalance } from '@/firebase/actions/incidence-actions';
 import { callApproveIncidence } from '@/firebase/callable-functions';
 import { checkDateConflict } from '@/lib/hcm-utils';
-import { format, differenceInDays } from 'date-fns';
+import { format, differenceInDays, startOfMonth, endOfMonth, eachDayOfInterval, startOfWeek, endOfWeek, isSameMonth, isSameDay, isWithinInterval, addMonths, subMonths } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
 import { Label } from '@/components/ui/label';
@@ -67,6 +72,8 @@ export default function IncidencesPage() {
     const [statusFilter, setStatusFilter] = useState<string>('all');
     const [typeFilter, setTypeFilter] = useState<string>('all');
     const [searchTerm, setSearchTerm] = useState('');
+    const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
+    const [currentMonth, setCurrentMonth] = useState(new Date());
     const [selectedIncidence, setSelectedIncidence] = useState<Incidence | null>(null);
     const [isReviewDialogOpen, setIsReviewDialogOpen] = useState(false);
     const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
@@ -85,6 +92,41 @@ export default function IncidencesPage() {
     // Date conflict validation state
     const [dateConflictError, setDateConflictError] = useState<string | null>(null);
     const [isValidatingDates, setIsValidatingDates] = useState(false);
+
+    // Employee data for autocompletion
+    const [currentEmployee, setCurrentEmployee] = useState<Employee | null>(null);
+    const [vacationBalance, setVacationBalance] = useState<VacationBalance | null>(null);
+    const [isLoadingEmployeeData, setIsLoadingEmployeeData] = useState(false);
+
+    // Load employee data and vacation balance when dialog opens
+    useEffect(() => {
+        if (!isCreateDialogOpen || !user) {
+            return;
+        }
+
+        const loadEmployeeData = async () => {
+            setIsLoadingEmployeeData(true);
+            try {
+                // Load employee data
+                const empResult = await getEmployeeByUserId(user.uid);
+                if (empResult.success && empResult.employee) {
+                    setCurrentEmployee(empResult.employee);
+
+                    // Load vacation balance for this employee
+                    const balanceResult = await getVacationBalance(empResult.employee.id);
+                    if (balanceResult.success && balanceResult.balance) {
+                        setVacationBalance(balanceResult.balance);
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading employee data:', error);
+            } finally {
+                setIsLoadingEmployeeData(false);
+            }
+        };
+
+        loadEmployeeData();
+    }, [isCreateDialogOpen, user]);
 
     const hasHRPermissions = useMemo(() => ['Admin', 'HRManager', 'Manager'].includes(user?.role || ''), [user]);
 
@@ -166,6 +208,22 @@ export default function IncidencesPage() {
             return matchesType && matchesSearch;
         }) ?? [];
     }, [incidences, typeFilter, searchTerm, user]);
+
+    // Calendar logic
+    const calendarDays = useMemo(() => {
+        const start = startOfWeek(startOfMonth(currentMonth));
+        const end = endOfWeek(endOfMonth(currentMonth));
+        return eachDayOfInterval({ start, end });
+    }, [currentMonth]);
+
+    const getIncidencesForDay = (day: Date) => {
+        return filteredIncidences.filter(inc =>
+            isWithinInterval(day, {
+                start: new Date(inc.startDate),
+                end: new Date(inc.endDate)
+            })
+        );
+    };
 
 
     // Get incidence type label
@@ -348,6 +406,35 @@ export default function IncidencesPage() {
                     </Button>
                 </header>
                 <main className="flex flex-1 flex-col gap-4 p-4 pt-0 sm:gap-8 sm:p-6 sm:pt-0">
+
+                    {/* View Toggle and Controls */}
+                    <div className="flex items-center justify-between">
+                        <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as 'list' | 'calendar')} className="w-[400px]">
+                            <TabsList>
+                                <TabsTrigger value="list" className="flex items-center gap-2">
+                                    <List className="h-4 w-4" /> Vista Lista
+                                </TabsTrigger>
+                                <TabsTrigger value="calendar" className="flex items-center gap-2">
+                                    <LayoutGrid className="h-4 w-4" /> Calendario
+                                </TabsTrigger>
+                            </TabsList>
+                        </Tabs>
+
+                        {viewMode === 'calendar' && (
+                            <div className="flex items-center gap-2">
+                                <Button variant="outline" size="icon" onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}>
+                                    <ChevronLeft className="h-4 w-4" />
+                                </Button>
+                                <span className="font-medium min-w-[150px] text-center capitalize">
+                                    {format(currentMonth, 'MMMM yyyy', { locale: es })}
+                                </span>
+                                <Button variant="outline" size="icon" onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}>
+                                    <ChevronRight className="h-4 w-4" />
+                                </Button>
+                            </div>
+                        )}
+                    </div>
+
                     {/* Stats */}
                     <div className="grid gap-4 md:grid-cols-3">
                         <Card>
@@ -423,101 +510,105 @@ export default function IncidencesPage() {
                         </CardContent>
                     </Card>
 
-                    {/* Incidences Table */}
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Incidencias</CardTitle>
-                            <CardDescription>
-                                {isLoading ? 'Cargando...' : `${filteredIncidences.length} registros`}
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                            <Table>
-                                <TableHeader>
-                                    <TableRow>
-                                        <TableHead>Empleado</TableHead>
-                                        <TableHead>Tipo</TableHead>
-                                        <TableHead>Período</TableHead>
-                                        <TableHead>Días</TableHead>
-                                        <TableHead>Con Goce</TableHead>
-                                        <TableHead>Estado</TableHead>
-                                        <TableHead>Acciones</TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {isLoading ? (
+
+                    {viewMode === 'list' ? (
+                        /* Incidences Table */
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>Incidencias</CardTitle>
+                                <CardDescription>
+                                    {isLoading ? 'Cargando...' : `${filteredIncidences.length} registros`}
+                                </CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                <Table>
+                                    <TableHeader>
                                         <TableRow>
-                                            <TableCell colSpan={7} className="text-center py-8">
-                                                Cargando incidencias...
-                                            </TableCell>
+                                            <TableHead>Empleado</TableHead>
+                                            <TableHead>Tipo</TableHead>
+                                            <TableHead>Período</TableHead>
+                                            <TableHead>Días</TableHead>
+                                            <TableHead>Con Goce</TableHead>
+                                            <TableHead>Estado</TableHead>
+                                            <TableHead>Acciones</TableHead>
                                         </TableRow>
-                                    ) : filteredIncidences.length === 0 ? (
-                                        <TableRow>
-                                            <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                                                No se encontraron incidencias
-                                            </TableCell>
-                                        </TableRow>
-                                    ) : (
-                                        filteredIncidences.map((incidence) => (
-                                            <TableRow key={incidence.id}>
-                                                <TableCell>
-                                                    <div>
-                                                        <div className="font-medium">{incidence.employeeName}</div>
-                                                        <div className="text-xs text-muted-foreground">{incidence.employeeId}</div>
-                                                    </div>
-                                                </TableCell>
-                                                <TableCell>
-                                                    <Badge variant="outline">{getTypeLabel(incidence.type)}</Badge>
-                                                </TableCell>
-                                                <TableCell>
-                                                    <div className="flex items-center gap-1">
-                                                        <Calendar className="h-3 w-3 text-muted-foreground" />
-                                                        <span className="text-sm">
-                                                            {formatDate(incidence.startDate)} - {formatDate(incidence.endDate)}
-                                                        </span>
-                                                    </div>
-                                                </TableCell>
-                                                <TableCell>{incidence.totalDays}</TableCell>
-                                                <TableCell>
-                                                    {incidence.isPaid ? (
-                                                        <Badge className="bg-green-100 text-green-800">Sí</Badge>
-                                                    ) : (
-                                                        <Badge variant="secondary">No</Badge>
-                                                    )}
-                                                </TableCell>
-                                                <TableCell>{getStatusBadge(incidence.status)}</TableCell>
-                                                <TableCell>
-                                                    {incidence.status === 'pending' && hasHRPermissions && (
-                                                        <Button
-                                                            size="sm"
-                                                            onClick={() => {
-                                                                setSelectedIncidence(incidence);
-                                                                setIsReviewDialogOpen(true);
-                                                            }}
-                                                        >
-                                                            Revisar
-                                                        </Button>
-                                                    )}
-                                                    {incidence.status !== 'pending' && (
-                                                        <Button
-                                                            size="sm"
-                                                            variant="ghost"
-                                                            onClick={() => {
-                                                                setSelectedIncidence(incidence);
-                                                                setIsReviewDialogOpen(true);
-                                                            }}
-                                                        >
-                                                            <FileText className="h-4 w-4" />
-                                                        </Button>
-                                                    )}
+                                    </TableHeader>
+                                    <TableBody>
+                                        {isLoading ? (
+                                            <TableRow>
+                                                <TableCell colSpan={7} className="text-center py-8">
+                                                    Cargando incidencias...
                                                 </TableCell>
                                             </TableRow>
-                                        ))
-                                    )}
-                                </TableBody>
-                            </Table>
-                        </CardContent>
-                    </Card>
+                                        ) : filteredIncidences.length === 0 ? (
+                                            <TableRow>
+                                                <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                                                    No se encontraron incidencias
+                                                </TableCell>
+                                            </TableRow>
+                                        ) : (
+                                            filteredIncidences.map((incidence) => (
+                                                <TableRow key={incidence.id}>
+                                                    <TableCell>
+                                                        <div>
+                                                            <div className="font-medium">{incidence.employeeName}</div>
+                                                            <div className="text-xs text-muted-foreground">{incidence.employeeId}</div>
+                                                        </div>
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        <Badge variant="outline">{getTypeLabel(incidence.type)}</Badge>
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        <div className="flex items-center gap-1">
+                                                            <Calendar className="h-3 w-3 text-muted-foreground" />
+                                                            <span className="text-sm">
+                                                                {formatDate(incidence.startDate)} - {formatDate(incidence.endDate)}
+                                                            </span>
+                                                        </div>
+                                                    </TableCell>
+                                                    <TableCell>{incidence.totalDays}</TableCell>
+                                                    <TableCell>
+                                                        {incidence.isPaid ? (
+                                                            <Badge className="bg-green-100 text-green-800">Sí</Badge>
+                                                        ) : (
+                                                            <Badge variant="secondary">No</Badge>
+                                                        )}
+                                                    </TableCell>
+                                                    <TableCell>{getStatusBadge(incidence.status)}</TableCell>
+                                                    <TableCell>
+                                                        {incidence.status === 'pending' && hasHRPermissions && (
+                                                            <Button
+                                                                size="sm"
+                                                                onClick={() => {
+                                                                    setSelectedIncidence(incidence);
+                                                                    setIsReviewDialogOpen(true);
+                                                                }}
+                                                            >
+                                                                Revisar
+                                                            </Button>
+                                                        )}
+                                                        {incidence.status !== 'pending' && (
+                                                            <Button
+                                                                size="sm"
+                                                                variant="ghost"
+                                                                onClick={() => {
+                                                                    setSelectedIncidence(incidence);
+                                                                    setIsReviewDialogOpen(true);
+                                                                }}
+                                                            >
+                                                                <FileText className="h-4 w-4" />
+                                                            </Button>
+                                                        )}
+                                                    </TableCell>
+                                                </TableRow>
+                                            ))
+                                        )}
+                                    </TableBody>
+                                </Table>
+                            </CardContent>
+                        </Card>
+
+                    ) : null}
 
                     {/* Review Dialog */}
                     <Dialog open={isReviewDialogOpen} onOpenChange={setIsReviewDialogOpen}>
@@ -623,6 +714,41 @@ export default function IncidencesPage() {
                             </DialogHeader>
 
                             <div className="space-y-4">
+                                {/* Employee Info - Autocompletado */}
+                                {isLoadingEmployeeData ? (
+                                    <div className="bg-muted/50 p-4 rounded-lg text-center text-sm text-muted-foreground">
+                                        Cargando datos del empleado...
+                                    </div>
+                                ) : currentEmployee && (
+                                    <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/30 p-4 rounded-lg border border-blue-100 dark:border-blue-800/50">
+                                        <div className="grid grid-cols-2 gap-3 text-sm">
+                                            <div>
+                                                <span className="text-muted-foreground block text-xs">Empleado</span>
+                                                <span className="font-medium">{currentEmployee.fullName}</span>
+                                            </div>
+                                            <div>
+                                                <span className="text-muted-foreground block text-xs">Puesto</span>
+                                                <span className="font-medium">{currentEmployee.positionTitle || 'N/A'}</span>
+                                            </div>
+                                            <div>
+                                                <span className="text-muted-foreground block text-xs">Departamento</span>
+                                                <span className="font-medium">{currentEmployee.department || 'N/A'}</span>
+                                            </div>
+                                            <div>
+                                                <span className="text-muted-foreground block text-xs">Saldo vacaciones</span>
+                                                <span className={`font-bold ${vacationBalance && vacationBalance.daysAvailable > 0 ? 'text-green-600' : 'text-orange-600'}`}>
+                                                    {vacationBalance ? `${vacationBalance.daysAvailable} días` : 'N/A'}
+                                                </span>
+                                                {vacationBalance && newIncidence.type === 'vacation' && (
+                                                    <span className="text-xs text-muted-foreground ml-1">
+                                                        de {vacationBalance.daysEntitled}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
                                 <div>
                                     <Label>Tipo de incidencia</Label>
                                     <Select
@@ -673,13 +799,34 @@ export default function IncidencesPage() {
                                 )}
 
                                 {/* Calculate and show days requested */}
-                                {newIncidence.startDate && newIncidence.endDate && !dateConflictError && (
-                                    <div className="text-sm text-muted-foreground bg-muted p-2 rounded">
-                                        <span className="font-medium">
-                                            {Math.ceil((new Date(newIncidence.endDate).getTime() - new Date(newIncidence.startDate).getTime()) / (1000 * 60 * 60 * 24)) + 1}
-                                        </span> días solicitados
-                                    </div>
-                                )}
+                                {newIncidence.startDate && newIncidence.endDate && !dateConflictError && (() => {
+                                    const daysRequested = Math.ceil((new Date(newIncidence.endDate).getTime() - new Date(newIncidence.startDate).getTime()) / (1000 * 60 * 60 * 24)) + 1;
+                                    const exceedsBalance = newIncidence.type === 'vacation' && vacationBalance && daysRequested > vacationBalance.daysAvailable;
+
+                                    return (
+                                        <div className={`text-sm p-2 rounded ${exceedsBalance ? 'bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800' : 'bg-muted text-muted-foreground'}`}>
+                                            <div className="flex items-center justify-between">
+                                                <span>
+                                                    <span className={`font-medium ${exceedsBalance ? 'text-orange-700 dark:text-orange-300' : ''}`}>
+                                                        {daysRequested}
+                                                    </span> días solicitados
+                                                </span>
+                                                {exceedsBalance && (
+                                                    <Badge variant="outline" className="text-orange-700 border-orange-300 bg-orange-100 dark:bg-orange-900/50">
+                                                        <AlertTriangle className="h-3 w-3 mr-1" />
+                                                        Excede saldo
+                                                    </Badge>
+                                                )}
+                                            </div>
+                                            {exceedsBalance && (
+                                                <p className="text-xs text-orange-600 dark:text-orange-400 mt-1">
+                                                    Solo tienes {vacationBalance?.daysAvailable} días disponibles.
+                                                    La solicitud puede requerir aprobación especial.
+                                                </p>
+                                            )}
+                                        </div>
+                                    );
+                                })()}
 
                                 <div>
                                     <Label>Notas (opcional)</Label>

@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import {
     Users,
+    Users2,
     Clock,
     Calendar,
     FileSpreadsheet,
@@ -25,6 +26,7 @@ import {
     Settings,
     Briefcase,
     LayoutDashboard,
+    Building2,
 } from 'lucide-react';
 import Link from 'next/link';
 import type { Employee, Incidence, AttendanceImportBatch } from '@/lib/types';
@@ -97,7 +99,21 @@ export default function HCMPage() {
 
     const { data: recentImports, isLoading: importsLoading } = useCollection<AttendanceImportBatch>(importsQuery);
 
-    const isLoading = isUserLoading || employeesLoading || incidencesLoading || importsLoading;
+    // Check if current user has direct reports (for team management access)
+    const directReportsQuery = useMemoFirebase(() => {
+        if (!firestore || isUserLoading || !user?.id) return null;
+        return query(
+            collection(firestore, 'employees'),
+            where('directManagerId', '==', user.id),
+            where('status', '==', 'active'),
+            limit(1)
+        );
+    }, [firestore, isUserLoading, user?.id]);
+
+    const { data: directReports, isLoading: directReportsLoading } = useCollection<Employee>(directReportsQuery);
+    const hasDirectReports = (directReports && directReports.length > 0) || isAdmin;
+
+    const isLoading = isUserLoading || employeesLoading || incidencesLoading || importsLoading || directReportsLoading;
 
     // Stats calculations
     const totalEmployees = employees?.length ?? 0;
@@ -143,9 +159,9 @@ export default function HCMPage() {
                 </header>
                 <main className="flex flex-1 flex-col gap-4 p-4 pt-0 sm:gap-8 sm:p-6 sm:pt-0">
                     {/* Stats Cards */}
-                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 bento-grid">
                         {hasHRPermissions && (
-                            <Card>
+                            <Card className="bento-item">
                                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                                     <CardTitle className="text-sm font-medium">Empleados Activos</CardTitle>
                                     <Users className="h-4 w-4 text-muted-foreground" />
@@ -161,7 +177,7 @@ export default function HCMPage() {
                             </Card>
                         )}
 
-                        <Card>
+                        <Card className="bento-item">
                             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                                 <CardTitle className="text-sm font-medium">Incidencias Pendientes</CardTitle>
                                 <Timer className="h-4 w-4 text-muted-foreground" />
@@ -177,7 +193,7 @@ export default function HCMPage() {
                         </Card>
 
                         {hasHRPermissions && (
-                            <Card>
+                            <Card className="bento-item">
                                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                                     <CardTitle className="text-sm font-medium">Última Importación</CardTitle>
                                     <FileSpreadsheet className="h-4 w-4 text-muted-foreground" />
@@ -196,7 +212,7 @@ export default function HCMPage() {
                         )}
 
                         {canRead('hcm_prenomina') && (
-                            <Card>
+                            <Card className="bento-item">
                                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                                     <CardTitle className="text-sm font-medium">Pre-Nómina</CardTitle>
                                     <Calculator className="h-4 w-4 text-muted-foreground" />
@@ -206,7 +222,7 @@ export default function HCMPage() {
                                         -
                                     </div>
                                     <p className="text-xs text-muted-foreground">
-                                        <Link href="/prenomina" className="text-primary hover:underline">
+                                        <Link href="/hcm/prenomina" className="text-primary hover:underline">
                                             Ir a consolidación →
                                         </Link>
                                     </p>
@@ -224,9 +240,9 @@ export default function HCMPage() {
                         </TabsList>
 
                         <TabsContent value="overview" className="space-y-4">
-                            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 bento-grid">
                                 {/* Quick Actions */}
-                                <Card>
+                                <Card className="bento-item">
                                     <CardHeader>
                                         <CardTitle>Acciones Rápidas</CardTitle>
                                         <CardDescription>Operaciones frecuentes del módulo HCM</CardDescription>
@@ -253,6 +269,14 @@ export default function HCMPage() {
                                                 <Link href="/hcm/incidences">
                                                     <Calendar className="mr-2 h-4 w-4" />
                                                     Gestionar Incidencias
+                                                </Link>
+                                            </Button>
+                                        )}
+                                        {hasDirectReports && (
+                                            <Button asChild variant="outline" className="justify-start">
+                                                <Link href="/hcm/team-management">
+                                                    <Users2 className="mr-2 h-4 w-4" />
+                                                    Gestión de Equipo
                                                 </Link>
                                             </Button>
                                         )}
@@ -292,7 +316,7 @@ export default function HCMPage() {
                                             <Button asChild variant="outline" className="justify-start">
                                                 <Link href="/hcm/prenomina">
                                                     <Calculator className="mr-2 h-4 w-4" />
-                                                    Pre-Nomina
+                                                    Consolidación de Asistencia
                                                 </Link>
                                             </Button>
                                         )}
@@ -301,7 +325,7 @@ export default function HCMPage() {
 
                                 {/* Admin Section */}
                                 {hasHRPermissions && (
-                                    <Card>
+                                    <Card className="bento-item">
                                         <CardHeader>
                                             <CardTitle className="flex items-center gap-2">
                                                 <Settings className="h-5 w-5" />
@@ -328,12 +352,18 @@ export default function HCMPage() {
                                                     Puestos
                                                 </Link>
                                             </Button>
+                                            <Button asChild variant="outline" className="justify-start">
+                                                <Link href="/hcm/admin/departments">
+                                                    <Building2 className="mr-2 h-4 w-4" />
+                                                    Departamentos
+                                                </Link>
+                                            </Button>
                                         </CardContent>
                                     </Card>
                                 )}
 
                                 {/* Recent Imports */}
-                                <Card>
+                                <Card className="bento-item">
                                     <CardHeader>
                                         <CardTitle>Importaciones Recientes</CardTitle>
                                         <CardDescription>Últimos archivos de asistencia cargados</CardDescription>
@@ -370,7 +400,7 @@ export default function HCMPage() {
                                 </Card>
 
                                 {/* Alerts */}
-                                <Card>
+                                <Card className="bento-item">
                                     <CardHeader>
                                         <CardTitle>Alertas</CardTitle>
                                         <CardDescription>Notificaciones importantes</CardDescription>
@@ -397,7 +427,7 @@ export default function HCMPage() {
                         </TabsContent>
 
                         <TabsContent value="incidences" className="space-y-4">
-                            <Card>
+                            <Card className="bento-item">
                                 <CardHeader>
                                     <CardTitle>Incidencias Pendientes de Aprobación</CardTitle>
                                     <CardDescription>
@@ -452,7 +482,7 @@ export default function HCMPage() {
                         </TabsContent>
 
                         <TabsContent value="onboarding" className="space-y-4">
-                            <Card>
+                            <Card className="bento-item">
                                 <CardHeader>
                                     <CardTitle>Empleados en Onboarding</CardTitle>
                                     <CardDescription>

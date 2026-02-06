@@ -4,7 +4,9 @@
 import SiteLayout from "@/components/site-layout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { FilePlus, FolderKanban, WandSparkles, Pencil } from "lucide-react";
+import { FilePlus, FolderKanban, WandSparkles, Pencil, Globe, Lock } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase";
 import { collection, doc, setDoc } from "firebase/firestore";
@@ -112,7 +114,24 @@ export default function TemplatesPage() {
                                             <FolderKanban className="h-6 w-6 text-primary" />
                                         </div>
                                         <div className="flex-1">
-                                            <CardTitle>{template.name}</CardTitle>
+                                            <div className="flex items-center gap-2">
+                                                <CardTitle>{template.name}</CardTitle>
+                                                <Badge
+                                                    variant={template.status === 'published' ? 'default' : 'secondary'}
+                                                    className={cn(
+                                                        "text-xs",
+                                                        template.status === 'published'
+                                                            ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100'
+                                                            : ''
+                                                    )}
+                                                >
+                                                    {template.status === 'published' ? (
+                                                        <><Globe className="mr-1 h-3 w-3" /> Publicada</>
+                                                    ) : (
+                                                        <><Lock className="mr-1 h-3 w-3" /> Borrador</>
+                                                    )}
+                                                </Badge>
+                                            </div>
                                             <CardDescription>{template.description}</CardDescription>
                                         </div>
                                     </div>

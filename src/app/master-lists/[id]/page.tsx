@@ -65,7 +65,50 @@ export default function MasterListPage() {
   }
 
   if (!listDef) {
-    notFound();
+    return (
+      <SiteLayout>
+        <div className="flex flex-1 flex-col">
+          <header className="flex items-center gap-4 p-4 sm:p-6">
+            <Button variant="outline" size="icon" className="border-blue-500 text-blue-600 hover:bg-blue-50 hover:text-blue-700" onClick={() => router.back()}>
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight">Lista no encontrada</h1>
+              <p className="text-muted-foreground">ID: {listId}</p>
+            </div>
+          </header>
+          <main className="flex-1 p-4 pt-0 sm:p-6 sm:pt-0">
+            <Card>
+              <CardHeader>
+                <CardTitle>La lista maestra no existe</CardTitle>
+                <CardDescription>
+                  No se encontró ninguna lista maestra con el ID especificado en la base de datos.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  Esto puede ocurrir si:
+                </p>
+                <ul className="list-disc list-inside text-sm text-muted-foreground space-y-1">
+                  <li>La lista fue eliminada</li>
+                  <li>El ID en la URL es incorrecto</li>
+                  <li>La lista nunca fue creada con este ID</li>
+                </ul>
+                <div className="flex gap-2 pt-4">
+                  <Button variant="outline" onClick={() => router.push('/master-lists')}>
+                    Ver todas las listas
+                  </Button>
+                  <Button onClick={() => router.push('/master-lists/new')}>
+                    <PlusCircle className="mr-2 h-4 w-4" />
+                    Crear nueva lista
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </main>
+        </div>
+      </SiteLayout>
+    );
   }
 
   const dynamicColumns = columns(listDef.fields);

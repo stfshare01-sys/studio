@@ -47,20 +47,23 @@ import {
     Loader2,
     Shield,
     DollarSign,
+    Clock,
 } from 'lucide-react';
 
-import type { Position } from '@/lib/types';
+import type { Position, Department } from '@/lib/types';
 import { formatCurrency } from '@/lib/hcm-utils';
 
 const initialFormState = {
     name: '',
     code: '',
-    department: '',
+    departmentId: '',
     level: 3,
     salaryMin: '',
     salaryMax: '',
+    generatesOvertime: false,
     canApproveOvertime: false,
     canApproveIncidences: false,
+    allowTimeBank: false,
 };
 
 export default function PositionsAdminPage() {
@@ -81,6 +84,21 @@ export default function PositionsAdminPage() {
 
     const { data: positions, isLoading } = useCollection<Position>(positionsQuery);
 
+    // Fetch departments
+    const departmentsQuery = useMemoFirebase(() => {
+        if (!firestore) return null;
+        return query(collection(firestore, 'departments'));
+    }, [firestore]);
+
+    const { data: departments } = useCollection<Department>(departmentsQuery);
+
+    // Helper to get department name by ID
+    const getDepartmentName = (departmentId?: string) => {
+        if (!departmentId) return '-';
+        const dept = departments?.find(d => d.id === departmentId);
+        return dept?.name || departmentId; // Fallback to ID if name not found (for backward compatibility)
+    };
+
     const handleOpenDialog = (position?: Position) => {
         if (position) {
             setIsEditing(true);
@@ -88,12 +106,14 @@ export default function PositionsAdminPage() {
             setFormData({
                 name: position.name,
                 code: position.code,
-                department: position.department,
+                departmentId: position.departmentId || position.department || '', // Support legacy 'department' field
                 level: position.level,
                 salaryMin: position.salaryMin?.toString() || '',
                 salaryMax: position.salaryMax?.toString() || '',
+                generatesOvertime: position.generatesOvertime || false,
                 canApproveOvertime: position.canApproveOvertime || false,
                 canApproveIncidences: position.canApproveIncidences || false,
+                allowTimeBank: position.allowTimeBank || false,
             });
         } else {
             setIsEditing(false);
@@ -106,10 +126,10 @@ export default function PositionsAdminPage() {
     const handleSave = async () => {
         if (!firestore || !user) return;
 
-        if (!formData.name || !formData.code || !formData.department) {
+        if (!formData.name || !formData.code || !formData.departmentId) {
             toast({
                 title: 'Error',
-                description: 'El nombre, codigo y departamento son requeridos.',
+                description: 'El nombre, código y departamento son requeridos.',
                 variant: 'destructive',
             });
             return;
@@ -118,19 +138,29 @@ export default function PositionsAdminPage() {
         setIsSaving(true);
         try {
             const now = new Date().toISOString();
+            const selectedDept = departments?.find(d => d.id === formData.departmentId);
 
-            const positionData = {
+            const positionData: Record<string, any> = {
                 name: formData.name,
                 code: formData.code.toUpperCase(),
-                department: formData.department,
+                departmentId: formData.departmentId,
+                department: selectedDept?.name || '', // Denormalized for display
                 level: formData.level,
-                salaryMin: formData.salaryMin ? parseFloat(formData.salaryMin) : undefined,
-                salaryMax: formData.salaryMax ? parseFloat(formData.salaryMax) : undefined,
+                generatesOvertime: formData.generatesOvertime,
                 canApproveOvertime: formData.canApproveOvertime,
                 canApproveIncidences: formData.canApproveIncidences,
+                allowTimeBank: formData.allowTimeBank,
                 isActive: true,
                 updatedAt: now,
             };
+
+            // Solo agregar salarios si tienen valor (Firestore no acepta undefined)
+            if (formData.salaryMin) {
+                positionData.salaryMin = parseFloat(formData.salaryMin);
+            }
+            if (formData.salaryMax) {
+                positionData.salaryMax = parseFloat(formData.salaryMax);
+            }
 
             if (isEditing && editingId) {
                 await updateDoc(doc(firestore, 'positions', editingId), positionData);
@@ -261,14 +291,17 @@ export default function PositionsAdminPage() {
                                                     {position.salaryMax ? formatCurrency(position.salaryMax) : '-'}
                                                 </TableCell>
                                                 <TableCell className="text-center">
-                                                    <div className="flex justify-center gap-1">
+                                                    <div className="flex justify-center gap-1 flex-wrap">
+                                                        {position.generatesOvertime && (
+                                                            <Badge className="bg-green-100 text-green-800 text-[10px]">HE</Badge>
+                                                        )}
                                                         {position.canApproveOvertime && (
-                                                            <Badge className="bg-orange-100 text-orange-800 text-[10px]">HE</Badge>
+                                                            <Badge className="bg-orange-100 text-orange-800 text-[10px]">Aprueba HE</Badge>
                                                         )}
                                                         {position.canApproveIncidences && (
-                                                            <Badge className="bg-blue-100 text-blue-800 text-[10px]">INC</Badge>
+                                                            <Badge className="bg-blue-100 text-blue-800 text-[10px]">Aprueba INC</Badge>
                                                         )}
-                                                        {!position.canApproveOvertime && !position.canApproveIncidences && '-'}
+                                                        {!position.generatesOvertime && !position.canApproveOvertime && !position.canApproveIncidences && '-'}
                                                     </div>
                                                 </TableCell>
                                                 <TableCell>
@@ -336,14 +369,35 @@ export default function PositionsAdminPage() {
                                 <div className="grid grid-cols-2 gap-4">
                                     <div className="space-y-2">
                                         <Label>Departamento *</Label>
-                                        <Input
-                                            value={formData.department}
-                                            onChange={(e) => setFormData(prev => ({ ...prev, department: e.target.value }))}
-                                            placeholder="Operaciones"
-                                        />
+                                        <Select
+                                            value={formData.departmentId || '_empty'}
+                                            onValueChange={(v) => setFormData(prev => ({ ...prev, departmentId: v === '_empty' ? '' : v }))}
+                                        >
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="Seleccionar departamento" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {departments && departments.length > 0 ? (
+                                                    departments.filter(d => d.isActive).map((dept) => (
+                                                        <SelectItem key={dept.id} value={dept.id}>
+                                                            {dept.code} - {dept.name}
+                                                        </SelectItem>
+                                                    ))
+                                                ) : (
+                                                    <SelectItem value="_empty" disabled>
+                                                        No hay departamentos. Créelos primero.
+                                                    </SelectItem>
+                                                )}
+                                            </SelectContent>
+                                        </Select>
+                                        <p className="text-xs text-muted-foreground">
+                                            <Link href="/hcm/admin/departments" className="text-primary hover:underline">
+                                                Administrar departamentos
+                                            </Link>
+                                        </p>
                                     </div>
                                     <div className="space-y-2">
-                                        <Label>Nivel Jerarquico</Label>
+                                        <Label>Nivel Jerárquico</Label>
                                         <Select
                                             value={formData.level.toString()}
                                             onValueChange={(v) => setFormData(prev => ({ ...prev, level: parseInt(v) }))}
@@ -400,6 +454,18 @@ export default function PositionsAdminPage() {
                                     <div className="space-y-3">
                                         <div className="flex items-center space-x-2">
                                             <Checkbox
+                                                id="generatesOvertime"
+                                                checked={formData.generatesOvertime}
+                                                onCheckedChange={(checked) =>
+                                                    setFormData(prev => ({ ...prev, generatesOvertime: !!checked }))
+                                                }
+                                            />
+                                            <Label htmlFor="generatesOvertime">
+                                                Genera Horas Extras
+                                            </Label>
+                                        </div>
+                                        <div className="flex items-center space-x-2">
+                                            <Checkbox
                                                 id="canApproveOvertime"
                                                 checked={formData.canApproveOvertime}
                                                 onCheckedChange={(checked) =>
@@ -420,6 +486,18 @@ export default function PositionsAdminPage() {
                                             />
                                             <Label htmlFor="canApproveIncidences">
                                                 Puede aprobar incidencias
+                                            </Label>
+                                        </div>
+                                        <div className="flex items-center space-x-2">
+                                            <Checkbox
+                                                id="allowTimeBank"
+                                                checked={formData.allowTimeBank}
+                                                onCheckedChange={(checked) =>
+                                                    setFormData(prev => ({ ...prev, allowTimeBank: !!checked }))
+                                                }
+                                            />
+                                            <Label htmlFor="allowTimeBank">
+                                                Permitir Bolsa de Horas
                                             </Label>
                                         </div>
                                     </div>
@@ -443,6 +521,6 @@ export default function PositionsAdminPage() {
                     </Dialog>
                 </main>
             </div>
-        </SiteLayout>
+        </SiteLayout >
     );
 }
