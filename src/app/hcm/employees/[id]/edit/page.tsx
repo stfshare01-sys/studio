@@ -101,6 +101,7 @@ export default function EditEmployeePage({ params }: { params: Promise<{ id: str
                 positionTitle: employee.positionTitle,
                 employmentType: employee.employmentType,
                 shiftType: employee.shiftType,
+                customShiftId: employee.customShiftId,
                 hireDate: employee.hireDate?.split('T')[0] || '',
                 directManagerId: employee.directManagerId,
                 rfc_curp: employee.rfc_curp,
@@ -305,20 +306,26 @@ export default function EditEmployeePage({ params }: { params: Promise<{ id: str
                                     </Select>
                                 </div>
                                 <div className="space-y-2">
-                                    <Label>Tipo de Turno</Label>
+                                    <Label>Turno Asignado</Label>
                                     <Select
-                                        value={formData.shiftType}
-                                        onValueChange={(v) => handleInputChange('shiftType', v)}
+                                        value={formData.customShiftId || 'none'}
+                                        onValueChange={(v) => handleInputChange('customShiftId', v === 'none' ? undefined : v)}
                                     >
                                         <SelectTrigger>
-                                            <SelectValue placeholder="Seleccionar turno" />
+                                            <SelectValue placeholder="Seleccionar turno..." />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            <SelectItem value="diurnal">Diurno (6:00-20:00)</SelectItem>
-                                            <SelectItem value="nocturnal">Nocturno (20:00-6:00)</SelectItem>
-                                            <SelectItem value="mixed">Mixto</SelectItem>
+                                            <SelectItem value="none">Sin turno asignado</SelectItem>
+                                            {shifts?.map((shift) => (
+                                                <SelectItem key={shift.id} value={shift.id}>
+                                                    {shift.code} - {shift.name} ({shift.startTime}-{shift.endTime})
+                                                </SelectItem>
+                                            ))}
                                         </SelectContent>
                                     </Select>
+                                    <p className="text-xs text-muted-foreground">
+                                        Define los días laborales y de descanso para cálculo de vacaciones
+                                    </p>
                                 </div>
                                 <div className="space-y-2">
                                     <Label htmlFor="hireDate">Fecha de Ingreso</Label>
