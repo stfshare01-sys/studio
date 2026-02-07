@@ -11,6 +11,7 @@
 // HCM callable functions
 export {
     consolidatePrenomina,
+    closePeriodAutoProcess,
     processEmployeeImport,
     approveIncidence
 } from './callable/hcm-operations';
@@ -24,3 +25,6 @@ export { onIncidenceUpdate, onAttendanceCreated } from './triggers/hcm-triggers'
 
 // Workflow Triggers
 export { onTaskComplete } from './triggers/workflow-triggers';
+
+// Scheduled Functions - Vacation Renewal
+export { renewVacationBalancesDaily } from './scheduled/vacation-renewal';

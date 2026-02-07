@@ -104,11 +104,14 @@ export type VacationBalance = {
     employeeId: string;
     periodStart: string;
     periodEnd: string;
-    daysEntitled: number;
+    daysEntitled: number;                  // Días que corresponden según LFT
     yearsOfService: number;
     daysTaken: number;
     daysScheduled: number;
-    daysAvailable: number;
+    daysAvailable: number;                 // Total disponible (daysEntitled + daysCarriedOver - daysTaken - daysScheduled)
+    daysCarriedOver: number;               // Días arrastrados del período anterior
+    maxCarryOverDays?: number;             // Límite de arrastre (política empresa, default sin límite)
+    daysPending: number;                   // Días en solicitudes pendientes de aprobación
     vacationPremiumPaid: boolean;
     vacationPremiumDate?: string;
     movements: VacationMovement[];

@@ -553,6 +553,13 @@ function datesOverlap(start1: string, end1: string, start2: string, end2: string
  * Includes server-side validation for:
  * 1. HIERARCHICAL AUTHORIZATION: Only direct managers, chain managers, or HR/Admin can approve
  * 2. DATE CONFLICTS: Prevents approving overlapping incidences
+ * 3. VACATION BALANCE: Validates employee has sufficient days for vacation requests
+ *
+ * When approving VACATION incidences:
+ * - Uses Firestore transaction for atomicity
+ * - Validates sufficient balance
+ * - Updates vacation balance (daysTaken, daysAvailable)
+ * - Records movement in vacation balance for audit
  *
  * AUTHORIZATION RULES:
  * - HR/Admin can approve ANY employee's incidences
@@ -588,7 +595,6 @@ export const approveIncidence = onCall<ApproveIncidenceRequest>(
             const incidenceData = incidenceSnap.data() as Incidence;
 
             // VALIDATION 1: Hierarchical authorization
-            // Check if the approver can approve for this employee
             const hierarchyCheck = await canApproveForEmployee(
                 approverId,
                 incidenceData.employeeId,
@@ -603,11 +609,10 @@ export const approveIncidence = onCall<ApproveIncidenceRequest>(
             }
 
             console.log(`[HCM] Hierarchy check passed: ${hierarchyCheck.approvalMethod} (level ${hierarchyCheck.approverLevel || 'N/A'})`);
-            console.log(`[HCM] Reason: ${hierarchyCheck.reason}`);
 
-            // Only validate date conflicts when approving (not when rejecting)
+            // Only validate when approving (not when rejecting)
             if (action === 'approve') {
-                // Query for other approved or pending incidences for the same employee
+                // VALIDATION 2: Date conflicts
                 const conflictQuery = await db.collection('incidences')
                     .where('employeeId', '==', incidenceData.employeeId)
                     .where('status', 'in', ['approved', 'pending'])
@@ -616,26 +621,20 @@ export const approveIncidence = onCall<ApproveIncidenceRequest>(
                 const conflictingIncidences: Incidence[] = [];
 
                 for (const doc of conflictQuery.docs) {
-                    // Skip the current incidence being approved
                     if (doc.id === incidenceId) continue;
 
                     const otherIncidence = doc.data() as Incidence;
 
-                    // Check if dates overlap
                     if (datesOverlap(
                         incidenceData.startDate,
                         incidenceData.endDate,
                         otherIncidence.startDate,
                         otherIncidence.endDate
                     )) {
-                        conflictingIncidences.push({
-                            ...otherIncidence,
-                            id: doc.id
-                        });
+                        conflictingIncidences.push({ ...otherIncidence, id: doc.id });
                     }
                 }
 
-                // If there are conflicts, reject the approval
                 if (conflictingIncidences.length > 0) {
                     const typeNames: Record<string, string> = {
                         vacation: 'vacaciones',
@@ -656,11 +655,82 @@ export const approveIncidence = onCall<ApproveIncidenceRequest>(
                         `No se puede aprobar: las fechas se solapan con ${conflictingIncidences.length === 1 ? 'otra incidencia' : 'otras incidencias'}: ${conflictDescriptions.join('; ')}.`
                     );
                 }
+
+                // VALIDATION 3: Vacation balance (only for vacation type)
+                if (incidenceData.type === 'vacation') {
+                    // Use transaction to ensure atomicity
+                    await db.runTransaction(async (transaction) => {
+                        // Get vacation balance
+                        const balanceQuery = await db.collection('vacation_balances')
+                            .where('employeeId', '==', incidenceData.employeeId)
+                            .orderBy('periodEnd', 'desc')
+                            .limit(1)
+                            .get();
+
+                        if (balanceQuery.empty) {
+                            throw new HttpsError(
+                                'failed-precondition',
+                                'El empleado no tiene saldo de vacaciones configurado. Contacte a RH.'
+                            );
+                        }
+
+                        const balanceDoc = balanceQuery.docs[0];
+                        const balanceData = balanceDoc.data();
+                        const currentAvailable = balanceData.daysAvailable || 0;
+                        const requestedDays = incidenceData.totalDays;
+
+                        // Validate sufficient balance
+                        if (requestedDays > currentAvailable) {
+                            throw new HttpsError(
+                                'failed-precondition',
+                                `Saldo insuficiente. El empleado tiene ${currentAvailable} día(s) disponible(s) y está solicitando ${requestedDays} día(s).`
+                            );
+                        }
+
+                        console.log(`[HCM] Vacation balance check passed: ${currentAvailable} available, ${requestedDays} requested`);
+
+                        // Create movement for audit
+                        const newMovement = {
+                            id: `mov_taken_${Date.now()}`,
+                            date: nowISO,
+                            type: 'taken',
+                            days: -requestedDays,
+                            description: `Vacaciones aprobadas: ${incidenceData.startDate} al ${incidenceData.endDate}`,
+                            incidenceId: incidenceId,
+                            approvedById: approverId
+                        };
+
+                        // Update vacation balance within transaction
+                        const updatedMovements = [...(balanceData.movements || []), newMovement].slice(-100);
+
+                        transaction.update(balanceDoc.ref, {
+                            daysTaken: (balanceData.daysTaken || 0) + requestedDays,
+                            daysAvailable: currentAvailable - requestedDays,
+                            movements: updatedMovements,
+                            lastUpdated: nowISO
+                        });
+
+                        // Update incidence status within same transaction
+                        transaction.update(incidenceRef, {
+                            status: 'approved',
+                            approvedById: approverId,
+                            approvedByName: userData?.fullName,
+                            approvedAt: nowISO,
+                            updatedAt: nowISO
+                        });
+
+                        console.log(`[HCM] Vacation balance updated atomically: ${currentAvailable} -> ${currentAvailable - requestedDays}`);
+                    });
+
+                    console.log(`[HCM] Vacation incidence ${incidenceId} approved by ${userData?.fullName} (transactional)`);
+                    return { success: true };
+                }
             }
 
+            // For non-vacation incidences or rejections, update normally
             const updateData: Partial<Incidence> = {
                 status: action === 'approve' ? 'approved' : 'rejected',
-                approvedById: request.auth?.uid,
+                approvedById: approverId,
                 approvedByName: userData?.fullName,
                 approvedAt: nowISO,
                 updatedAt: nowISO
@@ -689,18 +759,18 @@ export const approveIncidence = onCall<ApproveIncidenceRequest>(
 // =========================================================================
 
 /**
- * Consolida el período de nómina y genera archivo para NOMIPAQ
- * 
+ * Procesa automáticamente pendientes al cerrar período de nómina
+ *
  * AUTOMATIZACIÓN AL CIERRE:
  * 1. Auto-rechaza HE pendientes
  * 2. Auto-injustifica retardos sin bitácora
  * 3. Auto-marca faltas por salidas tempranas injustificadas
  * 4. Auto-marca faltas por marcajes faltantes
  * 5. Genera códigos NOMIPAQ para exportación
- * 
+ *
  * Solo HR/Admin pueden ejecutar esta función
  */
-export const consolidatePrenomina = onCall(
+export const closePeriodAutoProcess = onCall(
     { enforceAppCheck: true },
     async (request: CallableRequest) => {
         const db = admin.firestore();

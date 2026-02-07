@@ -178,3 +178,37 @@ export interface Task {
     updatedAt: string;
     completedAt?: string;
 }
+
+// =========================================================================
+// VACATION BALANCE TYPES
+// =========================================================================
+
+export interface VacationMovement {
+    id: string;
+    date: string;
+    type: 'taken' | 'scheduled' | 'cancelled' | 'reset' | 'adjustment';
+    days: number;
+    description: string;
+    incidenceId?: string;
+    approvedById?: string;
+}
+
+export interface VacationBalance {
+    id: string;
+    employeeId: string;
+    periodStart: string;
+    periodEnd: string;
+    daysEntitled: number;
+    yearsOfService: number;
+    daysTaken: number;
+    daysScheduled: number;
+    daysAvailable: number;
+    daysCarriedOver: number;
+    maxCarryOverDays?: number;
+    daysPending: number;
+    vacationPremiumPaid: boolean;
+    vacationPremiumDate?: string;
+    movements: VacationMovement[];
+    lastUpdated: string;
+    createdAt: string;
+}
