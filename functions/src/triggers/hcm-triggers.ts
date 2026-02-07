@@ -126,9 +126,13 @@ export const onAttendanceCreated = onDocumentCreated(
 
 /**
  * Trigger: On Incidence Updated
- * 
+ *
  * Handles side-effects when an incidence status changes.
- * When 'vacation' is APPROVED -> Deduct days from vacation balance.
+ *
+ * NOTE: Para vacaciones, la actualización del saldo ahora se hace de forma
+ * transaccional en approveIncidence(). Este trigger solo se activa como
+ * fallback para incidencias creadas antes de la implementación transaccional,
+ * o para otros tipos de incidencias que requieran procesamiento adicional.
  */
 export const onIncidenceUpdate = onDocumentUpdated('incidences/{incidenceId}', async (event) => {
     const before = event.data?.before.data() as Incidence | undefined;
@@ -142,17 +146,25 @@ export const onIncidenceUpdate = onDocumentUpdated('incidences/{incidenceId}', a
         const days = after.totalDays;
 
         if (after.type === 'vacation') {
-            await handleVacationApproval(employeeId, days, event.params.incidenceId);
+            // Solo procesar como fallback si no se actualizó transaccionalmente
+            await handleVacationApprovalFallback(employeeId, days, event.params.incidenceId);
         }
     }
 });
 
 /**
- * Updates the employee's vacation balance
+ * Fallback para actualizar saldo de vacaciones
+ *
+ * Esta función verifica si el movimiento ya fue registrado por la
+ * transacción en approveIncidence() para evitar duplicar la deducción.
  */
-async function handleVacationApproval(employeeId: string, days: number, incidenceId: string) {
+async function handleVacationApprovalFallback(
+    employeeId: string,
+    days: number,
+    incidenceId: string
+) {
     try {
-        console.log(`[Trigger] Processing vacation approval for ${employeeId}: -${days} days`);
+        console.log(`[Trigger Fallback] Checking vacation approval for ${employeeId}: ${days} days`);
 
         const balanceQuery = db.collection('vacation_balances')
             .where('employeeId', '==', employeeId)
@@ -162,23 +174,50 @@ async function handleVacationApproval(employeeId: string, days: number, incidenc
         const balanceSnap = await balanceQuery.get();
 
         if (balanceSnap.empty) {
-            console.warn(`[Trigger] No vacation balance found for employee ${employeeId}`);
+            console.warn(`[Trigger Fallback] No vacation balance found for employee ${employeeId}`);
             return;
         }
 
         const balanceDoc = balanceSnap.docs[0];
-        const currentTaken = balanceDoc.data().daysTaken || 0;
-        const currentAvailable = balanceDoc.data().daysAvailable || 0;
+        const balanceData = balanceDoc.data();
+        const movements = balanceData.movements || [];
+
+        // Check if movement already exists (fue procesado transaccionalmente)
+        const movementExists = movements.some(
+            (m: { incidenceId?: string }) => m.incidenceId === incidenceId
+        );
+
+        if (movementExists) {
+            console.log(`[Trigger Fallback] Movement already recorded for incidence ${incidenceId}, skipping duplicate`);
+            return;
+        }
+
+        // Fallback: procesar si no existe el movimiento (incidencias legacy)
+        console.log(`[Trigger Fallback] Processing legacy incidence ${incidenceId}`);
+
+        const currentTaken = balanceData.daysTaken || 0;
+        const currentAvailable = balanceData.daysAvailable || 0;
+
+        // Create movement for audit
+        const newMovement = {
+            id: `mov_taken_fallback_${Date.now()}`,
+            date: new Date().toISOString(),
+            type: 'taken',
+            days: -days,
+            description: `Vacaciones aprobadas (fallback): ${incidenceId}`,
+            incidenceId: incidenceId,
+        };
 
         await balanceDoc.ref.update({
             daysTaken: currentTaken + days,
             daysAvailable: currentAvailable - days,
+            movements: [...movements, newMovement].slice(-100),
             lastUpdated: new Date().toISOString()
         });
 
-        console.log(`[Trigger] Updated vacation balance for ${employeeId}. New available: ${currentAvailable - days}`);
+        console.log(`[Trigger Fallback] Updated vacation balance for ${employeeId}. New available: ${currentAvailable - days}`);
 
     } catch (error) {
-        console.error('[Trigger] Error updating vacation balance:', error);
+        console.error('[Trigger Fallback] Error updating vacation balance:', error);
     }
 }

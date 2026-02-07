@@ -525,6 +525,7 @@ export async function getVacationBalance(
         const daysEntitled = calculateVacationDays(yearsOfService);
         const periodStart = employee.hireDate;
         const nextAnniversary = getNextAnniversaryDate(employee.hireDate);
+        const now = new Date().toISOString();
 
         const newBalance: Omit<VacationBalance, 'id'> = {
             employeeId,
@@ -535,10 +536,18 @@ export async function getVacationBalance(
             daysTaken: 0,
             daysScheduled: 0,
             daysAvailable: daysEntitled,
+            daysCarriedOver: 0,              // Nuevo campo
+            daysPending: 0,                   // Nuevo campo
             vacationPremiumPaid: false,
-            movements: [],
-            lastUpdated: new Date().toISOString(),
-            createdAt: new Date().toISOString(),
+            movements: [{
+                id: `mov_init_${Date.now()}`,
+                date: now,
+                type: 'reset',
+                days: daysEntitled,
+                description: `Balance inicial - Año ${yearsOfService} de servicio`,
+            }],
+            lastUpdated: now,
+            createdAt: now,
         };
 
         const balanceRef = await addDoc(collection(firestore, 'vacation_balances'), newBalance);
@@ -617,13 +626,27 @@ export async function updateVacationBalance(
     }
 }
 
+/**
+ * Renueva el saldo de vacaciones en el aniversario del empleado
+ *
+ * Características:
+ * - Calcula nuevos días según antigüedad LFT 2023
+ * - Arrastra días no tomados del período anterior (carry-over)
+ * - Aplica límite de arrastre si está configurado en la ubicación
+ * - Crea registro de movimientos para auditoría
+ *
+ * @param employeeId - ID del empleado
+ * @param forceRenewal - Si es true, permite renovación aunque no sea aniversario (para correcciones)
+ */
 export async function resetVacationBalanceOnAnniversary(
-    employeeId: string
+    employeeId: string,
+    forceRenewal: boolean = false
 ): Promise<{ success: boolean; newBalance?: VacationBalance; error?: string }> {
     try {
         const { firestore } = initializeFirebase();
         const now = new Date().toISOString();
 
+        // 1. Obtener datos del empleado
         const employeeRef = doc(firestore, 'employees', employeeId);
         const employeeSnap = await getDoc(employeeRef);
 
@@ -631,12 +654,77 @@ export async function resetVacationBalanceOnAnniversary(
 
         const employee = employeeSnap.data() as Employee;
 
-        if (!isAnniversaryDate(employee.hireDate)) return { success: false, error: 'No es fecha de aniversario.' };
+        // 2. Validar fecha de aniversario (a menos que sea forzado)
+        if (!forceRenewal && !isAnniversaryDate(employee.hireDate)) {
+            return { success: false, error: 'No es fecha de aniversario.' };
+        }
 
+        // 3. Calcular nuevos valores según LFT
         const yearsOfService = calculateYearsOfService(employee.hireDate);
         const daysEntitled = calculateVacationDays(yearsOfService);
         const nextAnniversary = getNextAnniversaryDate(employee.hireDate);
 
+        // 4. Obtener balance actual para carry-over
+        const balancesQuery = query(
+            collection(firestore, 'vacation_balances'),
+            where('employeeId', '==', employeeId),
+            orderBy('periodEnd', 'desc'),
+            limit(1)
+        );
+        const balancesSnap = await getDocs(balancesQuery);
+
+        let daysCarriedOver = 0;
+        let maxCarryOverDays: number | undefined;
+
+        // 5. Obtener límite de carry-over de la ubicación
+        if (employee.locationId) {
+            const locationRef = doc(firestore, 'locations', employee.locationId);
+            const locationSnap = await getDoc(locationRef);
+            if (locationSnap.exists()) {
+                const locationData = locationSnap.data();
+                maxCarryOverDays = locationData?.maxVacationCarryOverDays;
+            }
+        }
+
+        // 6. Calcular días a arrastrar
+        if (!balancesSnap.empty) {
+            const currentBalance = balancesSnap.docs[0].data() as VacationBalance;
+            const unusedDays = currentBalance.daysAvailable;
+
+            // Aplicar límite si existe
+            if (maxCarryOverDays !== undefined && maxCarryOverDays >= 0) {
+                daysCarriedOver = Math.min(unusedDays, maxCarryOverDays);
+            } else {
+                // Sin límite, arrastrar todos (según LFT, no prescriben hasta 18 meses)
+                daysCarriedOver = Math.max(0, unusedDays);
+            }
+
+            console.log(`[HCM] Carry-over for ${employeeId}: ${daysCarriedOver} days (had ${unusedDays} unused)`);
+        }
+
+        // 7. Crear movimientos de auditoría
+        const movements: VacationMovement[] = [{
+            id: `mov_reset_${Date.now()}`,
+            date: now,
+            type: 'reset',
+            days: daysEntitled,
+            description: `Renovación aniversario año ${yearsOfService}. Días nuevos: ${daysEntitled}.`,
+        }];
+
+        if (daysCarriedOver > 0) {
+            movements.push({
+                id: `mov_carryover_${Date.now()}`,
+                date: now,
+                type: 'adjustment',
+                days: daysCarriedOver,
+                description: `Días arrastrados del período anterior (${maxCarryOverDays !== undefined ? `límite: ${maxCarryOverDays}` : 'sin límite'})`,
+            });
+        }
+
+        // 8. Calcular total disponible
+        const totalAvailable = daysEntitled + daysCarriedOver;
+
+        // 9. Crear nuevo balance
         const newBalance: Omit<VacationBalance, 'id'> = {
             employeeId,
             periodStart: now,
@@ -645,20 +733,20 @@ export async function resetVacationBalanceOnAnniversary(
             yearsOfService,
             daysTaken: 0,
             daysScheduled: 0,
-            daysAvailable: daysEntitled,
+            daysAvailable: totalAvailable,
+            daysCarriedOver,
+            maxCarryOverDays,
+            daysPending: 0,
             vacationPremiumPaid: false,
-            movements: [{
-                id: `mov_${Date.now()}`,
-                date: now,
-                type: 'reset',
-                days: daysEntitled,
-                description: `Reset de vacaciones - Aniversario año ${yearsOfService}`,
-            }],
+            movements,
             lastUpdated: now,
             createdAt: now,
         };
 
         const balanceRef = await addDoc(collection(firestore, 'vacation_balances'), newBalance);
+
+        console.log(`[HCM] Vacation balance renewed for ${employeeId}: ${totalAvailable} days (${daysEntitled} new + ${daysCarriedOver} carry-over)`);
+
         return { success: true, newBalance: { id: balanceRef.id, ...newBalance } };
     } catch (error) {
         console.error('[HCM] Error resetting vacation balance:', error);
