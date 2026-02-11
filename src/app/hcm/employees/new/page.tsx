@@ -45,7 +45,7 @@ import { createNewUser } from '@/firebase/admin-actions';
 import { useFirebase, useMemoFirebase } from '@/firebase/provider';
 import { useCollection } from '@/firebase/firestore/use-collection';
 import { collection, query, where } from 'firebase/firestore';
-import type { Department, Position, CustomShift, Employee } from '@/lib/types';
+import type { Department, Position, CustomShift, Employee, Location } from '@/lib/types';
 
 // Schema Validation - departmentId es opcional porque se auto-llena desde el puesto
 const employeeSchema = z.object({
@@ -54,6 +54,7 @@ const employeeSchema = z.object({
     positionId: z.string().min(1, 'El puesto es requerido'),
     employmentType: z.enum(['full_time', 'part_time', 'contractor', 'intern']),
     shiftId: z.string().min(1, 'El turno es requerido'),
+    locationId: z.string().min(1, 'La ubicación es requerida'), // Added locationId
     hireDate: z.date({ required_error: 'La fecha de ingreso es requerida' }),
     managerId: z.string().optional(),
     rfc: z.string().min(12, 'RFC inválido').max(13, 'RFC inválido').optional().or(z.literal('')),
@@ -94,6 +95,14 @@ export default function NewEmployeePage() {
 
     const { data: shifts, isLoading: isLoadingShifts } = useCollection<CustomShift>(shiftsQuery);
 
+    // Fetch Locations (Added)
+    const locationsQuery = useMemoFirebase(() => {
+        if (!firestore || isUserLoading) return null;
+        return query(collection(firestore, 'locations'), where('isActive', '==', true));
+    }, [firestore, isUserLoading]);
+
+    const { data: locations, isLoading: isLoadingLocations } = useCollection<Location>(locationsQuery);
+
     // Fetch Managers (employees who can be assigned as managers)
     const managersQuery = useMemoFirebase(() => {
         if (!firestore || isUserLoading) return null;
@@ -110,6 +119,7 @@ export default function NewEmployeePage() {
             positionId: '',
             employmentType: 'full_time',
             shiftId: '',
+            locationId: '', // Added default value
             managerId: '',
             rfc: '',
             curp: '',
@@ -175,6 +185,7 @@ export default function NewEmployeePage() {
                 employmentType: data.employmentType,
                 shiftType: selectedShift?.type || 'diurnal',
                 shiftId: data.shiftId,
+                locationId: data.locationId,
                 hireDate: data.hireDate.toISOString(),
                 managerId: data.managerId || undefined,
                 rfc_curp: `${data.rfc || ''} ${data.curp || ''}`.trim() || undefined,
@@ -386,6 +397,40 @@ export default function NewEmployeePage() {
                                                             <Link href="/hcm/admin/shifts" className="text-primary hover:underline text-xs">
                                                                 Administrar turnos
                                                             </Link>
+                                                        </FormDescription>
+                                                        <FormMessage />
+                                                    </FormItem>
+                                                )}
+                                            />
+
+                                            <FormField
+                                                control={form.control}
+                                                name="locationId"
+                                                render={({ field }) => (
+                                                    <FormItem>
+                                                        <FormLabel>Ubicación</FormLabel>
+                                                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                                            <FormControl>
+                                                                <SelectTrigger>
+                                                                    <SelectValue placeholder="Seleccionar ubicación" />
+                                                                </SelectTrigger>
+                                                            </FormControl>
+                                                            <SelectContent>
+                                                                {locations && locations.length > 0 ? (
+                                                                    locations.map((loc) => (
+                                                                        <SelectItem key={loc.id} value={loc.id}>
+                                                                            {loc.name}
+                                                                        </SelectItem>
+                                                                    ))
+                                                                ) : (
+                                                                    <SelectItem value="_empty" disabled>
+                                                                        No hay ubicaciones disponibles
+                                                                    </SelectItem>
+                                                                )}
+                                                            </SelectContent>
+                                                        </Select>
+                                                        <FormDescription>
+                                                            Determina los días festivos y reglas locales
                                                         </FormDescription>
                                                         <FormMessage />
                                                     </FormItem>

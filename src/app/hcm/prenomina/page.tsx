@@ -88,31 +88,40 @@ export default function ConsolidacionAsistenciaPage() {
 
     const { data: prenominaRecords, isLoading } = useCollection<PrenominaRecord>(prenominaQuery);
 
-    // Load period closures to show which managers have closed
+    // Load period locks to show which periods are closed
     useEffect(() => {
-        const loadPeriodClosures = async () => {
-            if (!firestore || !selectedPeriod.start) return;
+        const loadPeriodLocks = async () => {
+            if (!selectedPeriod.start) return;
 
             setLoadingClosures(true);
             try {
-                const periodKey = format(new Date(selectedPeriod.start), 'yyyy-MM');
-                const closuresRef = collection(firestore, 'period_closures');
-                const closuresQuery = query(
-                    closuresRef,
-                    where('period', '==', periodKey)
+                const { checkPeriodLock } = await import('@/firebase/actions/report-actions');
+                const lockResult = await checkPeriodLock(
+                    selectedPeriod.start,
+                    selectedPeriod.end
                 );
-                const snapshot = await getDocs(closuresQuery);
-                const closures = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                setPeriodClosures(closures);
+
+                // For backward compatibility, still show as closure
+                if (lockResult.isLocked && lockResult.lock) {
+                    setPeriodClosures([{
+                        id: lockResult.lock.id,
+                        period: format(new Date(selectedPeriod.start), 'yyyy-MM'),
+                        lockedAt: lockResult.lock.lockedAt,
+                        lockedByName: lockResult.lock.lockedByName
+                    }]);
+                } else {
+                    setPeriodClosures([]);
+                }
             } catch (error) {
-                console.error('Error loading period closures:', error);
+                console.error('Error loading period locks:', error);
+                setPeriodClosures([]);
             } finally {
                 setLoadingClosures(false);
             }
         };
 
-        loadPeriodClosures();
-    }, [firestore, selectedPeriod.start]);
+        loadPeriodLocks();
+    }, [selectedPeriod.start, selectedPeriod.end]);
 
     // Filter records client-side for search
     const filteredRecords = prenominaRecords?.filter(record => {
@@ -216,6 +225,28 @@ export default function ConsolidacionAsistenciaPage() {
                 throw new Error(consolidateResult.errors?.[0]?.message || 'Error al consolidar');
             }
 
+            // 4. Lock the payroll period using granular date-range locks
+            toast({
+                title: "Bloqueando período",
+                description: "Creando bloqueo de período...",
+            });
+
+            const { lockPayrollPeriod } = await import('@/firebase/actions/report-actions');
+            const lockResult = await lockPayrollPeriod(
+                selectedPeriod.start,
+                selectedPeriod.end,
+                'monthly',
+                user.uid,
+                user.fullName || user.email || 'Sistema',
+                undefined, // prenominaExportId
+                undefined  // exportFormat
+            );
+
+            if (!lockResult.success) {
+                console.warn('Warning: Could not lock period:', lockResult.error);
+                // Don't fail the entire process if lock fails
+            }
+
             // Success toast with summary
             toast({
                 title: "Período cerrado exitosamente",
@@ -224,14 +255,6 @@ export default function ConsolidacionAsistenciaPage() {
             });
 
             setIsConsolidateDialogOpen(false);
-
-            // Reload closures
-            const periodKey = format(new Date(selectedPeriod.start), 'yyyy-MM');
-            const closuresRef = collection(firestore, 'period_closures');
-            const closuresQuery = query(closuresRef, where('period', '==', periodKey));
-            const snapshot = await getDocs(closuresQuery);
-            const closures = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            setPeriodClosures(closures);
 
         } catch (error) {
             console.error('Error closing period:', error);

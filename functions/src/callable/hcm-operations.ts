@@ -147,6 +147,25 @@ export const consolidatePrenomina = onCall<ConsolidatePrenominaRequest>(
             }
             console.log(`[HCM] Auto-rejected ${pendingOvertimeQuery.size} pending overtime requests`);
 
+            // Check for locked period
+            // Assuming monthly closure for now based on UI
+            // TODO: More granular locking if needed
+            const periodYearMonth = periodStart.substring(0, 7); // YYYY-MM
+            const lockQuery = await db.collection('period_closures')
+                .where('period', '==', periodYearMonth)
+                .get();
+
+            if (!lockQuery.empty) {
+                return {
+                    success: false,
+                    recordIds: [],
+                    processedCount: 0,
+                    skippedCount: 0,
+                    errors: [{ employeeId: 'GLOBAL', message: `El período ${periodYearMonth} está cerrado. No se puede reconsolidar.` }]
+                };
+            }
+
+
             // 1b. Mark unjustified tardiness records (they stay as is, but log)
             const unjustifiedTardinessQuery = await db.collection('tardiness_records')
                 .where('isJustified', '==', false)
@@ -163,12 +182,36 @@ export const consolidatePrenomina = onCall<ConsolidatePrenominaRequest>(
                 .get();
 
             for (const doc of unjustifiedEarlyDeparturesQuery.docs) {
+                const departure = doc.data();
+
+                // 1. Mark infringement as resulted in absence
                 await doc.ref.update({
                     resultedInAbsence: true,
                     updatedAt: nowISO,
                 });
+
+                // 2. Void the attendance record
+                const attendanceRef = db.collection('attendance').doc(departure.attendanceId);
+                await attendanceRef.update({
+                    isVoid: true,
+                    voidReason: 'Converted to absence due to unjustified early departure',
+                });
+
+                // 3. Create incidence for visibility
+                await db.collection('incidences').add({
+                    employeeId: departure.employeeId,
+                    type: 'unjustified_absence',
+                    startDate: departure.date,
+                    endDate: departure.date,
+                    totalDays: 1,
+                    status: 'approved', // Auto-approved by system
+                    reason: 'Salida anticipada injustificada (Cierre Automático)',
+                    isPaid: false,
+                    createdAt: nowISO,
+                    updatedAt: nowISO
+                });
             }
-            console.log(`[HCM] Marked ${unjustifiedEarlyDeparturesQuery.size} unjustified early departures as FALTA`);
+            console.log(`[HCM] Processed ${unjustifiedEarlyDeparturesQuery.size} unjustified early departures (Voided Attendance + Created Absence)`);
 
             // 1d. Process unjustified missing punches -> Mark as FALTA
             const unjustifiedMissingPunchesQuery = await db.collection('missing_punches')
@@ -178,12 +221,36 @@ export const consolidatePrenomina = onCall<ConsolidatePrenominaRequest>(
                 .get();
 
             for (const doc of unjustifiedMissingPunchesQuery.docs) {
+                const punch = doc.data();
+
+                // 1. Mark infringement as resulted in absence
                 await doc.ref.update({
                     resultedInAbsence: true,
                     updatedAt: nowISO,
                 });
+
+                // 2. Void the attendance record
+                const attendanceRef = db.collection('attendance').doc(punch.attendanceId);
+                await attendanceRef.update({
+                    isVoid: true,
+                    voidReason: 'Converted to absence due to unjustified missing punch',
+                });
+
+                // 3. Create incidence for visibility
+                await db.collection('incidences').add({
+                    employeeId: punch.employeeId,
+                    type: 'unjustified_absence',
+                    startDate: punch.date,
+                    endDate: punch.date,
+                    totalDays: 1,
+                    status: 'approved',
+                    reason: 'Falta de marcaje injustificada (Cierre Automático)',
+                    isPaid: false,
+                    createdAt: nowISO,
+                    updatedAt: nowISO
+                });
             }
-            console.log(`[HCM] Marked ${unjustifiedMissingPunchesQuery.size} unjustified missing punches as FALTA`);
+            console.log(`[HCM] Processed ${unjustifiedMissingPunchesQuery.size} unjustified missing punches (Voided Attendance + Created Absence)`);
 
             // =====================================================================
             // PHASE 2: CONSOLIDATE PRENOMINA
@@ -201,6 +268,26 @@ export const consolidatePrenomina = onCall<ConsolidatePrenominaRequest>(
             if (employees.length === 0) {
                 return { success: true, recordIds: [], processedCount: 0, skippedCount: 0, errors: [] };
             }
+
+            // Fetch Holiday Calendars (Global and others)
+            // We'll simplisticly fetch all for the year for now to avoid N reads
+            const year = parseInt(periodStart.substring(0, 4));
+            const calendarsQuery = await db.collection('holiday_calendars')
+                .where('year', '==', year)
+                .get();
+
+            const holidaysByCountry: Record<string, string[]> = {}; // countryCode -> dates[]
+            const holidaysByCalendarId: Record<string, string[]> = {}; // calendarId -> dates[]
+
+            calendarsQuery.docs.forEach(doc => {
+                const data = doc.data();
+                const dates = (data.holidays || []).map((h: any) => h.date);
+                if (data.countryCode) {
+                    holidaysByCountry[data.countryCode] = [...(holidaysByCountry[data.countryCode] || []), ...dates];
+                }
+                holidaysByCalendarId[doc.id] = dates;
+            });
+
 
             // Process in batches to respect Firestore limits (500 writes per batch)
             const BATCH_SIZE = 100;
@@ -232,14 +319,41 @@ export const consolidatePrenomina = onCall<ConsolidatePrenominaRequest>(
                             const incidences = incidencesSnap.docs.map(d => d.data() as Incidence);
 
                             // Calculate all values using server-side LFT formulas
-                            let daysWorked = attendanceRecords.length;
-                            let totalOvertimeHours = attendanceRecords.reduce((sum, a) => sum + a.overtimeHours, 0);
+
+                            // FILTER: Ignore voided attendance records (e.g. converted to absence)
+                            const validAttendanceRecords = attendanceRecords.filter(a => !a.isVoid);
+
+                            let daysWorked = validAttendanceRecords.length;
+                            let totalOvertimeHours = validAttendanceRecords.reduce((sum, a) => sum + a.overtimeHours, 0);
                             let absenceDays = 0;
                             let vacationDaysTaken = 0;
                             let sickLeaveDays = 0;
                             let paidLeaveDays = 0;
                             let unpaidLeaveDays = 0;
                             let sundayDays = 0;
+                            let holidayDays = 0; // Worked holidays
+
+                            // Determine applicable holidays for this employee
+                            // Priority: Location Calendar -> Country Code (Mexico default) -> None
+                            let employeeHolidayDates: string[] = [];
+
+                            // 1. Try location specific calendar
+                            if (employee.locationId) {
+                                const locDoc = await transaction.get(db.collection('locations').doc(employee.locationId));
+                                const locData = locDoc.data();
+                                if (locData?.holidayCalendarId && holidaysByCalendarId[locData.holidayCalendarId]) {
+                                    employeeHolidayDates = holidaysByCalendarId[locData.holidayCalendarId];
+                                }
+                                // 2. If no specific calendar, try country code (assuming 'mx' for now or from location)
+                                else if (holidaysByCountry['mx']) {
+                                    employeeHolidayDates = holidaysByCountry['mx'];
+                                }
+                            } else if (holidaysByCountry['mx']) {
+                                employeeHolidayDates = holidaysByCountry['mx'];
+                            }
+
+                            const isHoliday = (date: string) => employeeHolidayDates.includes(date);
+
 
                             // Process incidences
                             for (const inc of incidences) {
@@ -265,8 +379,17 @@ export const consolidatePrenomina = onCall<ConsolidatePrenominaRequest>(
                             // Count rest days worked (based on location config)
                             const resetDay = await getOvertimeResetDay(db, employee);
 
-                            for (const record of attendanceRecords) {
+                            for (const record of validAttendanceRecords) {
                                 const dayOfWeek = new Date(record.date).getDay();
+                                const dateStr = record.date;
+
+                                if (isHoliday(dateStr)) {
+                                    holidayDays++;
+                                    // Holidays worked count as Sunday Premium for "Triple Pay" logic purposes in some systems, 
+                                    // but usually they are separate. LFT: Salary + 200%.
+                                    // Here we just count them.
+                                }
+
                                 if (dayOfWeek === resetDay) sundayDays++;
                             }
 
@@ -281,7 +404,7 @@ export const consolidatePrenomina = onCall<ConsolidatePrenominaRequest>(
                                         const location = locationDoc.data();
                                         const benefitDays: string[] = location?.companyBenefitDays || [];
 
-                                        for (const record of attendanceRecords) {
+                                        for (const record of validAttendanceRecords) {
                                             const dateObj = new Date(record.date);
                                             // Usamos UTC para consistency con isCompanyBenefitDay
                                             const month = (dateObj.getUTCMonth() + 1).toString().padStart(2, '0');
@@ -315,6 +438,7 @@ export const consolidatePrenomina = onCall<ConsolidatePrenominaRequest>(
                                 overtimeDoubleHours: overtimeCalc.doubleHours,
                                 overtimeTripleHours: overtimeCalc.tripleHours,
                                 sundayPremiumDays: sundayDays,
+                                holidayDays,
                                 absenceDays,
                                 vacationDaysTaken,
                                 sickLeaveDays,
@@ -802,6 +926,27 @@ export const closePeriodAutoProcess = onCall(
 
             console.log(`[Consolidate] Starting period consolidation for ${period}`);
 
+            // Fetch Holidays for Auto-Justification
+            // Simplisticly fetch all for the year
+            const year = parseInt(period.split('_')[0].substring(0, 4));
+            const calendarsQuery = await db.collection('holiday_calendars').where('year', '==', year).get();
+            const holidaysByCountry: Record<string, string[]> = {};
+            const holidaysByCalendarId: Record<string, string[]> = {};
+
+            calendarsQuery.docs.forEach(doc => {
+                const data = doc.data();
+                const dates = (data.holidays || []).map((h: any) => h.date);
+                if (data.countryCode) holidaysByCountry[data.countryCode] = [...(holidaysByCountry[data.countryCode] || []), ...dates];
+                holidaysByCalendarId[doc.id] = dates;
+            });
+
+            // Helper to check holiday (defaulting to MX if no location context available easily here, 
+            // though strict logic would require fetching employee location. For bulk close, we'll check generic MX for now 
+            // or we'd need to fetch all employees. 
+            // OPTIMIZATION: We'll assume 'mx' for this safety net.
+            const genericHolidays = holidaysByCountry['mx'] || [];
+
+
             // Fase 1: Auto-rechazar HE pendientes
             const pendingOT = await db.collection('overtime_requests')
                 .where('period', '==', period)
@@ -888,6 +1033,19 @@ export const closePeriodAutoProcess = onCall(
 
             for (const doc of pendingPunches.docs) {
                 const data = doc.data();
+
+                // Auto-justify if it is a holiday
+                if (genericHolidays.includes(data.date)) {
+                    await doc.ref.update({
+                        isJustified: true,
+                        justificationStatus: 'auto_justified',
+                        justificationReason: 'Festivo Oficial - Auto-justificado',
+                        processedAt: new Date().toISOString(),
+                        updatedAt: new Date().toISOString(),
+                    });
+                    console.log(`[Consolidate] Auto-justified missing punch for ${data.employeeId} on ${data.date} (Holiday)`);
+                    continue;
+                }
 
                 await doc.ref.update({
                     resultedInAbsence: true,

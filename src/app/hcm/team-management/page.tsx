@@ -226,33 +226,46 @@ export default function TeamManagementPage() {
     }, []);
 
 
-    // Check if current period is closed (global check, not user-specific)
+    // Check if current period is closed using granular date-range locks
     useEffect(() => {
         const checkPeriodClosure = async () => {
-            if (!firestore || !dateFilter) return;
-
-            // Extract YYYY-MM from dateFilter
-            const periodToCheck = dateFilter.length === 7 ? dateFilter : dateFilter.substring(0, 7);
+            if (!dateFilter) return;
 
             setLoadingPeriodStatus(true);
             try {
-                // Query for ANY period closure for this period (not user-specific)
-                const closuresRef = collection(firestore, 'period_closures');
-                const q = query(closuresRef,
-                    where('period', '==', periodToCheck),
-                    limit(1)
-                );
-                const closureSnap = await getDocs(q);
+                // Import checkPeriodLock from report-actions
+                const { checkPeriodLock } = await import('@/firebase/actions/report-actions');
 
-                if (!closureSnap.empty) {
+                // Calculate period start/end based on dateFilter
+                // dateFilter can be "YYYY-MM" (month) or "YYYY-MM-DD" (specific date)
+                let periodStart: string;
+                let periodEnd: string;
+
+                if (dateFilter.length === 7) {
+                    // Month format: "2026-02"
+                    const [year, month] = dateFilter.split('-').map(Number);
+                    const startDate = new Date(year, month - 1, 1);
+                    const endDate = new Date(year, month, 0); // Last day of month
+                    periodStart = format(startDate, 'yyyy-MM-dd');
+                    periodEnd = format(endDate, 'yyyy-MM-dd');
+                } else {
+                    // Specific date or range - use the date itself
+                    periodStart = dateFilter;
+                    periodEnd = dateFilter;
+                }
+
+                // Check if this specific date range is locked
+                const lockResult = await checkPeriodLock(periodStart, periodEnd);
+
+                if (lockResult.isLocked) {
                     setIsPeriodClosed(true);
-                    console.log('🔒 Period is closed:', periodToCheck);
+                    console.log('🔒 Period is locked:', periodStart, '-', periodEnd);
                 } else {
                     setIsPeriodClosed(false);
-                    console.log('✅ Period is open:', periodToCheck);
+                    console.log('✅ Period is open:', periodStart, '-', periodEnd);
                 }
             } catch (error) {
-                console.error('Error checking period closure:', error);
+                console.error('Error checking period lock:', error);
                 setIsPeriodClosed(false);
             } finally {
                 setLoadingPeriodStatus(false);
@@ -260,7 +273,7 @@ export default function TeamManagementPage() {
         };
 
         checkPeriodClosure();
-    }, [firestore, dateFilter]);
+    }, [dateFilter]);
 
     const loadTabData = useCallback(async (tab: string, managerId?: string) => {
         const managerToUse = managerId || selectedManagerId;

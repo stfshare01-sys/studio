@@ -64,6 +64,8 @@ export interface AttendanceRecord {
     overtimeType?: 'double' | 'triple';
     isValid: boolean;
     validationNotes?: string;
+    isVoid?: boolean;
+    voidReason?: string;
     importBatchId?: string;
     createdAt: string;
 }
@@ -100,6 +102,7 @@ export interface PrenominaRecord {
     overtimeDoubleHours: number;
     overtimeTripleHours: number;
     sundayPremiumDays: number;
+    holidayDays: number;         // Días festivos trabajados
     absenceDays: number;
     vacationDaysTaken: number;
     sickLeaveDays: number;

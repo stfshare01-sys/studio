@@ -120,33 +120,13 @@ export function calculateVacationDays(yearsOfService: number): number {
         return 12 + ((yearsOfService - 1) * 2);
     }
 
-    // Años 6-10: continúa +2 por año (20 + 2*años adicionales)
-    if (yearsOfService <= 10) {
-        return 20 + ((yearsOfService - 5) * 2);
-    }
-
-    // Año 11-15: +2 días (32 base)
-    if (yearsOfService <= 15) {
-        return 32;
-    }
-
-    // Año 16-20: +2 días (34 base)
-    if (yearsOfService <= 20) {
-        return 34;
-    }
-
-    // Año 21-25: +2 días (36 base)
-    if (yearsOfService <= 25) {
-        return 36;
-    }
-
-    // Año 26-30: +2 días (38 base)
-    if (yearsOfService <= 30) {
-        return 38;
-    }
-
-    // Año 31+: +2 días (40 base)
-    return 40;
+    // Años 6+: 22 días base + 2 días por cada 5 años completos adicionales
+    // 6-10: 22
+    // 11-15: 24
+    // 16-20: 26
+    // etc.
+    const additionalFiveYearBlocks = Math.floor((yearsOfService - 6) / 5);
+    return 22 + (additionalFiveYearBlocks * 2);
 }
 
 /**

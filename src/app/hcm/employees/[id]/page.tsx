@@ -30,6 +30,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 
 import { KardexTimeline, EmployeeMovement } from '@/components/hcm/kardex-timeline';
+import { VacationBalanceCard } from '@/components/hcm/vacation-balance-card';
 
 import type { Employee, AttendanceRecord, Incidence, ShiftAssignment, CustomShift } from '@/lib/types';
 
@@ -304,6 +305,14 @@ export default function EmployeeDetailPage({ params }: { params: Promise<{ id: s
                                         </div>
                                     </CardContent>
                                 </Card>
+
+                                {/* Vacation Balance Card */}
+                                <div className="md:col-span-2">
+                                    <VacationBalanceCard
+                                        employeeId={employeeId}
+                                        employeeName={employee.fullName || 'Empleado'}
+                                    />
+                                </div>
                             </div>
                         </TabsContent>
 

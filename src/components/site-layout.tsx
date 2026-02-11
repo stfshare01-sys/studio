@@ -30,6 +30,7 @@ import {
   Briefcase,
   Shield,
   CheckSquare,
+  Calendar,
 } from "lucide-react";
 import { Logo } from "@/components/icons";
 import { Button } from "./ui/button";
@@ -57,6 +58,7 @@ const ALL_NAV_ITEMS: NavItem[] = [
   { href: "/", icon: LayoutDashboard, label: "Panel", module: "dashboard", exact: true },
   { href: "/tasks", icon: CheckSquare, label: "Buzón", module: "requests" },
   { href: "/hcm", icon: Briefcase, label: "Capital Humano", module: "hcm_employees" },
+  { href: "/hcm/admin/vacation-management", icon: Calendar, label: "Gestión de Vacaciones", module: "hcm_employees" },
   { href: "/reports", icon: BarChart3, label: "Informes", module: "reports" },
   { href: "/process-mining", icon: Activity, label: "Minería de Procesos", module: "process_mining" },
   { href: "/hcm/team-management", icon: Users, label: "Gestión de Equipo", module: "hcm_team_management" },

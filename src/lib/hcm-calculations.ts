@@ -32,6 +32,7 @@ export type EffectiveDaysResult = {
         isHoliday: boolean;
         reason?: string; // e.g., "Holiday: Christmas", "Rest Day"
     }[];
+    usedDefaultSchedule?: boolean; // Warning flag if no shift found
 };
 
 /**
@@ -64,6 +65,7 @@ export async function calculateEffectiveLeaveDays(
 
     // 2. Determine Work Days (Schedule)
     let workDays: number[] = [1, 2, 3, 4, 5, 6]; // Default Mon-Sat
+    let usedDefaultSchedule = true;
 
     const shiftId = employee.customShiftId || (employee as any).shiftId;
 
@@ -75,6 +77,7 @@ export async function calculateEffectiveLeaveDays(
             const shift = shiftSnap.data() as CustomShift;
             if (shift.workDays && shift.workDays.length > 0) {
                 workDays = shift.workDays;
+                usedDefaultSchedule = false;
             }
         }
     } else if (employee.shiftType) {
@@ -91,6 +94,7 @@ export async function calculateEffectiveLeaveDays(
             const shift = shiftDocs.docs[0].data() as CustomShift;
             if (shift.workDays && shift.workDays.length > 0) {
                 workDays = shift.workDays;
+                usedDefaultSchedule = false;
             }
         } else {
             // Absolute fallback if no shift definition found
@@ -127,7 +131,24 @@ export async function calculateEffectiveLeaveDays(
         }
     }
 
-    // 4. Iterate and Count
+
+
+    // Fallback: If no holidays found yet, try finding a default calendar for the year (Generic Mexico)
+    if (holidays.length === 0) {
+        const year = start.getFullYear();
+        // Try to find a calendar that is default or matches 'mx'
+        // Since we can't easily query by everything, let's look for one with countryCode 'mx' and year
+        const calQuery = query(
+            collection(firestore, 'holiday_calendars'),
+            where('year', '==', year),
+            where('countryCode', '==', 'mx')
+        );
+        const calDocs = await getDocs(calQuery);
+        if (!calDocs.empty) {
+            const calendar = calDocs.docs[0].data() as HolidayCalendar;
+            holidays = calendar.holidays || [];
+        }
+    }
     let currentDate = start;
     let effectiveDays = 0;
     let holidayCount = 0;
@@ -192,6 +213,7 @@ export async function calculateEffectiveLeaveDays(
         effectiveDays, // Paid days (excluding rest days and holidays)
         holidays: holidayCount,
         weekendDays: restDayCount,
-        details
+        details,
+        usedDefaultSchedule
     };
 }

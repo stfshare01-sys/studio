@@ -14,7 +14,7 @@ export interface EmployeeSeedData {
     role: 'Admin' | 'Supervisor' | 'Employee';
     directManagerId?: string;
     locationId: string;
-    shiftId: string;
+    customShiftId: string;
     hireDate: string;
     employmentType: string;
     shiftType: string;

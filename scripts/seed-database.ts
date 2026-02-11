@@ -91,12 +91,8 @@ function calculateYearsOfService(hireDate: string): number {
 function calculateVacationDaysLFT(yearsOfService: number): number {
     if (yearsOfService < 1) return 0;
     if (yearsOfService <= 5) return 12 + ((yearsOfService - 1) * 2);
-    if (yearsOfService <= 10) return 20 + ((yearsOfService - 5) * 2);
-    if (yearsOfService <= 15) return 32;
-    if (yearsOfService <= 20) return 34;
-    if (yearsOfService <= 25) return 36;
-    if (yearsOfService <= 30) return 38;
-    return 40;
+    const additionalFiveYearBlocks = Math.floor((yearsOfService - 6) / 5);
+    return 22 + (additionalFiveYearBlocks * 2);
 }
 
 function calculateSDIFactor(vacationDays: number, vacationPremium = 0.25, aguinaldoDays = 15): number {
@@ -254,7 +250,7 @@ async function seedDatabase() {
         async function createAttendanceRecords(batchId: string, workingDays: string[], period: string) {
             for (const employee of SEED_EMPLOYEES) {
                 // Find shift - use 'shift-admin' from constants if not found in SHIFTS struct
-                const shiftId = employee.shiftId;
+                const shiftId = employee.customShiftId;
                 const shift = SEED_SHIFTS_STRUCT.find(s => s.id === shiftId) || SEED_SHIFTS_STRUCT[0];
 
                 // Get tolerance from employee's location
@@ -294,7 +290,7 @@ async function seedDatabase() {
                             justificationStatus: 'pending',
                             importBatchId: batchId,
                             locationId: employee.locationId,
-                            shiftId: employee.shiftId,
+                            shiftId: employee.customShiftId, // Use customShiftId here
                             createdAt: date,
                             updatedAt: date
                         });
@@ -308,7 +304,7 @@ async function seedDatabase() {
                             await db.collection('attendance').add({
                                 employeeId: employee.id, employeeName: employee.fullName, date,
                                 checkIn: checkIn || null, checkOut: checkOut || null,
-                                importBatchId: batchId, locationId: employee.locationId, shiftId: employee.shiftId,
+                                importBatchId: batchId, locationId: employee.locationId, shiftId: employee.customShiftId, // use customShiftId
                                 hoursWorked: 0, regularHours: 0, overtimeHours: 0,
                                 isValid: false, hasError: true, errorType: 'missing_punch',
                                 createdAt: date, updatedAt: date,
@@ -338,7 +334,7 @@ async function seedDatabase() {
 
                     await db.collection('attendance').add({
                         employeeId: employee.id, employeeName: employee.fullName, date, checkIn, checkOut,
-                        importBatchId: batchId, locationId: employee.locationId, shiftId: employee.shiftId,
+                        importBatchId: batchId, locationId: employee.locationId, shiftId: employee.customShiftId,
                         hoursWorked, regularHours: Math.min(hoursWorked, 8), overtimeHours: Math.max(hoursWorked - 8, 0),
                         isValid: true, createdAt: date, updatedAt: date,
                     });

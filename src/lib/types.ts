@@ -697,6 +697,7 @@ export type Employee = User & {
   positionId?: string;         // ID del puesto asociado
   locationId?: string;         // ID de la ubicación física
   customShiftId?: string;      // ID del turno personalizado (si aplica)
+  /** @deprecated Use customShiftId instead */
   shiftId?: string;            // Legacy: ID del turno (usado en seed data)
 
   // Configuración de compensación
@@ -788,6 +789,10 @@ export type AttendanceRecord = {
   // Incidencia relacionada (si aplica)
   linkedIncidenceId?: string;   // Si hay permiso/incapacidad que justifica
 
+  // Integrity Flags
+  isVoid?: boolean;             // Si true, este día NO cuenta como trabajado (ej. convertido a falta)
+  voidReason?: string;          // Razón de la anulación (ej. "Salida anticipada injustificada")
+
   // Lote de importación
   importBatchId: string;        // ID del lote de importación
 
@@ -865,6 +870,7 @@ export type PrenominaRecord = {
 
   // Prima dominical (si aplica)
   sundayPremiumDays: number;
+  holidayDays: number;          // Días festivos trabajados (pagados triple)
   sundayPremiumAmount: number;  // 25% adicional según Art. 71 LFT
 
   // Deducciones
@@ -1283,6 +1289,8 @@ export type VacationBalance = {
   daysTaken: number;              // Días ya tomados
   daysScheduled: number;          // Días programados (aprobados pero no tomados)
   daysAvailable: number;          // Días disponibles (entitled - taken - scheduled)
+  daysCarriedOver: number;        // Días arrastrados del período anterior
+  daysPending: number;            // Días en solicitudes pendientes de aprobación
 
   // Prima vacacional
   vacationPremiumPaid: boolean;   // Si ya se pagó la prima vacacional
@@ -1969,4 +1977,26 @@ export type OvertimeCalculation = {
 
   // Acumulado semanal (para saber cuántas HE lleva en la semana)
   weeklyOvertimeAccumulated: number;
+};
+
+// =========================================================================
+// HOLIDAY CALENDAR TYPES
+// =========================================================================
+
+export type OfficialHoliday = {
+  date: string; // YYYY-MM-DD
+  name: string;
+  mandatory?: boolean; // If true, strictly required by law
+};
+
+export type HolidayCalendar = {
+  id: string;
+  name: string; // e.g., "Mx Generic 2026", "USA Manufacturing"
+  description?: string;
+  year: number;
+  holidays: OfficialHoliday[];
+  countryCode?: string; // ISO code (mx, us)
+  isDefault?: boolean;
+  createdAt: string;
+  updatedAt: string;
 };
