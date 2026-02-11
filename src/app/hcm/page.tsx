@@ -358,6 +358,12 @@ export default function HCMPage() {
                                                     Departamentos
                                                 </Link>
                                             </Button>
+                                            <Button asChild variant="outline" className="justify-start">
+                                                <Link href="/hcm/admin/vacation-management">
+                                                    <Calendar className="mr-2 h-4 w-4" />
+                                                    Gestión de Vacaciones
+                                                </Link>
+                                            </Button>
                                         </CardContent>
                                     </Card>
                                 )}

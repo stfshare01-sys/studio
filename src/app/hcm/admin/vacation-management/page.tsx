@@ -1,10 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useAuth } from '@/contexts/AuthContext';
-import { usePermissions } from '@/hooks/usePermissions';
+import { useFirebase } from '@/firebase/provider';
+import { usePermissions } from '@/hooks/use-permissions';
 import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
-import { initializeFirebase } from '@/firebase/config';
 import {
     adjustVacationBalance,
     bulkLoadVacationBalances,
@@ -21,12 +20,13 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Search, Upload, Download, Calendar, AlertCircle, CheckCircle, XCircle } from 'lucide-react';
-import { toast } from 'sonner';
+import { useToast } from '@/hooks/use-toast';
 import * as XLSX from 'xlsx';
 
 export default function VacationManagementPage() {
     const { firestore, user } = useFirebase();
     const { hasPermission } = usePermissions();
+    const { toast } = useToast();
     const [loading, setLoading] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
@@ -45,14 +45,14 @@ export default function VacationManagementPage() {
 
     useEffect(() => {
         if (!canManageVacations) {
-            toast.error('No tienes permisos para gestionar vacaciones');
+            toast({ title: 'No tienes permisos para gestionar vacaciones', variant: 'destructive' });
         }
-    }, [canManageVacations]);
+    }, [canManageVacations, toast]);
 
     // Search employee
     const handleSearchEmployee = async () => {
         if (!searchTerm.trim()) {
-            toast.error('Ingresa un nombre o ID de empleado');
+            toast({ title: 'Ingresa un nombre o ID de empleado', variant: 'destructive' });
             return;
         }
 
@@ -69,7 +69,6 @@ export default function VacationManagementPage() {
             const employees = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Employee));
             const found = employees.find(emp =>
                 emp.fullName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                emp.employeeNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                 emp.id === searchTerm
             );
 
@@ -77,13 +76,13 @@ export default function VacationManagementPage() {
                 setSelectedEmployee(found);
                 await loadEmployeeBalance(found.id);
             } else {
-                toast.error('Empleado no encontrado');
+                toast({ title: 'Empleado no encontrado', variant: 'destructive' });
                 setSelectedEmployee(null);
                 setEmployeeBalance(null);
             }
         } catch (error) {
             console.error('Error searching employee:', error);
-            toast.error('Error al buscar empleado');
+            toast({ title: 'Error al buscar empleado', variant: 'destructive' });
         } finally {
             setLoading(false);
         }
@@ -105,11 +104,11 @@ export default function VacationManagementPage() {
                 setEmployeeBalance(balance);
             } else {
                 setEmployeeBalance(null);
-                toast.info('Este empleado no tiene saldo de vacaciones registrado');
+                toast({ title: 'Este empleado no tiene saldo de vacaciones registrado' });
             }
         } catch (error) {
             console.error('Error loading balance:', error);
-            toast.error('Error al cargar saldo de vacaciones');
+            toast({ title: 'Error al cargar saldo de vacaciones', variant: 'destructive' });
         }
     };
 
@@ -118,12 +117,12 @@ export default function VacationManagementPage() {
         if (!selectedEmployee || !user) return;
 
         if (!adjustmentReason.trim() || adjustmentReason.trim().length < 10) {
-            toast.error('El motivo debe tener al menos 10 caracteres');
+            toast({ title: 'El motivo debe tener al menos 10 caracteres', variant: 'destructive' });
             return;
         }
 
         if (adjustmentDays === 0) {
-            toast.error('El ajuste debe ser diferente de cero');
+            toast({ title: 'El ajuste debe ser diferente de cero', variant: 'destructive' });
             return;
         }
 
@@ -139,17 +138,17 @@ export default function VacationManagementPage() {
             );
 
             if (result.success) {
-                toast.success(`Saldo ajustado exitosamente: ${finalDays > 0 ? '+' : ''}${finalDays} días`);
+                toast({ title: `Saldo ajustado exitosamente: ${finalDays > 0 ? '+' : ''}${finalDays} días` });
                 setShowAdjustDialog(false);
                 setAdjustmentDays(0);
                 setAdjustmentReason('');
                 await loadEmployeeBalance(selectedEmployee.id);
             } else {
-                toast.error(result.error || 'Error al ajustar saldo');
+                toast({ title: result.error || 'Error al ajustar saldo', variant: 'destructive' });
             }
         } catch (error) {
             console.error('Error adjusting balance:', error);
-            toast.error('Error al ajustar saldo');
+            toast({ title: 'Error al ajustar saldo', variant: 'destructive' });
         } finally {
             setLoading(false);
         }
@@ -159,11 +158,11 @@ export default function VacationManagementPage() {
     const handleDownloadTemplate = () => {
         const template = [
             {
-                employeeId: 'EMP-001',
-                daysEntitled: 12,
-                daysTaken: 0,
-                daysScheduled: 0,
-                reason: 'Carga inicial de saldo de vacaciones'
+                'ID del Empleado': 'EMP-001',
+                'Días Otorgados': 12,
+                'Días Tomados': 0,
+                'Días Programados': 0,
+                'Motivo': 'Carga inicial de saldo de vacaciones'
             }
         ];
 
@@ -171,7 +170,7 @@ export default function VacationManagementPage() {
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, 'Vacaciones');
         XLSX.writeFile(wb, 'plantilla_vacaciones.xlsx');
-        toast.success('Plantilla descargada');
+        toast({ title: 'Plantilla descargada' });
     };
 
     // Handle file upload
@@ -186,7 +185,16 @@ export default function VacationManagementPage() {
                 const workbook = XLSX.read(data, { type: 'array' });
                 const sheetName = workbook.SheetNames[0];
                 const worksheet = workbook.Sheets[sheetName];
-                const jsonData = XLSX.utils.sheet_to_json(worksheet) as VacationBalanceLoad[];
+                const rawData = XLSX.utils.sheet_to_json(worksheet) as any[];
+
+                // Map Spanish column names to internal field names
+                const jsonData = rawData.map(row => ({
+                    employeeId: row['ID del Empleado'] || row.employeeId,
+                    daysEntitled: row['Días Otorgados'] || row.daysEntitled,
+                    daysTaken: row['Días Tomados'] || row.daysTaken || 0,
+                    daysScheduled: row['Días Programados'] || row.daysScheduled || 0,
+                    reason: row['Motivo'] || row.reason
+                })) as VacationBalanceLoad[];
 
                 // Validate data
                 const errors: Array<{ employeeId: string; error: string }> = [];
@@ -213,13 +221,13 @@ export default function VacationManagementPage() {
                 setShowBulkPreview(true);
 
                 if (errors.length > 0) {
-                    toast.warning(`${errors.length} registros con errores detectados`);
+                    toast({ title: `${errors.length} registros con errores detectados`, variant: 'default' });
                 } else {
-                    toast.success(`${validData.length} registros válidos cargados`);
+                    toast({ title: `${validData.length} registros válidos cargados` });
                 }
             } catch (error) {
                 console.error('Error reading file:', error);
-                toast.error('Error al leer el archivo');
+                toast({ title: 'Error al leer el archivo', variant: 'destructive' });
             }
         };
         reader.readAsArrayBuffer(file);
@@ -238,17 +246,17 @@ export default function VacationManagementPage() {
             );
 
             if (result.success) {
-                toast.success(`Carga completada: ${result.successCount} exitosos, ${result.errorCount} errores`);
+                toast({ title: `Carga completada: ${result.successCount} exitosos, ${result.errorCount} errores` });
                 setBulkData([]);
                 setBulkErrors(result.errors);
                 setShowBulkPreview(false);
             } else {
-                toast.error('Error en la carga masiva');
+                toast({ title: 'Error en la carga masiva', variant: 'destructive' });
                 setBulkErrors(result.errors);
             }
         } catch (error) {
             console.error('Error in bulk load:', error);
-            toast.error('Error al procesar carga masiva');
+            toast({ title: 'Error al procesar carga masiva', variant: 'destructive' });
         } finally {
             setLoading(false);
         }
@@ -377,11 +385,11 @@ export default function VacationManagementPage() {
                             <div className="space-y-2">
                                 <Label>2. Llena los datos requeridos</Label>
                                 <ul className="text-sm text-muted-foreground list-disc list-inside">
-                                    <li>employeeId (obligatorio)</li>
-                                    <li>daysEntitled (obligatorio)</li>
-                                    <li>daysTaken (opcional, default: 0)</li>
-                                    <li>daysScheduled (opcional, default: 0)</li>
-                                    <li>reason (obligatorio, mínimo 10 caracteres)</li>
+                                    <li><strong>ID del Empleado</strong> (obligatorio) - Identificador único del empleado</li>
+                                    <li><strong>Días Otorgados</strong> (obligatorio) - Total de días de vacaciones que le corresponden</li>
+                                    <li><strong>Días Tomados</strong> (opcional, default: 0) - Días ya disfrutados</li>
+                                    <li><strong>Días Programados</strong> (opcional, default: 0) - Días ya solicitados/aprobados</li>
+                                    <li><strong>Motivo</strong> (obligatorio, mínimo 10 caracteres) - Razón del ajuste o carga inicial</li>
                                 </ul>
                             </div>
 
