@@ -16,6 +16,9 @@ export {
     approveIncidence
 } from './callable/hcm-operations';
 
+// Payroll report generation
+export { generatePayrollReports } from './callable/payroll-reports';
+
 // Utility exports for internal use
 // Utility exports for internal use
 export { verifyRole, getUserRole } from './utils/auth-middleware';
