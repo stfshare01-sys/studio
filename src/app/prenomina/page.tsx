@@ -47,14 +47,12 @@ import {
 } from 'lucide-react';
 import type { PrenominaRecord, Employee } from '@/lib/types';
 import { consolidatePrenomina } from '@/firebase/actions/report-actions';
+import { callGeneratePayrollReports } from '@/firebase/callable-functions';
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subDays } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
 import { Label } from '@/components/ui/label';
 import Link from 'next/link';
-
-// Import local export util
-import { generateNomipaqIncidenceReport, downloadCSV } from '@/lib/export-utils';
 
 /**
  * Prenomina Consolidation Page (Operational Only)
@@ -67,6 +65,7 @@ export default function PrenominaPage() {
     const [isConsolidating, setIsConsolidating] = useState(false);
     const [consolidateProgress, setConsolidateProgress] = useState(0);
     const [isConsolidateDialogOpen, setIsConsolidateDialogOpen] = useState(false);
+    const [isExporting, setIsExporting] = useState(false);
 
     // Consolidation form state
     const [consolidateForm, setConsolidateForm] = useState({
@@ -154,39 +153,44 @@ export default function PrenominaPage() {
         }
     };
 
-    // Handle export to Nomipaq CSV (Operational)
-    const handleExport = (records: PrenominaRecord[]) => {
-        if (!records || records.length === 0) {
-            toast({ variant: 'destructive', title: 'Sin datos', description: 'No hay registros para exportar.' });
-            return;
+    // Handle export to Excel (2 files via Cloud Function)
+    const handleExportExcel = async () => {
+        if (!user) return;
+
+        setIsExporting(true);
+
+        try {
+            const result = await callGeneratePayrollReports({
+                periodStart: consolidateForm.periodStart,
+                periodEnd: consolidateForm.periodEnd,
+            });
+
+            if (result.success && result.downloadUrl) {
+                // Trigger browser download
+                const link = document.createElement('a');
+                link.href = result.downloadUrl;
+                link.setAttribute('download', `Reportes_Nomina_${consolidateForm.periodStart}_${consolidateForm.periodEnd}.zip`);
+                link.style.visibility = 'hidden';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+
+                toast({
+                    title: 'Reportes generados',
+                    description: `Se descargó el ZIP con: ${result.file1Name} y ${result.file2Name}`,
+                });
+            } else {
+                throw new Error('No se recibió URL de descarga.');
+            }
+        } catch (error: any) {
+            toast({
+                title: 'Error',
+                description: error?.message || 'No se pudieron generar los reportes Excel.',
+                variant: 'destructive',
+            });
+        } finally {
+            setIsExporting(false);
         }
-
-        // We export a CSV summarizing the attendance/overtime for payroll input
-        const headers = [
-            'RFC',
-            'Nombre',
-            'Dias Trabajados',
-            'Horas Extra Dobles',
-            'Horas Extra Triples',
-            'Incidencias (Folios)' // Placeholder for incidence references if any
-        ].join(',');
-
-        const rows = records.map(r => [
-            r.employeeRfc || '',
-            r.employeeName || '',
-            r.daysWorked,
-            r.overtimeDoubleHours.toFixed(2),
-            r.overtimeTripleHours.toFixed(2),
-            'Ver reporte detallado'
-        ].join(','));
-
-        const csv = [headers, ...rows].join('\n');
-        downloadCSV(csv, `asistencia_prenomina_${consolidateForm.periodStart}_${consolidateForm.periodEnd}.csv`);
-
-        toast({
-            title: 'Exportación completada',
-            description: 'El archivo CSV de asistencia ha sido descargado.',
-        });
     };
 
     // Set period based on type
@@ -242,9 +246,9 @@ export default function PrenominaPage() {
                     </div>
                 </div>
                 <div className="flex gap-2">
-                    <Button variant="outline" onClick={() => handleExport(prenominaRecords?.filter(r => r.status === 'draft') || [])}>
-                        <Download className="mr-2 h-4 w-4" />
-                        Exportar CSV (NomiPAQ)
+                    <Button variant="outline" onClick={handleExportExcel} disabled={isExporting}>
+                        <FileSpreadsheet className="mr-2 h-4 w-4" />
+                        {isExporting ? 'Generando...' : 'Exportar Reportes Excel'}
                     </Button>
                     <Button onClick={() => setIsConsolidateDialogOpen(true)}>
                         <Calculator className="mr-2 h-4 w-4" />
@@ -309,6 +313,8 @@ export default function PrenominaPage() {
                                 <TableHead className="text-center">Días Trab.</TableHead>
                                 <TableHead className="text-center">HE Dobles</TableHead>
                                 <TableHead className="text-center">HE Triples</TableHead>
+                                <TableHead className="text-center">Faltas</TableHead>
+                                <TableHead className="text-center">Vacaciones</TableHead>
                                 <TableHead className="text-center">Estado</TableHead>
                                 <TableHead className="text-right">Acciones</TableHead>
                             </TableRow>
@@ -330,6 +336,8 @@ export default function PrenominaPage() {
                                     <TableCell className="text-center">{record.daysWorked}</TableCell>
                                     <TableCell className="text-center">{record.overtimeDoubleHours}</TableCell>
                                     <TableCell className="text-center">{record.overtimeTripleHours}</TableCell>
+                                    <TableCell className="text-center">{record.absenceDays > 0 ? <span className="text-red-600 font-medium">{record.absenceDays}</span> : 0}</TableCell>
+                                    <TableCell className="text-center">{record.vacationDaysTaken}</TableCell>
                                     <TableCell className="text-center">
                                         {getStatusBadge(record.status)}
                                     </TableCell>
@@ -342,7 +350,7 @@ export default function PrenominaPage() {
                             ))}
                             {(!prenominaRecords || prenominaRecords.length === 0) && (
                                 <TableRow>
-                                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                                    <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                                         No hay registros para este periodo.
                                     </TableCell>
                                 </TableRow>

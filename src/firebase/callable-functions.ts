@@ -225,6 +225,45 @@ export async function callApproveIncidence(
 }
 
 // =========================================================================
+// PAYROLL REPORTS
+// =========================================================================
+
+interface GeneratePayrollReportsRequest {
+    periodStart: string;
+    periodEnd: string;
+}
+
+interface GeneratePayrollReportsResponse {
+    success: boolean;
+    downloadUrl: string;
+    file1Name: string;
+    file2Name: string;
+}
+
+/**
+ * Generates two Excel payroll reports (Tiempos/Ausentismos + Asistencia/Estatus)
+ * and returns a signed URL to download the ZIP file.
+ *
+ * @requires Role: Admin or HRManager
+ */
+export async function callGeneratePayrollReports(
+    params: GeneratePayrollReportsRequest
+): Promise<GeneratePayrollReportsResponse> {
+    try {
+        const { functions } = initializeFirebase();
+        const callable = httpsCallable<GeneratePayrollReportsRequest, GeneratePayrollReportsResponse>(
+            functions,
+            'generatePayrollReports'
+        );
+
+        const result = await callable(params);
+        return result.data;
+    } catch (error) {
+        handleCallableError(error);
+    }
+}
+
+// =========================================================================
 // EXPORTS FOR COMPATIBILITY
 // =========================================================================
 
@@ -237,5 +276,7 @@ export type {
     CalculateSettlementResponse,
     ApproveIncidenceRequest,
     ApproveIncidenceResponse,
+    GeneratePayrollReportsRequest,
+    GeneratePayrollReportsResponse,
     EmployeeImportRow
 };
