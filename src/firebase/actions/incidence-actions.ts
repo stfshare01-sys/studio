@@ -462,6 +462,25 @@ export async function processAttendanceImport(
         // Auto-justify detected issues
         if (newRecordsToJustify.length > 0) {
             await batchAutoJustify(newRecordsToJustify);
+
+            // Create tasks for managers to review/justify
+            // // Basado en Plan de Implementación de NotebookLM
+            try {
+                const recordsByManager = await groupRecordsByManager(firestore, newRecordsToJustify);
+
+                for (const [managerId, records] of Object.entries(recordsByManager)) {
+                    await createJustificationTask(firestore, managerId, records, {
+                        batchId,
+                        filename,
+                        uploadedBy: uploadedById
+                    });
+                }
+
+                console.log(`[HCM] Created justification tasks for ${Object.keys(recordsByManager).length} managers`);
+            } catch (error) {
+                console.error('[HCM] Error creating manager tasks:', error);
+                // No bloqueamos el flujo si falla la creación de tareas
+            }
         }
 
         // Notify HR Managers
@@ -483,6 +502,134 @@ export async function processAttendanceImport(
     } catch (error) {
         console.error('[HCM] Error processing attendance import:', error);
         return { success: false, errors: [{ row: 0, message: 'Error general en la importación' }] };
+    }
+}
+
+// =========================================================================
+// ATTENDANCE NOTIFICATION HELPERS
+// =========================================================================
+
+/**
+ * Agrupa registros de retardos/salidas tempranas por manager directo
+ * // Basado en Plan de Implementación de NotebookLM
+ */
+async function groupRecordsByManager(
+    firestore: any,
+    records: Array<{ id: string; employeeId: string; date: string; type: 'tardiness' | 'early_departure' }>
+): Promise<Record<string, Array<{ id: string; employeeId: string; employeeName: string; date: string; type: 'tardiness' | 'early_departure'; minutesLate?: number; minutesEarly?: number }>>> {
+    const byManager: Record<string, Array<any>> = {};
+
+    for (const record of records) {
+        try {
+            // Obtener el manager y datos del empleado
+            const empRef = doc(firestore, 'employees', record.employeeId);
+            const empSnap = await getDoc(empRef);
+
+            if (empSnap.exists()) {
+                const emp = empSnap.data() as Employee;
+                const managerId = emp.directManagerId;
+
+                if (managerId) {
+                    // Obtener detalles del registro (minutos de retardo/salida temprana)
+                    let minutesLate: number | undefined;
+                    let minutesEarly: number | undefined;
+
+                    if (record.type === 'tardiness') {
+                        const tardinessRef = doc(firestore, 'tardiness_records', record.id);
+                        const tardinessSnap = await getDoc(tardinessRef);
+                        if (tardinessSnap.exists()) {
+                            minutesLate = (tardinessSnap.data() as TardinessRecord).minutesLate;
+                        }
+                    } else {
+                        const departureRef = doc(firestore, 'early_departures', record.id);
+                        const departureSnap = await getDoc(departureRef);
+                        if (departureSnap.exists()) {
+                            minutesEarly = (departureSnap.data() as EarlyDeparture).minutesEarly;
+                        }
+                    }
+
+                    if (!byManager[managerId]) {
+                        byManager[managerId] = [];
+                    }
+                    byManager[managerId].push({
+                        ...record,
+                        employeeName: emp.fullName || record.employeeId,
+                        minutesLate,
+                        minutesEarly
+                    });
+                }
+            }
+        } catch (error) {
+            console.error(`[HCM] Error grouping record ${record.id}:`, error);
+        }
+    }
+
+    return byManager;
+}
+
+/**
+ * Crea una tarea en el Buzón para que el manager justifique incidencias
+ * // Basado en Plan de Implementación de NotebookLM
+ */
+async function createJustificationTask(
+    firestore: any,
+    managerId: string,
+    records: Array<{ id: string; employeeId: string; employeeName: string; date: string; type: 'tardiness' | 'early_departure'; minutesLate?: number; minutesEarly?: number }>,
+    metadata: { batchId: string; filename: string; uploadedBy: string }
+): Promise<void> {
+    try {
+        const now = new Date().toISOString();
+
+        const uniqueEmployees = [...new Set(records.map(r => r.employeeName))];
+        const tardinessCount = records.filter(r => r.type === 'tardiness').length;
+        const departureCount = records.filter(r => r.type === 'early_departure').length;
+
+        // Calcular fecha límite (2 días hábiles)
+        const dueDate = new Date();
+        dueDate.setDate(dueDate.getDate() + 2);
+
+        // Crear tarea en el Buzón
+        const taskData = {
+            title: `Justificar Incidencias de Asistencia`,
+            description: `Se detectaron ${records.length} incidencias que requieren justificación:\n- ${tardinessCount} retardo${tardinessCount !== 1 ? 's' : ''}\n- ${departureCount} salida${departureCount !== 1 ? 's' : ''} temprana${departureCount !== 1 ? 's' : ''}\n\nEmpleados afectados: ${uniqueEmployees.join(', ')}`,
+            type: 'attendance_justification',
+            status: 'pending',
+            priority: 'high',
+            assignedTo: managerId,
+            createdBy: metadata.uploadedBy,
+            createdAt: now,
+            dueDate: dueDate.toISOString(),
+            metadata: {
+                batchId: metadata.batchId,
+                filename: metadata.filename,
+                records: records.map(r => ({
+                    id: r.id,
+                    employeeId: r.employeeId,
+                    employeeName: r.employeeName,
+                    date: r.date,
+                    type: r.type,
+                    minutesLate: r.minutesLate,
+                    minutesEarly: r.minutesEarly
+                }))
+            },
+            module: 'hcm_team_management',
+            link: `/tasks`
+        };
+
+        await addDoc(collection(firestore, 'tasks'), taskData);
+
+        // Notificación in-app al manager
+        await createNotification(firestore, managerId, {
+            title: 'Nuevas Incidencias de Asistencia',
+            message: `Tienes ${records.length} incidencia${records.length !== 1 ? 's' : ''} pendiente${records.length !== 1 ? 's' : ''} de justificación de tu equipo.`,
+            type: 'warning',
+            link: `/tasks`
+        });
+
+
+        console.log(`[HCM] Created justification task for manager ${managerId} with ${records.length} records`);
+    } catch (error) {
+        console.error('[HCM] Error creating justification task:', error);
     }
 }
 

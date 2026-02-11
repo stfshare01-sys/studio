@@ -23,6 +23,12 @@ interface TaskCardProps {
 function getTaskRedirectUrl(task: EnrichedTask): string {
     const title = (task.requestTitle || task.name || '').toLowerCase();
 
+    // Handle attendance justification tasks
+    // // Basado en Plan de Implementación de NotebookLM
+    if (task.type === 'attendance_justification') {
+        return `/tasks/${task.id}`;
+    }
+
     // Smart Redirection Rules
     if (title.includes('corte') && title.includes('quincena')) {
         return '/hcm/team-management?tab=overview';
