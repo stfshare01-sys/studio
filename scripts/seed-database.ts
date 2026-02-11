@@ -151,11 +151,86 @@ function generateCompensation(emp: typeof SEED_EMPLOYEES[0]) {
     };
 }
 
+// =========================================================================
+// CLEAR ALL COLLECTIONS
+// =========================================================================
+async function clearAllCollections() {
+    console.log('🗑️  Limpiando datos existentes...');
+
+    const collections = [
+        'roles',
+        'locations',
+        'departments',
+        'positions',
+        'shifts',
+        'users',
+        'employees',
+        'vacation_balances',
+        'vacation_adjustments',
+        'request_templates',
+        'incidences',
+        'master_lists',
+        'compensation',
+        'attendance_imports',
+        'attendance_records',
+        'overtime_requests',
+        'period_closures',
+        'prenomina',
+        'hour_bank',
+        'tasks',
+        'notifications'
+    ];
+
+    for (const collectionName of collections) {
+        try {
+            const snapshot = await db.collection(collectionName).get();
+            const batch = db.batch();
+            let count = 0;
+
+            snapshot.docs.forEach((doc) => {
+                batch.delete(doc.ref);
+                count++;
+            });
+
+            if (count > 0) {
+                await batch.commit();
+                console.log(`   ✓ ${collectionName}: ${count} documentos eliminados`);
+            }
+        } catch (error) {
+            console.warn(`   ⚠️  Error limpiando ${collectionName}:`, error);
+        }
+    }
+
+    // Clear Auth users (except admin if exists)
+    try {
+        const listUsersResult = await admin.auth().listUsers();
+        for (const user of listUsersResult.users) {
+            try {
+                await admin.auth().deleteUser(user.uid);
+            } catch (error) {
+                // Ignore errors for individual user deletion
+            }
+        }
+        console.log(`   ✓ Auth: ${listUsersResult.users.length} usuarios eliminados`);
+    } catch (error) {
+        console.warn('   ⚠️  Error limpiando Auth:', error);
+    }
+
+    console.log('✅ Limpieza completada\n');
+}
+
+// =========================================================================
+// SEED DATABASE
+// =========================================================================
+
 // MAIN SEEDING FUNCTION
 async function seedDatabase() {
     console.log('🌱 Iniciando proceso de Seed de Base de Datos...\n');
 
     try {
+        // Clear existing data first
+        await clearAllCollections();
+
         console.log('📋 Creando Roles y Permisos...');
         for (const role of SEED_ROLES) await db.collection('roles').doc(role.id).set(role);
 
@@ -213,8 +288,9 @@ async function seedDatabase() {
         console.log('📄 Creando Plantillas de Workflow...');
         for (const tpl of SEED_TEMPLATES) await db.collection('request_templates').doc(tpl.id).set(tpl);
 
-        console.log('📋 Creando Incidencias de Ejemplo...');
-        for (const inc of SEED_SAMPLE_INCIDENCES) await db.collection('incidences').doc(inc.id).set(inc);
+        // console.log('📋 Creando Incidencias de Ejemplo...');
+        // for (const inc of SEED_SAMPLE_INCIDENCES) await db.collection('incidences').doc(inc.id).set(inc);
+        console.log('⏭️  Incidencias de ejemplo OMITIDAS (comentadas en el script)');
 
         console.log('📚 Creando Listas Maestras...');
         for (const ml of SEED_MASTER_LISTS) await db.collection('master_lists').doc(ml.id).set(ml);
@@ -417,6 +493,21 @@ async function seedDatabase() {
             }
         }
 
+
+        // ========================================================================
+        // DATOS DE PRUEBA DESHABILITADOS
+        // ========================================================================
+        // Las siguientes secciones están comentadas para evitar la carga de datos
+        // de prueba en los módulos de:
+        // - Registro de Asistencias (attendance records)
+        // - Gestión de Equipo (overtime requests)
+        // - Consolidación de Asistencia (prenómina/period closures)
+        //
+        // Si necesitas habilitar estos datos de prueba, descomenta las líneas
+        // correspondientes a continuación.
+        // ========================================================================
+
+        /*
         // Periods logic
         const p1 = await createAttendanceImportBatch(PERIODS.CLOSED_1.period, 1, PERIODS.CLOSED_1.batch1.start, PERIODS.CLOSED_1.batch1.end, PERIODS.CLOSED_1.batch1.importDate);
         await createAttendanceRecords(p1.batchId, p1.workingDays, PERIODS.CLOSED_1.period);
@@ -443,6 +534,10 @@ async function seedDatabase() {
         const p3 = await createAttendanceImportBatch(PERIODS.OPEN.period, 1, PERIODS.OPEN.batch1.start, PERIODS.OPEN.batch1.end, PERIODS.OPEN.batch1.importDate);
         await createAttendanceRecords(p3.batchId, p3.workingDays, PERIODS.OPEN.period);
         await createOvertimeRequests(PERIODS.OPEN.period, p3.workingDays, false);
+        */
+
+        console.log('⏭️  Datos de prueba de asistencia, gestión de equipo y consolidación OMITIDOS (comentados en el script)');
+
 
         // 10. Admin User
         console.log('👤 Creando Usuario Administrador...');

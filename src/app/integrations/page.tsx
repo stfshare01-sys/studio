@@ -37,7 +37,7 @@ const connectors = [
     description: "Envíe notificaciones y aprobaciones directamente a sus canales.",
     icon: <SlackIcon className="h-8 w-8" />,
   },
-    {
+  {
     name: "Microsoft Teams",
     description: "Colabore y reciba alertas de flujo de trabajo en sus equipos.",
     icon: <TeamsIcon className="h-8 w-8" />,
@@ -65,23 +65,23 @@ export default function IntegrationsPage() {
       <div className="flex flex-1 flex-col">
         <header className="p-4 sm:p-6">
           <h1 className="text-2xl font-bold tracking-tight">Centro de Integraciones</h1>
-          <p className="text-muted-foreground">Conecte FlowMaster con las herramientas que ya utiliza para crear flujos de trabajo sin fisuras.</p>
+          <p className="text-muted-foreground">Conecte STUFFACTORY con las herramientas que ya utiliza para crear flujos de trabajo sin fisuras.</p>
         </header>
         <main className="flex flex-1 flex-col gap-8 p-4 pt-0 sm:p-6 sm:pt-0">
           <Card className="bg-primary/5 border-primary/20">
             <CardHeader className="flex flex-row items-start gap-4">
-                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
-                    <ApiIcon className="h-6 w-6 text-primary" />
-                </div>
-                <div>
-                    <CardTitle>API para Integraciones Personalizadas</CardTitle>
-                    <CardDescription>
-                        ¿No ve la aplicación que necesita? Utilice nuestra robusta API REST para construir sus propias integraciones con sistemas legados o aplicaciones especializadas.
-                    </CardDescription>
-                </div>
+              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
+                <ApiIcon className="h-6 w-6 text-primary" />
+              </div>
+              <div>
+                <CardTitle>API para Integraciones Personalizadas</CardTitle>
+                <CardDescription>
+                  ¿No ve la aplicación que necesita? Utilice nuestra robusta API REST para construir sus propias integraciones con sistemas legados o aplicaciones especializadas.
+                </CardDescription>
+              </div>
             </CardHeader>
             <CardContent>
-                <Button variant="outline" disabled>Leer Documentación de la API</Button>
+              <Button variant="outline" disabled>Leer Documentación de la API</Button>
             </CardContent>
           </Card>
 
@@ -89,14 +89,14 @@ export default function IntegrationsPage() {
             {connectors.map((connector) => (
               <Card key={connector.name} className="flex flex-col">
                 <CardHeader className="flex-row items-center gap-4">
-                    {connector.icon}
-                    <CardTitle className="text-lg">{connector.name}</CardTitle>
+                  {connector.icon}
+                  <CardTitle className="text-lg">{connector.name}</CardTitle>
                 </CardHeader>
                 <CardContent className="flex-grow">
                   <p className="text-sm text-muted-foreground">{connector.description}</p>
                 </CardContent>
                 <CardContent>
-                    <Button className="w-full" disabled>Conectar</Button>
+                  <Button className="w-full" disabled>Conectar</Button>
                 </CardContent>
               </Card>
             ))}

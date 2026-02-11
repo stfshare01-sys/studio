@@ -35,6 +35,7 @@ import { batchAutoJustify, justifyInfractionsFromIncidence } from './auto-justif
 
 import { addDebtToHourBank } from './hour-bank-actions';
 import { notifyRole, createNotification } from './notification-actions';
+import { checkAttendanceTaskCompletion } from './task-completion-actions';
 
 // =========================================================================
 // INCIDENCE MANAGEMENT
@@ -1403,6 +1404,31 @@ export async function justifyTardiness(
                 createdById: justifiedById,
                 createdByName: justifiedByName
             });
+        }
+
+        // Check if this completes any pending tasks
+        // // Basado en Plan de Implementación de NotebookLM
+        try {
+            // Find tasks that include this tardiness record
+            const tasksQuery = query(
+                collection(firestore, 'tasks'),
+                where('type', '==', 'attendance_justification'),
+                where('status', '==', 'pending')
+            );
+            const tasksSnap = await getDocs(tasksQuery);
+
+            for (const taskDoc of tasksSnap.docs) {
+                const taskData = taskDoc.data();
+                const records = taskData.metadata?.records || [];
+
+                // Check if this task includes the current tardiness record
+                if (records.some((r: any) => r.id === tardinessId)) {
+                    await checkAttendanceTaskCompletion(taskDoc.id);
+                }
+            }
+        } catch (taskError) {
+            console.error('[HCM] Error checking task completion:', taskError);
+            // Don't fail the justification if task check fails
         }
 
         return { success: true };

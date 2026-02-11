@@ -35,6 +35,7 @@ import {
     notifyScheduleChanged
 } from './notification-actions';
 import { addDebtToHourBank } from './hour-bank-actions';
+import { checkAttendanceTaskCompletion } from './task-completion-actions';
 import type {
     Employee,
     TardinessRecord,
@@ -346,10 +347,32 @@ export async function justifyEarlyDeparture(
             justifiedByName
         );
 
+        // Check if this completes any pending tasks
+        // // Basado en Plan de Implementación de NotebookLM
+        try {
+            const tasksQuery = query(
+                collection(firestore, 'tasks'),
+                where('type', '==', 'attendance_justification'),
+                where('status', '==', 'pending')
+            );
+            const tasksSnap = await getDocs(tasksQuery);
+
+            for (const taskDoc of tasksSnap.docs) {
+                const taskData = taskDoc.data();
+                const records = taskData.metadata?.records || [];
+
+                if (records.some((r: any) => r.id === departureId)) {
+                    await checkAttendanceTaskCompletion(taskDoc.id);
+                }
+            }
+        } catch (taskError) {
+            console.error('[Team] Error checking task completion:', taskError);
+        }
+
         return { success: true };
     } catch (error) {
         console.error('[Team] Error justifying early departure:', error);
-        return { success: false, error: 'Error justificando salida temprana.' };
+        return { success: false, error: 'Error al justificar salida temprana.' };
     }
 }
 
@@ -701,10 +724,32 @@ export async function approveOvertimeRequest(
             );
         }
 
+        // Check if this completes any pending tasks
+        // // Basado en Plan de Implementación de NotebookLM
+        try {
+            const tasksQuery = query(
+                collection(firestore, 'tasks'),
+                where('type', '==', 'attendance_justification'),
+                where('status', '==', 'pending')
+            );
+            const tasksSnap = await getDocs(tasksQuery);
+
+            for (const taskDoc of tasksSnap.docs) {
+                const taskData = taskDoc.data();
+                const records = taskData.metadata?.records || [];
+
+                if (records.some((r: any) => r.id === requestId)) {
+                    await checkAttendanceTaskCompletion(taskDoc.id);
+                }
+            }
+        } catch (taskError) {
+            console.error('[Team] Error checking task completion:', taskError);
+        }
+
         return { success: true };
     } catch (error) {
         console.error('[Team] Error approving overtime request:', error);
-        return { success: false, error: 'Error aprobando solicitud de horas extras.' };
+        return { success: false, error: 'Error al aprobar horas extras.' };
     }
 }
 

@@ -138,7 +138,7 @@ export default function LoginPage() {
         };
 
         const userDocRef = doc(firestore, 'users', newUser.uid);
-        
+
         await setDoc(userDocRef, userProfile, { merge: true });
 
         toast({
@@ -150,15 +150,15 @@ export default function LoginPage() {
     } catch (error) {
       if (error instanceof FirebaseError) {
         toast({
-            variant: "destructive",
-            title: "Error de autenticación",
-            description: getFirebaseErrorMessage(error.code),
+          variant: "destructive",
+          title: "Error de autenticación",
+          description: getFirebaseErrorMessage(error.code),
         });
       } else {
         toast({
-            variant: "destructive",
-            title: "Error",
-            description: "Ha ocurrido un error inesperado.",
+          variant: "destructive",
+          title: "Error",
+          description: "Ha ocurrido un error inesperado.",
         });
       }
     } finally {
@@ -176,10 +176,10 @@ export default function LoginPage() {
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center bg-muted/40 p-4">
-       <div className="absolute top-8 left-8 flex items-center gap-2">
-            <Logo className="size-6" />
-            <h2 className="text-xl font-semibold tracking-tight">FlowMaster</h2>
-        </div>
+      <div className="absolute top-8 left-8 flex items-center gap-2">
+        <Logo className="size-6" />
+        <h2 className="text-xl font-bold tracking-tight">STUFFACTORY</h2>
+      </div>
       <Card className="w-full max-w-sm">
         <form onSubmit={handleAuthAction}>
           <CardHeader>

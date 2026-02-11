@@ -103,7 +103,7 @@ async function assignInitialTask(
             addDocumentNonBlocking(auditLogCollection, {
                 requestId: request.id,
                 userId: 'system', // Indicates an automatic action
-                userFullName: 'FlowMaster AI',
+                userFullName: 'STUFFACTORY AI',
                 timestamp: new Date().toISOString(),
                 action: 'STEP_ASSIGNEE_CHANGED',
                 details: {

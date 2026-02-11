@@ -3,7 +3,7 @@ import { LucideIcon, FileText, Calendar, DollarSign, Briefcase, UserPlus, AlertC
 /**
  * Service Catalog - Definitions for "Ventanilla Única"
  * 
- * This file defines the registry of all available services/procedures in the FlowMaster system.
+ * This file defines the registry of all available services/procedures in the STUFFACTORY system.
  * It maps UI representation to underlying Business Processes (BPMN Templates).
  */
 

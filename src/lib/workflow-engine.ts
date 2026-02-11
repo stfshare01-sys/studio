@@ -94,7 +94,7 @@ export async function evaluateAndExecuteRules({
                 case 'CHANGE_REQUEST_PRIORITY':
                     updateDocumentNonBlocking(requestRef, { priority: action.priority });
                     addDocumentNonBlocking(auditLogCollection, {
-                        requestId: request.id, userId: 'system', userFullName: 'FlowMaster AI', timestamp: now, action: 'REQUEST_SUBMITTED' as any, // This should be a valid action
+                        requestId: request.id, userId: 'system', userFullName: 'STUFFACTORY AI', timestamp: now, action: 'REQUEST_SUBMITTED' as any, // This should be a valid action
                         details: { message: `La prioridad de la solicitud cambió a "${action.priority}" por una regla de negocio.` }
                     });
                     break;
@@ -239,7 +239,7 @@ async function activateAndAssignTasks(
                         addDocumentNonBlocking(auditLogCollection, {
                             requestId: request.id,
                             userId: 'system',
-                            userFullName: 'FlowMaster AI',
+                            userFullName: 'STUFFACTORY AI',
                             timestamp: new Date().toISOString(),
                             action: 'STEP_ASSIGNEE_CHANGED',
                             details: {
@@ -438,7 +438,7 @@ export async function handleTaskEscalation({ firestore, task, currentUser, allUs
 
                 const auditLogRef = doc(auditLogCollection);
                 batch.set(auditLogRef, {
-                    requestId: reqData.id, userId: 'system', userFullName: 'FlowMaster AI', timestamp: now, action: 'STEP_ASSIGNEE_CHANGED',
+                    requestId: reqData.id, userId: 'system', userFullName: 'STUFFACTORY AI', timestamp: now, action: 'STEP_ASSIGNEE_CHANGED',
                     details: { message: `Tarea "${task.name}" reasignada a ${newAssignee?.fullName} debido a vencimiento de SLA.` }
                 });
 

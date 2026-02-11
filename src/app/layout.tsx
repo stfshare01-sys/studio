@@ -7,7 +7,7 @@ import { FirebaseClientProvider } from '@/firebase';
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: 'FlowMaster',
+  title: 'STUFFACTORY',
   description: 'Un sistema de gestión de flujos de trabajo personalizado que permite diseñar plantillas de solicitud con campos y pasos definibles, enviar y rastrear nuevas solicitudes, y visualizar el estado e historial de cada proceso.',
 };
 
