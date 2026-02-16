@@ -83,7 +83,7 @@ export async function runGlobalSLAProcessing(
             // Regla: Si ha pasado > 24 horas y sigue pendiente, se marca injustificado
             // O simplemente procesamos todo lo pendiente al momento del corte manual
 
-            const recordRef = doc(firestore, 'tardiness_records', record.id);
+            const recordRef = doc(firestore, 'tardiness_records', docSnapshot.id);
             batch.update(recordRef, {
                 justificationStatus: 'unjustified',
                 isJustified: false,
@@ -104,7 +104,7 @@ export async function runGlobalSLAProcessing(
 
         for (const docSnapshot of departureDocs.docs) {
             const record = docSnapshot.data() as EarlyDeparture;
-            const recordRef = doc(firestore, 'early_departures', record.id);
+            const recordRef = doc(firestore, 'early_departures', docSnapshot.id);
 
             batch.update(recordRef, {
                 justificationStatus: 'unjustified',
@@ -129,11 +129,11 @@ export async function runGlobalSLAProcessing(
         const overtimeDocs = await getDocs(overtimeQuery);
 
         // Agrupar por empleado para minimizar lecturas de bolsa de horas
-        const overtimeByEmployee: Record<string, OvertimeRequest[]> = {};
+        const overtimeByEmployee: Record<string, { id: string, data: OvertimeRequest }[]> = {};
         overtimeDocs.docs.forEach(d => {
             const data = d.data() as OvertimeRequest;
             if (!overtimeByEmployee[data.employeeId]) overtimeByEmployee[data.employeeId] = [];
-            overtimeByEmployee[data.employeeId].push(data);
+            overtimeByEmployee[data.employeeId].push({ id: d.id, data });
         });
 
         // Procesar cada empleado
@@ -150,7 +150,7 @@ export async function runGlobalSLAProcessing(
 
             const recipientRef = doc(firestore, 'employees', employeeId); // Para verificar existencia si es necesario
 
-            for (const req of overtimeByEmployee[employeeId]) {
+            for (const { id: reqId, data: req } of overtimeByEmployee[employeeId]) {
                 const minutesRequested = req.hoursRequested * 60;
                 let minutesToCompensate = 0;
                 let minutesToPay = minutesRequested;
@@ -175,7 +175,7 @@ export async function runGlobalSLAProcessing(
                 }
 
                 // Actualizar solicitud
-                const reqRef = doc(firestore, 'overtime_requests', req.id);
+                const reqRef = doc(firestore, 'overtime_requests', reqId);
                 const hoursApproved = minutesToPay / 60;
 
                 // Calcular dobles/triples simples para el reporte (regla básica: primeras 9h dobles, resto triples semanal)
@@ -208,7 +208,7 @@ export async function runGlobalSLAProcessing(
                         amountMinutes: minutesToCompensate,
                         type: 'overtime_compensation',
                         description: `Compensación automática por horas extras del ${req.date}`,
-                        referenceId: req.id,
+                        referenceId: reqId,
                         createdAt: serverTimestamp(),
                         createdBy: currentUserId
                     });

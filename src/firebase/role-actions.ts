@@ -12,6 +12,7 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 import type { Role, ModulePermission, AppModule, PermissionLevel, SystemRole } from "@/lib/types";
+import { calculateSystemLevel } from "@/lib/permissions-config";
 
 // -------------------------------------------------------------------------
 // System Roles Configuration
@@ -249,6 +250,7 @@ export async function getAllRoles(firestore: Firestore): Promise<Role[]> {
     name,
     description: getSystemRoleDescription(name as SystemRole),
     isSystemRole: true,
+    systemLevel: name as SystemRole, // System level for system role is itself
     permissions,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -280,6 +282,7 @@ export async function getRoleById(firestore: Firestore, roleId: string): Promise
       name: systemRoleName,
       description: getSystemRoleDescription(systemRoleName),
       isSystemRole: true,
+      systemLevel: systemRoleName, // System level for system role is itself
       permissions: SYSTEM_ROLES[systemRoleName],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -308,6 +311,7 @@ export async function createRole(
     description?: string;
     permissions: ModulePermission[];
     createdById: string;
+    systemLevel?: SystemRole; // Optional override, otherwise calculated
   }
 ): Promise<string> {
   // Generate a slug-like ID from the name
@@ -325,10 +329,14 @@ export async function createRole(
   const roleRef = doc(firestore, 'roles', id);
   const now = new Date().toISOString();
 
+  // Calculate system level automatically if not provided
+  const systemLevel = data.systemLevel || calculateSystemLevel(data.permissions);
+
   await setDoc(roleRef, {
     name: data.name,
     description: data.description || '',
     isSystemRole: false,
+    systemLevel,
     permissions: data.permissions,
     createdAt: now,
     updatedAt: now,
@@ -349,6 +357,7 @@ export async function updateRole(
     name: string;
     description: string;
     permissions: ModulePermission[];
+    systemLevel: SystemRole;
   }>,
   isAdminUser: boolean = false
 ): Promise<void> {
@@ -372,6 +381,8 @@ export async function updateRole(
         name: systemRoleName,
         description: getSystemRoleDescription(systemRoleName as SystemRole),
         isSystemRole: true,
+        // System roles always have their own level
+        systemLevel: systemRoleName as SystemRole,
         permissions: data.permissions || SYSTEM_ROLES[systemRoleName as SystemRole],
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -397,10 +408,22 @@ export async function updateRole(
     throw new Error('No se pueden modificar los roles del sistema');
   }
 
-  await updateDoc(roleRef, {
+  // If permissions change, recalculate system level if not explicitly provided
+  let systemLevel = data.systemLevel;
+  if (!systemLevel && data.permissions) {
+    systemLevel = calculateSystemLevel(data.permissions);
+  }
+
+  const updatePayload: any = {
     ...data,
     updatedAt: new Date().toISOString(),
-  });
+  };
+
+  if (systemLevel) {
+    updatePayload.systemLevel = systemLevel;
+  }
+
+  await updateDoc(roleRef, updatePayload);
 }
 
 /**

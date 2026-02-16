@@ -27,7 +27,8 @@ function getTaskRedirectUrl(task: EnrichedTask): string {
     // // Basado en Plan de Implementación de NotebookLM
     // Redirect to Team Management where managers can justify/approve based on permissions
     if (task.type === 'attendance_justification') {
-        return '/hcm/team-management';
+        const batchId = task.metadata?.batchId;
+        return `/hcm/team-management${batchId ? `?batchId=${batchId}&tab=tardiness` : ''}`;
     }
 
     // Smart Redirection Rules

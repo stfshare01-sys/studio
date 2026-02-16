@@ -65,8 +65,29 @@ function EditUserDialog({ user, allUsers, roles, isOpen, onOpenChange }: { user:
     const handleSave = async () => {
         if (!user) return;
 
+        // Find selected role object to get its details
+        const selectedRoleObj = roles.find(r => r.name === formData.role);
+
+        // Determine role and customRoleId
+        // If it's a system role, role = name, customRoleId = undefined
+        // If it's a custom role, role = systemLevel, customRoleId = id
+        let roleName = formData.role as UserRole;
+        let customRoleId: string | undefined = undefined;
+
+        if (selectedRoleObj) {
+            if (!selectedRoleObj.isSystemRole) {
+                // For custom roles, we store the systemLevel in 'role' field (for Firestore rules)
+                // and the custom role ID in 'customRoleId' (for UI/granular permissions)
+                roleName = selectedRoleObj.systemLevel || 'Member';
+                customRoleId = selectedRoleObj.id;
+            } else {
+                // System roles: role matches name
+                roleName = selectedRoleObj.name as UserRole;
+            }
+        }
+
         // Use the new admin action to update the role, which simulates setting custom claims
-        await updateUserRole(user.id, formData.role as UserRole);
+        await updateUserRole(user.id, roleName, customRoleId);
 
         toast({
             title: "Usuario actualizado",

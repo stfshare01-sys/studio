@@ -378,7 +378,8 @@ function NewRequestPageContent() {
         for (const field of fileFields) {
             const file = formData[field.id] as File;
             if (file) {
-                const filePath = `requests/${newRequestId}/${file.name}`;
+                // SECURITY: Use targetUserId in path to allow ownership validation in storage.rules
+                const filePath = `requests/${targetUserId}/${newRequestId}/${file.name}`;
                 const fileStorageRef = storageRef(storage, filePath);
 
                 const uploadTask = uploadBytesResumable(fileStorageRef, file, {

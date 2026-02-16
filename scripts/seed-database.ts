@@ -507,7 +507,6 @@ async function seedDatabase() {
         // correspondientes a continuación.
         // ========================================================================
 
-        /*
         // Periods logic
         const p1 = await createAttendanceImportBatch(PERIODS.CLOSED_1.period, 1, PERIODS.CLOSED_1.batch1.start, PERIODS.CLOSED_1.batch1.end, PERIODS.CLOSED_1.batch1.importDate);
         await createAttendanceRecords(p1.batchId, p1.workingDays, PERIODS.CLOSED_1.period);
@@ -534,9 +533,8 @@ async function seedDatabase() {
         const p3 = await createAttendanceImportBatch(PERIODS.OPEN.period, 1, PERIODS.OPEN.batch1.start, PERIODS.OPEN.batch1.end, PERIODS.OPEN.batch1.importDate);
         await createAttendanceRecords(p3.batchId, p3.workingDays, PERIODS.OPEN.period);
         await createOvertimeRequests(PERIODS.OPEN.period, p3.workingDays, false);
-        */
 
-        console.log('⏭️  Datos de prueba de asistencia, gestión de equipo y consolidación OMITIDOS (comentados en el script)');
+        console.log('✅  Datos de prueba de asistencia y consolidados GENERADOS.');
 
 
         // 10. Admin User

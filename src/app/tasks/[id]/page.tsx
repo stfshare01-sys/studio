@@ -125,7 +125,7 @@ export default function TaskDetailPage() {
                     <CardHeader>
                         <div className="flex items-start justify-between">
                             <div>
-                                <CardTitle className="text-2xl mb-2">{task.title}</CardTitle>
+                                <CardTitle className="text-2xl mb-2">{task.name || task.title}</CardTitle>
                                 <p className="text-sm text-muted-foreground whitespace-pre-line">
                                     {task.description}
                                 </p>

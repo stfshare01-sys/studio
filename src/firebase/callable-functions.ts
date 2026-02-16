@@ -18,20 +18,19 @@ import { initializeFirebase } from '.';
 // Request/Response types matching Cloud Functions
 
 interface ConsolidatePrenominaRequest {
-    period: string;              // Formato: "YYYY-MM-DD_YYYY-MM-DD" o "YYYY-MM-DD"
-    closedBy?: string;           // ID del usuario que cierra (opcional, se usa auth.uid si no se provee)
+    periodStart: string;
+    periodEnd: string;
+    periodType: 'weekly' | 'biweekly' | 'monthly';
+    employeeIds?: string[];
+    closedBy?: string; // Optional for backward compatibility, though not used in backend v2
 }
 
 interface ConsolidatePrenominaResponse {
     success: boolean;
-    summary: {
-        overtimeRejected: number;
-        tardinessMarked: number;
-        earlyDeparturesMarked: number;
-        missingPunchesMarked: number;
-        faultsMarked: number;
-    };
-    prenominaUrl: string;        // URL firmada del archivo NOMIPAQ (válida 7 días)
+    recordIds: string[];
+    processedCount: number;
+    skippedCount: number;
+    errors: { employeeId: string; message: string }[];
 }
 
 interface EmployeeImportRow {

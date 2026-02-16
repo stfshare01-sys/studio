@@ -67,10 +67,33 @@ service cloud.firestore {
       return 'createdAt' in data.keys();
     }
 
-    // Validate that critical timestamps are server-generated on update
     function hasValidUpdateTimestamps() {
       let data = request.resource.data;
       return 'updatedAt' in data.keys();
+    }
+
+    // Function to identify protected collections where Admin cannot write via wildcard
+    function isProtectedCollection(path) {
+      return path[0] == 'audit_logs' ||
+             path[0] == 'prenomina_audit' ||
+             path[0] == 'compensation' ||
+             path[0] == 'vacation_balances';
+    }
+
+    // ============================================
+    // NIVEL 4: PROTECCIÓN GLOBAL (Forbidden Zones)
+    // ============================================
+    // Bloquear acceso a colecciones prohibidas explícitamente, incluso para admins
+    match /secrets/{document=**} { allow read, write: if false; }
+    match /system_keys/{document=**} { allow read, write: if false; }
+
+    // ============================================
+    // NIVEL 3: SOLO LECTURA PARA ADMIN (Root Level)
+    // ============================================
+    match /audit_logs/{logId} {
+      allow read: if hasRole('Admin');
+      allow create: if hasRole('Admin'); // Admin puede crear (via backend/console)
+      allow update, delete: if false; // INMUTABLE
     }
 
     // -------------------------------------------------------------------------
@@ -264,8 +287,8 @@ service cloud.firestore {
       allow list: if isHRManager();
       // Only HR and Admin can create/update employee records
       allow create, update: if isHRManager();
-      // Only Admins can delete employee records
-      allow delete: if hasRole('Admin');
+      // Admin solo puede borrar si ya está inactivo (Soft delete enforce)
+      allow delete: if hasRole('Admin') && resource.data.status == 'inactive';
     }
 
     /**
@@ -274,7 +297,8 @@ service cloud.firestore {
      * @path /compensation/{compensationId}
      */
     match /compensation/{compensationId} {
-      allow read, write: if isHRManager();
+      allow read, create, update: if isHRManager();
+      allow delete: if false; // Nunca borrar historial salarial
     }
 
     /**
@@ -382,7 +406,7 @@ service cloud.firestore {
       allow create: if isHRManager();
       allow update: if isHRManager()
         && request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(['status', 'successCount', 'errorCount', 'errors', 'processedAt']);
+          .hasOnly(['status', 'successCount', 'errorCount', 'errors', 'processedAt', 'dateRangeStart', 'dateRangeEnd']);
       allow delete: if hasRole('Admin');
     }
 
@@ -682,7 +706,11 @@ service cloud.firestore {
      * Prerequisite: All critical Admin actions MUST be logged to 'audit_logs' via backend.
      */
     match /{document=**} {
-      allow read, write: if hasRole('Admin');
+      // 1. Permitir lectura global para debug/soporte
+      allow read: if hasRole('Admin');
+      
+      // 2. Escritura permitida SOLO si NO es una colección protegida
+      allow write: if hasRole('Admin') && !isProtectedCollection(document);
     }
 
   }

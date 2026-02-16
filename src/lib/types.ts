@@ -68,7 +68,8 @@ export type Role = {
   id: string;
   name: string;
   description?: string;
-  isSystemRole: boolean;       // true for Admin, Member, Designer, etc.
+  isSystemRole: boolean;       // true for Admin, Member, Designer, etc. (Pre-defined immutable roles)
+  systemLevel: SystemRole;     // The underlying security level (Admin, HRManager, etc.) for rules.
   permissions: ModulePermission[];
   createdAt: string;
   updatedAt: string;
@@ -268,6 +269,14 @@ export type Task = {
   requestOwnerId: string; // ID of the user who submitted the request
   stepId: string; // ID from the original WorkflowStepDefinition in the template
   name: string; // Name of the step/task
+  /** @deprecated use name instead, but kept for compatibility with older code */
+  title?: string;
+  description?: string;
+  type?: string;
+  priority?: 'low' | 'medium' | 'high';
+  module?: string;
+  link?: string;
+  metadata?: any;
   status: TaskStatus;
   assigneeId: string | null;
   completedAt: string | null;
@@ -665,6 +674,7 @@ export type Employee = User & {
   // Datos fiscales y legales (LFT compliance)
   rfc_curp?: string;           // RFC con homoclave + CURP
   nss?: string;                // Número de Seguridad Social (IMSS)
+  userId?: string;             // Authenticated User UID (optional, for linking to Auth)
 
   // Datos laborales
   employmentType: EmploymentType;
@@ -780,11 +790,12 @@ export type AttendanceRecord = {
   hoursWorked: number;          // Total horas trabajadas
   regularHours: number;         // Horas dentro de jornada normal
   overtimeHours: number;        // Horas extra totales
-  overtimeType?: 'double' | 'triple'; // Tipo según "Ley de los 9s"
+  overtimeType?: 'double' | 'triple' | null; // Tipo según "Ley de los 9s"
 
   // Estado y validación
   isValid: boolean;             // Validación de jornada según turno
-  validationNotes?: string;     // Notas de validación (ej: "Excede jornada diurna")
+  validationNotes?: string | null;     // Notas de validación (ej: "Excede jornada diurna")
+
 
   // Incidencia relacionada (si aplica)
   linkedIncidenceId?: string;   // Si hay permiso/incapacidad que justifica
@@ -960,6 +971,7 @@ export type AttendanceImportBatch = {
   // Resultados
   recordCount: number;          // Total registros procesados
   successCount: number;         // Registros exitosos
+  skippedCount: number;         // Registros omitidos (duplicados)
   errorCount: number;           // Registros con error
 
   // Estado
@@ -1291,6 +1303,7 @@ export type VacationBalance = {
   daysAvailable: number;          // Días disponibles (entitled - taken - scheduled)
   daysCarriedOver: number;        // Días arrastrados del período anterior
   daysPending: number;            // Días en solicitudes pendientes de aprobación
+  maxCarryOverDays?: number;      // Días máximos a arrastrar (snapshot)
 
   // Prima vacacional
   vacationPremiumPaid: boolean;   // Si ya se pagó la prima vacacional
@@ -1657,24 +1670,12 @@ export type EarlyDeparture = {
   justificationReason?: string;
   justifiedById?: string;
   justifiedByName?: string;
-  justifiedAt?: string;
+  importBatchId?: string; // Link to the import batch that created this record
   linkedIncidenceId?: string;       // Si fue auto-justificado
   compensatedToHourBank?: boolean;  // Si se envió a bolsa de horas
 
   // Regla de 6 horas
   checkOut: string;             // ISO Date
-
-  // Check-in/out detallado
-  checkInLocation?: {
-    latitude: number;
-    longitude: number;
-  };
-  checkOutLocation?: {
-    latitude: number;
-    longitude: number;
-  };
-  locationId?: string; // Ubicacion asignada o donde hizo check-in
-
   hoursWorked: number;            // Horas trabajadas (HH.dd)
   notes?: string;
 
@@ -1795,8 +1796,8 @@ export type EmployeeMonthlyStats = {
   avatarUrl?: string;
 
   // Período
-  month: number;                    // 1-12
-  year: number;
+  month?: number;                    // 1-12
+  year?: number;
 
   // Contadores
   totalTardiness: number;           // Total retardos del mes
@@ -1979,24 +1980,4 @@ export type OvertimeCalculation = {
   weeklyOvertimeAccumulated: number;
 };
 
-// =========================================================================
-// HOLIDAY CALENDAR TYPES
-// =========================================================================
 
-export type OfficialHoliday = {
-  date: string; // YYYY-MM-DD
-  name: string;
-  mandatory?: boolean; // If true, strictly required by law
-};
-
-export type HolidayCalendar = {
-  id: string;
-  name: string; // e.g., "Mx Generic 2026", "USA Manufacturing"
-  description?: string;
-  year: number;
-  holidays: OfficialHoliday[];
-  countryCode?: string; // ISO code (mx, us)
-  isDefault?: boolean;
-  createdAt: string;
-  updatedAt: string;
-};

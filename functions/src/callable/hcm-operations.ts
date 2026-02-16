@@ -147,12 +147,11 @@ export const consolidatePrenomina = onCall<ConsolidatePrenominaRequest>(
             }
             console.log(`[HCM] Auto-rejected ${pendingOvertimeQuery.size} pending overtime requests`);
 
-            // Check for locked period
-            // Assuming monthly closure for now based on UI
-            // TODO: More granular locking if needed
-            const periodYearMonth = periodStart.substring(0, 7); // YYYY-MM
-            const lockQuery = await db.collection('period_closures')
-                .where('period', '==', periodYearMonth)
+            // Check for locked period (using unified payroll_period_locks)
+            const lockQuery = await db.collection('payroll_period_locks')
+                .where('periodStart', '==', periodStart)
+                .where('periodEnd', '==', periodEnd)
+                .where('isLocked', '==', true)
                 .get();
 
             if (!lockQuery.empty) {
@@ -161,8 +160,21 @@ export const consolidatePrenomina = onCall<ConsolidatePrenominaRequest>(
                     recordIds: [],
                     processedCount: 0,
                     skippedCount: 0,
-                    errors: [{ employeeId: 'GLOBAL', message: `El período ${periodYearMonth} está cerrado. No se puede reconsolidar.` }]
+                    errors: [{
+                        employeeId: 'GLOBAL',
+                        message: `El período ${periodStart} al ${periodEnd} ya está bloqueado. No se puede reconsolidar.`
+                    }]
                 };
+            }
+
+            // Also check old system for backward compatibility
+            const periodYearMonth = periodStart.substring(0, 7);
+            const oldLockQuery = await db.collection('period_closures')
+                .where('period', '==', periodYearMonth)
+                .get();
+
+            if (!oldLockQuery.empty) {
+                console.warn(`[HCM] Period ${periodYearMonth} locked in legacy system.`);
             }
 
 
@@ -190,12 +202,14 @@ export const consolidatePrenomina = onCall<ConsolidatePrenominaRequest>(
                     updatedAt: nowISO,
                 });
 
-                // 2. Void the attendance record
-                const attendanceRef = db.collection('attendance').doc(departure.attendanceId);
-                await attendanceRef.update({
-                    isVoid: true,
-                    voidReason: 'Converted to absence due to unjustified early departure',
-                });
+                // 2. Void the attendance record (if linked)
+                if (departure.attendanceId) {
+                    const attendanceRef = db.collection('attendance').doc(departure.attendanceId);
+                    await attendanceRef.update({
+                        isVoid: true,
+                        voidReason: 'Converted to absence due to unjustified early departure',
+                    });
+                }
 
                 // 3. Create incidence for visibility
                 await db.collection('incidences').add({
@@ -229,12 +243,14 @@ export const consolidatePrenomina = onCall<ConsolidatePrenominaRequest>(
                     updatedAt: nowISO,
                 });
 
-                // 2. Void the attendance record
-                const attendanceRef = db.collection('attendance').doc(punch.attendanceId);
-                await attendanceRef.update({
-                    isVoid: true,
-                    voidReason: 'Converted to absence due to unjustified missing punch',
-                });
+                // 2. Void the attendance record (if linked)
+                if (punch.attendanceId) {
+                    const attendanceRef = db.collection('attendance').doc(punch.attendanceId);
+                    await attendanceRef.update({
+                        isVoid: true,
+                        voidReason: 'Converted to absence due to unjustified missing punch',
+                    });
+                }
 
                 // 3. Create incidence for visibility
                 await db.collection('incidences').add({
@@ -309,6 +325,10 @@ export const consolidatePrenomina = onCall<ConsolidatePrenominaRequest>(
                             const attendanceSnap = await transaction.get(attendanceQuery);
                             const attendanceRecords = attendanceSnap.docs.map(d => d.data() as AttendanceRecord);
 
+                            if (attendanceRecords.length > 0) {
+                                console.log(`[Consolidate] Found ${attendanceRecords.length} attendance records for employee ${employee.id} (${employee.fullName})`);
+                            }
+
                             // Get approved incidences for the period
                             const incidencesQuery = db.collection('incidences')
                                 .where('employeeId', '==', employee.id)
@@ -339,7 +359,9 @@ export const consolidatePrenomina = onCall<ConsolidatePrenominaRequest>(
 
                             // 1. Try location specific calendar
                             if (employee.locationId) {
-                                const locDoc = await transaction.get(db.collection('locations').doc(employee.locationId));
+                                // Safe check for locationId
+                                const locRef = db.collection('locations').doc(employee.locationId);
+                                const locDoc = await transaction.get(locRef);
                                 const locData = locDoc.data();
                                 if (locData?.holidayCalendarId && holidaysByCalendarId[locData.holidayCalendarId]) {
                                     employeeHolidayDates = holidaysByCalendarId[locData.holidayCalendarId];
@@ -429,8 +451,8 @@ export const consolidatePrenomina = onCall<ConsolidatePrenominaRequest>(
                             const prenominaRef = db.collection('prenomina').doc();
                             const prenominaData: Omit<PrenominaRecord, 'id'> = {
                                 employeeId: employee.id,
-                                employeeName: employee.fullName,
-                                employeeRfc: employee.rfc_curp,
+                                employeeName: employee.fullName || 'Empleado Desconocido',
+                                employeeRfc: employee.rfc_curp ?? '',
                                 periodStart,
                                 periodEnd,
                                 periodType,
@@ -446,7 +468,7 @@ export const consolidatePrenomina = onCall<ConsolidatePrenominaRequest>(
                                 unpaidLeaveDays,
                                 companyBenefitDaysTaken: companyBenefitDays,
                                 status: 'draft',
-                                costCenter: employee.costCenter,
+                                costCenter: employee.costCenter ?? 'Sin Centro de Costos',
                                 createdAt: nowISO,
                                 updatedAt: nowISO
                             };
@@ -825,10 +847,15 @@ export const approveIncidence = onCall<ApproveIncidenceRequest>(
                         };
 
                         // Update vacation balance within transaction
+                        // [MODIFIED] Logic to decrement daysScheduled and daysAvailable
+                        const currentScheduled = balanceData.daysScheduled || 0;
+                        const newDaysScheduled = Math.max(0, currentScheduled - requestedDays);
+
                         const updatedMovements = [...(balanceData.movements || []), newMovement].slice(-100);
 
                         transaction.update(balanceDoc.ref, {
                             daysTaken: (balanceData.daysTaken || 0) + requestedDays,
+                            daysScheduled: newDaysScheduled, // [NEW] Decrement scheduled days
                             daysAvailable: currentAvailable - requestedDays,
                             movements: updatedMovements,
                             lastUpdated: nowISO
@@ -843,7 +870,7 @@ export const approveIncidence = onCall<ApproveIncidenceRequest>(
                             updatedAt: nowISO
                         });
 
-                        console.log(`[HCM] Vacation balance updated atomically: ${currentAvailable} -> ${currentAvailable - requestedDays}`);
+                        console.log(`[HCM] Vacation balance updated atomically: Available ${currentAvailable} -> ${currentAvailable - requestedDays}, Scheduled ${currentScheduled} -> ${newDaysScheduled}`);
                     });
 
                     console.log(`[HCM] Vacation incidence ${incidenceId} approved by ${userData?.fullName} (transactional)`);
@@ -851,7 +878,75 @@ export const approveIncidence = onCall<ApproveIncidenceRequest>(
                 }
             }
 
-            // For non-vacation incidences or rejections, update normally
+            // Handle Rejection for Vacation (Release scheduled days)
+            if (action === 'reject' && incidenceData.type === 'vacation') {
+                await db.runTransaction(async (transaction) => {
+                    // Get vacation balance
+                    const balanceQuery = await db.collection('vacation_balances')
+                        .where('employeeId', '==', incidenceData.employeeId)
+                        .orderBy('periodEnd', 'desc')
+                        .limit(1)
+                        .get();
+
+                    if (!balanceQuery.empty) {
+                        const balanceDoc = balanceQuery.docs[0];
+                        const balanceData = balanceDoc.data();
+                        const totalDays = incidenceData.totalDays || 0;
+
+                        // Release scheduled days
+                        const currentScheduled = balanceData.daysScheduled || 0;
+                        const newDaysScheduled = Math.max(0, currentScheduled - totalDays);
+                        // Recalculate available: Entitled + CarriedOver - Taken - NewScheduled
+                        // Or just simplisticly: CurrentAvailable + ReleasedDays (if they were subtracted when scheduled?)
+                        // Usually: Available = Entitled - Taken - Scheduled. 
+                        // If Scheduled decreases, Available increases.
+
+                        // Let's rely on the formula: Available = Entitled - Taken - Scheduled
+                        const daysEntitled = balanceData.daysEntitled || 0;
+                        const daysTaken = balanceData.daysTaken || 0; // Unchanged on rejection
+
+                        // [FIX] Ensure we don't create "ghost" days if data was inconsistent
+                        const newAvailable = Math.max(0, daysEntitled - daysTaken - newDaysScheduled);
+
+                        // Create movement for audit
+                        const newMovement = {
+                            id: `mov_cancelled_${Date.now()}`,
+                            date: nowISO,
+                            type: 'cancelled',
+                            days: totalDays,
+                            description: `Solicitud rechazada: ${rejectionReason || 'Sin motivo'}`,
+                            incidenceId: incidenceId,
+                            approvedById: approverId
+                        };
+
+                        const updatedMovements = [...(balanceData.movements || []), newMovement].slice(-100);
+
+                        transaction.update(balanceDoc.ref, {
+                            daysScheduled: newDaysScheduled,
+                            daysAvailable: newAvailable,
+                            movements: updatedMovements,
+                            lastUpdated: nowISO
+                        });
+
+                        console.log(`[HCM] Vacation rejection released ${totalDays} days. Scheduled: ${currentScheduled} -> ${newDaysScheduled}`);
+                    }
+
+                    // Update incidence status
+                    transaction.update(incidenceRef, {
+                        status: 'rejected',
+                        rejectionReason: rejectionReason || '',
+                        approvedById: approverId,
+                        approvedByName: userData?.fullName,
+                        approvedAt: nowISO,
+                        updatedAt: nowISO
+                    });
+                });
+
+                console.log(`[HCM] Vacation incidence ${incidenceId} rejected by ${userData?.fullName} (transactional)`);
+                return { success: true };
+            }
+
+            // For non-vacation incidences or rejections (non-vacation), update normally
             const updateData: Partial<Incidence> = {
                 status: action === 'approve' ? 'approved' : 'rejected',
                 approvedById: approverId,
@@ -1155,11 +1250,23 @@ async function generatePrenominaFile(
             }
         });
 
-        // Generar URL firmada (válida por 7 días)
-        const [url] = await file.getSignedUrl({
-            action: 'read',
-            expires: Date.now() + 7 * 24 * 60 * 60 * 1000,
-        });
+        // Generar URL (manejo especial para emulador/desarrollo)
+        let url = '';
+        try {
+            const [signedUrl] = await file.getSignedUrl({
+                action: 'read',
+                expires: Date.now() + 7 * 24 * 60 * 60 * 1000,
+            });
+            url = signedUrl;
+        } catch (err) {
+            if (process.env.FUNCTIONS_EMULATOR || process.env.FIREBASE_STORAGE_EMULATOR_HOST) {
+                const host = process.env.FIREBASE_STORAGE_EMULATOR_HOST || 'localhost:9199';
+                url = `http://${host}/v0/b/${bucket.name}/o/${encodeURIComponent(file.name)}?alt=media`;
+                console.log(`[Prenomina] Using emulator download URL: ${url}`);
+            } else {
+                throw err;
+            }
+        }
 
         console.log(`[Prenomina] File generated: ${fileName} (${lines.length - 1} records)`);
 

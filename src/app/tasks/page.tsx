@@ -139,14 +139,23 @@ export default function InboxPage() {
             // We look for a catalog item whose title is a substring of requestTitle
 
             const matchedService = SERVICE_CATALOG.find(service =>
-                task.requestTitle.includes(service.title) ||
-                (service.id === 'vacation-request' && task.requestTitle.toLowerCase().includes('vacaciones')) // specific fallbacks
+                (task.requestTitle && task.requestTitle.includes(service.title)) ||
+                (service.id === 'vacation-request' && task.requestTitle && task.requestTitle.toLowerCase().includes('vacaciones'))
             );
+
+            // Determine module tag: 
+            // 1. Matches catalog? 
+            // 2. Is attendance justification? -> HCM
+            // 3. Has explicit module field?
+            let moduleTag = matchedService?.moduleTag || 'GEN';
+            if (task.type === 'attendance_justification' || task.module?.startsWith('hcm')) {
+                moduleTag = 'HCM';
+            }
 
             return {
                 ...task,
-                moduleTag: matchedService?.moduleTag || 'GEN',
-                templateName: matchedService?.title || 'General'
+                moduleTag,
+                templateName: matchedService?.title || task.name || 'General' // Fallback to task.name
             };
         });
     }, [tasks]);

@@ -1,41 +1,53 @@
-
 rules_version = '2';
-
 service firebase.storage {
   match /b/{bucket}/o {
     
     // Helper function to check if the user is the owner of the request
-    function isRequestOwner(userId) {
+    function isOwner(userId) {
       return request.auth != null && request.auth.uid == userId;
     }
     
     // Helper function to check if the user has an admin role
     function isAdmin() {
       // Assumes user roles are stored in Firestore at /users/{userId}
-      return request.auth != null && get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'Admin';
+      return request.auth != null && 
+             firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'Admin';
     }
 
-    // Requests: Only the request owner or an admin can access files.
-    // The path is structured as `requests/{requestId}/{filename}`.
-    // The `userId` of the owner is part of the request document in Firestore, not in the Storage path.
-    // This rule requires a Firestore read to check ownership.
-    match /requests/{requestId}/{allPaths=**} {
-      allow read: if resource.metadata.ownerId == request.auth.uid || isAdmin();
-      // Create: User must be authenticated AND set themselves as owner in metadata
-      // This prevents users from uploading files claiming ownership by others
-      allow create: if request.auth != null
-        && request.resource.metadata.ownerId == request.auth.uid
-        && request.resource.size < 10 * 1024 * 1024; // Max 10MB per file
-      // Admins can create without ownership restriction
-      allow create: if isAdmin();
-      allow delete: if resource.metadata.ownerId == request.auth.uid || isAdmin();
+    // 1. REQUESTS DOCUMENTS
+    // New Path Structure: `requests/{userId}/{requestId}/{filename}`
+    // This allows cryptographic validation of ownership without DB reads for the path check.
+    match /requests/{userId}/{allPaths=**} {
+      allow read: if isOwner(userId) || isAdmin();
+      
+      // Strict Write:
+      // 1. Must be owner of the path segment (userId)
+      // 2. Metadata must also declare ownership (Double Check)
+      // 3. Size limit 10MB
+      allow write: if isOwner(userId)
+                   && request.resource.metadata.ownerId == userId
+                   && request.resource.size < 10 * 1024 * 1024;
+                   
+      allow delete: if isOwner(userId) || isAdmin();
     }
+    
+    // LEGACY SUPPORT (Optional - Remove if no active users)
+    // Deprecated: `requests/{requestId}/{filename}`
+    // match /requests/{requestId}/{allPaths=**} { ... } 
+    // (Removed per user confirmation of no active users)
 
-    // HCM Employee documents (contracts, IDs, etc.)
+    // 2. HCM EMPLOYEE DOCUMENTS
+    // Path: `employees/{employeeId}/{...}`
+    // Only HR Manager or Admin can access.
     match /employees/{employeeId}/{allPaths=**} {
-      // Only HRManager or Admin can read/write employee documents
       allow read, write: if isAdmin() ||
-        get(/databases/(default)/documents/users/$(request.auth.uid)).data.role in ['HRManager', 'Admin'];
+        firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role in ['HRManager', 'Admin'];
+    }
+    
+    // 3. PUBLIC ASSETS
+    match /public/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin();
     }
   }
 }

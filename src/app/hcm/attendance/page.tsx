@@ -110,6 +110,41 @@ export default function AttendancePage() {
         fetchEmployeeNames();
     }, [firestore, attendanceRecords, employeeNames]);
 
+    // Parse file using xlsx library
+    const parseFile = async (file: File): Promise<Array<{
+        employeeId: string;
+        date: string;
+        checkIn: string;
+        checkOut: string;
+    }>> => {
+        const buffer = await file.arrayBuffer();
+
+        // Dynamic import to avoid SSR issues if any, though standard import works in client components usually.
+        // But for safety in Next.js client component:
+        const { read, utils } = await import('xlsx');
+
+        const workbook = read(buffer, { type: 'array', cellDates: true, dateNF: 'yyyy-mm-dd' });
+        const firstSheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[firstSheetName];
+
+        // Parse to JSON (array of arrays to handle headers manually or array of objects)
+        // Using header: 1 gives us an array of arrays [[val1, val2], [val1, val2]]
+        const jsonData = utils.sheet_to_json(worksheet, { header: 1, raw: false }) as string[][];
+
+        if (jsonData.length < 2) return [];
+
+        // Skip header row (index 0) and map columns
+        // Assuming format: EmployeeID | Date | CheckIn | CheckOut
+        return jsonData.slice(1).map(row => {
+            return {
+                employeeId: row[0] ? String(row[0]).trim() : '',
+                date: row[1] ? String(row[1]).trim() : '',
+                checkIn: row[2] ? String(row[2]).trim() : '',
+                checkOut: row[3] ? String(row[3]).trim() : ''
+            };
+        }).filter(row => row.employeeId && row.date);
+    };
+
     // Handle file upload
     const handleFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
@@ -120,12 +155,10 @@ export default function AttendancePage() {
         setUploadResult(null);
 
         try {
-            // Read file content
-            const fileContent = await readFileAsText(file);
             setUploadProgress(30);
 
-            // Parse CSV/Excel (simplified - in production use a proper library like xlsx)
-            const rows = parseCSV(fileContent);
+            // Parse CSV/Excel using xlsx
+            const rows = await parseFile(file);
             setUploadProgress(50);
 
             if (rows.length === 0) {
@@ -143,9 +176,13 @@ export default function AttendancePage() {
             setUploadProgress(100);
 
             if (result.success) {
+                const skippedMsg = result.skippedCount && result.skippedCount > 0
+                    ? `, ${result.skippedCount} omitidos (duplicados)`
+                    : '';
+
                 setUploadResult({
                     success: true,
-                    message: `Importación completada: ${result.successCount} de ${result.recordCount} registros procesados`,
+                    message: `Importación completada: ${result.successCount} procesados${skippedMsg}`,
                     details: result.errorCount && result.errorCount > 0
                         ? `${result.errorCount} registros con errores`
                         : undefined
@@ -170,38 +207,6 @@ export default function AttendancePage() {
             event.target.value = '';
         }
     }, [user]);
-
-    // Helper to read file as text
-    const readFileAsText = (file: File): Promise<string> => {
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = (e) => resolve(e.target?.result as string);
-            reader.onerror = reject;
-            reader.readAsText(file);
-        });
-    };
-
-    // Simple CSV parser (in production, use a proper library)
-    const parseCSV = (content: string): Array<{
-        employeeId: string;
-        date: string;
-        checkIn: string;
-        checkOut: string;
-    }> => {
-        const lines = content.split('\n').filter(line => line.trim());
-        if (lines.length < 2) return [];
-
-        // Skip header row
-        return lines.slice(1).map(line => {
-            const cols = line.split(',').map(c => c.trim().replace(/"/g, ''));
-            return {
-                employeeId: cols[0] || '',
-                date: cols[1] || '',
-                checkIn: cols[2] || '',
-                checkOut: cols[3] || ''
-            };
-        }).filter(row => row.employeeId && row.date);
-    };
 
     // Download template
     const downloadTemplate = () => {
@@ -372,6 +377,7 @@ export default function AttendancePage() {
                                         <TableHead>Fecha</TableHead>
                                         <TableHead>Registros</TableHead>
                                         <TableHead>Éxito</TableHead>
+                                        <TableHead>Omitidos</TableHead>
                                         <TableHead>Errores</TableHead>
                                         <TableHead>Usuario</TableHead>
                                     </TableRow>
@@ -379,7 +385,7 @@ export default function AttendancePage() {
                                 <TableBody>
                                     {importsLoading ? (
                                         <TableRow>
-                                            <TableCell colSpan={7} className="text-center py-8">
+                                            <TableCell colSpan={8} className="text-center py-8">
                                                 Cargando historial...
                                             </TableCell>
                                         </TableRow>
@@ -404,6 +410,9 @@ export default function AttendancePage() {
                                                     <span className="text-green-600">{imp.successCount}</span>
                                                 </TableCell>
                                                 <TableCell>
+                                                    <span className="text-yellow-600">{imp.skippedCount || 0}</span>
+                                                </TableCell>
+                                                <TableCell>
                                                     {imp.errorCount > 0 ? (
                                                         <span className="text-red-600">{imp.errorCount}</span>
                                                     ) : (
@@ -415,7 +424,7 @@ export default function AttendancePage() {
                                         ))
                                     ) : (
                                         <TableRow>
-                                            <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                                            <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                                                 No hay importaciones registradas
                                             </TableCell>
                                         </TableRow>

@@ -62,8 +62,9 @@ import {
   Pencil,
   Users,
   Lock,
+  Info,
 } from "lucide-react";
-import type { Role, AppModule, ModulePermission, PermissionLevel } from "@/lib/types";
+import type { Role, AppModule, ModulePermission, PermissionLevel, SystemRole } from "@/lib/types";
 import {
   getAllRoles,
   createRole,
@@ -72,6 +73,8 @@ import {
   MODULE_INFO,
   isSystemRole,
 } from "@/firebase/role-actions";
+import { calculateSystemLevel, SYSTEM_LEVEL_CONFIG } from "@/lib/permissions-config";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 // Permission level badge colors
 const PERMISSION_COLORS: Record<PermissionLevel, string> = {
@@ -166,7 +169,7 @@ type RoleDialogProps = {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
   role?: Role | null;
-  onSave: (data: { name: string; description: string; permissions: ModulePermission[] }) => Promise<void>;
+  onSave: (data: { name: string; description: string; permissions: ModulePermission[]; systemLevel?: SystemRole }) => Promise<void>;
   isSaving: boolean;
   isAdmin?: boolean;
 };
@@ -183,6 +186,11 @@ function RoleDialog({ isOpen, onOpenChange, role, onSave, isSaving, isAdmin = fa
     return initial as Record<AppModule, PermissionLevel>;
   });
 
+  // Calculate system level live
+  const [detectedLevel, setDetectedLevel] = useState<SystemRole>('Member');
+  const [manualOverride, setManualOverride] = useState<SystemRole | null>(null);
+  const [isAdvancedMode, setIsAdvancedMode] = useState(false);
+
   // Reset form when role changes
   useEffect(() => {
     setName(role?.name || "");
@@ -193,7 +201,18 @@ function RoleDialog({ isOpen, onOpenChange, role, onSave, isSaving, isAdmin = fa
       initial[moduleId] = existing?.level || "hidden";
     });
     setPermissions(initial as Record<AppModule, PermissionLevel>);
+    setManualOverride(null);
+    setIsAdvancedMode(false);
   }, [role]);
+
+  // Recalculate system level when permissions change
+  useEffect(() => {
+    const permissionsList: ModulePermission[] = Object.entries(permissions).map(
+      ([module, level]) => ({ module: module as AppModule, level })
+    );
+    const calculated = calculateSystemLevel(permissionsList);
+    setDetectedLevel(calculated);
+  }, [permissions]);
 
   const handlePermissionChange = (moduleId: AppModule, level: PermissionLevel) => {
     setPermissions((prev) => ({ ...prev, [moduleId]: level }));
@@ -203,13 +222,21 @@ function RoleDialog({ isOpen, onOpenChange, role, onSave, isSaving, isAdmin = fa
     const permissionsList: ModulePermission[] = Object.entries(permissions).map(
       ([module, level]) => ({ module: module as AppModule, level })
     );
-    await onSave({ name, description, permissions: permissionsList });
+    await onSave({
+      name,
+      description,
+      permissions: permissionsList,
+      systemLevel: manualOverride || detectedLevel
+    });
   };
 
   const isEditing = !!role;
   const isSystemRoleEdit = role?.isSystemRole || false;
   // Admins can edit system roles, others cannot
   const canEdit = isAdmin || !isSystemRoleEdit;
+
+  const effectiveLevel = manualOverride || detectedLevel;
+  const levelInfo = SYSTEM_LEVEL_CONFIG[effectiveLevel];
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
@@ -253,6 +280,56 @@ function RoleDialog({ isOpen, onOpenChange, role, onSave, isSaving, isAdmin = fa
               />
             </div>
           </div>
+
+          {/* System Level Detection */}
+          {!isSystemRoleEdit && (
+            <Alert className={manualOverride ? "border-yellow-500/50 bg-yellow-500/10" : "bg-muted/50"}>
+              <Shield className="h-4 w-4" />
+              <AlertTitle className="flex items-center gap-2">
+                Nivel de Sistema: <Badge variant={manualOverride ? "secondary" : "outline"} className={manualOverride ? "bg-yellow-100 text-yellow-800 hover:bg-yellow-100" : ""}>{effectiveLevel}</Badge>
+                {manualOverride && <span className="text-xs text-muted-foreground">(Manual)</span>}
+              </AlertTitle>
+              <AlertDescription className="mt-2 text-xs text-muted-foreground">
+                {manualOverride
+                  ? "Has anulado manualmente el nivel detectado. Asegúrate de que esto sea correcto."
+                  : `Detectado automáticamente basado en los permisos seleccionados. Este nivel determina las reglas de seguridad de Firestore.`
+                }
+                <div className="mt-1 font-medium">{levelInfo?.description}</div>
+              </AlertDescription>
+
+              <div className="mt-2">
+                <Button
+                  variant="link"
+                  size="sm"
+                  className="h-auto p-0 text-xs"
+                  onClick={() => setIsAdvancedMode(!isAdvancedMode)}
+                >
+                  {isAdvancedMode ? "Ocultar opciones avanzadas" : "Opciones avanzadas (Override)"}
+                </Button>
+              </div>
+
+              {isAdvancedMode && (
+                <div className="mt-2 pt-2 border-border/50">
+                  <Label className="text-xs mb-1.5 block">Forzar Nivel de Sistema</Label>
+                  <Select
+                    value={manualOverride || "auto"}
+                    onValueChange={(v) => setManualOverride(v === "auto" ? null : v as SystemRole)}
+                  >
+                    <SelectTrigger className="h-8 text-xs w-full max-w-[200px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="auto">Automático ({detectedLevel})</SelectItem>
+                      <SelectItem value="Member">Member</SelectItem>
+                      <SelectItem value="Manager">Manager</SelectItem>
+                      <SelectItem value="HRManager">HRManager</SelectItem>
+                      <SelectItem value="Admin">Admin</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </Alert>
+          )}
 
           {/* Permissions */}
           <div className="space-y-4">
@@ -377,6 +454,7 @@ export default function RolesPage() {
     name: string;
     description: string;
     permissions: ModulePermission[];
+    systemLevel?: SystemRole;
   }) => {
     if (!firestore || !user) return;
 
@@ -500,6 +578,7 @@ export default function RolesPage() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Rol</TableHead>
+                      <TableHead>Nivel de Sistema</TableHead>
                       <TableHead>Descripción</TableHead>
                       <TableHead>Permisos</TableHead>
                       <TableHead>Tipo</TableHead>
@@ -520,6 +599,9 @@ export default function RolesPage() {
                               )}
                               {role.name}
                             </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline">{role.systemLevel || 'Member'}</Badge>
                           </TableCell>
                           <TableCell className="text-muted-foreground max-w-xs truncate">
                             {role.description}

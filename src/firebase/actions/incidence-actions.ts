@@ -175,9 +175,14 @@ interface ProcessAttendanceResult {
     batchId?: string;
     recordCount?: number;
     successCount?: number;
+    skippedCount?: number; // Added skippedCount
     errorCount?: number;
     errors?: Array<{ row: number; message: string }>;
 }
+
+
+
+
 
 export async function processAttendanceImport(
     rows: AttendanceImportRow[],
@@ -200,6 +205,7 @@ export async function processAttendanceImport(
             uploadedAt: now,
             recordCount: rows.length,
             successCount: 0,
+            skippedCount: 0,
             errorCount: 0,
             status: 'processing',
             errors: []
@@ -210,7 +216,40 @@ export async function processAttendanceImport(
 
         const errors: Array<{ row: number; message: string }> = [];
         let successCount = 0;
+        let skippedCount = 0;
         const newRecordsToJustify: Array<{ id: string; employeeId: string; date: string; type: 'tardiness' | 'early_departure' }> = [];
+
+        // Determine date range for pre-fetching existing records
+        // Important: this assumes rows are somewhat sorted or we iterate all to find min/max
+        // To be safe, let's find min/max
+        let minDate = rows.length > 0 ? rows[0].date : '';
+        let maxDate = rows.length > 0 ? rows[0].date : '';
+
+        if (rows.length > 0) {
+            for (const r of rows) {
+                if (r.date < minDate) minDate = r.date;
+                if (r.date > maxDate) maxDate = r.date;
+            }
+        }
+
+        // Fetch existing attendance records to prevent duplicates
+        const existingRecordsMap = new Set<string>();
+        if (minDate && maxDate) {
+            console.log(`[HCM] Checking for duplicates between ${minDate} and ${maxDate}`);
+            const attendanceRef = collection(firestore, 'attendance');
+            const duplicateQuery = query(
+                attendanceRef,
+                where('date', '>=', minDate),
+                where('date', '<=', maxDate)
+            );
+
+            const existingSnap = await getDocs(duplicateQuery);
+            existingSnap.docs.forEach(doc => {
+                const data = doc.data();
+                existingRecordsMap.add(`${data.employeeId}_${data.date}`);
+            });
+            console.log(`[HCM] Found ${existingRecordsMap.size} existing records in range`);
+        }
 
         // Get all unique employee IDs and fetch their shift types and time bank balances
         const employeeIds = [...new Set(rows.map(r => r.employeeId))];
@@ -247,6 +286,13 @@ export async function processAttendanceImport(
             const rowNum = i + 2;
 
             try {
+                // DUPLICATE CHECK
+                if (existingRecordsMap.has(`${row.employeeId}_${row.date}`)) {
+                    // console.log(`[HCM] Skipping duplicate for ${row.employeeId} on ${row.date}`);
+                    skippedCount++;
+                    continue;
+                }
+
                 if (!employeeShifts[row.employeeId]) {
                     errors.push({ row: rowNum, message: `Empleado ${row.employeeId} no encontrado` });
                     continue;
@@ -305,9 +351,9 @@ export async function processAttendanceImport(
                     overtimeHours: validation.overtimeHours,
                     payableOvertimeHours,
                     hoursAppliedToDebt,
-                    overtimeType: payableOvertimeHours > 0 ? 'double' : undefined,
+                    overtimeType: payableOvertimeHours > 0 ? 'double' : null,
                     isValid: validation.isValid,
-                    validationNotes: validation.message,
+                    validationNotes: validation.message ?? null,
                     importBatchId: batchId,
                     createdAt: now
                 };
@@ -365,35 +411,62 @@ export async function processAttendanceImport(
                     const toleranceDate = new Date(scheduledStartDate.getTime() + toleranceMinutes * 60000);
 
                     if (checkInDate > toleranceDate) {
-                        const diffMs = checkInDate.getTime() - scheduledStartDate.getTime();
-                        const minutesLate = Math.floor(diffMs / 60000);
+                        // CHECK FOR APPROVED INCIDENCES FIRST
+                        // Logic based on User Requirements: specific permits/vacations override tardiness
+                        // We need to check if there is an approved incidence for this employee on this date
 
-                        // Create Tardiness Record
-                        const tardinessData: Omit<TardinessRecord, 'id'> = {
-                            employeeId: row.employeeId,
-                            date: row.date,
-                            attendanceRecordId: 'PENDING_ID', // Idealmente el ID del attendance recien creado
-                            type: 'entry',
-                            scheduledTime: scheduledStart,
-                            actualTime: row.checkIn,
-                            minutesLate,
-                            isJustified: false,
-                            justificationStatus: 'pending',
-                            periodStartDate: row.date, // Simplificado
-                            tardinessCountInPeriod: 1, // Requiere conteo real
-                            tardinessCountInWeek: 1, // Requiere conteo real
-                            sanctionApplied: false,
-                            createdAt: now,
-                            updatedAt: now
-                        };
+                        // Note: ideally we should have prefetched incidences for performance, similar to existingRecordsMap
+                        // For now we do it per row but using a query limited to the date
+                        // Optimization: Prefetching logic should be added before the loop if performance becomes an issue
 
-                        const tRef = await addDoc(collection(firestore, 'tardiness_records'), tardinessData);
-                        newRecordsToJustify.push({
-                            id: tRef.id,
-                            employeeId: row.employeeId,
-                            date: row.date,
-                            type: 'tardiness'
-                        });
+                        const incidencesRef = collection(firestore, 'incidences');
+                        const q = query(
+                            incidencesRef,
+                            where('employeeId', '==', row.employeeId),
+                            where('startDate', '<=', row.date),
+                            where('endDate', '>=', row.date),
+                            where('status', '==', 'approved')
+                        );
+
+                        const incidenceSnap = await getDocs(q);
+
+                        // If there is an approved incidence covering this date, we skip creating a tardiness record
+                        // The user specified: "si ya existían permisos previamente registrados... no lo considerá como tal como una incidencia"
+                        if (!incidenceSnap.empty) {
+                            // console.log(`[HCM] Skipping tardiness for ${row.employeeId} on ${row.date} due to existing approved incidence`);
+                            // We act as if it's justified.
+                        } else {
+                            const diffMs = checkInDate.getTime() - scheduledStartDate.getTime();
+                            const minutesLate = Math.floor(diffMs / 60000);
+
+                            // Create Tardiness Record
+                            const tardinessData: Omit<TardinessRecord, 'id'> = {
+                                employeeId: row.employeeId,
+                                date: row.date,
+                                attendanceRecordId: 'PENDING_ID', // Idealmente el ID del attendance recien creado
+                                type: 'entry',
+                                scheduledTime: scheduledStart,
+                                actualTime: row.checkIn,
+                                minutesLate,
+                                isJustified: false,
+                                justificationStatus: 'pending',
+                                periodStartDate: row.date, // Simplificado
+                                tardinessCountInPeriod: 1, // Requiere conteo real
+                                tardinessCountInWeek: 1, // Requiere conteo real
+                                sanctionApplied: false,
+                                createdAt: now,
+                                updatedAt: now,
+                                importBatchId: batchId
+                            };
+
+                            const tRef = await addDoc(collection(firestore, 'tardiness_records'), tardinessData);
+                            newRecordsToJustify.push({
+                                id: tRef.id,
+                                employeeId: row.employeeId,
+                                date: row.date,
+                                type: 'tardiness'
+                            });
+                        }
                     }
                 }
 
@@ -404,38 +477,55 @@ export async function processAttendanceImport(
                     const scheduledEndDate = new Date(`2000-01-01T${scheduledEnd}`);
 
                     if (checkOutDate < scheduledEndDate) {
-                        const diffMs = scheduledEndDate.getTime() - checkOutDate.getTime();
-                        const minutesEarly = Math.floor(diffMs / 60000);
+                        // CHECK FOR APPROVED INCIDENCES FIRST (EARLY DEPARTURE)
+                        const incidencesRef = collection(firestore, 'incidences');
+                        const q = query(
+                            incidencesRef,
+                            where('employeeId', '==', row.employeeId),
+                            where('startDate', '<=', row.date),
+                            where('endDate', '>=', row.date),
+                            where('status', '==', 'approved')
+                        );
 
-                        if (minutesEarly > 0) { // Mínimo 1 minuto
-                            // Evaluate severity
-                            const shiftDuration = shiftConfig.type === 'diurnal' ? 9 : (shiftConfig.type === 'mixed' ? 8.5 : 8); // Assuming 1 hour break in shift
-                            const severity = evaluateEarlyDepartureSeverity(hoursWorked, shiftDuration);
+                        const incidenceSnap = await getDocs(q);
 
-                            const departureData: Omit<EarlyDeparture, 'id'> = {
-                                employeeId: row.employeeId,
-                                date: row.date,
-                                scheduledEndTime: scheduledEnd,
-                                actualEndTime: row.checkOut,
-                                checkOut: row.checkOut, // ISO Date for the checkout time
-                                minutesEarly,
-                                isJustified: false,
-                                justificationStatus: 'pending',
-                                hoursWorked,
-                                isAbsence: severity === 'critical', // If critical, flag as absence
-                                severity, // Assuming we add severity field to EarlyDeparture type too, or put it in notes
-                                notes: `Severidad: ${severity}`,
-                                createdAt: now,
-                                updatedAt: now
-                            };
+                        if (!incidenceSnap.empty) {
+                            // console.log(`[HCM] Skipping early departure for ${row.employeeId} on ${row.date} due to existing approved incidence`);
+                        } else {
+                            const diffMs = scheduledEndDate.getTime() - checkOutDate.getTime();
+                            const minutesEarly = Math.floor(diffMs / 60000);
 
-                            const edRef = await addDoc(collection(firestore, 'early_departures'), departureData);
-                            newRecordsToJustify.push({
-                                id: edRef.id,
-                                employeeId: row.employeeId,
-                                date: row.date,
-                                type: 'early_departure'
-                            });
+                            if (minutesEarly > 0) { // Mínimo 1 minuto
+                                // Evaluate severity
+                                const shiftDuration = shiftConfig.type === 'diurnal' ? 9 : (shiftConfig.type === 'mixed' ? 8.5 : 8); // Assuming 1 hour break in shift
+                                const severity = evaluateEarlyDepartureSeverity(hoursWorked, shiftDuration);
+
+                                const departureData: Omit<EarlyDeparture, 'id'> = {
+                                    employeeId: row.employeeId,
+                                    date: row.date,
+                                    scheduledEndTime: scheduledEnd,
+                                    actualEndTime: row.checkOut,
+                                    checkOut: row.checkOut, // ISO Date for the checkout time
+                                    minutesEarly,
+                                    isJustified: false,
+                                    justificationStatus: 'pending',
+                                    hoursWorked,
+                                    isAbsence: severity === 'critical', // If critical, flag as absence
+                                    severity, // Assuming we add severity field to EarlyDeparture type too, or put it in notes
+                                    notes: `Severidad: ${severity}`,
+                                    createdAt: now,
+                                    updatedAt: now,
+                                    importBatchId: batchId
+                                };
+
+                                const edRef = await addDoc(collection(firestore, 'early_departures'), departureData);
+                                newRecordsToJustify.push({
+                                    id: edRef.id,
+                                    employeeId: row.employeeId,
+                                    date: row.date,
+                                    type: 'early_departure'
+                                });
+                            }
                         }
                     }
                 }
@@ -452,6 +542,7 @@ export async function processAttendanceImport(
         updateDocumentNonBlocking(batchDocRef, {
             status: finalStatus,
             successCount,
+            skippedCount,
             errorCount: errors.length,
             errors: errors.slice(0, 50),
             dateRangeStart: rows.length > 0 ? rows.reduce((min, r) => r.date < min ? r.date : min, rows[0].date) : undefined,
@@ -497,6 +588,7 @@ export async function processAttendanceImport(
             batchId,
             recordCount: rows.length,
             successCount,
+            skippedCount,
             errorCount: errors.length,
             errors
         };
@@ -509,6 +601,60 @@ export async function processAttendanceImport(
 // =========================================================================
 // ATTENDANCE NOTIFICATION HELPERS
 // =========================================================================
+
+/**
+ * Helper to recursively find the first manager with approval permissions
+ */
+async function resolveEscalatedManager(firestore: any, startManagerId: string): Promise<string | null> {
+    let currentManagerId = startManagerId;
+    const visited = new Set<string>();
+
+    while (currentManagerId && !visited.has(currentManagerId)) {
+        visited.add(currentManagerId);
+
+        try {
+            const empRef = doc(firestore, 'employees', currentManagerId);
+            const empSnap = await getDoc(empRef);
+
+            if (!empSnap.exists()) return null;
+
+            const empData = empSnap.data() as Employee;
+
+            // Check permissions via Position
+            if (empData.positionId) {
+                const posRef = doc(firestore, 'positions', empData.positionId);
+                const posSnap = await getDoc(posRef);
+
+                if (posSnap.exists()) {
+                    const position = posSnap.data();
+                    // If manager can approve incidences, we found our target
+                    if (position.canApproveIncidences) {
+                        // Return the Auth User ID if available, otherwise fallback to Employee ID (though we prefer Auth ID)
+                        return empData.userId || currentManagerId;
+                    }
+                }
+            }
+
+            // If strictly checking role/system level is needed, add here.
+            // For now, we trust the Position 'canApproveIncidences' flag.
+
+            // Escalation: Move to the next manager up
+            if (empData.directManagerId) {
+                console.log(`[HCM] Manager ${currentManagerId} lacks permission, escalating to ${empData.directManagerId}`);
+                currentManagerId = empData.directManagerId;
+            } else {
+                // No more managers up the chain
+                return null;
+            }
+
+        } catch (e) {
+            console.error(`[HCM] Error resolving manager escalation for ${currentManagerId}`, e);
+            return null;
+        }
+    }
+
+    return null;
+}
 
 /**
  * Agrupa registros de retardos/salidas tempranas por manager directo
@@ -528,36 +674,46 @@ async function groupRecordsByManager(
 
             if (empSnap.exists()) {
                 const emp = empSnap.data() as Employee;
-                const managerId = emp.directManagerId;
+                const directManagerId = emp.directManagerId;
 
-                if (managerId) {
-                    // Obtener detalles del registro (minutos de retardo/salida temprana)
-                    let minutesLate: number | undefined;
-                    let minutesEarly: number | undefined;
+                if (directManagerId) {
+                    // ESCALATION LOGIC:
+                    // Find the first manager up the chain who can approve incidences (has 'canApproveIncidences' in Position)
+                    // This replaces the simple direct lookup.
 
-                    if (record.type === 'tardiness') {
-                        const tardinessRef = doc(firestore, 'tardiness_records', record.id);
-                        const tardinessSnap = await getDoc(tardinessRef);
-                        if (tardinessSnap.exists()) {
-                            minutesLate = (tardinessSnap.data() as TardinessRecord).minutesLate;
+                    const targetManagerUserId = await resolveEscalatedManager(firestore, directManagerId);
+
+                    if (targetManagerUserId) {
+                        // Obtener detalles del registro (minutos de retardo/salida temprana)
+                        let minutesLate: number | undefined;
+                        let minutesEarly: number | undefined;
+
+                        if (record.type === 'tardiness') {
+                            const tardinessRef = doc(firestore, 'tardiness_records', record.id);
+                            const tardinessSnap = await getDoc(tardinessRef);
+                            if (tardinessSnap.exists()) {
+                                minutesLate = (tardinessSnap.data() as TardinessRecord).minutesLate;
+                            }
+                        } else {
+                            const departureRef = doc(firestore, 'early_departures', record.id);
+                            const departureSnap = await getDoc(departureRef);
+                            if (departureSnap.exists()) {
+                                minutesEarly = (departureSnap.data() as EarlyDeparture).minutesEarly;
+                            }
                         }
+
+                        if (!byManager[targetManagerUserId]) {
+                            byManager[targetManagerUserId] = [];
+                        }
+                        byManager[targetManagerUserId].push({
+                            ...record,
+                            employeeName: emp.fullName || record.employeeId,
+                            minutesLate,
+                            minutesEarly
+                        });
                     } else {
-                        const departureRef = doc(firestore, 'early_departures', record.id);
-                        const departureSnap = await getDoc(departureRef);
-                        if (departureSnap.exists()) {
-                            minutesEarly = (departureSnap.data() as EarlyDeparture).minutesEarly;
-                        }
+                        console.warn(`[HCM] Could not find a manager with permissions for employee ${record.employeeId}`);
                     }
-
-                    if (!byManager[managerId]) {
-                        byManager[managerId] = [];
-                    }
-                    byManager[managerId].push({
-                        ...record,
-                        employeeName: emp.fullName || record.employeeId,
-                        minutesLate,
-                        minutesEarly
-                    });
                 }
             }
         } catch (error) {
@@ -591,12 +747,15 @@ async function createJustificationTask(
 
         // Crear tarea en el Buzón
         const taskData = {
-            title: `Justificar Incidencias de Asistencia`,
+            name: `Justificar Incidencias de Asistencia`,
             description: `Se detectaron ${records.length} incidencias que requieren justificación:\n- ${tardinessCount} retardo${tardinessCount !== 1 ? 's' : ''}\n- ${departureCount} salida${departureCount !== 1 ? 's' : ''} temprana${departureCount !== 1 ? 's' : ''}\n\nEmpleados afectados: ${uniqueEmployees.join(', ')}`,
             type: 'attendance_justification',
-            status: 'pending',
+            status: 'Active', // Corrected status for visibility
             priority: 'high',
-            assignedTo: managerId,
+            assigneeId: managerId, // Corrected field name (was assignedTo)
+            requestTitle: `Justificar Incidencias - ${metadata.filename}`, // field required by InboxPage
+            requestId: 'SYSTEM_GENERATED', // Placeholder for system tasks
+            requestOwnerId: metadata.uploadedBy, // Owner is the uploader
             createdBy: metadata.uploadedBy,
             createdAt: now,
             dueDate: dueDate.toISOString(),
@@ -609,8 +768,8 @@ async function createJustificationTask(
                     employeeName: r.employeeName,
                     date: r.date,
                     type: r.type,
-                    minutesLate: r.minutesLate,
-                    minutesEarly: r.minutesEarly
+                    minutesLate: r.minutesLate ?? null,
+                    minutesEarly: r.minutesEarly ?? null
                 }))
             },
             module: 'hcm_team_management',
@@ -1459,6 +1618,27 @@ export async function markTardinessUnjustified(
             updatedAt: now
         });
 
+        // Check if this completes any pending tasks
+        try {
+            const tasksQuery = query(
+                collection(firestore, 'tasks'),
+                where('type', '==', 'attendance_justification'),
+                where('status', '==', 'pending')
+            );
+            const tasksSnap = await getDocs(tasksQuery);
+
+            for (const taskDoc of tasksSnap.docs) {
+                const taskData = taskDoc.data();
+                const records = taskData.metadata?.records || [];
+
+                if (records.some((r: any) => r.id === tardinessId)) {
+                    await checkAttendanceTaskCompletion(taskDoc.id);
+                }
+            }
+        } catch (taskError) {
+            console.error('[HCM] Error checking task completion:', taskError);
+        }
+
         return { success: true };
     } catch (error) {
         console.error('[HCM] Error marking tardiness unjustified:', error);
@@ -2034,6 +2214,27 @@ export async function justifyMissingPunch(
             resultedInAbsence: false, // Ya no es falta automática
             updatedAt: now,
         });
+
+        // Check if this completes any pending tasks
+        try {
+            const tasksQuery = query(
+                collection(firestore, 'tasks'),
+                where('type', '==', 'attendance_justification'),
+                where('status', '==', 'pending')
+            );
+            const tasksSnap = await getDocs(tasksQuery);
+
+            for (const taskDoc of tasksSnap.docs) {
+                const taskData = taskDoc.data();
+                const records = taskData.metadata?.records || [];
+
+                if (records.some((r: any) => r.id === missingPunchId)) {
+                    await checkAttendanceTaskCompletion(taskDoc.id);
+                }
+            }
+        } catch (taskError) {
+            console.error('[HCM] Error checking task completion:', taskError);
+        }
 
         console.log(`[HCM] Justified missing punch ${missingPunchId}`);
         return { success: true, generatedTardinessId, generatedEarlyDepartureId };

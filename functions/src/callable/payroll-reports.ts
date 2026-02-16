@@ -568,11 +568,24 @@ export const generatePayrollReports = onCall<GeneratePayrollReportsRequest>(
                 }
             });
 
-            // Generate signed URL (7 days)
-            const [downloadUrl] = await file.getSignedUrl({
-                action: 'read',
-                expires: Date.now() + 7 * 24 * 60 * 60 * 1000,
-            });
+            // Generate download URL
+            let downloadUrl = '';
+            try {
+                const [url] = await file.getSignedUrl({
+                    action: 'read',
+                    expires: Date.now() + 7 * 24 * 60 * 60 * 1000,
+                });
+                downloadUrl = url;
+            } catch (err) {
+                // Fallback for emulator (Local development)
+                if (process.env.FUNCTIONS_EMULATOR || process.env.FIREBASE_STORAGE_EMULATOR_HOST) {
+                    const host = process.env.FIREBASE_STORAGE_EMULATOR_HOST || 'localhost:9199';
+                    downloadUrl = `http://${host}/v0/b/${bucket.name}/o/${encodeURIComponent(file.name)}?alt=media`;
+                    console.log(`[PayrollReports] Using emulator download URL: ${downloadUrl}`);
+                } else {
+                    throw err;
+                }
+            }
 
             console.log(`[PayrollReports] Generated ZIP: ${zipName} (${allEmployees.length} employees, ${dates.length} days)`);
 

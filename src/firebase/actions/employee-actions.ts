@@ -1,10 +1,10 @@
 'use client';
 
-import { doc, setDoc, collection, query, getDocs, updateDoc, deleteField, DocumentSnapshot } from 'firebase/firestore';
+import { doc, setDoc, collection, query, getDocs, updateDoc, deleteField, DocumentSnapshot, getDoc, where, orderBy, limit } from 'firebase/firestore';
 import { initializeFirebase } from '@/firebase';
 import { updateDocumentNonBlocking } from '../non-blocking-updates';
 import { callProcessEmployeeImport, CloudFunctionError, type EmployeeImportRow as CFEmployeeImportRow } from '../callable-functions';
-import type { Employee, ShiftType } from '@/lib/types';
+import type { Employee, ShiftType, Incidence } from '@/lib/types';
 
 // =========================================================================
 // EMPLOYEE MANAGEMENT
@@ -211,6 +211,7 @@ export async function processEmployeeImport(
     }
 }
 
+
 /**
  * Migrates employees with 'managerId' field to use 'directManagerId'
  * This is needed because the field name was inconsistent in older code
@@ -254,5 +255,105 @@ export async function migrateManagerIdField(): Promise<{
     } catch (error) {
         console.error('[HCM] Error migrating managerId field:', error);
         return { success: false, migratedCount: 0, error: 'Error migrando campo managerId.' };
+    }
+}
+
+// =========================================================================
+// EMPLOYEE LOOKUP SERVICES
+// =========================================================================
+
+/**
+ * Gets an employee by their Firebase Auth userId
+ * Used for getting the logged-in user's employee data
+ */
+export async function getEmployeeByUserId(
+    userId: string
+): Promise<{ success: boolean; employee?: Employee; error?: string }> {
+    try {
+        const { firestore } = initializeFirebase();
+
+        // In this system, employee ID matches user ID
+        const employeeRef = doc(firestore, 'employees', userId);
+        const employeeSnap = await getDoc(employeeRef);
+
+        if (!employeeSnap.exists()) {
+            return { success: false, error: 'Empleado no encontrado para este usuario.' };
+        }
+
+        const employee = { id: employeeSnap.id, ...employeeSnap.data() } as Employee;
+        return { success: true, employee };
+    } catch (error) {
+        console.error('[HCM] Error getting employee by userId:', error);
+        return { success: false, error: 'Error obteniendo datos del empleado.' };
+    }
+}
+
+/**
+ * Gets the approval limit for a position by limit type
+ * Used by BPMN to determine if escalation is needed
+ */
+export async function getApprovalLimit(
+    positionId: string,
+    limitType: 'expenses' | 'purchases' | 'travel' | 'contracts' | 'vacationDays' | 'overtimeHours' | 'headcount'
+): Promise<{ success: boolean; limit?: number; error?: string }> {
+    try {
+        const { firestore } = initializeFirebase();
+
+        const positionRef = doc(firestore, 'positions', positionId);
+        const positionSnap = await getDoc(positionRef);
+
+        if (!positionSnap.exists()) {
+            return { success: false, error: 'Puesto no encontrado.' };
+        }
+
+        const position = positionSnap.data();
+        const approvalLimits = position.approvalLimits;
+
+        if (!approvalLimits || approvalLimits[limitType] === undefined) {
+            // No limit defined means no restriction (or needs to escalate)
+            return { success: true, limit: undefined };
+        }
+
+        return { success: true, limit: approvalLimits[limitType] };
+    } catch (error) {
+        console.error('[HCM] Error getting approval limit:', error);
+        return { success: false, error: 'Error obteniendo límite de aprobación.' };
+    }
+}
+
+
+
+/**
+ * Gets upcoming leaves/incidences for an employee
+ * Used for calendar display and conflict detection
+ */
+export async function getUpcomingLeaves(
+    employeeId: string
+): Promise<{ success: boolean; incidences?: Incidence[]; error?: string }> {
+    try {
+        const { firestore } = initializeFirebase();
+
+        const today = new Date().toISOString().split('T')[0];
+
+        // Query for future and current approved/pending incidences
+        const incidencesQuery = query(
+            collection(firestore, 'incidences'),
+            where('employeeId', '==', employeeId),
+            where('endDate', '>=', today),
+            where('status', 'in', ['approved', 'pending']),
+            orderBy('endDate'),
+            orderBy('startDate')
+        );
+
+        const incidencesSnap = await getDocs(incidencesQuery);
+        const incidences = incidencesSnap.docs.map(d => ({
+            id: d.id,
+            ...d.data()
+        })) as Incidence[];
+
+        return { success: true, incidences };
+    } catch (error) {
+        console.error('[HCM] Error getting upcoming leaves:', error);
+        return { success: false, error: 'Error obteniendo permisos programados.' };
     }
 }

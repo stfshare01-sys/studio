@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useEffect, useCallback, Suspense, useRef } from 'react';
+import { useSearchParams } from 'next/navigation';
 import SiteLayout from '@/components/site-layout';
 import { useFirebase, useMemoFirebase } from '@/firebase/provider';
 import { useCollection } from '@/firebase/firestore/use-collection';
@@ -106,6 +107,16 @@ import type {
 import { JUSTIFICATION_TYPE_LABELS } from '@/lib/types';
 
 export default function TeamManagementPage() {
+    return (
+        <Suspense fallback={<Loader2 className="h-8 w-8 animate-spin" />}>
+            <TeamManagementContent />
+        </Suspense>
+    );
+}
+
+function TeamManagementContent() {
+    const searchParams = useSearchParams();
+    const lastUrlSync = useRef<{ batchId: string | null; tab: string | null }>({ batchId: null, tab: null });
     const { user, isUserLoading, firestore } = useFirebase();
     const { permissions, isLoading: loadingPermissions } = usePermissions();
     const { toast } = useToast();
@@ -469,9 +480,8 @@ export default function TeamManagementPage() {
     // Handle batch selection
     useEffect(() => {
         if (selectedBatchId === 'all') {
-            // If 'all' is selected, revert to current month
-            const now = new Date();
-            setDateFilter(`${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}`);
+            // If 'all' is selected, skip date filtering
+            setDateFilter('all');
             return;
         }
 
@@ -482,6 +492,21 @@ export default function TeamManagementPage() {
             setDateFilter(monthStr);
         }
     }, [selectedBatchId, importBatches]);
+
+    // Handle batchId from URL - respect URL changes but allow manual overrides
+    useEffect(() => {
+        const batchId = searchParams.get('batchId');
+        const tab = searchParams.get('tab');
+
+        // Only apply if the URL parameters have changed since we last synced them
+        if (batchId !== lastUrlSync.current.batchId || tab !== lastUrlSync.current.tab) {
+            if (batchId) setSelectedBatchId(batchId);
+            if (tab) setActiveTab(tab);
+
+            // Record what we just synced to prevent fighting manual changes
+            lastUrlSync.current = { batchId, tab };
+        }
+    }, [searchParams]);
 
     // Effect to reload data when tab, date, or manager changes (AFTER initial load)
     useEffect(() => {
@@ -823,9 +848,8 @@ export default function TeamManagementPage() {
 
         try {
             // Calcular rango de fechas del período actual
-            const periodStart = format(startOfMonth(new Date(selectedMonth)), 'yyyy-MM-dd');
-            const periodEnd = format(endOfMonth(new Date(selectedMonth)), 'yyyy-MM-dd');
-            const period = `${periodStart}_${periodEnd}`;
+            const periodStart = format(startOfMonth(new Date(`${selectedMonth}-01`)), 'yyyy-MM-dd');
+            const periodEnd = format(endOfMonth(new Date(`${selectedMonth}-01`)), 'yyyy-MM-dd');
 
             // Ejecutar consolidación de período
             toast({
@@ -834,53 +858,41 @@ export default function TeamManagementPage() {
             });
 
             const consolidateResult = await callConsolidatePrenomina({
-                period,
+                periodStart,
+                periodEnd,
+                periodType: 'monthly',
                 closedBy: user.uid
             });
 
             if (!consolidateResult.success) {
-                throw new Error('Error al consolidar período');
+                throw new Error(consolidateResult.errors?.[0]?.message || 'Error al consolidar período');
             }
 
-            // Marcar revisión como completa
+            // Marcar revisión como completa en period_closures
             const currentPeriod = selectedMonth;
             await setDoc(doc(firestore, 'period_closures', `${user.uid}_${currentPeriod}`), {
                 managerId: user.uid,
                 managerName: user.fullName || user.email,
                 period: currentPeriod,
+                periodStart,
+                periodEnd,
                 closedAt: new Date().toISOString(),
-                summary: consolidateResult.summary,
-                prenominaUrl: consolidateResult.prenominaUrl
+                processedCount: consolidateResult.processedCount,
+                recordIds: consolidateResult.recordIds
             });
 
             setPeriodClosed(true);
 
-            // Toast de éxito con resumen
-            const { summary } = consolidateResult;
+            // Toast de éxito simplificado ya que el backend v2 no retorna resumen detallado
             toast({
                 title: "Período cerrado exitosamente",
                 description: (
-                    `Resumen:\n` +
-                    `• ${summary.overtimeRejected} HE rechazadas\n` +
-                    `• ${summary.tardinessMarked} retardos injustificados\n` +
-                    `• ${summary.earlyDeparturesMarked} salidas tempranas procesadas\n` +
-                    `• ${summary.missingPunchesMarked} marcajes faltantes procesados\n` +
-                    `• ${summary.faultsMarked} faltas marcadas\n\n` +
-                    `Archivo NOMIPAQ generado.`
+                    `Se han consolidado ${consolidateResult.processedCount} registros de asistencia.\n` +
+                    `Las incidencias pendientes han sido procesadas automáticamente.`
                 ),
                 variant: "default",
-                duration: 10000,
+                duration: 5000,
             });
-
-            // Preguntar si desea descargar el archivo NOMIPAQ
-            const download = window.confirm(
-                '¿Deseas descargar el archivo NOMIPAQ ahora?\n\n' +
-                'El archivo estará disponible por 7 días.'
-            );
-
-            if (download) {
-                window.open(consolidateResult.prenominaUrl, '_blank');
-            }
 
         } catch (error) {
             console.error('Error closing period:', error);
@@ -1032,9 +1044,10 @@ export default function TeamManagementPage() {
 
 
     // Computed values
-    const pendingTardiness = tardiness.filter(t => !t.isJustified);
-    const pendingDepartures = earlyDepartures.filter(d => !d.isJustified);
+    const pendingTardiness = tardiness.filter(t => !t.isJustified && t.justificationStatus !== 'unjustified');
+    const pendingDepartures = earlyDepartures.filter(d => !d.isJustified && d.justificationStatus !== 'unjustified');
     const pendingOvertime = overtimeRequests.filter(o => o.status === 'pending');
+    const pendingMissingPunches = missingPunches.filter(p => !p.isJustified && !p.resultedInAbsence);
 
     // Filter employees by shift in the list
     const filteredEmployees = employees.filter(emp =>
@@ -1057,32 +1070,66 @@ export default function TeamManagementPage() {
         return employeeShiftMap.get(employeeId) === selectedShiftFilter;
     };
 
+    // Calculate active date range from batch
+    const activeBatchRange = useMemo(() => {
+        if (selectedBatchId === 'all') return null;
+        const batch = importBatches.find(b => b.id === selectedBatchId);
+        if (batch && batch.dateRangeStart && batch.dateRangeEnd) {
+            return { start: batch.dateRangeStart, end: batch.dateRangeEnd };
+        }
+        return null;
+    }, [selectedBatchId, importBatches]);
+
+
     const filteredTardiness = tardiness.filter(record => {
         const matchesSearch = !searchTerm ||
             ((record as any).employeeName || employees.find(e => e.id === record.employeeId)?.fullName || '').toLowerCase().includes(searchTerm.toLowerCase());
         const matchesStatus = statusFilter === 'all' ||
-            (statusFilter === 'pending' ? !record.isJustified : record.isJustified);
+            (statusFilter === 'pending'
+                ? (!record.isJustified && record.justificationStatus !== 'unjustified')
+                : (record.isJustified || record.justificationStatus === 'unjustified'));
         const matchesEmployee = selectedEmployeeFilter === 'all' || record.employeeId === selectedEmployeeFilter;
-        return matchesSearch && matchesStatus && filterByShift(record.employeeId) && matchesEmployee;
+        // Date Filter
+        const matchesDate = !activeBatchRange || (record.date >= activeBatchRange.start && record.date <= activeBatchRange.end);
+
+        return matchesSearch && matchesStatus && filterByShift(record.employeeId) && matchesEmployee && matchesDate;
     });
 
     const filteredDepartures = earlyDepartures.filter(record => {
         const matchesSearch = !searchTerm ||
             (record.employeeName || '').toLowerCase().includes(searchTerm.toLowerCase());
         const matchesStatus = statusFilter === 'all' ||
-            (statusFilter === 'pending' ? !record.isJustified : record.isJustified);
+            (statusFilter === 'pending'
+                ? (!record.isJustified && record.justificationStatus !== 'unjustified')
+                : (record.isJustified || record.justificationStatus === 'unjustified'));
         const matchesEmployee = selectedEmployeeFilter === 'all' || record.employeeId === selectedEmployeeFilter;
-        return matchesSearch && matchesStatus && filterByShift(record.employeeId) && matchesEmployee;
+        // Date Filter
+        const matchesDate = !activeBatchRange || (record.date >= activeBatchRange.start && record.date <= activeBatchRange.end);
+
+        return matchesSearch && matchesStatus && filterByShift(record.employeeId) && matchesEmployee && matchesDate;
     });
 
     const filteredOvertime = overtimeRequests.filter(r => {
         const matchesEmployee = selectedEmployeeFilter === 'all' || r.employeeId === selectedEmployeeFilter;
-        return filterByShift(r.employeeId) && matchesEmployee;
+        // Date Filter (assuming r.date exists on OvertimeRequest)
+        const matchesDate = !activeBatchRange || (r.date >= activeBatchRange.start && r.date <= activeBatchRange.end);
+        return filterByShift(r.employeeId) && matchesEmployee && matchesDate;
     });
 
     const filteredAssignments = shiftAssignments.filter(r => {
         const matchesEmployee = selectedEmployeeFilter === 'all' || r.employeeId === selectedEmployeeFilter;
-        return filterByShift(r.employeeId) && matchesEmployee;
+        // Date Filter for assignments (overlap check)
+        const assignmentEnd = r.endDate || '9999-12-31';
+        const matchesDate = !activeBatchRange || (r.startDate <= activeBatchRange.end && assignmentEnd >= activeBatchRange.start);
+
+        return filterByShift(r.employeeId) && matchesEmployee && matchesDate;
+    });
+
+    const filteredMissingPunches = missingPunches.filter(p => {
+        const matchesEmployee = selectedEmployeeFilter === 'all' || p.employeeId === selectedEmployeeFilter;
+        // Date Filter
+        const matchesDate = !activeBatchRange || (p.date >= activeBatchRange.start && p.date <= activeBatchRange.end);
+        return matchesEmployee && matchesDate;
     });
 
 
@@ -1266,8 +1313,8 @@ export default function TeamManagementPage() {
                         </TabsTrigger>
                         <TabsTrigger value="missing-punches">
                             Sin Registro
-                            {missingPunches.filter(p => !p.isJustified).length > 0 && (
-                                <Badge variant="destructive" className="ml-2">{missingPunches.filter(p => !p.isJustified).length}</Badge>
+                            {missingPunches.filter(p => !p.isJustified && !p.resultedInAbsence).length > 0 && (
+                                <Badge variant="destructive" className="ml-2">{missingPunches.filter(p => !p.isJustified && !p.resultedInAbsence).length}</Badge>
                             )}
                         </TabsTrigger>
                         <TabsTrigger value="overtime">
@@ -1766,15 +1813,14 @@ export default function TeamManagementPage() {
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
-                                        {missingPunches.filter(p => selectedEmployeeFilter === 'all' || p.employeeId === selectedEmployeeFilter).length === 0 ? (
+                                        {filteredMissingPunches.length === 0 ? (
                                             <TableRow>
                                                 <TableCell colSpan={5} className="text-center text-muted-foreground">
                                                     Sin marcajes faltantes para los filtros seleccionados
                                                 </TableCell>
                                             </TableRow>
                                         ) : (
-                                            missingPunches
-                                                .filter(p => selectedEmployeeFilter === 'all' || p.employeeId === selectedEmployeeFilter)
+                                            filteredMissingPunches
                                                 .map((punch) => {
                                                     const employee = employees.find(e => e.id === punch.employeeId);
                                                     const missingTypeLabels = {
@@ -2172,13 +2218,13 @@ export default function TeamManagementPage() {
                                         Al marcar como completa, notificas a RH que has terminado de revisar las infracciones.
                                     </p>
                                     <p className="text-sm text-muted-foreground">
-                                        Solo se habilita cuando todas las infracciones han sido atendidas (justificadas o dejadas pendientes conscientemente).
+                                        Solo se habilita cuando todas las infracciones (retardos, salidas), horas extras y marcajes faltantes han sido atendidos.
                                     </p>
                                 </div>
                                 <div className="flex justify-center pt-2">
                                     <Button
                                         onClick={handleClosePeriod}
-                                        disabled={closingPeriod || periodClosed || (pendingTardiness.length + pendingDepartures.length) > 0}
+                                        disabled={closingPeriod || periodClosed || (pendingTardiness.length + pendingDepartures.length + pendingOvertime.length + pendingMissingPunches.length) > 0}
                                         variant={periodClosed ? "outline" : "default"}
                                         size="lg"
                                         className="min-w-[280px]"

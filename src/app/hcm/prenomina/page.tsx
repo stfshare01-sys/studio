@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import SiteLayout from '@/components/site-layout';
 import Link from 'next/link';
 import { useFirebase, useMemoFirebase } from '@/firebase/provider';
@@ -45,15 +45,16 @@ import {
     Users,
     XCircle
 } from 'lucide-react';
-import type { PrenominaRecord } from '@/lib/types';
-import { callConsolidatePrenomina } from '@/firebase/callable-functions';
-import { format, startOfMonth, endOfMonth } from 'date-fns';
+import type { PrenominaRecord, AttendanceRecord } from '@/lib/types';
+import { format, startOfMonth, endOfMonth, parseISO, addMinutes, differenceInDays } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
 import { Label } from '@/components/ui/label';
 import { getPendingIncidences } from '@/firebase/actions/prenomina-actions';
 import { runGlobalSLAProcessing } from '@/firebase/actions/sla-actions';
 import { usePermissions } from '@/hooks/use-permissions';
+import { callConsolidatePrenomina, callGeneratePayrollReports } from '@/firebase/callable-functions';
+import { NOMIPAQ_CODES } from '@/types/hcm-operational';
 
 /**
  * Consolidación de Asistencia - Revisión y cierre de incidencias para nómina
@@ -65,6 +66,8 @@ export default function ConsolidacionAsistenciaPage() {
     const { toast } = useToast();
     const [searchTerm, setSearchTerm] = useState('');
     const [isConsolidating, setIsConsolidating] = useState(false);
+    const [isExporting, setIsExporting] = useState(false);
+    const [isDownloadingReports, setIsDownloadingReports] = useState(false);
     const [isConsolidateDialogOpen, setIsConsolidateDialogOpen] = useState(false);
     const [validationErrors, setValidationErrors] = useState<string[]>([]);
     const [selectedPeriod, setSelectedPeriod] = useState({
@@ -78,6 +81,10 @@ export default function ConsolidacionAsistenciaPage() {
     const prenominaQuery = useMemoFirebase(() => {
         if (!firestore || !selectedPeriod.start) return null;
 
+        /**
+         * Buscamos registros que COMIENCEN dentro del rango seleccionado.
+         * En el futuro podríamos mejorar esto para buscar solapamientos (overlap).
+         */
         return query(
             collection(firestore, 'prenomina'),
             where('periodStart', '>=', selectedPeriod.start),
@@ -105,9 +112,9 @@ export default function ConsolidacionAsistenciaPage() {
                 if (lockResult.isLocked && lockResult.lock) {
                     setPeriodClosures([{
                         id: lockResult.lock.id,
-                        period: format(new Date(selectedPeriod.start), 'yyyy-MM'),
-                        lockedAt: lockResult.lock.lockedAt,
-                        lockedByName: lockResult.lock.lockedByName
+                        period: `${lockResult.lock.periodStart}_${lockResult.lock.periodEnd}`,
+                        closedAt: lockResult.lock.lockedAt,
+                        managerName: lockResult.lock.lockedByName
                     }]);
                 } else {
                     setPeriodClosures([]);
@@ -124,25 +131,40 @@ export default function ConsolidacionAsistenciaPage() {
     }, [selectedPeriod.start, selectedPeriod.end]);
 
     // Filter records client-side for search
-    const filteredRecords = prenominaRecords?.filter(record => {
-        if (!searchTerm) return true;
-        const searchLower = searchTerm.toLowerCase();
-        return (
-            record.employeeName?.toLowerCase().includes(searchLower) ||
-            record.employeeRfc?.toLowerCase().includes(searchLower)
+    // Filter records locally to strictly match the selected range (since query is >= start)
+    const exactMatchedRecords = useMemo(() => {
+        if (!prenominaRecords) return [];
+        return (prenominaRecords as PrenominaRecord[]).filter(r =>
+            r.periodStart === selectedPeriod.start && r.periodEnd === selectedPeriod.end
         );
-    }) || [];
+    }, [prenominaRecords, selectedPeriod.start, selectedPeriod.end]);
+
+    const filteredRecords = useMemo(() => {
+        if (!searchTerm) return exactMatchedRecords;
+        return exactMatchedRecords.filter(r =>
+            (r.employeeName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (r.employeeId || '').toLowerCase().includes(searchTerm.toLowerCase())
+        );
+    }, [exactMatchedRecords, searchTerm]);
 
     // Calculate totals based on filtered records (NO MONETARY VALUES)
-    const totalDaysWorked = filteredRecords.reduce((sum, r) => sum + (r.daysWorked || 0), 0);
-    const totalOvertimeHours = filteredRecords.reduce((sum, r) =>
+    const totalDaysWorked = filteredRecords.reduce((sum: number, r: PrenominaRecord) => sum + (r.daysWorked || 0), 0);
+    const totalOvertimeHours = filteredRecords.reduce((sum: number, r: PrenominaRecord) =>
         sum + (r.overtimeDoubleHours || 0) + (r.overtimeTripleHours || 0), 0);
 
-    // Check if period is already closed
+    // Helper to determine period type based on duration
+    const getPeriodType = (start: string, end: string): 'weekly' | 'biweekly' | 'monthly' => {
+        const days = differenceInDays(parseISO(end), parseISO(start)) + 1;
+        if (days >= 25) return 'monthly';
+        if (days >= 12) return 'biweekly';
+        return 'weekly';
+    };
+
+    // Check if period is already closed (based on exact match of start_end range)
+    const currentPeriodKey = `${selectedPeriod.start}_${selectedPeriod.end}`;
     const isPeriodClosed = periodClosures.some(closure => {
-        const closurePeriod = closure.period;
-        const selectedPeriodKey = format(new Date(selectedPeriod.start), 'yyyy-MM');
-        return closurePeriod === selectedPeriodKey;
+        // We match by range key primarily
+        return closure.period === currentPeriodKey;
     });
 
     // Handle consolidation and period closure
@@ -215,10 +237,12 @@ export default function ConsolidacionAsistenciaPage() {
                 description: "Generando registros de prenómina...",
             });
 
+            const effectivePeriodType = getPeriodType(selectedPeriod.start, selectedPeriod.end);
+
             const consolidateResult = await callConsolidatePrenomina({
                 periodStart: selectedPeriod.start,
                 periodEnd: selectedPeriod.end,
-                periodType: 'monthly'
+                periodType: effectivePeriodType
             });
 
             if (!consolidateResult.success) {
@@ -235,7 +259,7 @@ export default function ConsolidacionAsistenciaPage() {
             const lockResult = await lockPayrollPeriod(
                 selectedPeriod.start,
                 selectedPeriod.end,
-                'monthly',
+                effectivePeriodType,
                 user.uid,
                 user.fullName || user.email || 'Sistema',
                 undefined, // prenominaExportId
@@ -268,86 +292,220 @@ export default function ConsolidacionAsistenciaPage() {
         }
     };
 
-    // Handle export to NomiPAQ format (WITHOUT MONETARY VALUES)
-    const handleExport = (records: PrenominaRecord[]) => {
-        // Create CSV content for NomiPAQ import (attendance data only)
-        const headers = [
-            'RFC',
-            'Nombre',
-            'Período Inicio',
-            'Período Fin',
-            'Días Trabajados',
-            'HE Dobles (hrs)',
-            'HE Triples (hrs)'
-        ].join(',');
+    // Handle export to NomiPAQ format (Formato 1: EMPLEADO|FECHA|CODIGO|VALOR)
+    const handleExport = async (records: PrenominaRecord[]) => {
+        if (!firestore) return;
+        setIsExporting(true);
 
-        const rows = records.map(r => [
-            r.employeeRfc || '',
-            r.employeeName || '',
-            r.periodStart,
-            r.periodEnd,
-            r.daysWorked || 0,
-            (r.overtimeDoubleHours || 0).toFixed(2),
-            (r.overtimeTripleHours || 0).toFixed(2)
-        ].join(','));
+        try {
+            toast({
+                title: "Generando archivo NomiPAQ",
+                description: "Obteniendo detalles de asistencia...",
+            });
 
-        const csv = [headers, ...rows].join('\n');
-        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `asistencia_nomipaq_${selectedPeriod.start}_${selectedPeriod.end}.csv`;
-        a.click();
-        URL.revokeObjectURL(url);
+            // 1. Fetch all attendance for the period to get daily detail
+            const attendanceQuery = query(
+                collection(firestore, 'attendance'),
+                where('date', '>=', selectedPeriod.start),
+                where('date', '<=', selectedPeriod.end)
+            );
+            const attendanceSnap = await getDocs(attendanceQuery);
+            const attendanceDocs = attendanceSnap.docs.map(d => ({ id: d.id, ...d.data() } as AttendanceRecord));
 
-        toast({
-            title: 'Exportación completada',
-            description: 'El archivo CSV ha sido descargado.',
-        });
+            // 2. Fetch all employees to get employeeNumber
+            const employeeIds = Array.from(new Set(attendanceDocs.map(a => a.employeeId)));
+            const employeesMap: Record<string, any> = {};
+
+            // Fetch in batches if necessary, but for this context assume they fit or fetch as needed
+            // For simplicity in this UI, we fetch individual if not many, or bulk
+            const employeesSnap = await getDocs(collection(firestore, 'employees'));
+            employeesSnap.docs.forEach(d => {
+                employeesMap[d.id] = { id: d.id, ...d.data() };
+            });
+
+            // 3. Generate Formato 1 lines
+            const lines: string[] = [];
+            lines.push('EMPLEADO|FECHA|CODIGO|VALOR'); // Header
+
+            for (const att of attendanceDocs as any[]) {
+                const emp = employeesMap[att.employeeId];
+                if (!emp) continue;
+
+                const employeeNumber = emp.employeeNumber || emp.employeeId || emp.id;
+                const date = att.date;
+
+                // Base entry: Worked day
+                if (!att.isVoid) {
+                    lines.push(`${employeeNumber}|${date}|${NOMIPAQ_CODES.DIA_TRABAJADO}|`);
+                }
+
+                // Overtime entries
+                if (att.overtimeHours > 0) {
+                    const double = att.overtimeDoubleHours || (att.overtimeType === 'double' ? att.overtimeHours : 0);
+                    const triple = att.overtimeTripleHours || (att.overtimeType === 'triple' ? att.overtimeHours : 0);
+
+                    if (double > 0) {
+                        lines.push(`${employeeNumber}|${date}|${NOMIPAQ_CODES.HORAS_EXTRAS_DOBLES}|${double}`);
+                    }
+                    if (triple > 0) {
+                        lines.push(`${employeeNumber}|${date}|${NOMIPAQ_CODES.HORAS_EXTRAS_TRIPLES}|${triple}`);
+                    }
+                }
+
+                // Infractions (if they resulted in absence, they'll have codes)
+                // Use status or nomipaqCode if present
+                const status = att.status || (att as any).dayStatus;
+                if (status === 'absence_unjustified' || att.nomipaqCode === '1FINJ') {
+                    lines.push(`${employeeNumber}|${date}|${NOMIPAQ_CODES.FALTA_INJUSTIFICADA}|`);
+                } else if (att.hasTardiness || att.nomipaqCode === '1RET') {
+                    lines.push(`${employeeNumber}|${date}|${NOMIPAQ_CODES.RETARDO}|`);
+                }
+            }
+
+            // 4. Download file
+            const csv = lines.join('\n');
+            const blob = new Blob([csv], { type: 'text/plain;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `nomipaq_formato1_${selectedPeriod.start}_${selectedPeriod.end}.txt`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            toast({
+                title: 'Exportación completada',
+                description: 'El archivo NomiPAQ (Formato 1) ha sido descargado.',
+            });
+        } catch (error) {
+            console.error('Error exporting to NomiPAQ:', error);
+            toast({
+                title: 'Error en exportación',
+                description: 'No se pudieron obtener los detalles de asistencia.',
+                variant: 'destructive'
+            });
+        } finally {
+            setIsExporting(false);
+        }
     };
 
-    // Format date
-    const formatDate = (dateStr: string) => {
+    // Handle official payroll reports (Excel/ZIP)
+    const handleOfficialReport = async () => {
+        setIsDownloadingReports(true);
         try {
-            return format(new Date(dateStr), 'dd MMM yyyy', { locale: es });
+            toast({
+                title: "Generando reportes oficiales",
+                description: "Esto puede tardar unos segundos...",
+            });
+
+            const result = await callGeneratePayrollReports({
+                periodStart: selectedPeriod.start,
+                periodEnd: selectedPeriod.end
+            });
+
+            if (result.success && result.downloadUrl) {
+                window.open(result.downloadUrl, '_blank');
+                toast({
+                    title: "Reportes generados",
+                    description: "La descarga del archivo ZIP debería comenzar automáticamente.",
+                });
+            } else {
+                throw new Error("No se recibió la URL de descarga.");
+            }
+        } catch (error) {
+            console.error('Error generating official reports:', error);
+            toast({
+                title: "Error al generar reportes",
+                description: error instanceof Error ? error.message : "Error desconocido",
+                variant: "destructive"
+            });
+        } finally {
+            setIsDownloadingReports(false);
+        }
+    };
+
+    // Format date correctly handling timezone
+    const formatDate = (dateStr: string) => {
+        if (!dateStr) return '-';
+        try {
+            // parseISO treats "YYYY-MM-DD" as local midnight if no T is present
+            // preventing the 1-day shift common with new Date(dateStr)
+            return format(parseISO(dateStr), 'dd MMM yyyy', { locale: es });
         } catch {
             return dateStr;
         }
     };
 
     // Get managers who haven't closed
-    const allManagers = Array.from(new Set(filteredRecords.map(r => r.employeeId))); // This would need manager IDs
-    const closedManagers = periodClosures.map(c => c.managerId);
+    const allManagers = Array.from(new Set(filteredRecords.map((r: PrenominaRecord) => r.employeeId))); // This would need manager IDs
+    const closedManagers = periodClosures.map((c: any) => c.managerId);
     const pendingManagers = allManagers.filter(m => !closedManagers.includes(m));
 
     return (
         <SiteLayout>
             <div className="flex flex-1 flex-col">
-                <header className="flex flex-col gap-4 p-4 sm:p-6 md:flex-row md:items-center md:justify-between">
+                <header className="flex flex-col gap-4 p-4 sm:p-6 md:flex-row md:items-center md:justify-between border-b">
                     <div className="flex items-center gap-4">
-                        <Button variant="outline" size="icon" className="border-blue-500 text-blue-600 hover:bg-blue-50 hover:text-blue-700" asChild>
+                        <Button variant="outline" size="icon" className="border-blue-500 text-blue-600 hover:bg-blue-50 hover:text-blue-700" asChild title="Volver al Dashboard">
                             <Link href="/hcm">
                                 <ArrowLeft className="h-4 w-4" />
                             </Link>
                         </Button>
                         <div>
-                            <h1 className="text-2xl font-bold tracking-tight">Consolidación de Asistencia</h1>
-                            <p className="text-muted-foreground">
-                                Revisión y cierre de incidencias para nómina
+                            <h1 className="text-2xl font-bold tracking-tight text-gray-900">Consolidación de Asistencia</h1>
+                            <p className="text-sm text-muted-foreground">
+                                Revisa y cierra el período para procesar la nómina
                             </p>
                         </div>
                     </div>
-                    <div className="flex gap-2">
+
+                    <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex flex-col gap-1.5 mr-2">
+                            <Label htmlFor="year-select" className="text-[10px] font-bold uppercase text-gray-400">Año</Label>
+                            <Select
+                                value={selectedPeriod.start.substring(0, 4)}
+                                onValueChange={(year) => {
+                                    const monthDay = selectedPeriod.start.substring(5);
+                                    const endMonthDay = selectedPeriod.end.substring(5);
+                                    setSelectedPeriod({
+                                        start: `${year}-${monthDay}`,
+                                        end: `${year}-${endMonthDay}`
+                                    });
+                                }}
+                            >
+                                <SelectTrigger id="year-select" className="h-9 w-[90px] border-blue-200">
+                                    <SelectValue placeholder="Año" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="2024">2024</SelectItem>
+                                    <SelectItem value="2025">2025</SelectItem>
+                                    <SelectItem value="2026">2026</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        <Button
+                            variant="outline"
+                            onClick={handleOfficialReport}
+                            disabled={isDownloadingReports || filteredRecords.length === 0}
+                            className="h-9 border-green-500 text-green-600 hover:bg-green-50"
+                        >
+                            <FileSpreadsheet className="mr-2 h-4 w-4" />
+                            {isDownloadingReports ? 'Generando...' : 'Reporte Oficial'}
+                        </Button>
                         <Button
                             variant="outline"
                             onClick={() => handleExport(filteredRecords)}
-                            disabled={filteredRecords.length === 0}
+                            className="h-9"
+                            disabled={isExporting || filteredRecords.length === 0}
                         >
                             <Download className="mr-2 h-4 w-4" />
-                            Exportar CSV (NomiPAQ)
+                            {isExporting ? 'Exportando...' : 'NomiPAQ'}
                         </Button>
                         <Button
                             onClick={() => setIsConsolidateDialogOpen(true)}
+                            className="h-9 bg-blue-600 hover:bg-blue-700"
                             disabled={isPeriodClosed}
                         >
                             <Calculator className="mr-2 h-4 w-4" />
@@ -567,7 +725,7 @@ export default function ConsolidacionAsistenciaPage() {
                         </DialogContent>
                     </Dialog>
                 </main>
-            </div>
-        </SiteLayout>
+            </div >
+        </SiteLayout >
     );
 }

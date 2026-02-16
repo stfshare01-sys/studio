@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AlertTriangle, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { getEmployeeByUserId } from '@/firebase/hcm-actions';
+import { getEmployeeByUserId } from '@/firebase/actions/employee-actions';
 import { getVacationBalance, createIncidence } from '@/firebase/actions/incidence-actions';
 import { checkDateConflict } from '@/lib/hcm-utils';
 import { calculateEffectiveLeaveDays, EffectiveDaysResult } from '@/lib/hcm-calculations';

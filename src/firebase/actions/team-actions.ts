@@ -203,12 +203,19 @@ export async function getTeamTardiness(
         for (let i = 0; i < subordinateIds.length; i += 30) {
             const batch = subordinateIds.slice(i, i + 30);
 
+            const qConstraints = [
+                where('employeeId', 'in', batch),
+                orderBy('date', 'desc')
+            ];
+
+            if (dateFilter !== 'all') {
+                qConstraints.push(where('date', '>=', dateStart));
+                qConstraints.push(where('date', '<=', dateEnd));
+            }
+
             const tardinessQuery = query(
                 collection(firestore, 'tardiness_records'),
-                where('employeeId', 'in', batch),
-                where('date', '>=', dateStart),
-                where('date', '<=', dateEnd),
-                orderBy('date', 'desc')
+                ...qConstraints
             );
 
             const snapshot = await getDocs(tardinessQuery);
@@ -397,6 +404,27 @@ export async function markEarlyDepartureUnjustified(
             updatedAt: now
         });
 
+        // Check if this completes any pending tasks
+        try {
+            const tasksQuery = query(
+                collection(firestore, 'tasks'),
+                where('type', '==', 'attendance_justification'),
+                where('status', '==', 'pending')
+            );
+            const tasksSnap = await getDocs(tasksQuery);
+
+            for (const taskDoc of tasksSnap.docs) {
+                const taskData = taskDoc.data();
+                const records = taskData.metadata?.records || [];
+
+                if (records.some((r: any) => r.id === departureId)) {
+                    await checkAttendanceTaskCompletion(taskDoc.id);
+                }
+            }
+        } catch (taskError) {
+            console.error('[Team] Error checking task completion:', taskError);
+        }
+
         return { success: true };
     } catch (error) {
         console.error('[Team] Error marking early departure unjustified:', error);
@@ -449,12 +477,19 @@ export async function getTeamEarlyDepartures(
         for (let i = 0; i < subordinateIds.length; i += 30) {
             const batch = subordinateIds.slice(i, i + 30);
 
+            const qConstraints = [
+                where('employeeId', 'in', batch),
+                orderBy('date', 'desc')
+            ];
+
+            if (dateFilter !== 'all') {
+                qConstraints.push(where('date', '>=', dateStart));
+                qConstraints.push(where('date', '<=', dateEnd));
+            }
+
             const departuresQuery = query(
                 collection(firestore, 'early_departures'),
-                where('employeeId', 'in', batch),
-                where('date', '>=', dateStart),
-                where('date', '<=', dateEnd),
-                orderBy('date', 'desc')
+                ...qConstraints
             );
 
             const snapshot = await getDocs(departuresQuery);
@@ -1131,8 +1166,8 @@ export async function getTeamScheduleChanges(
  */
 export async function getTeamMonthlyStats(
     managerId: string,
-    year: number,
-    month: number
+    year?: number,
+    month?: number
 ): Promise<{ success: boolean; stats?: EmployeeMonthlyStats[]; error?: string }> {
     try {
         const { firestore } = initializeFirebase();
@@ -1143,9 +1178,16 @@ export async function getTeamMonthlyStats(
             return { success: true, stats: [] };
         }
 
-        const dateStart = `${year}-${month.toString().padStart(2, '0')}-01`;
-        const lastDay = new Date(year, month, 0).getDate();
-        const dateEnd = `${year}-${month.toString().padStart(2, '0')}-${lastDay.toString().padStart(2, '0')}`;
+        const isAll = !year || !month || isNaN(year) || isNaN(month);
+
+        let dateStart = '';
+        let dateEnd = '';
+
+        if (!isAll) {
+            dateStart = `${year}-${month!.toString().padStart(2, '0')}-01`;
+            const lastDay = new Date(year!, month!, 0).getDate();
+            dateEnd = `${year}-${month!.toString().padStart(2, '0')}-${lastDay.toString().padStart(2, '0')}`;
+        }
 
         const stats: EmployeeMonthlyStats[] = [];
 
@@ -1154,8 +1196,7 @@ export async function getTeamMonthlyStats(
             const tardinessQuery = query(
                 collection(firestore, 'tardiness_records'),
                 where('employeeId', '==', employee.id),
-                where('date', '>=', dateStart),
-                where('date', '<=', dateEnd)
+                ...(!isAll ? [where('date', '>=', dateStart), where('date', '<=', dateEnd)] : [])
             );
             const tardinessSnap = await getDocs(tardinessQuery);
             const tardinessRecords = tardinessSnap.docs.map(d => d.data() as TardinessRecord);
@@ -1164,8 +1205,7 @@ export async function getTeamMonthlyStats(
             const departuresQuery = query(
                 collection(firestore, 'early_departures'),
                 where('employeeId', '==', employee.id),
-                where('date', '>=', dateStart),
-                where('date', '<=', dateEnd)
+                ...(!isAll ? [where('date', '>=', dateStart), where('date', '<=', dateEnd)] : [])
             );
             const departuresSnap = await getDocs(departuresQuery);
             const departureRecords = departuresSnap.docs.map(d => d.data() as EarlyDeparture);
@@ -1174,8 +1214,7 @@ export async function getTeamMonthlyStats(
             const overtimeQuery = query(
                 collection(firestore, 'overtime_requests'),
                 where('employeeId', '==', employee.id),
-                where('date', '>=', dateStart),
-                where('date', '<=', dateEnd)
+                ...(!isAll ? [where('date', '>=', dateStart), where('date', '<=', dateEnd)] : [])
             );
             const overtimeSnap = await getDocs(overtimeQuery);
             const overtimeRecords = overtimeSnap.docs.map(d => d.data() as OvertimeRequest);
@@ -1184,8 +1223,7 @@ export async function getTeamMonthlyStats(
             const incidencesQuery = query(
                 collection(firestore, 'incidences'),
                 where('employeeId', '==', employee.id),
-                where('startDate', '>=', dateStart),
-                where('startDate', '<=', dateEnd)
+                ...(!isAll ? [where('startDate', '>=', dateStart), where('startDate', '<=', dateEnd)] : [])
             );
             const incidencesSnap = await getDocs(incidencesQuery);
 
@@ -1370,12 +1408,19 @@ export async function getTeamMissingPunches(
         for (let i = 0; i < subordinateIds.length; i += 30) {
             const batch = subordinateIds.slice(i, i + 30);
 
+            const qConstraints = [
+                where('employeeId', 'in', batch),
+                orderBy('date', 'desc')
+            ];
+
+            if (dateFilter !== 'all') {
+                qConstraints.push(where('date', '>=', dateStart));
+                qConstraints.push(where('date', '<=', dateEnd));
+            }
+
             const q = query(
                 collection(firestore, 'missing_punches'),
-                where('employeeId', 'in', batch),
-                where('date', '>=', dateStart),
-                where('date', '<=', dateEnd),
-                orderBy('date', 'desc')
+                ...qConstraints
             );
 
             const snapshot = await getDocs(q);
