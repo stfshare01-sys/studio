@@ -662,7 +662,7 @@ export type ExtendedUserRole = UserRole | 'HRManager' | 'Manager';
 
 export type EmploymentType = 'full_time' | 'part_time' | 'contractor' | 'intern';
 export type ShiftType = 'diurnal' | 'nocturnal' | 'mixed';
-export type IncidenceType = 'vacation' | 'sick_leave' | 'personal_leave' | 'maternity' | 'paternity' | 'bereavement' | 'unjustified_absence';
+export type IncidenceType = 'vacation' | 'sick_leave' | 'personal_leave' | 'maternity' | 'paternity' | 'bereavement' | 'unjustified_absence' | 'abandono_empleo';
 export type IncidenceStatus = 'pending' | 'approved' | 'rejected' | 'cancelled' | 'unjustified' | 'made_up';
 export type OnboardingPhase = 'day_0' | 'day_30' | 'day_60' | 'day_90' | 'completed';
 
@@ -861,47 +861,28 @@ export type Incidence = {
 export type PrenominaRecord = {
   id: string;
   employeeId: string;
-  employeeName?: string;        // Denormalizado
-  employeeRfc?: string;         // Denormalizado para exportación
-
-  // Período
-  periodStart: string;          // Inicio del período (YYYY-MM-DD)
-  periodEnd: string;            // Fin del período (YYYY-MM-DD)
+  employeeName?: string;
+  employeeRfc?: string;
+  periodStart: string;
+  periodEnd: string;
   periodType: 'weekly' | 'biweekly' | 'monthly';
 
-  // Percepciones
-  salaryBase: number;           // Salario base del período
-  daysWorked: number;           // Días trabajados
+  // Percepciones de TIEMPO
+  daysWorked: number;
 
-  // Horas extra (según "Ley de los 9s")
-  overtimeDoubleHours: number;  // Horas dobles (primeras 9 semanales)
-  overtimeDoubleAmount: number; // Monto horas dobles
-  overtimeTripleHours: number;  // Horas triples (excedente de 9)
-  overtimeTripleAmount: number; // Monto horas triples
+  // Horas extra (tiempos)
+  overtimeDoubleHours: number;
+  overtimeTripleHours: number;
 
-  // Prima dominical (si aplica)
   sundayPremiumDays: number;
-  holidayDays: number;          // Días festivos trabajados (pagados triple)
-  sundayPremiumAmount: number;  // 25% adicional según Art. 71 LFT
 
-  // Deducciones
-  absenceDays: number;          // Días de falta
-  absenceDeductions: number;    // Deducciones por faltas no justificadas
+  // Deducciones (Días/Horas, no $)
+  absenceDays: number;
 
-  // Incidencias del período
   vacationDaysTaken: number;
   sickLeaveDays: number;
   paidLeaveDays: number;
   unpaidLeaveDays: number;
-  companyBenefitDaysTaken?: number; // Días de beneficio tomados (pagados)
-
-  // Totales
-  grossPay: number;             // Total percepciones
-  totalDeductions: number;      // Total deducciones (sin ISR, solo prenómina)
-  netPay: number;               // Neto a pagar
-
-  // Salario bajo demanda (Liquidity)
-  earnedWage: number;           // Salario neto generado disponible para retiro
 
   // Estado y exportación
   status: 'draft' | 'reviewed' | 'exported' | 'locked';
@@ -910,10 +891,6 @@ export type PrenominaRecord = {
   exportedAt?: string;
   exportedById?: string;
   exportFormat?: 'nomipaq' | 'excel' | 'json';
-
-  // Contabilidad
-  costCenter?: string;          // Centro de costos
-  accountingPolicyId?: string;  // ID de póliza contable generada
 
   // Auditoría
   createdAt: string;

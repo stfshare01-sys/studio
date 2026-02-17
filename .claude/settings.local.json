@@ -18,7 +18,9 @@
       "Bash(git pull:*)",
       "Bash(firebase deploy:*)",
       "Bash(cd:*)",
-      "Bash(npx next build:*)"
+      "Bash(npx next build:*)",
+      "Bash(git stash:*)",
+      "Bash(git rm:*)"
     ]
   }
 }

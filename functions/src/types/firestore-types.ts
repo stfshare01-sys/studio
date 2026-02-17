@@ -14,6 +14,8 @@ export interface Employee {
     employmentType: 'full_time' | 'part_time' | 'contractor';
     shiftType: 'diurnal' | 'nocturnal' | 'mixed';
     hireDate: string;
+    terminationDate?: string;
+    customShiftId?: string;
     status: 'active' | 'on_leave' | 'terminated';
     managerId?: string;
     rfc_curp?: string;
@@ -74,12 +76,12 @@ export interface Incidence {
     id: string;
     employeeId: string;
     employeeName: string;
-    type: 'vacation' | 'sick_leave' | 'personal_leave' | 'maternity' | 'paternity' | 'bereavement' | 'unjustified_absence';
+    type: 'vacation' | 'sick_leave' | 'personal_leave' | 'maternity' | 'paternity' | 'bereavement' | 'unjustified_absence' | 'abandono_empleo';
     startDate: string;
     endDate: string;
     totalDays: number;
     isPaid: boolean;
-    status: 'pending' | 'approved' | 'rejected' | 'cancelled';
+    status: 'pending' | 'approved' | 'rejected' | 'cancelled' | 'unjustified' | 'made_up';
     notes?: string;
     imssReference?: string;
     approvedById?: string;
@@ -109,7 +111,7 @@ export interface PrenominaRecord {
     paidLeaveDays: number;
     unpaidLeaveDays: number;     // Días de permiso sin goce
     companyBenefitDaysTaken?: number; // Días de beneficio tomados (pagados)
-    status: 'draft' | 'review' | 'approved' | 'exported';
+    status: 'draft' | 'reviewed' | 'exported' | 'locked';
     costCenter?: string;
     createdAt: string;
     updatedAt: string;

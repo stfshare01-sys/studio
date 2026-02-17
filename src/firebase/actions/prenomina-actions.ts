@@ -3,8 +3,6 @@ import {
     query,
     where,
     getDocs,
-    writeBatch,
-    doc
 } from 'firebase/firestore';
 import { initializeFirebase } from '@/firebase';
 import type { Incidence } from '@/lib/types';
@@ -23,20 +21,4 @@ export async function getPendingIncidences(startDate: string, endDate: string): 
 
     const snapshot = await getDocs(q);
     return snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Incidence));
-}
-
-/**
- * Locks the specified prenomina records.
- */
-export async function lockPrenominaRecords(recordIds: string[]) {
-    const { firestore } = initializeFirebase();
-    const batch = writeBatch(firestore);
-
-    recordIds.forEach(id => {
-        const ref = doc(firestore, 'prenomina', id);
-        batch.update(ref, { status: 'locked' });
-    });
-
-    await batch.commit();
-    return { success: true };
 }

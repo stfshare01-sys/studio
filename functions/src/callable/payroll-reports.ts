@@ -58,7 +58,7 @@ interface Location {
 /** Data collected per employee per day */
 interface DayData {
     file1Codes: string[];  // Codes for Report 1 (HE2, HE3, FINJ, RET, PSS, PCS)
-    file2Codes: string[];  // Codes for Report 2 (ASI, VAC, INC, BJ, DDL, DDDL, PD)
+    file2Codes: string[];  // Codes for Report 2 (ASI, VAC, INC, BJ, DL, DFT, PD)
     he2Hours: number;
     he3Hours: number;
 }
@@ -393,10 +393,10 @@ export const generatePayrollReports = onCall<GeneratePayrollReportsRequest>(
 
                         // File 2: Determine status codes
                         if (isHoliday) {
-                            dayData.file2Codes.push('DDDL');
+                            dayData.file2Codes.push('DFT');
                         }
                         if (isRestDay) {
-                            dayData.file2Codes.push('DDL');
+                            dayData.file2Codes.push('DL');
                         }
                         if (isSunday) {
                             dayData.file2Codes.push('PD');
@@ -490,8 +490,8 @@ export const generatePayrollReports = onCall<GeneratePayrollReportsRequest>(
             for (const emp of allEmployees) {
                 const empDays = employeeDayData.get(emp.id)!;
                 const row: (string | number)[] = [emp.id, emp.fullName];
-                let countDDDL = 0;
-                let countDDL = 0;
+                let countDFT = 0;
+                let countDL = 0;
                 let countPD = 0;
 
                 for (const date of dates) {
@@ -500,8 +500,8 @@ export const generatePayrollReports = onCall<GeneratePayrollReportsRequest>(
                     row.push(cellValue);
 
                     // Count for summary columns
-                    if (dayData.file2Codes.includes('DDDL')) countDDDL++;
-                    if (dayData.file2Codes.includes('DDL')) countDDL++;
+                    if (dayData.file2Codes.includes('DFT')) countDFT++;
+                    if (dayData.file2Codes.includes('DL')) countDL++;
                     if (dayData.file2Codes.includes('PD')) countPD++;
                 }
 
@@ -516,8 +516,8 @@ export const generatePayrollReports = onCall<GeneratePayrollReportsRequest>(
 
                 row.push(
                     primaVacacional,
-                    countDDDL > 0 ? countDDDL : '',
-                    countDDL > 0 ? countDDL : '',
+                    countDFT > 0 ? countDFT : '',
+                    countDL > 0 ? countDL : '',
                     countPD > 0 ? countPD : '',
                     '' // Comentarios
                 );
