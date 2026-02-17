@@ -286,7 +286,7 @@ export default function CommandCenterPage() {
       }).length || 0;
 
     const totalPrenomina =
-      prenominaRecords?.reduce((sum, record) => sum + (record.netPay || 0), 0) || 0;
+      prenominaRecords?.reduce((sum, record) => sum + (record.daysWorked || 0), 0) || 0;
 
     // Employees with contracts expiring in 30 days (mock - would need contract end date)
     const contractsExpiring = 0; // Would calculate from employee contracts

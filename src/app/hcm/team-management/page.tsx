@@ -78,14 +78,11 @@ import {
     getTeamMissingPunches
 } from '@/firebase/actions/team-actions';
 import { justifyTardiness, markTardinessUnjustified, justifyMissingPunch } from '@/firebase/actions/incidence-actions';
-import { runGlobalSLAProcessing } from '@/firebase/actions/sla-actions';
 import { migrateManagerIdField } from '@/firebase/actions/employee-actions';
 import { getTeamHourBanks, getHourBankMovements, formatHourBankBalance, manualHourBankAdjustment, formatMinutesToReadable } from '@/firebase/actions/hour-bank-actions';
 import { usePermissions } from '@/hooks/use-permissions';
 import { hasPermission } from '@/firebase/role-actions';
 import { useToast } from '@/hooks/use-toast';
-import { callConsolidatePrenomina } from '@/firebase/callable-functions';
-import { getPendingIncidences } from '@/firebase/actions/prenomina-actions';
 import { format, startOfMonth, endOfMonth } from 'date-fns';
 
 import type {
@@ -161,7 +158,6 @@ function TeamManagementContent() {
     // Loading states
     const [loadingData, setLoadingData] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
-    const [closingPeriod, setClosingPeriod] = useState(false);
     const [periodClosed, setPeriodClosed] = useState(false);
     const [isPeriodClosed, setIsPeriodClosed] = useState(false);
     const [loadingPeriodStatus, setLoadingPeriodStatus] = useState(false);
@@ -827,82 +823,44 @@ function TeamManagementContent() {
 
 
 
-    const handleClosePeriod = async () => {
+    // Notificación de revisión completada (sin cerrar período - eso lo hace CH desde Consolidación)
+    const handleMarkReviewComplete = async () => {
         if (!user || !firestore) return;
 
-        // Confirmar acción
-        const confirmed = window.confirm(
-            '¿Estás seguro de cerrar el período y consolidar?\n\n' +
-            'Este proceso:\n' +
-            '1. Auto-rechazará HE pendientes\n' +
-            '2. Auto-injustificará retardos sin bitácora\n' +
-            '3. Auto-marcará faltas por salidas tempranas injustificadas\n' +
-            '4. Auto-marcará faltas por marcajes faltantes\n' +
-            '5. Generará archivo NOMIPAQ para exportación\n\n' +
-            'Esta acción no se puede deshacer.'
-        );
-
-        if (!confirmed) return;
-
-        setClosingPeriod(true);
-
         try {
-            // Calcular rango de fechas del período actual
             const periodStart = format(startOfMonth(new Date(`${selectedMonth}-01`)), 'yyyy-MM-dd');
             const periodEnd = format(endOfMonth(new Date(`${selectedMonth}-01`)), 'yyyy-MM-dd');
 
-            // Ejecutar consolidación de período
-            toast({
-                title: "Consolidando período",
-                description: "Procesando incidencias pendientes y generando pre-nómina...",
-            });
-
-            const consolidateResult = await callConsolidatePrenomina({
-                periodStart,
-                periodEnd,
-                periodType: 'monthly',
-                closedBy: user.uid
-            });
-
-            if (!consolidateResult.success) {
-                throw new Error(consolidateResult.errors?.[0]?.message || 'Error al consolidar período');
-            }
-
-            // Marcar revisión como completa en period_closures
-            const currentPeriod = selectedMonth;
-            await setDoc(doc(firestore, 'period_closures', `${user.uid}_${currentPeriod}`), {
+            await setDoc(doc(firestore, 'manager_review_status', `${user.uid}_${selectedMonth}`), {
                 managerId: user.uid,
                 managerName: user.fullName || user.email,
-                period: currentPeriod,
+                period: selectedMonth,
                 periodStart,
                 periodEnd,
-                closedAt: new Date().toISOString(),
-                processedCount: consolidateResult.processedCount,
-                recordIds: consolidateResult.recordIds
+                reviewCompletedAt: new Date().toISOString(),
+                pendingAtCompletion: {
+                    tardiness: pendingTardiness.length,
+                    departures: pendingDepartures.length,
+                    overtime: pendingOvertime.length,
+                    missingPunches: pendingMissingPunches.length
+                }
             });
 
             setPeriodClosed(true);
 
-            // Toast de éxito simplificado ya que el backend v2 no retorna resumen detallado
             toast({
-                title: "Período cerrado exitosamente",
-                description: (
-                    `Se han consolidado ${consolidateResult.processedCount} registros de asistencia.\n` +
-                    `Las incidencias pendientes han sido procesadas automáticamente.`
-                ),
+                title: "Revisión marcada como completa",
+                description: "Capital Humano ha sido notificado de que terminaste tu revisión de infracciones.",
                 variant: "default",
-                duration: 5000,
             });
 
         } catch (error) {
-            console.error('Error closing period:', error);
+            console.error('Error marking review complete:', error);
             toast({
-                title: "Error al cerrar período",
-                description: error instanceof Error ? error.message : "No se pudo completar el proceso.",
+                title: "Error",
+                description: error instanceof Error ? error.message : "No se pudo completar la acción.",
                 variant: "destructive"
             });
-        } finally {
-            setClosingPeriod(false);
         }
     };
 
@@ -2202,54 +2160,51 @@ function TeamManagementContent() {
                     )}
                 </Tabs>
 
-                {/* Botón de Marcar Revisión Completa */}
+                {/* Notificación de Revisión Completa */}
                 <div className="mt-8 border-t pt-6">
                     <Card>
                         <CardHeader>
                             <CardTitle>Revisión de Infracciones</CardTitle>
                             <CardDescription>
-                                Marca que has completado la revisión de infracciones del período {selectedMonth}
+                                Notifica a Capital Humano que has completado la revisión de infracciones del período {selectedMonth}
                             </CardDescription>
                         </CardHeader>
                         <CardContent>
                             <div className="space-y-4">
                                 <div>
                                     <p className="text-sm text-muted-foreground mb-2">
-                                        Al marcar como completa, notificas a RH que has terminado de revisar las infracciones.
+                                        Al marcar como completa, notificas a Capital Humano que has terminado de revisar las infracciones de tu equipo.
                                     </p>
                                     <p className="text-sm text-muted-foreground">
-                                        Solo se habilita cuando todas las infracciones (retardos, salidas), horas extras y marcajes faltantes han sido atendidos.
+                                        El cierre formal del período lo realizará Capital Humano desde la Consolidación de Asistencia. Las infracciones que no justifiques se procesarán automáticamente al momento del cierre.
                                     </p>
                                 </div>
                                 <div className="flex justify-center pt-2">
                                     <Button
-                                        onClick={handleClosePeriod}
-                                        disabled={closingPeriod || periodClosed || (pendingTardiness.length + pendingDepartures.length + pendingOvertime.length + pendingMissingPunches.length) > 0}
+                                        onClick={handleMarkReviewComplete}
+                                        disabled={periodClosed || isPeriodClosed}
                                         variant={periodClosed ? "outline" : "default"}
                                         size="lg"
                                         className="min-w-[280px]"
                                     >
-                                        {closingPeriod ? (
-                                            <>
-                                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                                Procesando...
-                                            </>
-                                        ) : periodClosed ? (
+                                        {periodClosed ? (
                                             <>
                                                 <CheckCircle2 className="mr-2 h-4 w-4" />
                                                 Revisión Completa
                                             </>
                                         ) : (
-                                            <>Cerrar Período y Consolidar</>
+                                            <>
+                                                <Check className="mr-2 h-4 w-4" />
+                                                Marcar Revisión como Completa
+                                            </>
                                         )}
                                     </Button>
                                 </div>
                             </div>
-                            {(pendingTardiness.length + pendingDepartures.length) > 0 && (
+                            {(pendingTardiness.length + pendingDepartures.length + pendingOvertime.length + pendingMissingPunches.length) > 0 && (
                                 <div className="mt-4 p-3 bg-orange-50 border border-orange-200 rounded-lg">
                                     <p className="text-sm text-orange-800">
-                                        ⚠️ Tienes {pendingTardiness.length + pendingDepartures.length} infracciones pendientes de atender.
-                                        Revisa las tabs de Retardos y Salidas Tempranas.
+                                        Tienes {pendingTardiness.length + pendingDepartures.length + pendingOvertime.length + pendingMissingPunches.length} infracciones pendientes. Si no las justificas, se procesarán automáticamente cuando Capital Humano cierre el período.
                                     </p>
                                 </div>
                             )}

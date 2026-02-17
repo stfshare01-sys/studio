@@ -22,7 +22,6 @@ interface ConsolidatePrenominaRequest {
     periodEnd: string;
     periodType: 'weekly' | 'biweekly' | 'monthly';
     employeeIds?: string[];
-    closedBy?: string; // Optional for backward compatibility, though not used in backend v2
 }
 
 interface ConsolidatePrenominaResponse {

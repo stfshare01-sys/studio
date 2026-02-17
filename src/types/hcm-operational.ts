@@ -331,7 +331,7 @@ export type OvertimeRequest = {
 
 export type IncidenceCode =
     | 'FINJ' | 'ASI' | 'INC' | 'PSS' | 'PCS' | 'DFT' | 'DD' | 'DL'
-    | 'HE2' | 'HE3' | 'RET' | 'PD' | 'VAC' | 'PV' | 'BJ';
+    | 'HE2' | 'HE3' | 'RET' | 'PD' | 'VAC' | 'PV' | 'BJ' | 'AE';
 
 export const INCIDENCE_CODE_MAP: Record<IncidenceType | 'attendance' | 'rest_day' | 'worked_rest_day' | 'holiday_worked' | 'tardiness' | 'termination', IncidenceCode> = {
     vacation: 'VAC',
@@ -341,6 +341,7 @@ export const INCIDENCE_CODE_MAP: Record<IncidenceType | 'attendance' | 'rest_day
     paternity: 'PCS',
     bereavement: 'PCS',
     unjustified_absence: 'FINJ',
+    abandono_empleo: 'AE',
     attendance: 'ASI',
     rest_day: 'DD',
     worked_rest_day: 'DL',
@@ -597,6 +598,7 @@ export const NOMIPAQ_CODES = {
     // Otros
     PRIMA_VACACIONAL: 'PV',
     BAJA: 'BJ',
+    ABANDONO_EMPLEO: 'AE',
 } as const;
 
 /**

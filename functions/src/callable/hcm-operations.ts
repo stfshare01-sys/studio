@@ -273,6 +273,18 @@ export const consolidatePrenomina = onCall<ConsolidatePrenominaRequest>(
             // =====================================================================
             console.log(`[HCM] Phase 2: Consolidating prenomina records`);
 
+            // Delete existing prenomina records for this period to prevent duplicates
+            const existingPrenominaQuery = await db.collection('prenomina')
+                .where('periodStart', '==', periodStart)
+                .where('periodEnd', '==', periodEnd)
+                .get();
+            if (!existingPrenominaQuery.empty) {
+                const deleteBatch = db.batch();
+                existingPrenominaQuery.docs.forEach(d => deleteBatch.delete(d.ref));
+                await deleteBatch.commit();
+                console.log(`[HCM] Deleted ${existingPrenominaQuery.size} existing prenomina records for deduplication`);
+            }
+
             // Get employees to process
             let employeesQuery = db.collection('employees').where('status', '==', 'active');
             const employeesSnap = await employeesQuery.get();

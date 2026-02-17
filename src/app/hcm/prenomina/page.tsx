@@ -6,7 +6,7 @@ import SiteLayout from '@/components/site-layout';
 import Link from 'next/link';
 import { useFirebase, useMemoFirebase } from '@/firebase/provider';
 import { useCollection } from '@/firebase/firestore/use-collection';
-import { collection, query, where, orderBy, getDocs, doc, getDoc } from 'firebase/firestore';
+import { collection, query, where, orderBy, getDocs } from 'firebase/firestore';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -43,15 +43,15 @@ import {
     AlertTriangle,
     ArrowLeft,
     Users,
-    XCircle
 } from 'lucide-react';
 import type { PrenominaRecord, AttendanceRecord } from '@/lib/types';
-import { format, startOfMonth, endOfMonth, parseISO, addMinutes, differenceInDays } from 'date-fns';
+import { format, startOfMonth, endOfMonth, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
 import { Label } from '@/components/ui/label';
 import { getPendingIncidences } from '@/firebase/actions/prenomina-actions';
 import { runGlobalSLAProcessing } from '@/firebase/actions/sla-actions';
+import { checkPeriodLock, lockPayrollPeriod } from '@/firebase/actions/report-actions';
 import { usePermissions } from '@/hooks/use-permissions';
 import { callConsolidatePrenomina, callGeneratePayrollReports } from '@/firebase/callable-functions';
 import { NOMIPAQ_CODES } from '@/types/hcm-operational';
@@ -70,21 +70,43 @@ export default function ConsolidacionAsistenciaPage() {
     const [isDownloadingReports, setIsDownloadingReports] = useState(false);
     const [isConsolidateDialogOpen, setIsConsolidateDialogOpen] = useState(false);
     const [validationErrors, setValidationErrors] = useState<string[]>([]);
-    const [selectedPeriod, setSelectedPeriod] = useState({
-        start: format(startOfMonth(new Date()), 'yyyy-MM-dd'),
-        end: format(endOfMonth(new Date()), 'yyyy-MM-dd')
-    });
+
+    // Step 10: Robust period selector
+    const [selectedMonth, setSelectedMonth] = useState(() => format(new Date(), 'yyyy-MM'));
+    const [periodType, setPeriodType] = useState<'monthly' | 'biweekly_1' | 'biweekly_2'>('monthly');
+
+    const selectedPeriod = useMemo(() => {
+        const [year, month] = selectedMonth.split('-').map(Number);
+        const start = new Date(year, month - 1, 1);
+        if (periodType === 'biweekly_1') {
+            return {
+                start: format(start, 'yyyy-MM-dd'),
+                end: format(new Date(year, month - 1, 15), 'yyyy-MM-dd')
+            };
+        } else if (periodType === 'biweekly_2') {
+            return {
+                start: format(new Date(year, month - 1, 16), 'yyyy-MM-dd'),
+                end: format(new Date(year, month, 0), 'yyyy-MM-dd')
+            };
+        }
+        return {
+            start: format(start, 'yyyy-MM-dd'),
+            end: format(endOfMonth(start), 'yyyy-MM-dd')
+        };
+    }, [selectedMonth, periodType]);
+
     const [periodClosures, setPeriodClosures] = useState<any[]>([]);
     const [loadingClosures, setLoadingClosures] = useState(false);
+
+    // Step 3: Pending counts state
+    const [pendingCounts, setPendingCounts] = useState({ tardiness: 0, departures: 0, overtime: 0, missingPunches: 0 });
+    const [managerReviews, setManagerReviews] = useState<any[]>([]);
+    const [loadingPending, setLoadingPending] = useState(false);
 
     // Fetch prenomina records for selected period
     const prenominaQuery = useMemoFirebase(() => {
         if (!firestore || !selectedPeriod.start) return null;
 
-        /**
-         * Buscamos registros que COMIENCEN dentro del rango seleccionado.
-         * En el futuro podríamos mejorar esto para buscar solapamientos (overlap).
-         */
         return query(
             collection(firestore, 'prenomina'),
             where('periodStart', '>=', selectedPeriod.start),
@@ -102,13 +124,11 @@ export default function ConsolidacionAsistenciaPage() {
 
             setLoadingClosures(true);
             try {
-                const { checkPeriodLock } = await import('@/firebase/actions/report-actions');
                 const lockResult = await checkPeriodLock(
                     selectedPeriod.start,
                     selectedPeriod.end
                 );
 
-                // For backward compatibility, still show as closure
                 if (lockResult.isLocked && lockResult.lock) {
                     setPeriodClosures([{
                         id: lockResult.lock.id,
@@ -130,8 +150,63 @@ export default function ConsolidacionAsistenciaPage() {
         loadPeriodLocks();
     }, [selectedPeriod.start, selectedPeriod.end]);
 
+    // Step 3: Load pending counts for the period
+    useEffect(() => {
+        const loadPendingCounts = async () => {
+            if (!firestore || !selectedPeriod.start) return;
+            setLoadingPending(true);
+            try {
+                const [tardinessSnap, departuresSnap, overtimeSnap, missingSnap, reviewsSnap] = await Promise.all([
+                    getDocs(query(
+                        collection(firestore, 'tardiness_records'),
+                        where('justificationStatus', '==', 'pending'),
+                        where('date', '>=', selectedPeriod.start),
+                        where('date', '<=', selectedPeriod.end)
+                    )),
+                    getDocs(query(
+                        collection(firestore, 'early_departures'),
+                        where('justificationStatus', '==', 'pending'),
+                        where('date', '>=', selectedPeriod.start),
+                        where('date', '<=', selectedPeriod.end)
+                    )),
+                    getDocs(query(
+                        collection(firestore, 'overtime_requests'),
+                        where('status', '==', 'pending'),
+                        where('date', '>=', selectedPeriod.start),
+                        where('date', '<=', selectedPeriod.end)
+                    )),
+                    getDocs(query(
+                        collection(firestore, 'missing_punches'),
+                        where('isJustified', '==', false),
+                        where('date', '>=', selectedPeriod.start),
+                        where('date', '<=', selectedPeriod.end)
+                    )),
+                    getDocs(query(
+                        collection(firestore, 'manager_review_status'),
+                        where('periodStart', '>=', selectedPeriod.start),
+                        where('periodEnd', '<=', selectedPeriod.end)
+                    ))
+                ]);
+
+                setPendingCounts({
+                    tardiness: tardinessSnap.size,
+                    departures: departuresSnap.size,
+                    overtime: overtimeSnap.size,
+                    missingPunches: missingSnap.size
+                });
+
+                setManagerReviews(reviewsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+            } catch (error) {
+                console.error('Error loading pending counts:', error);
+            } finally {
+                setLoadingPending(false);
+            }
+        };
+
+        loadPendingCounts();
+    }, [firestore, selectedPeriod.start, selectedPeriod.end]);
+
     // Filter records client-side for search
-    // Filter records locally to strictly match the selected range (since query is >= start)
     const exactMatchedRecords = useMemo(() => {
         if (!prenominaRecords) return [];
         return (prenominaRecords as PrenominaRecord[]).filter(r =>
@@ -152,18 +227,9 @@ export default function ConsolidacionAsistenciaPage() {
     const totalOvertimeHours = filteredRecords.reduce((sum: number, r: PrenominaRecord) =>
         sum + (r.overtimeDoubleHours || 0) + (r.overtimeTripleHours || 0), 0);
 
-    // Helper to determine period type based on duration
-    const getPeriodType = (start: string, end: string): 'weekly' | 'biweekly' | 'monthly' => {
-        const days = differenceInDays(parseISO(end), parseISO(start)) + 1;
-        if (days >= 25) return 'monthly';
-        if (days >= 12) return 'biweekly';
-        return 'weekly';
-    };
-
     // Check if period is already closed (based on exact match of start_end range)
     const currentPeriodKey = `${selectedPeriod.start}_${selectedPeriod.end}`;
     const isPeriodClosed = periodClosures.some(closure => {
-        // We match by range key primarily
         return closure.period === currentPeriodKey;
     });
 
@@ -171,7 +237,6 @@ export default function ConsolidacionAsistenciaPage() {
     const handleClosePeriod = async () => {
         if (!user || !firestore) return;
 
-        // Check if period is already closed
         if (isPeriodClosed) {
             toast({
                 title: "Período ya cerrado",
@@ -181,7 +246,6 @@ export default function ConsolidacionAsistenciaPage() {
             return;
         }
 
-        // Confirm action
         const confirmed = window.confirm(
             '¿Estás seguro de cerrar el período y consolidar?\n\n' +
             'Este proceso:\n' +
@@ -219,13 +283,19 @@ export default function ConsolidacionAsistenciaPage() {
                 return;
             }
 
-            // 2. Execute SLA
+            // 2. Execute SLA with date range filter (Step 3)
             toast({
                 title: "Ejecutando SLA",
-                description: "Procesando infracciones no justificadas...",
+                description: "Procesando infracciones no justificadas del período...",
             });
 
-            const slaResult = await runGlobalSLAProcessing(user.uid, user.role as string, user.customRoleId);
+            const slaResult = await runGlobalSLAProcessing(
+                user.uid,
+                user.role as string,
+                user.customRoleId,
+                selectedPeriod.start,
+                selectedPeriod.end
+            );
 
             if (!slaResult.success) {
                 throw new Error(slaResult.error || 'Error al ejecutar SLA');
@@ -237,7 +307,7 @@ export default function ConsolidacionAsistenciaPage() {
                 description: "Generando registros de prenómina...",
             });
 
-            const effectivePeriodType = getPeriodType(selectedPeriod.start, selectedPeriod.end);
+            const effectivePeriodType = periodType === 'monthly' ? 'monthly' : 'biweekly';
 
             const consolidateResult = await callConsolidatePrenomina({
                 periodStart: selectedPeriod.start,
@@ -249,29 +319,26 @@ export default function ConsolidacionAsistenciaPage() {
                 throw new Error(consolidateResult.errors?.[0]?.message || 'Error al consolidar');
             }
 
-            // 4. Lock the payroll period using granular date-range locks
+            // 4. Lock the payroll period
             toast({
                 title: "Bloqueando período",
                 description: "Creando bloqueo de período...",
             });
 
-            const { lockPayrollPeriod } = await import('@/firebase/actions/report-actions');
-            const lockResult = await lockPayrollPeriod(
+            const lockResult2 = await lockPayrollPeriod(
                 selectedPeriod.start,
                 selectedPeriod.end,
                 effectivePeriodType,
                 user.uid,
                 user.fullName || user.email || 'Sistema',
-                undefined, // prenominaExportId
-                undefined  // exportFormat
+                undefined,
+                undefined
             );
 
-            if (!lockResult.success) {
-                console.warn('Warning: Could not lock period:', lockResult.error);
-                // Don't fail the entire process if lock fails
+            if (!lockResult2.success) {
+                console.warn('Warning: Could not lock period:', lockResult2.error);
             }
 
-            // Success toast with summary
             toast({
                 title: "Período cerrado exitosamente",
                 description: `Se procesaron ${slaResult.stats?.processedTardiness || 0} retardos y ${slaResult.stats?.processedDepartures || 0} salidas tempranas. Se generaron ${consolidateResult.recordIds?.length || 0} registros de prenómina.`,
@@ -292,7 +359,7 @@ export default function ConsolidacionAsistenciaPage() {
         }
     };
 
-    // Handle export to NomiPAQ format (Formato 1: EMPLEADO|FECHA|CODIGO|VALOR)
+    // Step 5: Complete NomiPAQ export with ALL 16 codes
     const handleExport = async (records: PrenominaRecord[]) => {
         if (!firestore) return;
         setIsExporting(true);
@@ -300,69 +367,137 @@ export default function ConsolidacionAsistenciaPage() {
         try {
             toast({
                 title: "Generando archivo NomiPAQ",
-                description: "Obteniendo detalles de asistencia...",
+                description: "Obteniendo detalles completos del período...",
             });
 
-            // 1. Fetch all attendance for the period to get daily detail
-            const attendanceQuery = query(
-                collection(firestore, 'attendance'),
-                where('date', '>=', selectedPeriod.start),
-                where('date', '<=', selectedPeriod.end)
-            );
-            const attendanceSnap = await getDocs(attendanceQuery);
+            // Fetch all needed data in parallel
+            const [attendanceSnap, incidencesSnap, employeesSnap, shiftsSnap, calendarsSnap] = await Promise.all([
+                getDocs(query(
+                    collection(firestore, 'attendance'),
+                    where('date', '>=', selectedPeriod.start),
+                    where('date', '<=', selectedPeriod.end)
+                )),
+                getDocs(query(
+                    collection(firestore, 'incidences'),
+                    where('status', '==', 'approved'),
+                    where('startDate', '<=', selectedPeriod.end)
+                )),
+                getDocs(collection(firestore, 'employees')),
+                getDocs(collection(firestore, 'custom_shifts')),
+                getDocs(query(
+                    collection(firestore, 'holiday_calendars'),
+                    where('year', '==', parseInt(selectedPeriod.start.substring(0, 4)))
+                ))
+            ]);
+
             const attendanceDocs = attendanceSnap.docs.map(d => ({ id: d.id, ...d.data() } as AttendanceRecord));
+            const incidenceDocs = incidencesSnap.docs
+                .map(d => ({ id: d.id, ...d.data() } as any))
+                .filter((inc: any) => inc.endDate >= selectedPeriod.start);
 
-            // 2. Fetch all employees to get employeeNumber
-            const employeeIds = Array.from(new Set(attendanceDocs.map(a => a.employeeId)));
             const employeesMap: Record<string, any> = {};
+            employeesSnap.docs.forEach(d => { employeesMap[d.id] = { id: d.id, ...d.data() }; });
 
-            // Fetch in batches if necessary, but for this context assume they fit or fetch as needed
-            // For simplicity in this UI, we fetch individual if not many, or bulk
-            const employeesSnap = await getDocs(collection(firestore, 'employees'));
-            employeesSnap.docs.forEach(d => {
-                employeesMap[d.id] = { id: d.id, ...d.data() };
+            const shiftsMap: Record<string, any> = {};
+            shiftsSnap.docs.forEach(d => { shiftsMap[d.id] = { id: d.id, ...d.data() }; });
+
+            // Build holidays set
+            const holidayDates = new Set<string>();
+            calendarsSnap.docs.forEach(d => {
+                const cal = d.data();
+                (cal.holidays || []).forEach((h: any) => holidayDates.add(h.date));
             });
 
-            // 3. Generate Formato 1 lines
+            // Generate lines
             const lines: string[] = [];
-            lines.push('EMPLEADO|FECHA|CODIGO|VALOR'); // Header
+            lines.push('EMPLEADO|FECHA|CODIGO|VALOR');
 
-            for (const att of attendanceDocs as any[]) {
+            for (const att of attendanceDocs) {
                 const emp = employeesMap[att.employeeId];
                 if (!emp) continue;
-
-                const employeeNumber = emp.employeeNumber || emp.employeeId || emp.id;
+                const empNumber = emp.employeeNumber || emp.id;
                 const date = att.date;
+                const dayOfWeek = new Date(date + 'T00:00:00').getDay();
 
-                // Base entry: Worked day
-                if (!att.isVoid) {
-                    lines.push(`${employeeNumber}|${date}|${NOMIPAQ_CODES.DIA_TRABAJADO}|`);
-                }
+                // Determine rest days from shift
+                const shift = emp.customShiftId ? shiftsMap[emp.customShiftId] : null;
+                const restDays: number[] = shift?.restDays ?? [0, 6];
+                const isRestDay = restDays.includes(dayOfWeek);
+                const isHoliday = holidayDates.has(date);
+                const isSunday = dayOfWeek === 0;
 
-                // Overtime entries
+                if (att.isVoid) continue;
+
+                // ASI - Attendance
+                lines.push(`${empNumber}|${date}|${NOMIPAQ_CODES.DIA_TRABAJADO}|`);
+
+                // HE2/HE3
                 if (att.overtimeHours > 0) {
-                    const double = att.overtimeDoubleHours || (att.overtimeType === 'double' ? att.overtimeHours : 0);
-                    const triple = att.overtimeTripleHours || (att.overtimeType === 'triple' ? att.overtimeHours : 0);
-
-                    if (double > 0) {
-                        lines.push(`${employeeNumber}|${date}|${NOMIPAQ_CODES.HORAS_EXTRAS_DOBLES}|${double}`);
-                    }
-                    if (triple > 0) {
-                        lines.push(`${employeeNumber}|${date}|${NOMIPAQ_CODES.HORAS_EXTRAS_TRIPLES}|${triple}`);
-                    }
+                    const double = (att as any).overtimeDoubleHours || (att.overtimeType === 'double' ? att.overtimeHours : 0);
+                    const triple = (att as any).overtimeTripleHours || (att.overtimeType === 'triple' ? att.overtimeHours : 0);
+                    if (double > 0) lines.push(`${empNumber}|${date}|${NOMIPAQ_CODES.HORAS_EXTRAS_DOBLES}|${double}`);
+                    if (triple > 0) lines.push(`${empNumber}|${date}|${NOMIPAQ_CODES.HORAS_EXTRAS_TRIPLES}|${triple}`);
                 }
 
-                // Infractions (if they resulted in absence, they'll have codes)
-                // Use status or nomipaqCode if present
-                const status = att.status || (att as any).dayStatus;
-                if (status === 'absence_unjustified' || att.nomipaqCode === '1FINJ') {
-                    lines.push(`${employeeNumber}|${date}|${NOMIPAQ_CODES.FALTA_INJUSTIFICADA}|`);
-                } else if (att.hasTardiness || att.nomipaqCode === '1RET') {
-                    lines.push(`${employeeNumber}|${date}|${NOMIPAQ_CODES.RETARDO}|`);
+                // DL - Descanso Laborado
+                if (isRestDay) {
+                    lines.push(`${empNumber}|${date}|${NOMIPAQ_CODES.DIA_DESCANSO_LABORADO}|`);
+                }
+
+                // DFT - Día Festivo Trabajado
+                if (isHoliday) {
+                    lines.push(`${empNumber}|${date}|${NOMIPAQ_CODES.DIA_FESTIVO_TRABAJADO}|`);
+                }
+
+                // PD - Prima Dominical
+                if (isSunday) {
+                    lines.push(`${empNumber}|${date}|${NOMIPAQ_CODES.PRIMA_DOMINICAL}|`);
                 }
             }
 
-            // 4. Download file
+            // Incidences
+            for (const inc of incidenceDocs) {
+                const emp = employeesMap[inc.employeeId];
+                if (!emp) continue;
+                const empNumber = emp.employeeNumber || emp.id;
+
+                // Generate entry for each day of the incidence within the period
+                const incStart = inc.startDate > selectedPeriod.start ? inc.startDate : selectedPeriod.start;
+                const incEnd = inc.endDate < selectedPeriod.end ? inc.endDate : selectedPeriod.end;
+
+                let code = '';
+                switch (inc.type) {
+                    case 'vacation': code = NOMIPAQ_CODES.VACACIONES; break;
+                    case 'sick_leave': case 'maternity': code = NOMIPAQ_CODES.INCAPACIDAD; break;
+                    case 'personal_leave': case 'paternity': case 'bereavement':
+                        code = inc.isPaid ? NOMIPAQ_CODES.PERMISO_CON_SUELDO : NOMIPAQ_CODES.PERMISO_SIN_SUELDO;
+                        break;
+                    case 'unjustified_absence': code = NOMIPAQ_CODES.FALTA_INJUSTIFICADA; break;
+                    case 'abandono_empleo': code = NOMIPAQ_CODES.ABANDONO_EMPLEO; break;
+                }
+
+                if (code) {
+                    // Output one line per day of the incidence
+                    const current = new Date(incStart + 'T00:00:00');
+                    const last = new Date(incEnd + 'T00:00:00');
+                    while (current <= last) {
+                        const d = current.toISOString().substring(0, 10);
+                        lines.push(`${empNumber}|${d}|${code}|`);
+                        current.setDate(current.getDate() + 1);
+                    }
+                }
+            }
+
+            // BJ - Baja (employees terminated within the period)
+            for (const empId of Object.keys(employeesMap)) {
+                const emp = employeesMap[empId];
+                if (emp.terminationDate && emp.terminationDate >= selectedPeriod.start && emp.terminationDate <= selectedPeriod.end) {
+                    const empNumber = emp.employeeNumber || emp.id;
+                    lines.push(`${empNumber}|${emp.terminationDate}|${NOMIPAQ_CODES.BAJA}|`);
+                }
+            }
+
+            // Download file
             const csv = lines.join('\n');
             const blob = new Blob([csv], { type: 'text/plain;charset=utf-8;' });
             const url = URL.createObjectURL(blob);
@@ -376,7 +511,7 @@ export default function ConsolidacionAsistenciaPage() {
 
             toast({
                 title: 'Exportación completada',
-                description: 'El archivo NomiPAQ (Formato 1) ha sido descargado.',
+                description: 'El archivo NomiPAQ (Formato 1) ha sido descargado con todas las claves.',
             });
         } catch (error) {
             console.error('Error exporting to NomiPAQ:', error);
@@ -429,18 +564,28 @@ export default function ConsolidacionAsistenciaPage() {
     const formatDate = (dateStr: string) => {
         if (!dateStr) return '-';
         try {
-            // parseISO treats "YYYY-MM-DD" as local midnight if no T is present
-            // preventing the 1-day shift common with new Date(dateStr)
             return format(parseISO(dateStr), 'dd MMM yyyy', { locale: es });
         } catch {
             return dateStr;
         }
     };
 
-    // Get managers who haven't closed
-    const allManagers = Array.from(new Set(filteredRecords.map((r: PrenominaRecord) => r.employeeId))); // This would need manager IDs
-    const closedManagers = periodClosures.map((c: any) => c.managerId);
-    const pendingManagers = allManagers.filter(m => !closedManagers.includes(m));
+    // Step 8: Status badge helper
+    const getStatusBadge = (status: string) => {
+        switch (status) {
+            case 'locked':
+                return <Badge className="bg-red-100 text-red-800">Bloqueado</Badge>;
+            case 'exported':
+                return <Badge className="bg-purple-100 text-purple-800">Exportado</Badge>;
+            case 'reviewed':
+                return <Badge className="bg-green-100 text-green-800">Revisado</Badge>;
+            case 'draft':
+            default:
+                return <Badge className="bg-gray-100 text-gray-800">Borrador</Badge>;
+        }
+    };
+
+    const totalPending = pendingCounts.tardiness + pendingCounts.departures + pendingCounts.overtime + pendingCounts.missingPunches;
 
     return (
         <SiteLayout>
@@ -460,27 +605,31 @@ export default function ConsolidacionAsistenciaPage() {
                         </div>
                     </div>
 
+                    {/* Step 10: Robust period selector in header */}
                     <div className="flex flex-wrap items-center gap-2">
                         <div className="flex flex-col gap-1.5 mr-2">
-                            <Label htmlFor="year-select" className="text-[10px] font-bold uppercase text-gray-400">Año</Label>
+                            <Label htmlFor="month-select" className="text-[10px] font-bold uppercase text-gray-400">Mes</Label>
+                            <Input
+                                id="month-select"
+                                type="month"
+                                value={selectedMonth}
+                                onChange={(e) => setSelectedMonth(e.target.value)}
+                                className="h-9 w-[160px] border-blue-200"
+                            />
+                        </div>
+                        <div className="flex flex-col gap-1.5 mr-2">
+                            <Label htmlFor="period-type" className="text-[10px] font-bold uppercase text-gray-400">Tipo</Label>
                             <Select
-                                value={selectedPeriod.start.substring(0, 4)}
-                                onValueChange={(year) => {
-                                    const monthDay = selectedPeriod.start.substring(5);
-                                    const endMonthDay = selectedPeriod.end.substring(5);
-                                    setSelectedPeriod({
-                                        start: `${year}-${monthDay}`,
-                                        end: `${year}-${endMonthDay}`
-                                    });
-                                }}
+                                value={periodType}
+                                onValueChange={(v) => setPeriodType(v as any)}
                             >
-                                <SelectTrigger id="year-select" className="h-9 w-[90px] border-blue-200">
-                                    <SelectValue placeholder="Año" />
+                                <SelectTrigger id="period-type" className="h-9 w-[150px] border-blue-200">
+                                    <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="2024">2024</SelectItem>
-                                    <SelectItem value="2025">2025</SelectItem>
-                                    <SelectItem value="2026">2026</SelectItem>
+                                    <SelectItem value="monthly">Mensual</SelectItem>
+                                    <SelectItem value="biweekly_1">Quincenal 1ra</SelectItem>
+                                    <SelectItem value="biweekly_2">Quincenal 2da</SelectItem>
                                 </SelectContent>
                             </Select>
                         </div>
@@ -514,24 +663,15 @@ export default function ConsolidacionAsistenciaPage() {
                     </div>
                 </header>
                 <main className="flex flex-1 flex-col gap-4 p-4 pt-0 sm:gap-8 sm:p-6 sm:pt-0">
-                    {/* Period Selection */}
+                    {/* Period Info Display */}
                     <Card>
                         <CardContent className="pt-6">
-                            <div className="flex flex-col md:flex-row gap-4 items-end">
-                                <div className="flex-1">
-                                    <Label>Período a consolidar</Label>
-                                    <div className="grid grid-cols-2 gap-2 mt-2">
-                                        <Input
-                                            type="date"
-                                            value={selectedPeriod.start}
-                                            onChange={(e) => setSelectedPeriod({ ...selectedPeriod, start: e.target.value })}
-                                        />
-                                        <Input
-                                            type="date"
-                                            value={selectedPeriod.end}
-                                            onChange={(e) => setSelectedPeriod({ ...selectedPeriod, end: e.target.value })}
-                                        />
-                                    </div>
+                            <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
+                                <div>
+                                    <Label className="text-xs text-muted-foreground">Período seleccionado</Label>
+                                    <p className="text-lg font-semibold">
+                                        {formatDate(selectedPeriod.start)} — {formatDate(selectedPeriod.end)}
+                                    </p>
                                 </div>
                                 {isPeriodClosed && (
                                     <Badge className="bg-green-100 text-green-800 h-fit">
@@ -567,41 +707,72 @@ export default function ConsolidacionAsistenciaPage() {
                         </Card>
                     </div>
 
-                    {/* Manager Status */}
+                    {/* Step 3: Pending Justifications & Manager Review Status */}
                     <Card>
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2">
                                 <Users className="h-5 w-5" />
-                                Estado de Jefes
+                                Pendientes por Justificar
                             </CardTitle>
                             <CardDescription>
-                                Jefes que han cerrado y pendientes de cerrar el período
+                                Infracciones pendientes de justificación por parte de los jefes en este período
                             </CardDescription>
                         </CardHeader>
                         <CardContent>
                             <div className="space-y-4">
-                                <div>
-                                    <div className="flex items-center gap-2 mb-2">
-                                        <CheckCircle2 className="h-4 w-4 text-green-500" />
-                                        <span className="font-medium">Jefes que cerraron ({periodClosures.length})</span>
-                                    </div>
-                                    {loadingClosures ? (
-                                        <p className="text-sm text-muted-foreground">Cargando...</p>
-                                    ) : periodClosures.length > 0 ? (
-                                        <div className="space-y-1">
-                                            {periodClosures.map(closure => (
-                                                <div key={closure.id} className="text-sm flex items-center justify-between p-2 bg-green-50 rounded">
-                                                    <span>{closure.managerName}</span>
-                                                    <span className="text-xs text-muted-foreground">
-                                                        {formatDate(closure.closedAt)}
-                                                    </span>
-                                                </div>
-                                            ))}
+                                {loadingPending ? (
+                                    <p className="text-sm text-muted-foreground">Cargando...</p>
+                                ) : (
+                                    <>
+                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                            <div className={`p-3 rounded-lg border ${pendingCounts.tardiness > 0 ? 'bg-yellow-50 border-yellow-200' : 'bg-green-50 border-green-200'}`}>
+                                                <div className="text-2xl font-bold">{pendingCounts.tardiness}</div>
+                                                <div className="text-xs text-muted-foreground">Retardos</div>
+                                            </div>
+                                            <div className={`p-3 rounded-lg border ${pendingCounts.departures > 0 ? 'bg-yellow-50 border-yellow-200' : 'bg-green-50 border-green-200'}`}>
+                                                <div className="text-2xl font-bold">{pendingCounts.departures}</div>
+                                                <div className="text-xs text-muted-foreground">Salidas Tempranas</div>
+                                            </div>
+                                            <div className={`p-3 rounded-lg border ${pendingCounts.overtime > 0 ? 'bg-yellow-50 border-yellow-200' : 'bg-green-50 border-green-200'}`}>
+                                                <div className="text-2xl font-bold">{pendingCounts.overtime}</div>
+                                                <div className="text-xs text-muted-foreground">Horas Extra</div>
+                                            </div>
+                                            <div className={`p-3 rounded-lg border ${pendingCounts.missingPunches > 0 ? 'bg-yellow-50 border-yellow-200' : 'bg-green-50 border-green-200'}`}>
+                                                <div className="text-2xl font-bold">{pendingCounts.missingPunches}</div>
+                                                <div className="text-xs text-muted-foreground">Marcajes Faltantes</div>
+                                            </div>
                                         </div>
-                                    ) : (
-                                        <p className="text-sm text-muted-foreground">Ningún jefe ha cerrado aún</p>
-                                    )}
-                                </div>
+
+                                        {totalPending > 0 && (
+                                            <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm">
+                                                <AlertTriangle className="h-4 w-4 text-amber-600" />
+                                                <span className="text-amber-800">
+                                                    {totalPending} infracciones pendientes. Al cerrar el período, se procesarán automáticamente por SLA.
+                                                </span>
+                                            </div>
+                                        )}
+
+                                        {/* Manager Review Status */}
+                                        {managerReviews.length > 0 && (
+                                            <div className="mt-4">
+                                                <h4 className="text-sm font-medium mb-2 flex items-center gap-2">
+                                                    <CheckCircle2 className="h-4 w-4 text-green-500" />
+                                                    Estado de Revisión de Jefes ({managerReviews.length})
+                                                </h4>
+                                                <div className="space-y-1">
+                                                    {managerReviews.map((review: any) => (
+                                                        <div key={review.id} className="text-sm flex items-center justify-between p-2 bg-green-50 rounded">
+                                                            <span>{review.managerName}</span>
+                                                            <span className="text-xs text-muted-foreground">
+                                                                {formatDate(review.reviewCompletedAt)}
+                                                            </span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </>
+                                )}
                             </div>
                         </CardContent>
                     </Card>
@@ -655,8 +826,9 @@ export default function ConsolidacionAsistenciaPage() {
                                                 <TableCell className="text-right">
                                                     {record.overtimeTripleHours > 0 ? `${record.overtimeTripleHours.toFixed(1)} hrs` : '-'}
                                                 </TableCell>
+                                                {/* Step 8: Status-based badges */}
                                                 <TableCell>
-                                                    <Badge className="bg-blue-100 text-blue-800">Consolidado</Badge>
+                                                    {getStatusBadge(record.status)}
                                                 </TableCell>
                                                 <TableCell>
                                                     <Button variant="ghost" size="sm">Ver detalle</Button>
@@ -690,7 +862,7 @@ export default function ConsolidacionAsistenciaPage() {
                                     <p className="font-medium mb-1">Este proceso realizará:</p>
                                     <ul className="text-muted-foreground space-y-1">
                                         <li>• Validación de incidencias pendientes</li>
-                                        <li>• Ejecución de SLA para infracciones</li>
+                                        <li>• Ejecución de SLA para infracciones del período</li>
                                         <li>• Consolidación de prenómina</li>
                                         <li>• Cierre del período (no reversible)</li>
                                     </ul>
@@ -725,7 +897,7 @@ export default function ConsolidacionAsistenciaPage() {
                         </DialogContent>
                     </Dialog>
                 </main>
-            </div >
-        </SiteLayout >
+            </div>
+        </SiteLayout>
     );
 }

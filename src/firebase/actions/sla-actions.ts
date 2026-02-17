@@ -41,7 +41,9 @@ import { getUserPermissions, hasPermission } from "../role-actions";
 export async function runGlobalSLAProcessing(
     currentUserId: string,
     userRole: string,
-    customRoleId?: string
+    customRoleId?: string,
+    periodStart?: string,
+    periodEnd?: string
 ): Promise<{
     success: boolean;
     stats?: {
@@ -70,10 +72,10 @@ export async function runGlobalSLAProcessing(
 
         // NOTA: Para este MVP manual, procesamos TODOS los retardos que no estén justificados y no tengan estatus final
         const tardinessRef = collection(firestore, 'tardiness_records');
-        const tardinessQuery = query(
-            tardinessRef,
-            where('justificationStatus', '==', 'pending')
-        );
+        const tardinessConstraints: any[] = [where('justificationStatus', '==', 'pending')];
+        if (periodStart) tardinessConstraints.push(where('date', '>=', periodStart));
+        if (periodEnd) tardinessConstraints.push(where('date', '<=', periodEnd));
+        const tardinessQuery = query(tardinessRef, ...tardinessConstraints);
 
         const tardinessDocs = await getDocs(tardinessQuery);
 
@@ -95,10 +97,10 @@ export async function runGlobalSLAProcessing(
 
         // 3. Procesar Salidas Tempranas Pendientes
         const departuresRef = collection(firestore, 'early_departures');
-        const departuresQuery = query(
-            departuresRef,
-            where('justificationStatus', '==', 'pending')
-        );
+        const departuresConstraints: any[] = [where('justificationStatus', '==', 'pending')];
+        if (periodStart) departuresConstraints.push(where('date', '>=', periodStart));
+        if (periodEnd) departuresConstraints.push(where('date', '<=', periodEnd));
+        const departuresQuery = query(departuresRef, ...departuresConstraints);
 
         const departureDocs = await getDocs(departuresQuery);
 
@@ -121,10 +123,10 @@ export async function runGlobalSLAProcessing(
         // Riesgo de race condition bajo, ya que es un proceso administrativo controlado.
 
         const overtimeRef = collection(firestore, 'overtime_requests');
-        const overtimeQuery = query(
-            overtimeRef,
-            where('status', '==', 'pending')
-        );
+        const overtimeConstraints: any[] = [where('status', '==', 'pending')];
+        if (periodStart) overtimeConstraints.push(where('date', '>=', periodStart));
+        if (periodEnd) overtimeConstraints.push(where('date', '<=', periodEnd));
+        const overtimeQuery = query(overtimeRef, ...overtimeConstraints);
 
         const overtimeDocs = await getDocs(overtimeQuery);
 
