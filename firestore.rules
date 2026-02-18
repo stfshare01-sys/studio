@@ -559,6 +559,18 @@ service cloud.firestore {
     }
 
     /**
+     * @description Manager review status for period closures
+     * Read: Managers, HR Managers, and Admins
+     * Write: Managers (mark review complete), HR Managers and Admins
+     * @path /manager_review_status/{reviewId}
+     */
+    match /manager_review_status/{reviewId} {
+      allow read: if isManagerOrHR();
+      allow create, update: if isManagerOrHR();
+      allow delete: if hasRole('Admin');
+    }
+
+    /**
      * @description Positions catalog
      * Read: All authenticated users
      * Write: HR Managers and Admins
