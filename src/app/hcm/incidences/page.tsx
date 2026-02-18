@@ -149,7 +149,8 @@ export default function IncidencesPage() {
             maternity: 'Maternidad',
             paternity: 'Paternidad',
             bereavement: 'Duelo',
-            unjustified_absence: 'Falta Injustificada'
+            unjustified_absence: 'Falta Injustificada',
+            abandono_empleo: 'Abandono de Empleo'
         };
         return labels[type] || type;
     };

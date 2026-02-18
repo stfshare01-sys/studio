@@ -30,7 +30,7 @@ export async function checkAttendanceTaskCompletion(taskId: string): Promise<boo
         }
 
         // Si ya está completada, no hacer nada
-        if (task.status === 'completed') {
+        if (task.status === 'Completed') {
             return true;
         }
 

@@ -12,7 +12,7 @@ import {
     serverTimestamp,
     orderBy
 } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { useFirestore } from '@/firebase';
 import { HolidayCalendar, OfficialHoliday } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -39,10 +39,9 @@ import {
     Calendar as CalendarIcon,
     Edit,
     Loader2,
-    Save,
     MoreVertical
 } from 'lucide-react';
-import { toast } from 'sonner';
+import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
@@ -56,6 +55,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 export default function HolidayCalendarsPage() {
+    const db = useFirestore();
+    const { toast } = useToast();
     const [calendars, setCalendars] = useState<HolidayCalendar[]>([]);
     const [loading, setLoading] = useState(true);
     const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -84,7 +85,7 @@ export default function HolidayCalendarsPage() {
             setCalendars(data);
         } catch (error) {
             console.error('Error fetching calendars:', error);
-            toast.error('Error al cargar calendarios');
+            toast({ title: 'Error al cargar calendarios', variant: 'destructive' });
         } finally {
             setLoading(false);
         }
@@ -104,13 +105,13 @@ export default function HolidayCalendarsPage() {
             };
 
             await addDoc(collection(db, 'holiday_calendars'), newCalendar);
-            toast.success('Calendario creado correctamente');
+            toast({ title: 'Calendario creado correctamente' });
             setIsDialogOpen(false);
             setNewCalendarName('');
             fetchCalendars();
         } catch (error) {
             console.error('Error creating calendar:', error);
-            toast.error('Error al crear calendario');
+            toast({ title: 'Error al crear calendario', variant: 'destructive' });
         }
     };
 
@@ -119,11 +120,11 @@ export default function HolidayCalendarsPage() {
 
         try {
             await deleteDoc(doc(db, 'holiday_calendars', id));
-            toast.success('Calendario eliminado');
+            toast({ title: 'Calendario eliminado' });
             fetchCalendars();
         } catch (error) {
             console.error('Error deleting calendar:', error);
-            toast.error('Error al eliminar');
+            toast({ title: 'Error al eliminar', variant: 'destructive' });
         }
     };
 
@@ -289,6 +290,8 @@ function EditHolidaysDialog({
     calendar: HolidayCalendar;
     onSave: () => void;
 }) {
+    const db = useFirestore();
+    const { toast } = useToast();
     const [holidays, setHolidays] = useState<OfficialHoliday[]>(calendar.holidays || []);
     const [newDate, setNewDate] = useState('');
     const [newName, setNewName] = useState('');
@@ -325,11 +328,11 @@ function EditHolidaysDialog({
                 holidays: holidays,
                 updatedAt: new Date().toISOString()
             });
-            toast.success('Días festivos actualizados');
+            toast({ title: 'Días festivos actualizados' });
             onSave();
         } catch (error) {
             console.error('Error updating holidays:', error);
-            toast.error('Error al guardar cambios');
+            toast({ title: 'Error al guardar cambios', variant: 'destructive' });
         } finally {
             setSaving(false);
         }

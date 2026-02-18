@@ -53,7 +53,8 @@ const INCIDENCE_CONFIG: Record<IncidenceType, { icon: typeof Plane; color: strin
     maternity: { icon: Baby, color: 'bg-pink-500', label: 'Maternidad' },
     paternity: { icon: Baby, color: 'bg-cyan-500', label: 'Paternidad' },
     bereavement: { icon: Heart, color: 'bg-gray-500', label: 'Duelo' },
-    unjustified_absence: { icon: AlertCircle, color: 'bg-orange-500', label: 'Falta' }
+    unjustified_absence: { icon: AlertCircle, color: 'bg-orange-500', label: 'Falta' },
+    abandono_empleo: { icon: AlertCircle, color: 'bg-red-700', label: 'Abandono' }
 };
 
 /**

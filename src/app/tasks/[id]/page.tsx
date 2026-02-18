@@ -9,8 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ArrowLeft, CheckCircle2 } from 'lucide-react';
-import { AttendanceJustificationTask } from '@/components/tasks/AttendanceJustificationTask';
+import { ArrowLeft, CheckCircle2, ExternalLink } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import type { Task } from '@/lib/types';
 
@@ -135,17 +134,27 @@ export default function TaskDetailPage() {
                                     {task.priority === 'high' ? 'Alta Prioridad' : 'Normal'}
                                 </Badge>
                                 <Badge variant="outline">
-                                    {task.status === 'pending' ? 'Pendiente' : task.status}
+                                    {task.status === 'Pending' ? 'Pendiente' : task.status === 'Completed' ? 'Completada' : task.status}
                                 </Badge>
                             </div>
                         </div>
                     </CardHeader>
                     <CardContent>
                         {task.type === 'attendance_justification' ? (
-                            <AttendanceJustificationTask
-                                task={task}
-                                onComplete={handleComplete}
-                            />
+                            <div className="text-center py-8 space-y-4">
+                                <p className="text-muted-foreground">
+                                    Esta tarea de justificación de asistencia se gestiona desde el módulo de Gestión de Equipo.
+                                </p>
+                                <Button
+                                    onClick={() => {
+                                        const batchId = task.metadata?.batchId;
+                                        router.push(`/hcm/team-management${batchId ? `?batchId=${batchId}&tab=tardiness` : ''}`);
+                                    }}
+                                >
+                                    <ExternalLink className="mr-2 h-4 w-4" />
+                                    Ir a Gestión de Equipo
+                                </Button>
+                            </div>
                         ) : (
                             <div className="text-center py-8 text-muted-foreground">
                                 <p>Tipo de tarea no soportado: {task.type}</p>

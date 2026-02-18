@@ -1030,7 +1030,10 @@ export type AccountingEntry = {
  */
 export type HolidayCalendar = {
   id: string;
+  name: string;                 // Nombre del calendario (e.g. "México 2026 Oficial")
   year: number;
+  countryCode?: string;         // Código ISO del país (e.g. "mx")
+  isDefault?: boolean;          // Si es el calendario por defecto
   holidays: OfficialHoliday[];
   createdAt: string;
   updatedAt: string;
@@ -1042,8 +1045,9 @@ export type HolidayCalendar = {
 export type OfficialHoliday = {
   date: string;                 // YYYY-MM-DD
   name: string;                 // Nombre del día festivo
-  isObligatory: boolean;        // Descanso obligatorio según Art. 74 LFT
-  premiumRequired: boolean;     // Requiere pago de prima (200%)
+  mandatory?: boolean;          // Si es obligatorio según LFT
+  isObligatory?: boolean;       // Alias legacy — Descanso obligatorio según Art. 74 LFT
+  premiumRequired?: boolean;    // Requiere pago de prima (200%)
 };
 
 /**
@@ -1340,6 +1344,7 @@ export type TardinessRecord = {
   justifiedAt?: string;           // Cuándo se justificó
   linkedIncidenceId?: string;     // Si fue auto-justificado por una incidencia previa
   compensatedToHourBank?: boolean; // Si se envió a bolsa de horas
+  importBatchId?: string;         // Link al batch de importación que creó este registro
 
   // Acumulación
   periodStartDate: string;        // Inicio del período de 30 días
@@ -1498,7 +1503,8 @@ export type IncidenceCode =
   | 'PD'    // Prima Dominical
   | 'VAC'   // Vacaciones
   | 'PV'    // Prima Vacacional
-  | 'BJ';   // Baja
+  | 'BJ'    // Baja
+  | 'AE';   // Abandono de Empleo
 
 /**
  * Mapeo de tipos de incidencia a códigos
@@ -1511,6 +1517,7 @@ export const INCIDENCE_CODE_MAP: Record<IncidenceType | 'attendance' | 'rest_day
   paternity: 'PCS',
   bereavement: 'PCS',
   unjustified_absence: 'FINJ',
+  abandono_empleo: 'AE',
   attendance: 'ASI',
   rest_day: 'DD',
   worked_rest_day: 'DL',
