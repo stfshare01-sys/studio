@@ -234,21 +234,44 @@ export async function processAttendanceImport(
 
         // Fetch existing attendance records to prevent duplicates
         const existingRecordsMap = new Set<string>();
+        // Also fetch existing tardiness and early departure records to prevent duplicates
+        const existingTardinessMap = new Set<string>();
+        const existingDeparturesMap = new Set<string>();
+
         if (minDate && maxDate) {
             console.log(`[HCM] Checking for duplicates between ${minDate} and ${maxDate}`);
-            const attendanceRef = collection(firestore, 'attendance');
-            const duplicateQuery = query(
-                attendanceRef,
-                where('date', '>=', minDate),
-                where('date', '<=', maxDate)
-            );
 
-            const existingSnap = await getDocs(duplicateQuery);
+            const [existingSnap, existingTardinessSnap, existingDeparturesSnap] = await Promise.all([
+                getDocs(query(
+                    collection(firestore, 'attendance'),
+                    where('date', '>=', minDate),
+                    where('date', '<=', maxDate)
+                )),
+                getDocs(query(
+                    collection(firestore, 'tardiness_records'),
+                    where('date', '>=', minDate),
+                    where('date', '<=', maxDate)
+                )),
+                getDocs(query(
+                    collection(firestore, 'early_departures'),
+                    where('date', '>=', minDate),
+                    where('date', '<=', maxDate)
+                ))
+            ]);
+
             existingSnap.docs.forEach(doc => {
                 const data = doc.data();
                 existingRecordsMap.add(`${data.employeeId}_${data.date}`);
             });
-            console.log(`[HCM] Found ${existingRecordsMap.size} existing records in range`);
+            existingTardinessSnap.docs.forEach(doc => {
+                const data = doc.data();
+                existingTardinessMap.add(`${data.employeeId}_${data.date}`);
+            });
+            existingDeparturesSnap.docs.forEach(doc => {
+                const data = doc.data();
+                existingDeparturesMap.add(`${data.employeeId}_${data.date}`);
+            });
+            console.log(`[HCM] Found ${existingRecordsMap.size} existing attendance, ${existingTardinessMap.size} tardiness, ${existingDeparturesMap.size} early departures in range`);
         }
 
         // Get all unique employee IDs and fetch their shift types and time bank balances
@@ -435,7 +458,8 @@ export async function processAttendanceImport(
                         if (!incidenceSnap.empty) {
                             // console.log(`[HCM] Skipping tardiness for ${row.employeeId} on ${row.date} due to existing approved incidence`);
                             // We act as if it's justified.
-                        } else {
+                        } else if (!existingTardinessMap.has(`${row.employeeId}_${row.date}`)) {
+                            // Only create if no tardiness already exists for this employee+date
                             const diffMs = checkInDate.getTime() - scheduledStartDate.getTime();
                             const minutesLate = Math.floor(diffMs / 60000);
 
@@ -460,6 +484,7 @@ export async function processAttendanceImport(
                             };
 
                             const tRef = await addDoc(collection(firestore, 'tardiness_records'), tardinessData);
+                            existingTardinessMap.add(`${row.employeeId}_${row.date}`); // Prevent intra-batch duplicates
                             newRecordsToJustify.push({
                                 id: tRef.id,
                                 employeeId: row.employeeId,
@@ -491,7 +516,8 @@ export async function processAttendanceImport(
 
                         if (!incidenceSnap.empty) {
                             // console.log(`[HCM] Skipping early departure for ${row.employeeId} on ${row.date} due to existing approved incidence`);
-                        } else {
+                        } else if (!existingDeparturesMap.has(`${row.employeeId}_${row.date}`)) {
+                            // Only create if no early departure already exists for this employee+date
                             const diffMs = scheduledEndDate.getTime() - checkOutDate.getTime();
                             const minutesEarly = Math.floor(diffMs / 60000);
 
@@ -519,6 +545,7 @@ export async function processAttendanceImport(
                                 };
 
                                 const edRef = await addDoc(collection(firestore, 'early_departures'), departureData);
+                                existingDeparturesMap.add(`${row.employeeId}_${row.date}`); // Prevent intra-batch duplicates
                                 newRecordsToJustify.push({
                                     id: edRef.id,
                                     employeeId: row.employeeId,
