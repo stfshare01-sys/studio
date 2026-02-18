@@ -892,19 +892,35 @@ function TeamManagementContent() {
 
         setSubmitting(true);
         try {
-            // Obtener horarios del shift del empleado desde shiftAssignments
+            // Obtener horarios del shift del empleado
+            // 1. Buscar asignación activa en shiftAssignments
+            // 2. Fallback: turno base del empleado (customShiftId)
+            // 3. Fallback: horario por defecto 09:00-18:00
+            let scheduledStart = '09:00';
+            let scheduledEnd = '18:00';
+
             const employeeAssignment = shiftAssignments.find(sa =>
                 sa.employeeId === punch.employeeId &&
                 sa.status === 'active'
             );
 
-            if (!employeeAssignment) {
-                throw new Error('No se encontró asignación de turno activa para el empleado');
-            }
-
-            const shift = shifts.find(s => s.id === employeeAssignment.newShiftId);
-            if (!shift) {
-                throw new Error('No se encontró el turno del empleado');
+            if (employeeAssignment) {
+                const shift = shifts.find(s => s.id === employeeAssignment.newShiftId);
+                if (shift) {
+                    scheduledStart = shift.startTime;
+                    scheduledEnd = shift.endTime;
+                }
+            } else {
+                // Fallback: turno base del empleado
+                const baseShiftId = (employee as any).customShiftId;
+                if (baseShiftId) {
+                    const baseShift = shifts.find(s => s.id === baseShiftId);
+                    if (baseShift) {
+                        scheduledStart = baseShift.startTime;
+                        scheduledEnd = baseShift.endTime;
+                    }
+                }
+                console.warn(`[HCM] No se encontró asignación de turno activa para ${employee.fullName}, usando horario: ${scheduledStart}-${scheduledEnd}`);
             }
 
             const result = await justifyMissingPunch(
@@ -912,8 +928,8 @@ function TeamManagementContent() {
                 justificationReason || 'Justificado por manager',
                 providedEntryTime || undefined,
                 providedExitTime || undefined,
-                shift.startTime,
-                shift.endTime,
+                scheduledStart,
+                scheduledEnd,
                 user.id || '',
                 user.fullName || user.email || '',
                 10 // toleranceMinutes - TODO: obtener de location

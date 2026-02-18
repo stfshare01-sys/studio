@@ -6,7 +6,7 @@ import SiteLayout from '@/components/site-layout';
 import Link from 'next/link';
 import { useFirebase, useMemoFirebase } from '@/firebase/provider';
 import { useCollection } from '@/firebase/firestore/use-collection';
-import { collection, query, where, orderBy, getDocs } from 'firebase/firestore';
+import { collection, query, where, orderBy, getDocs, doc, writeBatch } from 'firebase/firestore';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -323,6 +323,37 @@ export default function ConsolidacionAsistenciaPage() {
 
             if (!lockResult2.success) {
                 throw new Error(lockResult2.error || 'No se pudo bloquear el período.');
+            }
+
+            // 5. Update prenomina records status to 'locked'
+            setConsolidationStep('Actualizando estado de registros...');
+
+            const prenominaSnap = await getDocs(query(
+                collection(firestore, 'prenomina'),
+                where('periodStart', '>=', selectedPeriod.start),
+                where('periodStart', '<=', selectedPeriod.end)
+            ));
+
+            if (!prenominaSnap.empty) {
+                const nowISO = new Date().toISOString();
+                // Firestore batches support up to 500 operations
+                const batchSize = 500;
+                const docs = prenominaSnap.docs.filter(d => {
+                    const data = d.data();
+                    return data.periodEnd >= selectedPeriod.start && data.status !== 'locked';
+                });
+
+                for (let i = 0; i < docs.length; i += batchSize) {
+                    const batch = writeBatch(firestore);
+                    const chunk = docs.slice(i, i + batchSize);
+                    for (const d of chunk) {
+                        batch.update(doc(firestore, 'prenomina', d.id), {
+                            status: 'locked',
+                            updatedAt: nowISO
+                        });
+                    }
+                    await batch.commit();
+                }
             }
 
             // Update local state so UI reflects the lock immediately
