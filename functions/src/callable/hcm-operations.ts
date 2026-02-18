@@ -1289,3 +1289,106 @@ async function generatePrenominaFile(
         throw new HttpsError('internal', `Error generando archivo NOMIPAQ: ${error.message}`);
     }
 }
+
+// =========================================================================
+// CREATE SYSTEM USER (Firebase Auth + Firestore)
+// =========================================================================
+
+interface CreateSystemUserRequest {
+    email: string;
+    fullName: string;
+    department: string;
+    role: string;
+}
+
+interface CreateSystemUserResponse {
+    success: boolean;
+    uid: string;
+}
+
+/**
+ * Creates a new user in Firebase Auth and a corresponding document in Firestore.
+ *
+ * This is the production replacement for the simulated user creation.
+ * Uses Firebase Admin SDK to:
+ * 1. Create the user in Firebase Auth (with a temporary password)
+ * 2. Create the user document in Firestore `users` collection
+ *
+ * @requires Role: Admin or HRManager
+ */
+export const createSystemUser = onCall<CreateSystemUserRequest>(
+    { region: 'us-central1' },
+    async (request: CallableRequest<CreateSystemUserRequest>): Promise<CreateSystemUserResponse> => {
+        // Verify caller has permission
+        await verifyRole(request.auth?.uid, HCM_ROLES, 'crear usuario del sistema');
+
+        const { email, fullName, department, role } = request.data;
+
+        if (!email || !fullName) {
+            throw new HttpsError('invalid-argument', 'Email y nombre completo son requeridos.');
+        }
+
+        try {
+            // 1. Create user in Firebase Auth
+            const tempPassword = `Studio_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+            const userRecord = await admin.auth().createUser({
+                email,
+                displayName: fullName,
+                password: tempPassword,
+                disabled: false,
+            });
+
+            console.log(`[HCM] Created Firebase Auth user: ${userRecord.uid} (${email})`);
+
+            // 2. Create user document in Firestore
+            const nowISO = new Date().toISOString();
+            await db.collection('users').doc(userRecord.uid).set({
+                id: userRecord.uid,
+                fullName,
+                email,
+                department: department || '',
+                role: role || 'Member',
+                status: 'active',
+                createdAt: nowISO,
+                updatedAt: nowISO,
+            });
+
+            console.log(`[HCM] Created Firestore user document for ${userRecord.uid}`);
+
+            // 3. Generate password reset link so the user can set their own password
+            try {
+                const resetLink = await admin.auth().generatePasswordResetLink(email);
+                console.log(`[HCM] Password reset link generated for ${email}: ${resetLink}`);
+                // In the future, send this link via email notification
+            } catch (resetError) {
+                console.warn(`[HCM] Could not generate password reset link (non-blocking):`, resetError);
+            }
+
+            return {
+                success: true,
+                uid: userRecord.uid,
+            };
+
+        } catch (error: any) {
+            console.error('[HCM] Error creating system user:', error);
+
+            // Handle specific Firebase Auth errors
+            if (error.code === 'auth/email-already-exists') {
+                throw new HttpsError(
+                    'already-exists',
+                    `El correo ${email} ya está registrado en el sistema.`
+                );
+            }
+            if (error.code === 'auth/invalid-email') {
+                throw new HttpsError(
+                    'invalid-argument',
+                    `El correo ${email} no es válido.`
+                );
+            }
+
+            if (error instanceof HttpsError) throw error;
+            throw new HttpsError('internal', `Error creando usuario: ${error.message}`);
+        }
+    }
+);

@@ -12,7 +12,8 @@
 export {
     consolidatePrenomina,
     processEmployeeImport,
-    approveIncidence
+    approveIncidence,
+    createSystemUser
 } from './callable/hcm-operations';
 
 // Payroll report generation
