@@ -507,34 +507,36 @@ async function seedDatabase() {
         // correspondientes a continuación.
         // ========================================================================
 
-        // Periods logic
-        const p1 = await createAttendanceImportBatch(PERIODS.CLOSED_1.period, 1, PERIODS.CLOSED_1.batch1.start, PERIODS.CLOSED_1.batch1.end, PERIODS.CLOSED_1.batch1.importDate);
-        await createAttendanceRecords(p1.batchId, p1.workingDays, PERIODS.CLOSED_1.period);
-        await createOvertimeRequests(PERIODS.CLOSED_1.period, p1.workingDays, true);
-        await createApprovedIncidences(PERIODS.CLOSED_1.period, p1.workingDays);
+        // Periods logic — DISABLED: attendance, incidence, and overtime seed data
+        // To re-enable, uncomment the lines below.
+        //
+        // const p1 = await createAttendanceImportBatch(PERIODS.CLOSED_1.period, 1, PERIODS.CLOSED_1.batch1.start, PERIODS.CLOSED_1.batch1.end, PERIODS.CLOSED_1.batch1.importDate);
+        // await createAttendanceRecords(p1.batchId, p1.workingDays, PERIODS.CLOSED_1.period);
+        // await createOvertimeRequests(PERIODS.CLOSED_1.period, p1.workingDays, true);
+        // await createApprovedIncidences(PERIODS.CLOSED_1.period, p1.workingDays);
+        //
+        // const p1b2 = await createAttendanceImportBatch(PERIODS.CLOSED_1.period, 2, PERIODS.CLOSED_1.batch2.start, PERIODS.CLOSED_1.batch2.end, PERIODS.CLOSED_1.batch2.importDate);
+        // await createAttendanceRecords(p1b2.batchId, p1b2.workingDays, PERIODS.CLOSED_1.period);
+        // await createOvertimeRequests(PERIODS.CLOSED_1.period, p1b2.workingDays, true);
+        // await createApprovedIncidences(PERIODS.CLOSED_1.period, p1b2.workingDays);
+        // await closePeriod(PERIODS.CLOSED_1.period, PERIODS.CLOSED_1.closedAt);
+        //
+        // const p2 = await createAttendanceImportBatch(PERIODS.CLOSED_2.period, 1, PERIODS.CLOSED_2.batch1.start, PERIODS.CLOSED_2.batch1.end, PERIODS.CLOSED_2.batch1.importDate);
+        // await createAttendanceRecords(p2.batchId, p2.workingDays, PERIODS.CLOSED_2.period);
+        // await createOvertimeRequests(PERIODS.CLOSED_2.period, p2.workingDays, true);
+        // await createApprovedIncidences(PERIODS.CLOSED_2.period, p2.workingDays);
+        //
+        // const p2b2 = await createAttendanceImportBatch(PERIODS.CLOSED_2.period, 2, PERIODS.CLOSED_2.batch2.start, PERIODS.CLOSED_2.batch2.end, PERIODS.CLOSED_2.batch2.importDate);
+        // await createAttendanceRecords(p2b2.batchId, p2b2.workingDays, PERIODS.CLOSED_2.period);
+        // await createOvertimeRequests(PERIODS.CLOSED_2.period, p2b2.workingDays, true);
+        // await createApprovedIncidences(PERIODS.CLOSED_2.period, p2b2.workingDays);
+        // await closePeriod(PERIODS.CLOSED_2.period, PERIODS.CLOSED_2.closedAt);
+        //
+        // const p3 = await createAttendanceImportBatch(PERIODS.OPEN.period, 1, PERIODS.OPEN.batch1.start, PERIODS.OPEN.batch1.end, PERIODS.OPEN.batch1.importDate);
+        // await createAttendanceRecords(p3.batchId, p3.workingDays, PERIODS.OPEN.period);
+        // await createOvertimeRequests(PERIODS.OPEN.period, p3.workingDays, false);
 
-        const p1b2 = await createAttendanceImportBatch(PERIODS.CLOSED_1.period, 2, PERIODS.CLOSED_1.batch2.start, PERIODS.CLOSED_1.batch2.end, PERIODS.CLOSED_1.batch2.importDate);
-        await createAttendanceRecords(p1b2.batchId, p1b2.workingDays, PERIODS.CLOSED_1.period);
-        await createOvertimeRequests(PERIODS.CLOSED_1.period, p1b2.workingDays, true);
-        await createApprovedIncidences(PERIODS.CLOSED_1.period, p1b2.workingDays);
-        await closePeriod(PERIODS.CLOSED_1.period, PERIODS.CLOSED_1.closedAt);
-
-        const p2 = await createAttendanceImportBatch(PERIODS.CLOSED_2.period, 1, PERIODS.CLOSED_2.batch1.start, PERIODS.CLOSED_2.batch1.end, PERIODS.CLOSED_2.batch1.importDate);
-        await createAttendanceRecords(p2.batchId, p2.workingDays, PERIODS.CLOSED_2.period);
-        await createOvertimeRequests(PERIODS.CLOSED_2.period, p2.workingDays, true);
-        await createApprovedIncidences(PERIODS.CLOSED_2.period, p2.workingDays);
-
-        const p2b2 = await createAttendanceImportBatch(PERIODS.CLOSED_2.period, 2, PERIODS.CLOSED_2.batch2.start, PERIODS.CLOSED_2.batch2.end, PERIODS.CLOSED_2.batch2.importDate);
-        await createAttendanceRecords(p2b2.batchId, p2b2.workingDays, PERIODS.CLOSED_2.period);
-        await createOvertimeRequests(PERIODS.CLOSED_2.period, p2b2.workingDays, true);
-        await createApprovedIncidences(PERIODS.CLOSED_2.period, p2b2.workingDays);
-        await closePeriod(PERIODS.CLOSED_2.period, PERIODS.CLOSED_2.closedAt);
-
-        const p3 = await createAttendanceImportBatch(PERIODS.OPEN.period, 1, PERIODS.OPEN.batch1.start, PERIODS.OPEN.batch1.end, PERIODS.OPEN.batch1.importDate);
-        await createAttendanceRecords(p3.batchId, p3.workingDays, PERIODS.OPEN.period);
-        await createOvertimeRequests(PERIODS.OPEN.period, p3.workingDays, false);
-
-        console.log('✅  Datos de prueba de asistencia y consolidados GENERADOS.');
+        console.log('⏭️  Datos de prueba de asistencia/incidencias OMITIDOS (deshabilitados en seed).');
 
 
         // 10. Admin User
