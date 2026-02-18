@@ -73,9 +73,14 @@ export default function ConsolidacionAsistenciaPage() {
 
     // Step 10: Robust period selector
     const [selectedMonth, setSelectedMonth] = useState(() => format(new Date(), 'yyyy-MM'));
-    const [periodType, setPeriodType] = useState<'monthly' | 'biweekly_1' | 'biweekly_2'>('monthly');
+    const [periodType, setPeriodType] = useState<'monthly' | 'biweekly_1' | 'biweekly_2' | 'custom'>('monthly');
+    const [customStart, setCustomStart] = useState('');
+    const [customEnd, setCustomEnd] = useState('');
 
     const selectedPeriod = useMemo(() => {
+        if (periodType === 'custom' && customStart && customEnd) {
+            return { start: customStart, end: customEnd };
+        }
         const [year, month] = selectedMonth.split('-').map(Number);
         const start = new Date(year, month - 1, 1);
         if (periodType === 'biweekly_1') {
@@ -93,7 +98,7 @@ export default function ConsolidacionAsistenciaPage() {
             start: format(start, 'yyyy-MM-dd'),
             end: format(endOfMonth(start), 'yyyy-MM-dd')
         };
-    }, [selectedMonth, periodType]);
+    }, [selectedMonth, periodType, customStart, customEnd]);
 
     const [periodClosures, setPeriodClosures] = useState<any[]>([]);
     const [loadingClosures, setLoadingClosures] = useState(false);
@@ -104,12 +109,13 @@ export default function ConsolidacionAsistenciaPage() {
     const [loadingPending, setLoadingPending] = useState(false);
 
     // Fetch prenomina records for selected period
+    // Query: records whose periodStart falls within or before the selected range end
+    // Then filter client-side for overlap (Firestore can't do range-overlap in a single query)
     const prenominaQuery = useMemoFirebase(() => {
         if (!firestore || !selectedPeriod.start) return null;
 
         return query(
             collection(firestore, 'prenomina'),
-            where('periodStart', '>=', selectedPeriod.start),
             where('periodStart', '<=', selectedPeriod.end),
             orderBy('periodStart', 'desc')
         );
@@ -206,21 +212,22 @@ export default function ConsolidacionAsistenciaPage() {
         loadPendingCounts();
     }, [firestore, selectedPeriod.start, selectedPeriod.end]);
 
-    // Filter records client-side for search
-    const exactMatchedRecords = useMemo(() => {
+    // Filter records client-side: show records that OVERLAP with the selected range
+    // Two ranges overlap when: recordStart <= selectedEnd AND recordEnd >= selectedStart
+    const matchedRecords = useMemo(() => {
         if (!prenominaRecords) return [];
         return (prenominaRecords as PrenominaRecord[]).filter(r =>
-            r.periodStart === selectedPeriod.start && r.periodEnd === selectedPeriod.end
+            r.periodStart <= selectedPeriod.end && r.periodEnd >= selectedPeriod.start
         );
     }, [prenominaRecords, selectedPeriod.start, selectedPeriod.end]);
 
     const filteredRecords = useMemo(() => {
-        if (!searchTerm) return exactMatchedRecords;
-        return exactMatchedRecords.filter(r =>
+        if (!searchTerm) return matchedRecords;
+        return matchedRecords.filter(r =>
             (r.employeeName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
             (r.employeeId || '').toLowerCase().includes(searchTerm.toLowerCase())
         );
-    }, [exactMatchedRecords, searchTerm]);
+    }, [matchedRecords, searchTerm]);
 
     // Calculate totals based on filtered records (NO MONETARY VALUES)
     const totalDaysWorked = filteredRecords.reduce((sum: number, r: PrenominaRecord) => sum + (r.daysWorked || 0), 0);
@@ -233,61 +240,46 @@ export default function ConsolidacionAsistenciaPage() {
         return closure.period === currentPeriodKey;
     });
 
-    // Handle consolidation and period closure
+    const [consolidationStep, setConsolidationStep] = useState('');
+
+    // Handle consolidation and period closure (called from dialog, no window.confirm)
     const handleClosePeriod = async () => {
         if (!user || !firestore) return;
 
         if (isPeriodClosed) {
-            toast({
-                title: "Período ya cerrado",
-                description: "Este período ya ha sido consolidado. No se puede volver a cerrar para evitar duplicados.",
-                variant: "destructive"
-            });
+            setValidationErrors(['Este período ya ha sido consolidado. No se puede volver a cerrar.']);
             return;
         }
 
-        const confirmed = window.confirm(
-            '¿Estás seguro de cerrar el período y consolidar?\n\n' +
-            'Este proceso:\n' +
-            '1. Validará que no haya incidencias pendientes\n' +
-            '2. Ejecutará SLA para infracciones no justificadas\n' +
-            '3. Consolidará la prenómina del período\n' +
-            '4. Cerrará el período (no se podrá modificar)\n\n' +
-            'Esta acción no se puede deshacer.'
-        );
-
-        if (!confirmed) return;
-
         setIsConsolidating(true);
         setValidationErrors([]);
+        setConsolidationStep('Verificando bloqueo del período...');
 
         try {
-            // 1. Validate pending incidences
-            toast({
-                title: "Validando incidencias",
-                description: "Verificando que no haya incidencias pendientes...",
-            });
+            // 0. Fresh server-side lock check to prevent duplicates
+            const freshLockCheck = await checkPeriodLock(selectedPeriod.start, selectedPeriod.end);
+            if (freshLockCheck.isLocked) {
+                setValidationErrors(['Este período ya ha sido consolidado y bloqueado. No se puede volver a cerrar.']);
+                setIsConsolidating(false);
+                setConsolidationStep('');
+                return;
+            }
 
+            // 1. Validate pending incidences
+            setConsolidationStep('Validando incidencias pendientes...');
             const pendingIncidences = await getPendingIncidences(selectedPeriod.start, selectedPeriod.end);
 
             if (pendingIncidences.length > 0) {
                 setValidationErrors([
-                    `Existen ${pendingIncidences.length} incidencias pendientes de aprobar/rechazar en este período.`
+                    `Existen ${pendingIncidences.length} incidencias pendientes de aprobar/rechazar en este período. Revísalas antes de continuar.`
                 ]);
-                toast({
-                    title: "Incidencias pendientes",
-                    description: `Existen ${pendingIncidences.length} incidencias pendientes. Por favor, revísalas antes de continuar.`,
-                    variant: "destructive"
-                });
                 setIsConsolidating(false);
+                setConsolidationStep('');
                 return;
             }
 
-            // 2. Execute SLA with date range filter (Step 3)
-            toast({
-                title: "Ejecutando SLA",
-                description: "Procesando infracciones no justificadas del período...",
-            });
+            // 2. Execute SLA with date range filter
+            setConsolidationStep('Ejecutando SLA para infracciones no justificadas...');
 
             const slaResult = await runGlobalSLAProcessing(
                 user.uid,
@@ -302,12 +294,9 @@ export default function ConsolidacionAsistenciaPage() {
             }
 
             // 3. Consolidate prenomina
-            toast({
-                title: "Consolidando prenómina",
-                description: "Generando registros de prenómina...",
-            });
+            setConsolidationStep('Consolidando prenómina...');
 
-            const effectivePeriodType = periodType === 'monthly' ? 'monthly' : 'biweekly';
+            const effectivePeriodType = periodType === 'monthly' ? 'monthly' : (periodType === 'custom' ? 'monthly' : 'biweekly');
 
             const consolidateResult = await callConsolidatePrenomina({
                 periodStart: selectedPeriod.start,
@@ -320,10 +309,7 @@ export default function ConsolidacionAsistenciaPage() {
             }
 
             // 4. Lock the payroll period
-            toast({
-                title: "Bloqueando período",
-                description: "Creando bloqueo de período...",
-            });
+            setConsolidationStep('Bloqueando período...');
 
             const lockResult2 = await lockPayrollPeriod(
                 selectedPeriod.start,
@@ -336,8 +322,16 @@ export default function ConsolidacionAsistenciaPage() {
             );
 
             if (!lockResult2.success) {
-                console.warn('Warning: Could not lock period:', lockResult2.error);
+                throw new Error(lockResult2.error || 'No se pudo bloquear el período.');
             }
+
+            // Update local state so UI reflects the lock immediately
+            setPeriodClosures([{
+                id: lockResult2.lockId,
+                period: currentPeriodKey,
+                closedAt: new Date().toISOString(),
+                managerName: user.fullName || user.email || 'Sistema'
+            }]);
 
             toast({
                 title: "Período cerrado exitosamente",
@@ -346,14 +340,14 @@ export default function ConsolidacionAsistenciaPage() {
             });
 
             setIsConsolidateDialogOpen(false);
+            setConsolidationStep('');
 
         } catch (error) {
             console.error('Error closing period:', error);
-            toast({
-                title: "Error al cerrar período",
-                description: error instanceof Error ? error.message : "No se pudo completar el proceso.",
-                variant: "destructive"
-            });
+            setValidationErrors([
+                error instanceof Error ? error.message : 'No se pudo completar el proceso. Revisa la consola para más detalles.'
+            ]);
+            setConsolidationStep('');
         } finally {
             setIsConsolidating(false);
         }
@@ -548,11 +542,20 @@ export default function ConsolidacionAsistenciaPage() {
             } else {
                 throw new Error("No se recibió la URL de descarga.");
             }
-        } catch (error) {
+        } catch (error: any) {
             console.error('Error generating official reports:', error);
+            const isCloudFunctionError = error?.code === 'functions/not-found'
+                || error?.code === 'functions/unavailable'
+                || error?.code === 'functions/internal'
+                || error?.message?.includes('INTERNAL')
+                || error?.message?.includes('not found')
+                || error?.message?.includes('Could not find');
+
             toast({
                 title: "Error al generar reportes",
-                description: error instanceof Error ? error.message : "Error desconocido",
+                description: isCloudFunctionError
+                    ? "Las Cloud Functions no están disponibles. Si estás en modo demo/local, esta función requiere un entorno con Firebase Functions desplegadas."
+                    : (error instanceof Error ? error.message : "Error desconocido"),
                 variant: "destructive"
             });
         } finally {
@@ -605,34 +608,60 @@ export default function ConsolidacionAsistenciaPage() {
                         </div>
                     </div>
 
-                    {/* Step 10: Robust period selector in header */}
+                    {/* Period selector in header */}
                     <div className="flex flex-wrap items-center gap-2">
-                        <div className="flex flex-col gap-1.5 mr-2">
-                            <Label htmlFor="month-select" className="text-[10px] font-bold uppercase text-gray-400">Mes</Label>
-                            <Input
-                                id="month-select"
-                                type="month"
-                                value={selectedMonth}
-                                onChange={(e) => setSelectedMonth(e.target.value)}
-                                className="h-9 w-[160px] border-blue-200"
-                            />
-                        </div>
                         <div className="flex flex-col gap-1.5 mr-2">
                             <Label htmlFor="period-type" className="text-[10px] font-bold uppercase text-gray-400">Tipo</Label>
                             <Select
                                 value={periodType}
                                 onValueChange={(v) => setPeriodType(v as any)}
                             >
-                                <SelectTrigger id="period-type" className="h-9 w-[150px] border-blue-200">
+                                <SelectTrigger id="period-type" className="h-9 w-[160px] border-blue-200">
                                     <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="monthly">Mensual</SelectItem>
                                     <SelectItem value="biweekly_1">Quincenal 1ra</SelectItem>
                                     <SelectItem value="biweekly_2">Quincenal 2da</SelectItem>
+                                    <SelectItem value="custom">Personalizado</SelectItem>
                                 </SelectContent>
                             </Select>
                         </div>
+                        {periodType !== 'custom' ? (
+                            <div className="flex flex-col gap-1.5 mr-2">
+                                <Label htmlFor="month-select" className="text-[10px] font-bold uppercase text-gray-400">Mes</Label>
+                                <Input
+                                    id="month-select"
+                                    type="month"
+                                    value={selectedMonth}
+                                    onChange={(e) => setSelectedMonth(e.target.value)}
+                                    className="h-9 w-[160px] border-blue-200"
+                                />
+                            </div>
+                        ) : (
+                            <>
+                                <div className="flex flex-col gap-1.5">
+                                    <Label htmlFor="custom-start" className="text-[10px] font-bold uppercase text-gray-400">Inicio</Label>
+                                    <Input
+                                        id="custom-start"
+                                        type="date"
+                                        value={customStart}
+                                        onChange={(e) => setCustomStart(e.target.value)}
+                                        className="h-9 w-[150px] border-blue-200"
+                                    />
+                                </div>
+                                <div className="flex flex-col gap-1.5 mr-2">
+                                    <Label htmlFor="custom-end" className="text-[10px] font-bold uppercase text-gray-400">Fin</Label>
+                                    <Input
+                                        id="custom-end"
+                                        type="date"
+                                        value={customEnd}
+                                        onChange={(e) => setCustomEnd(e.target.value)}
+                                        className="h-9 w-[150px] border-blue-200"
+                                    />
+                                </div>
+                            </>
+                        )}
 
                         <Button
                             variant="outline"
@@ -653,7 +682,11 @@ export default function ConsolidacionAsistenciaPage() {
                             {isExporting ? 'Exportando...' : 'NomiPAQ'}
                         </Button>
                         <Button
-                            onClick={() => setIsConsolidateDialogOpen(true)}
+                            onClick={() => {
+                                setValidationErrors([]);
+                                setConsolidationStep('');
+                                setIsConsolidateDialogOpen(true);
+                            }}
                             className="h-9 bg-blue-600 hover:bg-blue-700"
                             disabled={isPeriodClosed}
                         >
@@ -867,6 +900,13 @@ export default function ConsolidacionAsistenciaPage() {
                                         <li>• Cierre del período (no reversible)</li>
                                     </ul>
                                 </div>
+
+                                {consolidationStep && (
+                                    <div className="bg-blue-50 text-blue-800 p-3 rounded-lg text-sm border border-blue-200 flex items-center gap-2">
+                                        <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-600 border-t-transparent" />
+                                        {consolidationStep}
+                                    </div>
+                                )}
 
                                 {validationErrors.length > 0 && (
                                     <div className="bg-red-50 text-red-800 p-3 rounded-lg text-sm border border-red-200">

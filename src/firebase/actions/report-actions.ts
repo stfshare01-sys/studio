@@ -73,20 +73,21 @@ export async function lockPayrollPeriod(
             return { success: false, error: 'Este periodo ya esta bloqueado.' };
         }
 
-        const lockData: Omit<PayrollPeriodLock, 'id'> = {
+        // Build lock data, omitting undefined fields (Firestore rejects undefined values)
+        const lockData: Record<string, any> = {
             periodStart,
             periodEnd,
             periodType,
-            locationId,
             isLocked: true,
             lockedAt: now,
             lockedById,
             lockedByName,
-            prenominaExportId,
-            exportFormat,
             createdAt: now,
             updatedAt: now,
         };
+        if (locationId !== undefined) lockData.locationId = locationId;
+        if (prenominaExportId !== undefined) lockData.prenominaExportId = prenominaExportId;
+        if (exportFormat !== undefined) lockData.exportFormat = exportFormat;
 
         const lockRef = await addDoc(collection(firestore, 'payroll_period_locks'), lockData);
 
