@@ -123,7 +123,7 @@ export default function ConsolidacionAsistenciaPage() {
 
     const { data: prenominaRecords, isLoading } = useCollection<PrenominaRecord>(prenominaQuery);
 
-    // Load period locks to show which periods are closed
+    // Load period locks to show which periods are closed (overlap-based)
     useEffect(() => {
         const loadPeriodLocks = async () => {
             if (!selectedPeriod.start) return;
@@ -135,13 +135,15 @@ export default function ConsolidacionAsistenciaPage() {
                     selectedPeriod.end
                 );
 
-                if (lockResult.isLocked && lockResult.lock) {
-                    setPeriodClosures([{
-                        id: lockResult.lock.id,
-                        period: `${lockResult.lock.periodStart}_${lockResult.lock.periodEnd}`,
-                        closedAt: lockResult.lock.lockedAt,
-                        managerName: lockResult.lock.lockedByName
-                    }]);
+                if (lockResult.isLocked && lockResult.overlappingLocks) {
+                    setPeriodClosures(lockResult.overlappingLocks.map(lock => ({
+                        id: lock.id,
+                        period: `${lock.periodStart}_${lock.periodEnd}`,
+                        periodStart: lock.periodStart,
+                        periodEnd: lock.periodEnd,
+                        closedAt: lock.lockedAt,
+                        managerName: lock.lockedByName
+                    })));
                 } else {
                     setPeriodClosures([]);
                 }
@@ -230,17 +232,15 @@ export default function ConsolidacionAsistenciaPage() {
     }, [matchedRecords, searchTerm]);
 
     // Calculate totals based on filtered records (NO MONETARY VALUES)
-    const totalDaysWorked = filteredRecords.reduce((sum: number, r: PrenominaRecord) => sum + (r.daysWorked || 0), 0);
     const totalOvertimeHours = filteredRecords.reduce((sum: number, r: PrenominaRecord) =>
         sum + (r.overtimeDoubleHours || 0) + (r.overtimeTripleHours || 0), 0);
 
-    // Check if period is already closed (based on exact match of start_end range)
+    // Check if period is already closed (any overlapping lock means closed)
     const currentPeriodKey = `${selectedPeriod.start}_${selectedPeriod.end}`;
-    const isPeriodClosed = periodClosures.some(closure => {
-        return closure.period === currentPeriodKey;
-    });
+    const isPeriodClosed = periodClosures.length > 0;
 
     const [consolidationStep, setConsolidationStep] = useState('');
+    const [selectedDetailRecord, setSelectedDetailRecord] = useState<PrenominaRecord | null>(null);
 
     // Handle consolidation and period closure (called from dialog, no window.confirm)
     const handleClosePeriod = async () => {
@@ -707,10 +707,17 @@ export default function ConsolidacionAsistenciaPage() {
                                     </p>
                                 </div>
                                 {isPeriodClosed && (
-                                    <Badge className="bg-green-100 text-green-800 h-fit">
-                                        <CheckCircle2 className="w-3 h-3 mr-1" />
-                                        Período Cerrado
-                                    </Badge>
+                                    <div className="flex flex-col items-end gap-1">
+                                        <Badge className="bg-green-100 text-green-800 h-fit">
+                                            <CheckCircle2 className="w-3 h-3 mr-1" />
+                                            Período Cerrado
+                                        </Badge>
+                                        {periodClosures.map((closure: any) => (
+                                            <span key={closure.id} className="text-xs text-muted-foreground">
+                                                Bloqueado: {formatDate(closure.periodStart)} - {formatDate(closure.periodEnd)}
+                                            </span>
+                                        ))}
+                                    </div>
                                 )}
                             </div>
                         </CardContent>
@@ -720,12 +727,12 @@ export default function ConsolidacionAsistenciaPage() {
                     <div className="grid gap-4 md:grid-cols-2">
                         <Card>
                             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                                <CardTitle className="text-sm font-medium">Asistencia Total</CardTitle>
-                                <Clock className="h-4 w-4 text-muted-foreground" />
+                                <CardTitle className="text-sm font-medium">Colaboradores</CardTitle>
+                                <Users className="h-4 w-4 text-muted-foreground" />
                             </CardHeader>
                             <CardContent>
-                                <div className="text-2xl font-bold">{totalDaysWorked} días</div>
-                                <p className="text-xs text-muted-foreground">Días trabajados en período</p>
+                                <div className="text-2xl font-bold">{filteredRecords.length}</div>
+                                <p className="text-xs text-muted-foreground">Colaboradores en el período</p>
                             </CardContent>
                         </Card>
                         <Card>
@@ -776,11 +783,20 @@ export default function ConsolidacionAsistenciaPage() {
                                             </div>
                                         </div>
 
-                                        {totalPending > 0 && (
+                                        {totalPending > 0 && !isPeriodClosed && (
                                             <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm">
                                                 <AlertTriangle className="h-4 w-4 text-amber-600" />
                                                 <span className="text-amber-800">
-                                                    {totalPending} infracciones pendientes. Al cerrar el período, se procesarán automáticamente por SLA.
+                                                    {totalPending} infracciones pendientes de justificación. Si se cierra el período sin atenderlas, se aplicarán las reglas de SLA automáticamente (retardos, salidas tempranas y horas extra no justificadas se procesarán como faltas/deducciones).
+                                                </span>
+                                            </div>
+                                        )}
+
+                                        {totalPending > 0 && isPeriodClosed && (
+                                            <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm">
+                                                <AlertTriangle className="h-4 w-4 text-red-600" />
+                                                <span className="text-red-800">
+                                                    {totalPending} infracciones quedaron sin justificar al momento del cierre ({pendingCounts.tardiness > 0 ? `${pendingCounts.tardiness} retardos` : ''}{pendingCounts.departures > 0 ? `${pendingCounts.tardiness > 0 ? ', ' : ''}${pendingCounts.departures} salidas tempranas` : ''}{pendingCounts.overtime > 0 ? `${(pendingCounts.tardiness + pendingCounts.departures) > 0 ? ', ' : ''}${pendingCounts.overtime} horas extra` : ''}{pendingCounts.missingPunches > 0 ? `${(pendingCounts.tardiness + pendingCounts.departures + pendingCounts.overtime) > 0 ? ', ' : ''}${pendingCounts.missingPunches} marcajes faltantes` : ''}). Fueron procesadas automáticamente por SLA.
                                                 </span>
                                             </div>
                                         )}
@@ -864,7 +880,7 @@ export default function ConsolidacionAsistenciaPage() {
                                                     {getStatusBadge(record.status)}
                                                 </TableCell>
                                                 <TableCell>
-                                                    <Button variant="ghost" size="sm">Ver detalle</Button>
+                                                    <Button variant="ghost" size="sm" onClick={() => setSelectedDetailRecord(record)}>Ver detalle</Button>
                                                 </TableCell>
                                             </TableRow>
                                         ))
@@ -879,6 +895,112 @@ export default function ConsolidacionAsistenciaPage() {
                             </Table>
                         </CardContent>
                     </Card>
+
+                    {/* Employee Detail Dialog */}
+                    <Dialog open={!!selectedDetailRecord} onOpenChange={(open) => { if (!open) setSelectedDetailRecord(null); }}>
+                        <DialogContent className="max-w-lg">
+                            <DialogHeader>
+                                <DialogTitle>Detalle de Prenómina</DialogTitle>
+                                <DialogDescription>
+                                    {selectedDetailRecord?.employeeName} — {selectedDetailRecord ? `${formatDate(selectedDetailRecord.periodStart)} a ${formatDate(selectedDetailRecord.periodEnd)}` : ''}
+                                </DialogDescription>
+                            </DialogHeader>
+
+                            {selectedDetailRecord && (
+                                <div className="space-y-4">
+                                    {/* Employee Info */}
+                                    <div className="grid grid-cols-2 gap-3 text-sm">
+                                        <div>
+                                            <Label className="text-xs text-muted-foreground">Empleado</Label>
+                                            <p className="font-medium">{selectedDetailRecord.employeeName}</p>
+                                        </div>
+                                        <div>
+                                            <Label className="text-xs text-muted-foreground">RFC</Label>
+                                            <p className="font-medium">{selectedDetailRecord.employeeRfc || '-'}</p>
+                                        </div>
+                                        <div>
+                                            <Label className="text-xs text-muted-foreground">Período</Label>
+                                            <p className="font-medium">{formatDate(selectedDetailRecord.periodStart)} - {formatDate(selectedDetailRecord.periodEnd)}</p>
+                                        </div>
+                                        <div>
+                                            <Label className="text-xs text-muted-foreground">Estado</Label>
+                                            <div className="mt-0.5">{getStatusBadge(selectedDetailRecord.status)}</div>
+                                        </div>
+                                    </div>
+
+                                    {/* Attendance Section */}
+                                    <div className="border rounded-lg p-3">
+                                        <h4 className="text-sm font-semibold mb-2 text-green-700">Asistencia</h4>
+                                        <div className="grid grid-cols-2 gap-2 text-sm">
+                                            <div className="flex justify-between p-1.5 bg-green-50 rounded">
+                                                <span className="text-muted-foreground">Días trabajados</span>
+                                                <span className="font-semibold">{selectedDetailRecord.daysWorked}</span>
+                                            </div>
+                                            <div className="flex justify-between p-1.5 bg-green-50 rounded">
+                                                <span className="text-muted-foreground">Prima dominical</span>
+                                                <span className="font-semibold">{selectedDetailRecord.sundayPremiumDays} días</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Overtime Section */}
+                                    <div className="border rounded-lg p-3">
+                                        <h4 className="text-sm font-semibold mb-2 text-orange-700">Horas Extra</h4>
+                                        <div className="grid grid-cols-2 gap-2 text-sm">
+                                            <div className="flex justify-between p-1.5 bg-orange-50 rounded">
+                                                <span className="text-muted-foreground">HE Dobles (HE2)</span>
+                                                <span className="font-semibold">{selectedDetailRecord.overtimeDoubleHours.toFixed(1)} hrs</span>
+                                            </div>
+                                            <div className="flex justify-between p-1.5 bg-orange-50 rounded">
+                                                <span className="text-muted-foreground">HE Triples (HE3)</span>
+                                                <span className="font-semibold">{selectedDetailRecord.overtimeTripleHours.toFixed(1)} hrs</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Deductions Section */}
+                                    <div className="border rounded-lg p-3">
+                                        <h4 className="text-sm font-semibold mb-2 text-red-700">Deducciones / Ausencias</h4>
+                                        <div className="grid grid-cols-2 gap-2 text-sm">
+                                            <div className="flex justify-between p-1.5 bg-red-50 rounded">
+                                                <span className="text-muted-foreground">Faltas (FINJ)</span>
+                                                <span className="font-semibold">{selectedDetailRecord.absenceDays} días</span>
+                                            </div>
+                                            <div className="flex justify-between p-1.5 bg-blue-50 rounded">
+                                                <span className="text-muted-foreground">Vacaciones (VAC)</span>
+                                                <span className="font-semibold">{selectedDetailRecord.vacationDaysTaken} días</span>
+                                            </div>
+                                            <div className="flex justify-between p-1.5 bg-purple-50 rounded">
+                                                <span className="text-muted-foreground">Incapacidad (INC)</span>
+                                                <span className="font-semibold">{selectedDetailRecord.sickLeaveDays} días</span>
+                                            </div>
+                                            <div className="flex justify-between p-1.5 bg-yellow-50 rounded">
+                                                <span className="text-muted-foreground">Permiso c/sueldo (PCS)</span>
+                                                <span className="font-semibold">{selectedDetailRecord.paidLeaveDays} días</span>
+                                            </div>
+                                            <div className="flex justify-between p-1.5 bg-yellow-50 rounded">
+                                                <span className="text-muted-foreground">Permiso s/sueldo (PSS)</span>
+                                                <span className="font-semibold">{selectedDetailRecord.unpaidLeaveDays} días</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Audit Info */}
+                                    <div className="text-xs text-muted-foreground border-t pt-2 space-y-1">
+                                        <p>Creado: {formatDate(selectedDetailRecord.createdAt)}</p>
+                                        {selectedDetailRecord.reviewedAt && <p>Revisado: {formatDate(selectedDetailRecord.reviewedAt)}</p>}
+                                        {selectedDetailRecord.exportedAt && <p>Exportado: {formatDate(selectedDetailRecord.exportedAt)} ({selectedDetailRecord.exportFormat || '-'})</p>}
+                                    </div>
+                                </div>
+                            )}
+
+                            <DialogFooter>
+                                <Button variant="outline" onClick={() => setSelectedDetailRecord(null)}>
+                                    Cerrar
+                                </Button>
+                            </DialogFooter>
+                        </DialogContent>
+                    </Dialog>
 
                     {/* Consolidate Dialog */}
                     <Dialog open={isConsolidateDialogOpen} onOpenChange={setIsConsolidateDialogOpen}>
