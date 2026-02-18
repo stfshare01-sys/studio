@@ -17,6 +17,7 @@ import { useAuth, useUser } from '@/firebase';
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
+  sendPasswordResetEmail,
 } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
 import { useFirestore } from '@/firebase';
@@ -55,6 +56,9 @@ export default function LoginPage() {
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const [isSigningIn, setIsSigningIn] = useState(true);
+  const [isResettingPassword, setIsResettingPassword] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
+  const [isResetSubmitting, setIsResetSubmitting] = useState(false);
   const auth = useAuth();
   const firestore = useFirestore();
   const router = useRouter();
@@ -166,6 +170,45 @@ export default function LoginPage() {
     }
   };
 
+  const handlePasswordReset = async () => {
+    if (!auth) return;
+    if (!resetEmail.trim() || !isValidEmail(resetEmail)) {
+      toast({
+        variant: "destructive",
+        title: "Correo inválido",
+        description: "Ingrese un correo electrónico válido.",
+      });
+      return;
+    }
+
+    setIsResetSubmitting(true);
+    try {
+      await sendPasswordResetEmail(auth, resetEmail.trim());
+      toast({
+        title: "Correo enviado",
+        description: "Se ha enviado un enlace para restablecer tu contraseña. Revisa tu bandeja de entrada.",
+      });
+      setIsResettingPassword(false);
+      setResetEmail('');
+    } catch (error) {
+      if (error instanceof FirebaseError) {
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: getFirebaseErrorMessage(error.code),
+        });
+      } else {
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: "No se pudo enviar el correo de restablecimiento.",
+        });
+      }
+    } finally {
+      setIsResetSubmitting(false);
+    }
+  };
+
   if (isUserLoading || (!isUserLoading && user)) {
     return (
       <div className="flex h-screen w-full items-center justify-center">
@@ -249,7 +292,22 @@ export default function LoginPage() {
               )}
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="password">Contraseña</Label>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="password">Contraseña</Label>
+                {isSigningIn && (
+                  <Button
+                    type="button"
+                    variant="link"
+                    className="h-auto p-0 text-xs text-muted-foreground"
+                    onClick={() => {
+                      setResetEmail(email);
+                      setIsResettingPassword(true);
+                    }}
+                  >
+                    ¿Olvidaste tu contraseña?
+                  </Button>
+                )}
+              </div>
               <Input
                 id="password"
                 type="password"
@@ -265,6 +323,43 @@ export default function LoginPage() {
                 <p id="password-error" className="text-sm text-destructive">{errors.password}</p>
               )}
             </div>
+
+            {/* Password Reset Inline */}
+            {isResettingPassword && (
+              <div className="rounded-lg border bg-muted/50 p-4 space-y-3">
+                <p className="text-sm font-medium">Restablecer contraseña</p>
+                <p className="text-xs text-muted-foreground">
+                  Ingresa tu correo electrónico y te enviaremos un enlace para restablecer tu contraseña.
+                </p>
+                <Input
+                  type="email"
+                  placeholder="nombre@ejemplo.com"
+                  value={resetEmail}
+                  onChange={(e) => setResetEmail(e.target.value)}
+                  disabled={isResetSubmitting}
+                />
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={handlePasswordReset}
+                    disabled={isResetSubmitting}
+                  >
+                    {isResetSubmitting && <Loader2 className="mr-2 h-3 w-3 animate-spin" />}
+                    Enviar enlace
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setIsResettingPassword(false)}
+                    disabled={isResetSubmitting}
+                  >
+                    Cancelar
+                  </Button>
+                </div>
+              </div>
+            )}
           </CardContent>
           <CardFooter className="flex flex-col gap-4">
             <Button type="submit" className="w-full" disabled={isSubmitting}>
