@@ -177,7 +177,8 @@ export function getDefaultIncidenceDays(type: IncidenceType): number {
         maternity: 84,             // 12 semanas (Art. 170 LFT)
         paternity: 5,              // 5 días (Art. 132 LFT)
         bereavement: 3,            // Generalmente 3 días
-        unjustified_absence: 1     // Por día
+        unjustified_absence: 1,    // Por día
+        abandono_empleo: 1         // Manual, por CH
     };
     return daysMap[type];
 }
@@ -1037,7 +1038,8 @@ export function checkDateConflict(
         maternity: 'maternidad',
         paternity: 'paternidad',
         bereavement: 'duelo',
-        unjustified_absence: 'falta injustificada'
+        unjustified_absence: 'falta injustificada',
+        abandono_empleo: 'abandono de empleo'
     };
 
     const conflictDescriptions = conflictingRanges.map(c =>
@@ -1237,6 +1239,7 @@ export function determineDayStatus(dayData: DayPunchData): DayStatusResult {
             paternity: { code: '1PCS', name: 'Paternidad' },
             bereavement: { code: '1PCS', name: 'Duelo' },
             unjustified_absence: { code: '1FINJ', name: 'Falta injustificada' },
+            abandono_empleo: { code: 'AE', name: 'Abandono de empleo' },
         };
 
         const incidenceInfo = incidenceCodeMap[dayData.incidenceType];

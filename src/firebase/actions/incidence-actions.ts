@@ -1822,6 +1822,7 @@ export async function getHolidayCalendar(
 
         const now = new Date().toISOString();
         const newCalendar: Omit<HolidayCalendar, 'id'> = {
+            name: `México ${year} Oficial`,
             year,
             holidays: defaultHolidays,
             createdAt: now,
