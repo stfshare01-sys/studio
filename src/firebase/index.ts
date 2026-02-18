@@ -39,8 +39,11 @@ export function initializeFirebase(): FirebaseServices {
   const storage = getStorage(app);
   const functions = getFunctions(app, 'us-central1');
 
-  // Connect to emulators in development mode
-  if (process.env.NODE_ENV === 'development') {
+  // Connect to emulators ONLY when explicitly enabled via env variable
+  // In Firebase Studio or cloud environments, emulators are not available
+  // Set NEXT_PUBLIC_USE_EMULATORS=true in .env.local to use emulators
+  const useEmulators = process.env.NEXT_PUBLIC_USE_EMULATORS === 'true';
+  if (useEmulators) {
     // Prevent double connection if HMR re-runs this
     // @ts-ignore - Internal properties check
     if (!auth.emulatorConfig) {
