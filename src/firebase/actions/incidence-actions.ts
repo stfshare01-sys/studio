@@ -2201,19 +2201,22 @@ export async function justifyMissingPunch(
         }
 
         // Actualizar el registro de marcaje faltante
-        await updateDoc(missingPunchRef, {
+        // Only include fields that have values (Firestore rejects undefined)
+        const updateData: Record<string, any> = {
             isJustified: true,
             justificationReason: reason,
-            providedEntryTime,
-            providedExitTime,
-            generatedTardinessId,
-            generatedEarlyDepartureId,
             justifiedById,
             justifiedByName,
             justifiedAt: now,
-            resultedInAbsence: false, // Ya no es falta automática
+            resultedInAbsence: false,
             updatedAt: now,
-        });
+        };
+        if (providedEntryTime !== undefined) updateData.providedEntryTime = providedEntryTime;
+        if (providedExitTime !== undefined) updateData.providedExitTime = providedExitTime;
+        if (generatedTardinessId !== undefined) updateData.generatedTardinessId = generatedTardinessId;
+        if (generatedEarlyDepartureId !== undefined) updateData.generatedEarlyDepartureId = generatedEarlyDepartureId;
+
+        await updateDoc(missingPunchRef, updateData);
 
         // Check if this completes any pending tasks
         try {
