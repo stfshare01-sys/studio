@@ -585,7 +585,7 @@ export default function ConsolidacionAsistenciaPage() {
             toast({
                 title: "Error al generar reportes",
                 description: isCloudFunctionError
-                    ? "Las Cloud Functions no están disponibles. Si estás en modo demo/local, esta función requiere un entorno con Firebase Functions desplegadas."
+                    ? "Las Cloud Functions no están disponibles. Verifique que las funciones estén desplegadas correctamente. Contacte al administrador del sistema."
                     : (error instanceof Error ? error.message : "Error desconocido"),
                 variant: "destructive"
             });

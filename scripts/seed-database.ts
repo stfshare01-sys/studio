@@ -246,44 +246,53 @@ async function seedDatabase() {
         console.log('⏰ Creando Turnos...');
         for (const shift of SEED_SHIFTS_STRUCT) await db.collection('shifts').doc(shift.id).set(shift);
 
-        console.log('👥 Creando Usuarios y Empleados...');
-        for (const emp of SEED_EMPLOYEES) {
-            await safeCreateAuthUser(emp.uid, emp.email, emp.fullName);
-            await db.collection('users').doc(emp.uid).set({
-                id: emp.uid,
-                fullName: emp.fullName,
-                email: emp.email,
-                department: emp.department,
-                role: emp.role,
-                status: 'active', // Assuming active
-                managerId: emp.directManagerId || null,
-                createdAt: new Date().toISOString(),
-            });
-            await db.collection('employees').doc(emp.id).set({
-                ...emp,
-                status: 'active',
-                createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString(),
-            });
-        }
+        // ========================================================================
+        // DATOS DE EMPLEADOS DE PRUEBA DESHABILITADOS
+        // ========================================================================
+        // Los empleados de prueba están comentados para modo productivo.
+        // Los usuarios reales se crean desde la app con la Cloud Function createSystemUser.
+        // ========================================================================
 
-        console.log('🌴 Creando Saldos de Vacaciones...');
-        for (const emp of SEED_EMPLOYEES) {
-            const hireDate = new Date(emp.hireDate);
-            const now = new Date();
-            const yearsOfService = calculateYearsOfService(emp.hireDate);
-            const vacationDays = calculateVacationDaysLFT(yearsOfService);
-            const balanceId = `vb-${emp.id}`;
-            await db.collection('vacation_balances').doc(balanceId).set({
-                id: balanceId,
-                employeeId: emp.id,
-                yearsOfService,
-                daysEntitled: vacationDays,
-                daysAvailable: vacationDays,
-                lastUpdated: new Date().toISOString(),
-                createdAt: new Date().toISOString(),
-            });
-        }
+        // console.log('👥 Creando Usuarios y Empleados...');
+        // for (const emp of SEED_EMPLOYEES) {
+        //     await safeCreateAuthUser(emp.uid, emp.email, emp.fullName);
+        //     await db.collection('users').doc(emp.uid).set({
+        //         id: emp.uid,
+        //         fullName: emp.fullName,
+        //         email: emp.email,
+        //         department: emp.department,
+        //         role: emp.role,
+        //         status: 'active',
+        //         managerId: emp.directManagerId || null,
+        //         createdAt: new Date().toISOString(),
+        //     });
+        //     await db.collection('employees').doc(emp.id).set({
+        //         ...emp,
+        //         status: 'active',
+        //         createdAt: new Date().toISOString(),
+        //         updatedAt: new Date().toISOString(),
+        //     });
+        // }
+        console.log('⏭️  Usuarios y Empleados de ejemplo OMITIDOS (modo productivo)');
+
+        // console.log('🌴 Creando Saldos de Vacaciones...');
+        // for (const emp of SEED_EMPLOYEES) {
+        //     const hireDate = new Date(emp.hireDate);
+        //     const now = new Date();
+        //     const yearsOfService = calculateYearsOfService(emp.hireDate);
+        //     const vacationDays = calculateVacationDaysLFT(yearsOfService);
+        //     const balanceId = `vb-${emp.id}`;
+        //     await db.collection('vacation_balances').doc(balanceId).set({
+        //         id: balanceId,
+        //         employeeId: emp.id,
+        //         yearsOfService,
+        //         daysEntitled: vacationDays,
+        //         daysAvailable: vacationDays,
+        //         lastUpdated: new Date().toISOString(),
+        //         createdAt: new Date().toISOString(),
+        //     });
+        // }
+        console.log('⏭️  Saldos de vacaciones de ejemplo OMITIDOS (modo productivo)');
 
         console.log('📄 Creando Plantillas de Workflow...');
         for (const tpl of SEED_TEMPLATES) await db.collection('request_templates').doc(tpl.id).set(tpl);
@@ -302,11 +311,12 @@ async function seedDatabase() {
         for (const item of SEED_DOCUMENT_TYPE_ITEMS)
             await db.collection('master_lists').doc('ml-document-types').collection('items').doc(item.id).set(item);
 
-        console.log('💰 Creando Registros de Compensación...');
-        for (const emp of SEED_EMPLOYEES) {
-            const comp = generateCompensation(emp);
-            await db.collection('compensation').doc(comp.id).set(comp);
-        }
+        // console.log('💰 Creando Registros de Compensación...');
+        // for (const emp of SEED_EMPLOYEES) {
+        //     const comp = generateCompensation(emp);
+        //     await db.collection('compensation').doc(comp.id).set(comp);
+        // }
+        console.log('⏭️  Registros de compensación de ejemplo OMITIDOS (modo productivo)');
 
         // 9. HISTORICAL DATA
         console.log('📊 Generando Datos Históricos de Asistencia...\n');
@@ -539,14 +549,16 @@ async function seedDatabase() {
         console.log('⏭️  Datos de prueba de asistencia/incidencias OMITIDOS (deshabilitados en seed).');
 
 
-        // 10. Admin User
-        console.log('👤 Creando Usuario Administrador...');
-        const ADMIN_UID = 'admin-user';
-        await safeCreateAuthUser(ADMIN_UID, 'admin@stuffactory.mx', 'Administrador Sistema');
-        await db.collection('users').doc(ADMIN_UID).set({
-            id: ADMIN_UID, fullName: 'Administrador Sistema', email: 'admin@stuffactory.mx',
-            department: 'Tecnología', role: 'Admin', status: 'active', createdAt: new Date().toISOString(),
-        });
+        // 10. Admin User — DESHABILITADO en modo productivo
+        // El usuario administrador se crea manualmente desde Firebase Console
+        // console.log('👤 Creando Usuario Administrador...');
+        // const ADMIN_UID = 'admin-user';
+        // await safeCreateAuthUser(ADMIN_UID, 'admin@stuffactory.mx', 'Administrador Sistema');
+        // await db.collection('users').doc(ADMIN_UID).set({
+        //     id: ADMIN_UID, fullName: 'Administrador Sistema', email: 'admin@stuffactory.mx',
+        //     department: 'Tecnología', role: 'Admin', status: 'active', createdAt: new Date().toISOString(),
+        // });
+        console.log('⏭️  Usuario administrador de ejemplo OMITIDO (modo productivo)');
 
         console.log('🎉 Seed Completado!');
         process.exit(0);

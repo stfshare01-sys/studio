@@ -274,21 +274,68 @@ export async function processAttendanceImport(
             console.log(`[HCM] Found ${existingRecordsMap.size} existing attendance, ${existingTardinessMap.size} tardiness, ${existingDeparturesMap.size} early departures in range`);
         }
 
-        // Get all unique employee IDs and fetch their shift types and time bank balances
+        // Get all unique employee IDs and fetch their shift types, location config, and time bank balances
         const employeeIds = [...new Set(rows.map(r => r.employeeId))];
-        const employeeShifts: Record<string, { type: ShiftType; breakMinutes: number; fullName: string }> = {};
+        const employeeShifts: Record<string, { type: ShiftType; breakMinutes: number; fullName: string; startTime: string; endTime: string; toleranceMinutes: number }> = {};
         const employeeTimeBankBalances: Record<string, number> = {}; // Local cache for processing
+
+        // Cache shifts and locations to avoid redundant reads
+        const shiftCache: Record<string, any> = {};
+        const locationCache: Record<string, any> = {};
 
         for (const empId of employeeIds) {
             const empRef = doc(firestore, 'employees', empId);
             const empSnap = await getDoc(empRef);
             if (empSnap.exists()) {
                 const empData = empSnap.data() as Employee;
-                // Basic shift type, todo: implement CustomShift lookup
+
+                // Load shift config from CustomShift if assigned
+                let shiftStartTime = '';
+                let shiftEndTime = '';
+                let shiftBreakMinutes = 0;
+                const customShiftId = (empData as any).customShiftId;
+
+                if (customShiftId) {
+                    if (!shiftCache[customShiftId]) {
+                        const shiftRef = doc(firestore, 'shifts', customShiftId);
+                        const shiftSnap = await getDoc(shiftRef);
+                        if (shiftSnap.exists()) {
+                            shiftCache[customShiftId] = shiftSnap.data();
+                        }
+                    }
+                    const shiftData = shiftCache[customShiftId];
+                    if (shiftData) {
+                        shiftStartTime = shiftData.startTime || '';
+                        shiftEndTime = shiftData.endTime || '';
+                        shiftBreakMinutes = shiftData.breakMinutes || 0;
+                    }
+                }
+
+                // Load tolerance from location config
+                let toleranceMinutes = 10; // Default
+                const locationId = (empData as any).locationId;
+
+                if (locationId) {
+                    if (!locationCache[locationId]) {
+                        const locRef = doc(firestore, 'locations', locationId);
+                        const locSnap = await getDoc(locRef);
+                        if (locSnap.exists()) {
+                            locationCache[locationId] = locSnap.data();
+                        }
+                    }
+                    const locData = locationCache[locationId];
+                    if (locData?.toleranceMinutes !== undefined) {
+                        toleranceMinutes = locData.toleranceMinutes;
+                    }
+                }
+
                 employeeShifts[empId] = {
                     type: empData.shiftType || 'diurnal',
-                    breakMinutes: 0, // Default 0 for now, should come from shift config
-                    fullName: empData.fullName || empId // Capture employee name
+                    breakMinutes: shiftBreakMinutes,
+                    fullName: empData.fullName || empId,
+                    startTime: shiftStartTime,
+                    endTime: shiftEndTime,
+                    toleranceMinutes,
                 };
 
                 // Fetch current time bank balance
@@ -323,11 +370,11 @@ export async function processAttendanceImport(
 
                 // Calculate hours worked with break deduction
                 const shiftConfig = employeeShifts[row.employeeId];
-                // TODO: Load breakMinutes (e.g. 60) from actual CustomShift/Config
-                // For now we assume 60 minutes break for diurnal/mixed if > 8 hours to align with standard practice,
-                // or just use 0 if not configured.
-                // Let's set a default rule: if shift is diurnal and hours > 5, deduct 60 mins (1 hour) for food.
-                const defaultBreakMinutes = (shiftConfig.type === 'diurnal' || shiftConfig.type === 'mixed') ? 60 : 30;
+                // Use break minutes from shift config if available, otherwise use LFT defaults
+                // LFT Art. 64: At least 30 min break for shifts > 6 hours. Common: 60 min for diurnal/mixed.
+                const defaultBreakMinutes = shiftConfig.breakMinutes > 0
+                    ? shiftConfig.breakMinutes
+                    : (shiftConfig.type === 'diurnal' || shiftConfig.type === 'mixed') ? 60 : 30;
 
                 const hoursWorked = calculateHoursWorked(row.checkIn, row.checkOut, defaultBreakMinutes);
 
@@ -399,31 +446,33 @@ export async function processAttendanceImport(
                 // TARDINESS & EARLY DEPARTURE DETECTION
                 // -------------------------------------------------------------
 
-                // Determine schedule based on shift type (Simplify for Phase 1)
-                // TODO: Load real CustomShift or Shift config
-                let scheduledStart = '';
-                let scheduledEnd = '';
+                // Determine schedule: use real shift times if available, fallback to shift type defaults
+                let scheduledStart = shiftConfig.startTime || '';
+                let scheduledEnd = shiftConfig.endTime || '';
 
-                switch (shiftConfig.type) {
-                    case 'diurnal':
-                        scheduledStart = '09:00';
-                        scheduledEnd = '18:00';
-                        break;
-                    case 'mixed':
-                        scheduledStart = '10:00';
-                        scheduledEnd = '19:00';
-                        break;
-                    case 'nocturnal':
-                        scheduledStart = '20:00';
-                        scheduledEnd = '05:00';
-                        break;
-                    default:
-                        scheduledStart = '09:00';
-                        scheduledEnd = '18:00';
+                // Fallback to shift type defaults if no custom shift assigned
+                if (!scheduledStart || !scheduledEnd) {
+                    switch (shiftConfig.type) {
+                        case 'diurnal':
+                            scheduledStart = scheduledStart || '09:00';
+                            scheduledEnd = scheduledEnd || '18:00';
+                            break;
+                        case 'mixed':
+                            scheduledStart = scheduledStart || '10:00';
+                            scheduledEnd = scheduledEnd || '19:00';
+                            break;
+                        case 'nocturnal':
+                            scheduledStart = scheduledStart || '20:00';
+                            scheduledEnd = scheduledEnd || '05:00';
+                            break;
+                        default:
+                            scheduledStart = scheduledStart || '09:00';
+                            scheduledEnd = scheduledEnd || '18:00';
+                    }
                 }
 
-                // Default tolerance 10 mins (TODO: Load from TardinessPolicy)
-                const toleranceMinutes = 10;
+                // Use location tolerance (loaded from location config, defaults to 10)
+                const toleranceMinutes = shiftConfig.toleranceMinutes;
 
                 // Check Tardiness
                 if (row.checkIn) {
