@@ -19,7 +19,8 @@ import type {
     ShiftType,
     CustomShift,
     TardinessPolicy,
-    EarlyDeparture
+    EarlyDeparture,
+    EmployeeShiftAssignment
 } from '@/lib/types';
 
 import {
@@ -62,6 +63,15 @@ export async function createIncidence(
     try {
         const { firestore } = initializeFirebase();
         const now = new Date().toISOString();
+
+        // VALIDATION: Check if employee is active
+        const employeeRef = doc(firestore, 'employees', payload.employeeId);
+        const employeeSnap = await getDoc(employeeRef);
+        const employeeData = employeeSnap.data() as Employee;
+
+        if (employeeData?.status !== 'active') {
+            return { success: false, error: 'No se pueden crear incidencias para empleados inactivos/baja.' };
+        }
 
         // Calculate effective days (excluding weekends and holidays)
         let totalDays = 0;
@@ -283,71 +293,79 @@ export async function processAttendanceImport(
         const shiftCache: Record<string, any> = {};
         const locationCache: Record<string, any> = {};
 
+        const employeeAssignments: Record<string, EmployeeShiftAssignment[]> = {};
+        const shiftsToFetch = new Set<string>();
+
+        // Pre-scan employees to collect shift IDs
         for (const empId of employeeIds) {
             const empRef = doc(firestore, 'employees', empId);
             const empSnap = await getDoc(empRef);
             if (empSnap.exists()) {
                 const empData = empSnap.data() as Employee;
 
-                // Load shift config from CustomShift if assigned
-                let shiftStartTime = '';
-                let shiftEndTime = '';
-                let shiftBreakMinutes = 0;
-                const customShiftId = (empData as any).customShiftId;
+                // 1. Collect Custom Shift ID
+                if (empData.customShiftId) shiftsToFetch.add(empData.customShiftId);
 
-                if (customShiftId) {
-                    if (!shiftCache[customShiftId]) {
-                        const shiftRef = doc(firestore, 'shifts', customShiftId);
-                        const shiftSnap = await getDoc(shiftRef);
-                        if (shiftSnap.exists()) {
-                            shiftCache[customShiftId] = shiftSnap.data();
-                        }
-                    }
-                    const shiftData = shiftCache[customShiftId];
-                    if (shiftData) {
-                        shiftStartTime = shiftData.startTime || '';
-                        shiftEndTime = shiftData.endTime || '';
-                        shiftBreakMinutes = shiftData.breakMinutes || 0;
-                    }
+                // 2. Collect Historical Shift IDs
+                if (empData.shiftAssignments?.length) {
+                    employeeAssignments[empId] = empData.shiftAssignments;
+                    empData.shiftAssignments.forEach(sa => shiftsToFetch.add(sa.shiftId));
                 }
 
-                // Load tolerance from location config
-                let toleranceMinutes = 10; // Default
-                const locationId = (empData as any).locationId;
-
-                if (locationId) {
-                    if (!locationCache[locationId]) {
-                        const locRef = doc(firestore, 'locations', locationId);
-                        const locSnap = await getDoc(locRef);
-                        if (locSnap.exists()) {
-                            locationCache[locationId] = locSnap.data();
-                        }
-                    }
-                    const locData = locationCache[locationId];
-                    if (locData?.toleranceMinutes !== undefined) {
-                        toleranceMinutes = locData.toleranceMinutes;
-                    }
-                }
-
+                // Store basic data first
                 employeeShifts[empId] = {
                     type: empData.shiftType || 'diurnal',
-                    breakMinutes: shiftBreakMinutes,
+                    breakMinutes: 0,
                     fullName: empData.fullName || empId,
-                    startTime: shiftStartTime,
-                    endTime: shiftEndTime,
-                    toleranceMinutes,
-                    locationId: locationId || undefined,
-                };
+                    startTime: '',
+                    endTime: '',
+                    toleranceMinutes: 10,
+                    locationId: empData.locationId || undefined,
+                    // Store customShiftId for fallback
+                    customShiftId: empData.customShiftId
+                } as any; // Cast to avoid strict type checks on temp props if needed
 
-                // Fetch current time bank balance
+                // Location caching
+                if (empData.locationId && !locationCache[empData.locationId]) {
+                    const locRef = doc(firestore, 'locations', empData.locationId);
+                    const locSnap = await getDoc(locRef);
+                    if (locSnap.exists()) locationCache[empData.locationId] = locSnap.data();
+                }
+
+                // TimeBank caching
                 const timeBankRef = doc(firestore, 'time_bank', empId);
                 const timeBankSnap = await getDoc(timeBankRef);
-                if (timeBankSnap.exists()) {
-                    const tb = timeBankSnap.data() as TimeBank;
-                    employeeTimeBankBalances[empId] = tb.hoursBalance;
-                } else {
-                    employeeTimeBankBalances[empId] = 0;
+                employeeTimeBankBalances[empId] = timeBankSnap.exists() ? (timeBankSnap.data() as TimeBank).hoursBalance : 0;
+            }
+        }
+
+        // Batch Fetch all needed shifts
+        for (const shiftId of Array.from(shiftsToFetch)) {
+            if (!shiftCache[shiftId]) {
+                const shiftRef = doc(firestore, 'shifts', shiftId);
+                const shiftSnap = await getDoc(shiftRef);
+                if (shiftSnap.exists()) {
+                    shiftCache[shiftId] = shiftSnap.data();
                 }
+            }
+        }
+
+        // Post-process employeeShifts with loaded data (Mocking the old structure for default)
+        for (const empId of Object.keys(employeeShifts)) {
+            const config = employeeShifts[empId] as any;
+            const customShiftId = config.customShiftId;
+
+            // Update tolerance from location
+            if (config.locationId && locationCache[config.locationId]) {
+                config.toleranceMinutes = locationCache[config.locationId].toleranceMinutes ?? 10;
+            }
+
+            // Hydrate default shift data
+            if (customShiftId && shiftCache[customShiftId]) {
+                const sData = shiftCache[customShiftId];
+                config.startTime = sData.startTime || '';
+                config.endTime = sData.endTime || '';
+                config.breakMinutes = sData.breakMinutes || 0;
             }
         }
 
@@ -417,7 +435,31 @@ export async function processAttendanceImport(
                 }
 
                 // Calculate hours worked with break deduction
-                const shiftConfig = employeeShifts[row.employeeId];
+                let shiftConfig = employeeShifts[row.employeeId];
+
+                // -------------------------------------------------------------
+                // SHIFT RESOLUTION (Effective Shift for Date)
+                // -------------------------------------------------------------
+                // If employee has shift assignments, find the one active for this date
+                if (employeeAssignments[row.employeeId]) {
+                    const effectiveAssignment = employeeAssignments[row.employeeId].find(sa =>
+                        sa.startDate <= row.date && (!sa.endDate || sa.endDate >= row.date)
+                    );
+
+                    if (effectiveAssignment) {
+                        const sData = shiftCache[effectiveAssignment.shiftId];
+                        if (sData) {
+                            // Clone default config and override with historical shift data
+                            shiftConfig = {
+                                ...shiftConfig,
+                                type: sData.shiftType || 'diurnal',
+                                startTime: sData.startTime || '',
+                                endTime: sData.endTime || '',
+                                breakMinutes: sData.breakMinutes || 0,
+                            };
+                        }
+                    }
+                }
                 // Use break minutes from shift config if available, otherwise use LFT defaults
                 // LFT Art. 64: At least 30 min break for shifts > 6 hours. Common: 60 min for diurnal/mixed.
                 const defaultBreakMinutes = shiftConfig.breakMinutes > 0

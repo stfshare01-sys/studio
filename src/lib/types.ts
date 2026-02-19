@@ -667,6 +667,12 @@ export type IncidenceType = 'vacation' | 'sick_leave' | 'personal_leave' | 'mate
 export type IncidenceStatus = 'pending' | 'approved' | 'rejected' | 'cancelled' | 'unjustified' | 'made_up';
 export type OnboardingPhase = 'day_0' | 'day_30' | 'day_60' | 'day_90' | 'completed';
 
+export type EmployeeShiftAssignment = {
+  shiftId: string;
+  startDate: string; // ISO Date YYYY-MM-DD
+  endDate?: string;  // ISO Date YYYY-MM-DD
+};
+
 /**
  * Expediente Digital del Empleado
  * Extiende el tipo User existente con datos laborales según LFT
@@ -708,6 +714,7 @@ export type Employee = User & {
   positionId?: string;         // ID del puesto asociado
   locationId?: string;         // ID de la ubicación física
   customShiftId?: string;      // ID del turno personalizado (si aplica)
+  shiftAssignments?: EmployeeShiftAssignment[]; // Historial de turnos asignados
   /** @deprecated Use customShiftId instead */
   shiftId?: string;            // Legacy: ID del turno (usado en seed data)
 

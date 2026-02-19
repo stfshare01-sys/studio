@@ -756,11 +756,24 @@ export const approveIncidence = onCall<ApproveIncidenceRequest>(
 
             const incidenceData = incidenceSnap.data() as Incidence;
 
+            // VALIDATION 0: Employee Status Check
+            const employeeRef = db.collection('employees').doc(incidenceData.employeeId);
+            const employeeSnap = await employeeRef.get();
+            const employeeData = employeeSnap.data() as Employee;
+
+            if (employeeData?.status !== 'active') {
+                throw new HttpsError(
+                    'failed-precondition',
+                    'No se pueden gestionar incidencias para empleados inactivos/baja.'
+                );
+            }
+
             // VALIDATION 1: Hierarchical authorization
             const hierarchyCheck = await canApproveForEmployee(
                 approverId,
                 incidenceData.employeeId,
-                'incidence' as ApprovalType
+                'incidence' as ApprovalType,
+                { role: userData?.role }
             );
 
             if (!hierarchyCheck.canApprove) {
@@ -784,25 +797,29 @@ export const approveIncidence = onCall<ApproveIncidenceRequest>(
                     );
                 }
 
+                // Removed strict date check (startDate <= today) to allow HR to cancel 
+                // past incidences or active ones (e.g. to correct data entry errors).
+
                 const today = new Date().toISOString().split('T')[0];
-                if (incidenceData.startDate <= today) {
+                if (incidenceData.endDate < today) {
                     throw new HttpsError(
                         'failed-precondition',
-                        'No se puede cancelar una incidencia cuya fecha de inicio ya pasó o es hoy.'
+                        'No se puede cancelar una incidencia cuya fecha de fin ya pasó.'
                     );
                 }
 
                 // For vacation incidences: restore the deducted days atomically
                 if (incidenceData.type === 'vacation') {
                     await db.runTransaction(async (transaction) => {
-                        const balanceQuery = await db.collection('vacation_balances')
+                        const balanceQuery = db.collection('vacation_balances')
                             .where('employeeId', '==', incidenceData.employeeId)
                             .orderBy('periodEnd', 'desc')
-                            .limit(1)
-                            .get();
+                            .limit(1);
 
-                        if (!balanceQuery.empty) {
-                            const balanceDoc = balanceQuery.docs[0];
+                        const balanceSnapshot = await transaction.get(balanceQuery);
+
+                        if (!balanceSnapshot.empty) {
+                            const balanceDoc = balanceSnapshot.docs[0];
                             const balanceData = balanceDoc.data();
                             const totalDays = incidenceData.totalDays || 0;
 

@@ -58,7 +58,7 @@ import { getEmployeeByUserId } from '@/firebase/actions/employee-actions';
 import { createIncidence, getVacationBalance } from '@/firebase/actions/incidence-actions';
 import { callApproveIncidence } from '@/firebase/callable-functions';
 import { checkDateConflict } from '@/lib/hcm-utils';
-import { format, differenceInDays, startOfMonth, endOfMonth, eachDayOfInterval, startOfWeek, endOfWeek, isSameMonth, isSameDay, isWithinInterval, addMonths, subMonths } from 'date-fns';
+import { format, parse, differenceInDays, startOfMonth, endOfMonth, eachDayOfInterval, startOfWeek, endOfWeek, isSameMonth, isSameDay, isWithinInterval, addMonths, subMonths } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
 import { Label } from '@/components/ui/label';
@@ -246,7 +246,9 @@ export default function IncidencesPage() {
     // Format date
     const formatDate = (dateStr: string) => {
         try {
-            return format(new Date(dateStr), 'dd MMM yyyy', { locale: es });
+            // Parse as local date to prevent timezone shifting
+            const date = parse(dateStr, 'yyyy-MM-dd', new Date());
+            return format(date, 'dd MMM yyyy', { locale: es });
         } catch {
             return dateStr;
         }

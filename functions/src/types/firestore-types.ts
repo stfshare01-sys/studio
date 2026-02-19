@@ -4,6 +4,12 @@
  * These types mirror the client-side types for Firestore documents.
  */
 
+export interface EmployeeShiftAssignment {
+    shiftId: string;
+    startDate: string;
+    endDate?: string;
+}
+
 export interface Employee {
     id: string;
     email: string;
@@ -16,6 +22,7 @@ export interface Employee {
     hireDate: string;
     terminationDate?: string;
     customShiftId?: string;
+    shiftAssignments?: EmployeeShiftAssignment[];
     status: 'active' | 'on_leave' | 'terminated';
     managerId?: string;
     rfc_curp?: string;

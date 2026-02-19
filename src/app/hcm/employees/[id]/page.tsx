@@ -473,9 +473,10 @@ export default function EmployeeDetailPage({ params }: { params: Promise<{ id: s
                                 <CardContent>
                                     <div className="space-y-4">
                                         {incidences?.map((inc) => {
+                                            // Can cancel if: HR permission + Approved + Not fully past (endDate >= today)
                                             const canCancel = hasHRPermissions &&
                                                 inc.status === 'approved' &&
-                                                inc.startDate > today;
+                                                inc.endDate >= today;
                                             const isCancelling = cancellingIncidenceId === inc.id;
 
                                             return (

@@ -160,7 +160,8 @@ function getPermissionField(approvalType: ApprovalType): keyof PositionData {
 export async function canApproveForEmployee(
     approverId: string,
     employeeId: string,
-    approvalType: ApprovalType
+    approvalType: ApprovalType,
+    overrides?: { role?: string }
 ): Promise<HierarchyValidationResult> {
     // Caso especial: no puedes aprobarte a ti mismo
     if (approverId === employeeId) {
@@ -170,7 +171,15 @@ export async function canApproveForEmployee(
         };
     }
 
-    // 1. Verificar si es HR/Admin
+    // 1. Verificar si es HR/Admin (checking overrides first)
+    if (overrides?.role && HR_ADMIN_ROLES.includes(overrides.role)) {
+        return {
+            canApprove: true,
+            approvalMethod: 'hr_admin',
+            reason: 'Aprobado como HR/Admin (Token Claims).',
+        };
+    }
+
     const hrAdmin = await isHROrAdmin(approverId);
     if (hrAdmin) {
         return {
