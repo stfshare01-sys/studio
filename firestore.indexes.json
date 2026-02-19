@@ -393,6 +393,20 @@
           "order": "ASCENDING"
         },
         {
+          "fieldPath": "periodEnd",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "vacation_balances",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "employeeId",
+          "order": "ASCENDING"
+        },
+        {
           "fieldPath": "periodStart",
           "order": "DESCENDING"
         }
