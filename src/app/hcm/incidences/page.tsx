@@ -29,6 +29,16 @@ import {
     DialogTitle,
 } from '@/components/ui/dialog';
 import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
     Select,
     SelectContent,
     SelectItem,
@@ -80,6 +90,7 @@ export default function IncidencesPage() {
     const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
     const [rejectionReason, setRejectionReason] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [isCancelDialogOpen, setIsCancelDialogOpen] = useState(false);
 
 
 
@@ -248,16 +259,18 @@ export default function IncidencesPage() {
 
 
 
-    // Handle cancellation - For Approved Incidences
-    const handleCancel = async () => {
-        if (!selectedIncidence || !user) return;
+    // Open cancel confirmation
+    const handleCancel = () => {
+        setIsCancelDialogOpen(true);
+    };
 
-        if (!confirm('¿Estás seguro de que deseas cancelar esta incidencia aprobada? Esta acción revertirá los cambios en saldos.')) {
-            return;
-        }
+    // Execute cancellation
+    const confirmCancel = async () => {
+        if (!selectedIncidence) return;
 
         setIsSubmitting(true);
         try {
+            console.log('Attempting to cancel incidence:', selectedIncidence.id);
             const result = await callApproveIncidence({
                 incidenceId: selectedIncidence.id,
                 action: 'cancel',
@@ -269,9 +282,11 @@ export default function IncidencesPage() {
                     description: 'La incidencia ha sido cancelada exitosamente.',
                 });
                 setIsReviewDialogOpen(false);
+                setIsCancelDialogOpen(false);
                 setSelectedIncidence(null);
             }
         } catch (error: any) {
+            console.error('Error cancelling incidence:', error);
             toast({
                 title: 'Error',
                 description: error.message || 'No se pudo cancelar la incidencia.',
@@ -656,6 +671,31 @@ export default function IncidencesPage() {
                             )}
                         </DialogContent>
                     </Dialog>
+
+                    {/* Cancel Confirmation Dialog */}
+                    <AlertDialog open={isCancelDialogOpen} onOpenChange={setIsCancelDialogOpen}>
+                        <AlertDialogContent>
+                            <AlertDialogHeader>
+                                <AlertDialogTitle>¿Cancelar incidencia aprobada?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                    Esta acción revertirá los cambios en saldos de vacaciones y marcará la incidencia como cancelada. Esta acción no se puede deshacer.
+                                </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                                <AlertDialogCancel disabled={isSubmitting}>Volver</AlertDialogCancel>
+                                <AlertDialogAction
+                                    onClick={(e) => {
+                                        e.preventDefault();
+                                        confirmCancel();
+                                    }}
+                                    className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+                                    disabled={isSubmitting}
+                                >
+                                    {isSubmitting ? 'Cancelando...' : 'Sí, cancelar solicitud'}
+                                </AlertDialogAction>
+                            </AlertDialogFooter>
+                        </AlertDialogContent>
+                    </AlertDialog>
                 </main>
             </div>
         </SiteLayout>
