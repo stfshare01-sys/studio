@@ -802,6 +802,11 @@ export type AttendanceRecord = {
   // Incidencia relacionada (si aplica)
   linkedIncidenceId?: string;   // Si hay permiso/incapacidad que justifica
 
+  // Holiday Flags
+  isHoliday?: boolean;          // Si true, este día es festivo oficial (DFT si hay checada)
+  isCompanyBenefitDay?: boolean; // Si true, es día de beneficio empresa
+  holidayName?: string;         // Nombre del día festivo (ej. "Día de la Independencia")
+
   // Integrity Flags
   isVoid?: boolean;             // Si true, este día NO cuenta como trabajado (ej. convertido a falta)
   voidReason?: string;          // Razón de la anulación (ej. "Salida anticipada injustificada")
@@ -877,6 +882,8 @@ export type PrenominaRecord = {
   overtimeTripleHours: number;
 
   sundayPremiumDays: number;
+  holidayDays: number;               // Días festivos trabajados
+  companyBenefitDaysTaken?: number;   // Días de beneficio empresa tomados (pagados)
 
   // Deducciones (Días/Horas, no $)
   absenceDays: number;
