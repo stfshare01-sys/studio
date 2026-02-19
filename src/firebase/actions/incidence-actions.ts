@@ -276,7 +276,7 @@ export async function processAttendanceImport(
 
         // Get all unique employee IDs and fetch their shift types, location config, and time bank balances
         const employeeIds = [...new Set(rows.map(r => r.employeeId))];
-        const employeeShifts: Record<string, { type: ShiftType; breakMinutes: number; fullName: string; startTime: string; endTime: string; toleranceMinutes: number }> = {};
+        const employeeShifts: Record<string, { type: ShiftType; breakMinutes: number; fullName: string; startTime: string; endTime: string; toleranceMinutes: number; locationId?: string }> = {};
         const employeeTimeBankBalances: Record<string, number> = {}; // Local cache for processing
 
         // Cache shifts and locations to avoid redundant reads
@@ -336,6 +336,7 @@ export async function processAttendanceImport(
                     startTime: shiftStartTime,
                     endTime: shiftEndTime,
                     toleranceMinutes,
+                    locationId: locationId || undefined,
                 };
 
                 // Fetch current time bank balance
@@ -347,6 +348,53 @@ export async function processAttendanceImport(
                 } else {
                     employeeTimeBankBalances[empId] = 0;
                 }
+            }
+        }
+
+        // ---------------------------------------------------------------
+        // HOLIDAY CALENDAR PRE-FETCH
+        // ---------------------------------------------------------------
+        // Fetch all holiday calendars to detect worked holidays (DFT) and company benefit days
+        const officialHolidayDates: Record<string, string> = {}; // "YYYY-MM-DD" → holiday name
+        try {
+            const yearsInRange = new Set<number>();
+            rows.forEach(r => {
+                if (r.date) yearsInRange.add(parseInt(r.date.substring(0, 4)));
+            });
+
+            for (const year of yearsInRange) {
+                const calQuery = query(
+                    collection(firestore, 'holiday_calendars'),
+                    where('year', '==', year)
+                );
+                const calSnap = await getDocs(calQuery);
+                calSnap.docs.forEach(d => {
+                    const cal = d.data() as HolidayCalendar;
+                    cal.holidays?.forEach((h: OfficialHoliday) => {
+                        if (h.date) officialHolidayDates[h.date] = h.name || 'Día Festivo';
+                    });
+                });
+            }
+            console.log(`[HCM] Loaded ${Object.keys(officialHolidayDates).length} official holiday dates for years: ${[...yearsInRange].join(', ')}`);
+        } catch (calError) {
+            console.warn('[HCM] Error loading holiday calendars, continuing without holiday detection:', calError);
+        }
+
+        // Build company benefit day dates per location (locationId → Set of "YYYY-MM-DD")
+        const locationBenefitDatesMap: Record<string, Set<string>> = {};
+        const yearsForBenefitDays = new Set<number>();
+        rows.forEach(r => { if (r.date) yearsForBenefitDays.add(parseInt(r.date.substring(0, 4))); });
+
+        for (const [locId, locData] of Object.entries(locationCache)) {
+            const benefitDays: string[] = (locData as any).companyBenefitDays || [];
+            if (benefitDays.length > 0) {
+                const dateSet = new Set<string>();
+                for (const year of yearsForBenefitDays) {
+                    for (const mmdd of benefitDays) {
+                        dateSet.add(`${year}-${mmdd}`); // e.g. "2026-12-24"
+                    }
+                }
+                locationBenefitDatesMap[locId] = dateSet;
             }
         }
 
@@ -408,6 +456,29 @@ export async function processAttendanceImport(
                     // We will add a task to update firestore later in the flow
                 }
 
+                // -------------------------------------------------------------
+                // HOLIDAY DETECTION
+                // Check if this date is an official holiday or company benefit day
+                // If employee has a check-in on a holiday → DFT (Día Festivo Trabajado)
+                // -------------------------------------------------------------
+                let isHolidayDate = false;
+                let isCompanyBenefitDate = false;
+                let holidayName = '';
+
+                // Check official holidays
+                if (officialHolidayDates[row.date]) {
+                    isHolidayDate = true;
+                    holidayName = officialHolidayDates[row.date];
+                }
+
+                // Check company benefit days (per employee's location)
+                if (!isHolidayDate && shiftConfig.locationId && locationBenefitDatesMap[shiftConfig.locationId]) {
+                    if (locationBenefitDatesMap[shiftConfig.locationId].has(row.date)) {
+                        isCompanyBenefitDate = true;
+                        holidayName = 'Día de Beneficio Empresa';
+                    }
+                }
+
                 // Create attendance record
                 const attendanceRef = collection(firestore, 'attendance');
                 const attendanceData: Omit<AttendanceRecord, 'id'> = {
@@ -423,7 +494,13 @@ export async function processAttendanceImport(
                     hoursAppliedToDebt,
                     overtimeType: payableOvertimeHours > 0 ? 'double' : null,
                     isValid: validation.isValid,
-                    validationNotes: validation.message ?? null,
+                    validationNotes: isHolidayDate
+                        ? `DFT: Trabajó en día festivo (${holidayName}). ${validation.message || ''}`
+                        : isCompanyBenefitDate
+                            ? `Día de beneficio empresa trabajado (${holidayName}). ${validation.message || ''}`
+                            : (validation.message ?? null),
+                    ...(isHolidayDate && { isHoliday: true, holidayName }),
+                    ...(isCompanyBenefitDate && { isCompanyBenefitDay: true, holidayName }),
                     importBatchId: batchId,
                     createdAt: now
                 };

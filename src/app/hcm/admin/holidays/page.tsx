@@ -39,9 +39,12 @@ import {
     Calendar as CalendarIcon,
     Edit,
     Loader2,
-    MoreVertical
+    MoreVertical,
+    AlertCircle
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { usePermissions } from '@/hooks/use-permissions';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
@@ -57,8 +60,11 @@ import {
 export default function HolidayCalendarsPage() {
     const db = useFirestore();
     const { toast } = useToast();
+    const { hasPermission } = usePermissions();
     const [calendars, setCalendars] = useState<HolidayCalendar[]>([]);
     const [loading, setLoading] = useState(true);
+
+    const canManageHolidays = hasPermission('hcm_admin_holidays', 'write') || hasPermission('hcm_employees', 'write') || hasPermission('admin_users', 'write');
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
     const [selectedCalendar, setSelectedCalendar] = useState<HolidayCalendar | null>(null);
@@ -132,6 +138,19 @@ export default function HolidayCalendarsPage() {
         setSelectedCalendar({ ...calendar }); // Clone to edit
         setIsEditDialogOpen(true);
     };
+
+    if (!canManageHolidays) {
+        return (
+            <div className="container mx-auto p-6">
+                <Alert variant="destructive">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>
+                        No tienes permisos para gestionar calendarios de días festivos.
+                    </AlertDescription>
+                </Alert>
+            </div>
+        );
+    }
 
     return (
         <div className="p-6 space-y-6 max-w-7xl mx-auto">

@@ -374,6 +374,8 @@ export type PrenominaRecord = {
 
     sundayPremiumDays: number;
     // sundayPremiumAmount REMOVED
+    holidayDays: number;               // Días festivos trabajados
+    companyBenefitDaysTaken?: number;   // Días de beneficio empresa tomados (pagados)
 
     // Deducciones (Días/Horas, no $)
     absenceDays: number;
