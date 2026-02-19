@@ -229,6 +229,8 @@ export const MODULE_INFO: Record<AppModule, { name: string; description: string;
   hcm_prenomina_close: { name: 'Cerrar Período', description: 'Cerrar y bloquear período de nómina', category: 'hcm' },
   hcm_prenomina_export: { name: 'Exportar Pre-nómina', description: 'Exportar datos a sistema de nómina', category: 'hcm' },
   hcm_sla_processing: { name: 'Procesamiento SLA', description: 'Ejecución manual de reglas de SLA', category: 'hcm' },
+  hcm_admin_holidays: { name: 'Calendarios Festivos', description: 'Gestionar calendarios de días festivos oficiales', category: 'hcm' },
+  hcm_admin_vacation: { name: 'Gestión de Vacaciones', description: 'Ajustar saldos de vacaciones individual y masivamente', category: 'hcm' },
 };
 
 // Check if a role is a system role

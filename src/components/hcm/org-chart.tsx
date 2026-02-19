@@ -216,8 +216,8 @@ export function OrgChartTree({ employees, onEmployeeClick }: OrgChartTreeProps) 
         allEmployees.forEach(emp => {
             const node = employeeMap.get(emp.id)!;
             // If has manager AND manager exists in lists
-            if (emp.managerId && employeeMap.has(emp.managerId)) {
-                const manager = employeeMap.get(emp.managerId)!;
+            if (emp.directManagerId && employeeMap.has(emp.directManagerId)) {
+                const manager = employeeMap.get(emp.directManagerId)!;
                 manager.children.push(node);
                 manager.directReportsCount++;
             } else {

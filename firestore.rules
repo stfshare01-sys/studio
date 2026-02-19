@@ -134,9 +134,9 @@ service cloud.firestore {
        */
       match /notifications/{notificationId} {
         allow get, list: if isOwner(userId);
-        // Only Admins can create notifications for any user
-        // Regular users cannot create notifications for others
-        allow create: if hasRole('Admin') || isOwner(userId);
+        // HR, Managers and Admins can create notifications for any user
+        // (e.g., vacation adjustments, incidence approvals, task assignments)
+        allow create: if isManagerOrHR() || isOwner(userId);
         allow update, delete: if isOwner(userId);
       }
     }
@@ -501,6 +501,19 @@ service cloud.firestore {
       allow create, update: if isHRManager();
       // No deletes - balance history is important
       allow delete: if false;
+    }
+
+    /**
+     * @description Vacation adjustment audit trail
+     * Read: HR only
+     * Write: HR only (created during balance adjustments)
+     * @path /vacation_adjustments/{adjustmentId}
+     */
+    match /vacation_adjustments/{adjustmentId} {
+      allow read: if isHRManager();
+      allow create: if isHRManager();
+      // No updates or deletes - audit trail is immutable
+      allow update, delete: if false;
     }
 
     /**
