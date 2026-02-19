@@ -91,7 +91,7 @@ interface CalculateSettlementResponse {
 
 interface ApproveIncidenceRequest {
     incidenceId: string;
-    action: 'approve' | 'reject';
+    action: 'approve' | 'reject' | 'cancel';
     rejectionReason?: string;
 }
 

@@ -686,7 +686,7 @@ export const processEmployeeImport = onCall<ProcessEmployeeImportRequest>(
 
 interface ApproveIncidenceRequest {
     incidenceId: string;
-    action: 'approve' | 'reject';
+    action: 'approve' | 'reject' | 'cancel';
     rejectionReason?: string;
 }
 
@@ -740,6 +740,10 @@ export const approveIncidence = onCall<ApproveIncidenceRequest>(
             throw new HttpsError('invalid-argument', 'Parámetros incompletos.');
         }
 
+        if (!['approve', 'reject', 'cancel'].includes(action)) {
+            throw new HttpsError('invalid-argument', `Acción no válida: ${action}.`);
+        }
+
         const nowISO = new Date().toISOString();
 
         try {
@@ -767,6 +771,98 @@ export const approveIncidence = onCall<ApproveIncidenceRequest>(
             }
 
             console.log(`[HCM] Hierarchy check passed: ${hierarchyCheck.approvalMethod} (level ${hierarchyCheck.approverLevel || 'N/A'})`);
+
+            // ----------------------------------------------------------------
+            // CANCEL ACTION: Reverses an already-approved incidence
+            // Only allowed if the start date hasn't passed yet
+            // ----------------------------------------------------------------
+            if (action === 'cancel') {
+                if (incidenceData.status !== 'approved') {
+                    throw new HttpsError(
+                        'failed-precondition',
+                        'Solo se pueden cancelar incidencias que ya están aprobadas.'
+                    );
+                }
+
+                const today = new Date().toISOString().split('T')[0];
+                if (incidenceData.startDate <= today) {
+                    throw new HttpsError(
+                        'failed-precondition',
+                        'No se puede cancelar una incidencia cuya fecha de inicio ya pasó o es hoy.'
+                    );
+                }
+
+                // For vacation incidences: restore the deducted days atomically
+                if (incidenceData.type === 'vacation') {
+                    await db.runTransaction(async (transaction) => {
+                        const balanceQuery = await db.collection('vacation_balances')
+                            .where('employeeId', '==', incidenceData.employeeId)
+                            .orderBy('periodEnd', 'desc')
+                            .limit(1)
+                            .get();
+
+                        if (!balanceQuery.empty) {
+                            const balanceDoc = balanceQuery.docs[0];
+                            const balanceData = balanceDoc.data();
+                            const totalDays = incidenceData.totalDays || 0;
+
+                            const currentTaken = balanceData.daysTaken || 0;
+                            const newTaken = Math.max(0, currentTaken - totalDays);
+                            const newAvailable = (balanceData.daysAvailable || 0) + totalDays;
+
+                            const newMovement = {
+                                id: `mov_cancelled_${Date.now()}`,
+                                date: nowISO,
+                                type: 'cancelled',
+                                days: totalDays,
+                                description: `Incidencia cancelada: ${incidenceData.startDate} al ${incidenceData.endDate}`,
+                                incidenceId,
+                                approvedById: approverId
+                            };
+
+                            const updatedMovements = [...(balanceData.movements || []), newMovement].slice(-100);
+
+                            transaction.update(balanceDoc.ref, {
+                                daysTaken: newTaken,
+                                daysAvailable: newAvailable,
+                                movements: updatedMovements,
+                                lastUpdated: nowISO
+                            });
+
+                            transaction.update(incidenceRef, {
+                                status: 'cancelled',
+                                cancelledById: approverId,
+                                cancelledByName: userData?.fullName,
+                                cancelledAt: nowISO,
+                                updatedAt: nowISO
+                            });
+
+                            console.log(`[HCM] Vacation cancelled. Restored ${totalDays} days. Available: ${balanceData.daysAvailable} -> ${newAvailable}`);
+                        } else {
+                            // No balance found, just cancel the incidence
+                            transaction.update(incidenceRef, {
+                                status: 'cancelled',
+                                cancelledById: approverId,
+                                cancelledByName: userData?.fullName,
+                                cancelledAt: nowISO,
+                                updatedAt: nowISO
+                            });
+                        }
+                    });
+                } else {
+                    // Non-vacation incidences: just mark as cancelled
+                    await incidenceRef.update({
+                        status: 'cancelled',
+                        cancelledById: approverId,
+                        cancelledByName: userData?.fullName,
+                        cancelledAt: nowISO,
+                        updatedAt: nowISO
+                    });
+                }
+
+                console.log(`[HCM] Incidence ${incidenceId} cancelled by ${userData?.fullName}`);
+                return { success: true };
+            }
 
             // Only validate when approving (not when rejecting)
             if (action === 'approve') {

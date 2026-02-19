@@ -18,7 +18,10 @@ import {
     Calendar,
     FileText,
     Clock,
-    AlertCircle
+    AlertCircle,
+    XCircle,
+    Loader2,
+    UserX,
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -28,17 +31,46 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
+import { useToast } from '@/hooks/use-toast';
 
 import { KardexTimeline, EmployeeMovement } from '@/components/hcm/kardex-timeline';
 import { VacationBalanceCard } from '@/components/hcm/vacation-balance-card';
+import { deactivateEmployee } from '@/firebase/actions/employee-actions';
+import { callApproveIncidence } from '@/firebase/callable-functions';
 
 import type { Employee, AttendanceRecord, Incidence, ShiftAssignment, CustomShift } from '@/lib/types';
 
 export default function EmployeeDetailPage({ params }: { params: Promise<{ id: string }> }) {
     const router = useRouter();
     const { id: employeeId } = use(params);
+    const { toast } = useToast();
+
     // 0. Auth state
     const { firestore, user, isUserLoading } = useFirebase();
+
+    // -------------------------------------------------------------------------
+    // Dialog state: "Dar de Baja"
+    // -------------------------------------------------------------------------
+    const [isBajaDialogOpen, setIsBajaDialogOpen] = useState(false);
+    const [terminationDate, setTerminationDate] = useState(() =>
+        new Date().toISOString().split('T')[0]
+    );
+    const [isDeactivating, setIsDeactivating] = useState(false);
+
+    // -------------------------------------------------------------------------
+    // Dialog state: Cancel incidence
+    // -------------------------------------------------------------------------
+    const [cancellingIncidenceId, setCancellingIncidenceId] = useState<string | null>(null);
 
     // 1. Fetch Employee Details
     const employeeRef = useMemoFirebase(() => {
@@ -95,8 +127,6 @@ export default function EmployeeDetailPage({ params }: { params: Promise<{ id: s
     // 6. Fetch Active Shift Assignments
     const shiftAssignmentsQuery = useMemoFirebase(() => {
         if (!firestore || isUserLoading) return null;
-        const now = new Date();
-        const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString().split('T')[0];
 
         return query(
             collection(firestore, 'shift_assignments'),
@@ -115,13 +145,14 @@ export default function EmployeeDetailPage({ params }: { params: Promise<{ id: s
 
     const { data: shifts } = useCollection<CustomShift>(shiftsQuery);
 
-    // Helper: Calculate Current Shift
+    // -------------------------------------------------------------------------
+    // Helpers
+    // -------------------------------------------------------------------------
     const getCurrentShift = () => {
         if (!employee) return 'No asignado';
 
         const today = new Date().toISOString().split('T')[0];
 
-        // 1. Check for Active Temporary Shift
         const activeTempShift = shiftAssignments?.find(assignment =>
             assignment.assignmentType === 'temporary' &&
             assignment.startDate <= today &&
@@ -133,13 +164,11 @@ export default function EmployeeDetailPage({ params }: { params: Promise<{ id: s
             if (shiftDetails) return `${shiftDetails.name} (Temporal)`;
         }
 
-        // 2. Check for Permanent Custom Shift
         if (employee.customShiftId && shifts) {
             const shiftDetails = shifts.find(s => s.id === employee.customShiftId);
             if (shiftDetails) return shiftDetails.name;
         }
 
-        // 3. Fallback to Legacy Shift Type
         return employee.shiftType === 'diurnal' ? 'Diurno' :
             employee.shiftType === 'nocturnal' ? 'Nocturno' : 'Mixto';
     };
@@ -148,6 +177,68 @@ export default function EmployeeDetailPage({ params }: { params: Promise<{ id: s
         return name?.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || '??';
     };
 
+    const hasHRPermissions = ['Admin', 'HRManager', 'Manager'].includes(user?.role || '');
+
+    const today = new Date().toISOString().split('T')[0];
+
+    // -------------------------------------------------------------------------
+    // Action: Dar de Baja
+    // -------------------------------------------------------------------------
+    const handleDeactivate = async () => {
+        if (!terminationDate) return;
+        setIsDeactivating(true);
+        try {
+            const result = await deactivateEmployee(employeeId, terminationDate);
+            if (result.success) {
+                toast({
+                    title: 'Empleado dado de baja',
+                    description: `Fecha de baja registrada: ${format(new Date(terminationDate + 'T12:00:00'), 'PPP', { locale: es })}. Aparecerá como BJ en el cierre de nómina.`,
+                });
+                setIsBajaDialogOpen(false);
+            } else {
+                throw new Error(result.error ?? 'Error desconocido');
+            }
+        } catch (error: any) {
+            toast({
+                title: 'Error',
+                description: error.message || 'No se pudo dar de baja al empleado.',
+                variant: 'destructive',
+            });
+        } finally {
+            setIsDeactivating(false);
+        }
+    };
+
+    // -------------------------------------------------------------------------
+    // Action: Cancel Incidence
+    // -------------------------------------------------------------------------
+    const handleCancelIncidence = async (incidenceId: string) => {
+        setCancellingIncidenceId(incidenceId);
+        try {
+            const result = await callApproveIncidence({
+                incidenceId,
+                action: 'cancel',
+            });
+            if (result.success) {
+                toast({
+                    title: 'Incidencia cancelada',
+                    description: 'La incidencia fue cancelada y el saldo de vacaciones fue restaurado (si aplica).',
+                });
+            }
+        } catch (error: any) {
+            toast({
+                title: 'Error',
+                description: error.message || 'No se pudo cancelar la incidencia.',
+                variant: 'destructive',
+            });
+        } finally {
+            setCancellingIncidenceId(null);
+        }
+    };
+
+    // -------------------------------------------------------------------------
+    // Loading / Not Found states
+    // -------------------------------------------------------------------------
     if (isLoadingEmployee) {
         return (
             <SiteLayout>
@@ -214,7 +305,21 @@ export default function EmployeeDetailPage({ params }: { params: Promise<{ id: s
                         <Button variant="outline" asChild>
                             <Link href={`/hcm/employees/${employeeId}/edit`}>Editar Perfil</Link>
                         </Button>
-                        <Button variant="destructive">Dar de Baja</Button>
+                        {/* Only show Dar de Baja if employee is still active and user has HR permissions */}
+                        {hasHRPermissions && employee.status === 'active' && (
+                            <Button
+                                variant="destructive"
+                                onClick={() => setIsBajaDialogOpen(true)}
+                            >
+                                <UserX className="mr-2 h-4 w-4" />
+                                Dar de Baja
+                            </Button>
+                        )}
+                        {employee.status !== 'active' && employee.terminationDate && (
+                            <Badge variant="destructive" className="self-center px-3 py-1">
+                                Baja: {format(new Date(employee.terminationDate + 'T12:00:00'), 'PP', { locale: es })}
+                            </Badge>
+                        )}
                     </div>
                 </header>
                 <main className="flex-1 p-4 pt-0 sm:p-6 sm:pt-0">
@@ -367,39 +472,64 @@ export default function EmployeeDetailPage({ params }: { params: Promise<{ id: s
                                 </CardHeader>
                                 <CardContent>
                                     <div className="space-y-4">
-                                        {incidences?.map((inc) => (
-                                            <div key={inc.id} className="flex items-start justify-between p-4 border rounded-lg">
-                                                <div className="flex gap-4">
-                                                    <div className={`p-2 rounded-full h-fit 
+                                        {incidences?.map((inc) => {
+                                            const canCancel = hasHRPermissions &&
+                                                inc.status === 'approved' &&
+                                                inc.startDate > today;
+                                            const isCancelling = cancellingIncidenceId === inc.id;
+
+                                            return (
+                                                <div key={inc.id} className="flex items-start justify-between p-4 border rounded-lg">
+                                                    <div className="flex gap-4">
+                                                        <div className={`p-2 rounded-full h-fit 
                                 ${inc.type === 'vacation' ? 'bg-blue-100 text-blue-600' :
-                                                            inc.type === 'sick_leave' ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-600'}`}
-                                                    >
-                                                        <FileText className="h-4 w-4" />
-                                                    </div>
-                                                    <div>
-                                                        <h4 className="font-medium capitalize">{inc.type?.replace('_', ' ') || 'Tipo Desconocido'}</h4>
-                                                        <p className="text-sm text-muted-foreground">
-                                                            Del {format(new Date(inc.startDate), 'P', { locale: es })} al {format(new Date(inc.endDate), 'P', { locale: es })}
-                                                        </p>
-                                                        {inc.notes && (
-                                                            <p className="text-sm text-muted-foreground mt-2 bg-muted p-2 rounded">
-                                                                "{inc.notes}"
+                                                                inc.type === 'sick_leave' ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-600'}`}
+                                                        >
+                                                            <FileText className="h-4 w-4" />
+                                                        </div>
+                                                        <div>
+                                                            <h4 className="font-medium capitalize">{inc.type?.replace('_', ' ') || 'Tipo Desconocido'}</h4>
+                                                            <p className="text-sm text-muted-foreground">
+                                                                Del {format(new Date(inc.startDate), 'P', { locale: es })} al {format(new Date(inc.endDate), 'P', { locale: es })}
                                                             </p>
+                                                            {inc.notes && (
+                                                                <p className="text-sm text-muted-foreground mt-2 bg-muted p-2 rounded">
+                                                                    "{inc.notes}"
+                                                                </p>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex flex-col items-end gap-2">
+                                                        <Badge variant={
+                                                            inc.status === 'approved' ? 'default' :
+                                                                inc.status === 'rejected' ? 'destructive' :
+                                                                    inc.status === 'cancelled' ? 'secondary' : 'secondary'
+                                                        }>
+                                                            {inc.status === 'approved' ? 'Aprobada' :
+                                                                inc.status === 'rejected' ? 'Rechazada' :
+                                                                    inc.status === 'cancelled' ? 'Cancelada' : 'Pendiente'}
+                                                        </Badge>
+                                                        <span className="text-sm font-medium">{inc.totalDays} día(s)</span>
+                                                        {canCancel && (
+                                                            <Button
+                                                                size="sm"
+                                                                variant="outline"
+                                                                className="border-red-300 text-red-600 hover:bg-red-50 hover:text-red-700 text-xs"
+                                                                disabled={isCancelling}
+                                                                onClick={() => handleCancelIncidence(inc.id)}
+                                                            >
+                                                                {isCancelling ? (
+                                                                    <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                                                                ) : (
+                                                                    <XCircle className="h-3 w-3 mr-1" />
+                                                                )}
+                                                                Cancelar
+                                                            </Button>
                                                         )}
                                                     </div>
                                                 </div>
-                                                <div className="flex flex-col items-end gap-2">
-                                                    <Badge variant={
-                                                        inc.status === 'approved' ? 'default' :
-                                                            inc.status === 'rejected' ? 'destructive' : 'secondary'
-                                                    }>
-                                                        {inc.status === 'approved' ? 'Aprobada' :
-                                                            inc.status === 'rejected' ? 'Rechazada' : 'Pendiente'}
-                                                    </Badge>
-                                                    <span className="text-sm font-medium">{inc.totalDays} día(s)</span>
-                                                </div>
-                                            </div>
-                                        ))}
+                                            );
+                                        })}
                                         {(!incidences || incidences.length === 0) && (
                                             <div className="text-center py-12">
                                                 <AlertCircle className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
@@ -426,6 +556,67 @@ export default function EmployeeDetailPage({ params }: { params: Promise<{ id: s
                     </Tabs>
                 </main>
             </div>
+
+            {/* ================================================================
+                Dialog: Dar de Baja
+            ================================================================ */}
+            <Dialog open={isBajaDialogOpen} onOpenChange={setIsBajaDialogOpen}>
+                <DialogContent className="max-w-md">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2 text-destructive">
+                            <UserX className="h-5 w-5" />
+                            Dar de Baja a Empleado
+                        </DialogTitle>
+                        <DialogDescription>
+                            Esta acción marcará a <strong>{employee.fullName}</strong> como inactivo y registrará su fecha de baja en el sistema.
+                            El empleado aparecerá con código <strong>BJ</strong> en el cierre de nómina del período correspondiente.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="space-y-4 py-2">
+                        <div className="space-y-2">
+                            <Label htmlFor="termination-date">Fecha de Baja</Label>
+                            <Input
+                                id="termination-date"
+                                type="date"
+                                value={terminationDate}
+                                onChange={(e) => setTerminationDate(e.target.value)}
+                                max={new Date().toISOString().split('T')[0]}
+                            />
+                            <p className="text-xs text-muted-foreground">
+                                Esta fecha determina en qué período de nómina aparecerá el código BJ.
+                            </p>
+                        </div>
+                    </div>
+
+                    <DialogFooter className="gap-2">
+                        <Button
+                            variant="outline"
+                            onClick={() => setIsBajaDialogOpen(false)}
+                            disabled={isDeactivating}
+                        >
+                            Cancelar
+                        </Button>
+                        <Button
+                            variant="destructive"
+                            onClick={handleDeactivate}
+                            disabled={isDeactivating || !terminationDate}
+                        >
+                            {isDeactivating ? (
+                                <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    Procesando...
+                                </>
+                            ) : (
+                                <>
+                                    <UserX className="mr-2 h-4 w-4" />
+                                    Confirmar Baja
+                                </>
+                            )}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </SiteLayout>
     );
 }

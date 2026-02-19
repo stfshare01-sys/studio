@@ -129,6 +129,50 @@ export async function blacklistEmployee(
     }
 }
 
+/**
+ * Marks an employee as inactive ("Dar de Baja").
+ * Writes `status: 'disabled'` and `terminationDate` to both the `employees`
+ * and `users` Firestore collections.
+ *
+ * This is the only thing the prenomina NomiPAQ export needs to generate the
+ * 'BJ' (Baja) code for that employee in the period closure.
+ */
+export async function deactivateEmployee(
+    employeeId: string,
+    terminationDate: string // ISO date string: 'YYYY-MM-DD'
+): Promise<{ success: boolean; error?: string }> {
+    try {
+        const { firestore } = initializeFirebase();
+        const nowISO = new Date().toISOString();
+
+        // 1. Update the employees collection
+        const employeeRef = doc(firestore, 'employees', employeeId);
+        await updateDoc(employeeRef, {
+            status: 'disabled',
+            terminationDate,
+            updatedAt: nowISO,
+        });
+
+        // 2. Sync status to the users collection so auth/nav guards also work
+        try {
+            const userRef = doc(firestore, 'users', employeeId);
+            await updateDoc(userRef, {
+                status: 'disabled',
+                updatedAt: nowISO,
+            });
+        } catch (syncError) {
+            // Non-blocking: log but don't fail the whole operation
+            console.warn('[HCM] Could not sync status to users collection:', syncError);
+        }
+
+        console.log(`[HCM] Deactivated employee ${employeeId}. Termination date: ${terminationDate}`);
+        return { success: true };
+    } catch (error) {
+        console.error('[HCM] Error deactivating employee:', error);
+        return { success: false, error: 'No se pudo dar de baja al empleado.' };
+    }
+}
+
 // =========================================================================
 // EMPLOYEE IMPORT
 // =========================================================================
