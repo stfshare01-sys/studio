@@ -17,6 +17,7 @@ import {
     canApproveForEmployee,
     ApprovalType
 } from '../utils/hierarchy-validator';
+import { validateIncidencePolicy, IncidenceType, Incidence as PolicyIncidence } from '../utils/incidence-policy';
 import type {
     PrenominaRecord,
     Employee,
@@ -914,6 +915,11 @@ export const approveIncidence = onCall<ApproveIncidenceRequest>(
                         maternity: 'maternidad',
                         paternity: 'paternidad',
                         bereavement: 'duelo',
+                        marriage: 'matrimonio',
+                        adoption: 'adopción',
+                        civic_duty: 'deber cívico',
+                        half_day_family: 'permiso medio día',
+                        unpaid_leave: 'permiso sin goce',
                         unjustified_absence: 'falta injustificada'
                     };
 
@@ -924,6 +930,29 @@ export const approveIncidence = onCall<ApproveIncidenceRequest>(
                     throw new HttpsError(
                         'failed-precondition',
                         `No se puede aprobar: las fechas se solapan con ${conflictingIncidences.length === 1 ? 'otra incidencia' : 'otras incidencias'}: ${conflictDescriptions.join('; ')}.`
+                    );
+                }
+
+                // VALIDATION 2.5: Policy Rules (Frequency & Duration)
+                // Use the fetched incidences (conflictQuery) which contains all approved/pending incidences for this employee
+                const allEmployeeIncidences = conflictQuery.docs.map(d => ({ id: d.id, ...d.data() } as PolicyIncidence));
+
+                // Calculate approximate effective days if not present (fallback)
+                // In approveIncidence, incidenceData.totalDays should be present from creation
+                const effectiveDays = incidenceData.totalDays || 1;
+
+                const policyCheck = validateIncidencePolicy(
+                    incidenceData.type as IncidenceType,
+                    incidenceData.startDate,
+                    incidenceData.endDate,
+                    effectiveDays,
+                    allEmployeeIncidences
+                );
+
+                if (!policyCheck.isValid) {
+                    throw new HttpsError(
+                        'failed-precondition',
+                        policyCheck.error || 'La solicitud no cumple con las políticas de incidencia.'
                     );
                 }
 
@@ -1326,6 +1355,10 @@ export const closePeriodAutoProcess = onCall(
  * Genera archivo de pre-nómina para NOMIPAQ
  * Formato: EMPLEADO_ID|FECHA|CODIGO|VALOR
  */
+/**
+ * Genera archivo de pre-nómina para NOMIPAQ
+ * Formato: EMPLEADO_ID|FECHA|CODIGO|VALOR
+ */
 async function generatePrenominaFile(
     db: admin.firestore.Firestore,
     period: string
@@ -1333,31 +1366,156 @@ async function generatePrenominaFile(
     try {
         const [startDate, endDate] = period.split('_');
 
-        // Obtener todos los registros de asistencia del período
+        // 1. Obtener asistencia (incluye faltas generadas)
         const attendanceQuery = await db.collection('attendance')
             .where('date', '>=', startDate)
             .where('date', '<=', endDate || startDate)
             .get();
 
-        const lines: string[] = [];
-        lines.push('EMPLEADO|FECHA|CODIGO|VALOR'); // Header
+        // 2. Obtener incidencias APROBADAS que se solapen con el período
+        //    (Necesitamos un rango amplio o checar overlap)
+        //    Firestore no soporta rangos cruzados fácilmente. 
+        //    Buscaremos incidencias que terminen después del inicio del periodo y empiecen antes del fin.
+        //    Para simplificar y evitar lecturas masivas excesivas, buscamos por startDate en rango 
+        //    Y también incidencias largas que empezaron antes?
+        //    Lo ideal para "incidencias largas" es que se dividan o se consulten mejor.
+        //    Por ahora: Consultamos incidencias activas en el rango.
 
-        for (const doc of attendanceQuery.docs) {
+        // Estrategia Simple: Traer incidencias que empiezan en el rango o terminan en el rango.
+        // O traer todas las del mes. Asumimos que startDate y endDate definen un mes o quincena.
+
+        const incidencesQuery = await db.collection('incidences')
+            .where('status', '==', 'approved')
+            .where('endDate', '>=', startDate)
+            .get(); // Filtramos endDate >= startDate. Luego filtramos startDate <= endDate en memoria.
+
+        const relevantIncidences = incidencesQuery.docs
+            .map(d => ({ id: d.id, ...d.data() } as Incidence))
+            .filter(inc => inc.startDate <= (endDate || startDate));
+
+        // Mapeo: EmployeeID -> Date -> { attendance?: Data, incidence?: Data }
+        const consolidatedData: Record<string, Record<string, { attendance?: any, incidence?: Incidence }>> = {};
+
+        // Helper para inicializar
+        const getRecord = (empId: string, date: string) => {
+            if (!consolidatedData[empId]) consolidatedData[empId] = {};
+            if (!consolidatedData[empId][date]) consolidatedData[empId][date] = {};
+            return consolidatedData[empId][date];
+        }
+
+        // Poblar con Asistencia
+        attendanceQuery.docs.forEach(doc => {
             const data = doc.data();
+            const rec = getRecord(data.employeeId, data.date);
+            rec.attendance = data;
+        });
 
-            // Obtener datos del empleado
-            const employeeDoc = await db.collection('employees').doc(data.employeeId).get();
-            const empData = employeeDoc.data();
+        // Poblar con Incidencias (Expandir fechas)
+        const { parseISO, addDays, format, isAfter, isBefore } = require('date-fns');
 
+        for (const inc of relevantIncidences) {
+            let curr = parseISO(inc.startDate);
+            const end = parseISO(inc.endDate);
+            const periodStart = parseISO(startDate);
+            const periodEnd = parseISO(endDate || startDate);
+
+            // Iterar días de la incidencia
+            while (isBefore(curr, end) || curr.getTime() === end.getTime()) {
+                // Solo si cae dentro del periodo
+                if ((isAfter(curr, periodStart) || curr.getTime() === periodStart.getTime()) &&
+                    (isBefore(curr, periodEnd) || curr.getTime() === periodEnd.getTime())) {
+
+                    const dateStr = format(curr, 'yyyy-MM-dd');
+                    const rec = getRecord(inc.employeeId, dateStr);
+
+                    // VALIDACIÓN: Si ya hay una incidencia, ¿cuál gana? 
+                    // Asumimos que no hay solapamiento validado previamente.
+                    rec.incidence = inc;
+                }
+                curr = addDays(curr, 1);
+            }
+        }
+
+        const lines: string[] = [];
+        lines.push('EMPLEADO|FECHA|CODIGO|VALOR');
+
+        const INCIDENCE_CODE_MAP: Record<string, string> = {
+            vacation: 'VAC', // Vacaciones
+            sick_leave: 'INC', // Incapacidad
+            personal_leave: 'PCS', // Permiso Con Sueldo
+            maternity: 'INC', // Maternidad
+            paternity: 'PCS', // Paternidad
+            bereavement: 'PCS', // Luto
+            marriage: 'PCS', // Matrimonio
+            adoption: 'PCS', // Adopción
+            civic_duty: 'PCS', // Deber Cívico
+            half_day_family: 'PCS', // Medio Día
+            unpaid_leave: 'PSS', // Permiso Sin Goce
+            unjustified_absence: 'FINJ',
+            abandono_empleo: 'AE'
+        };
+
+        // Procesar Consolidado
+        for (const empId in consolidatedData) {
+            // Necesitamos el número de empleado para el reporte
+            // Esto requiere leer el empleado. Puede ser costoso N lecturas.
+            // Optimizamos: Leer empleados en batch o cachear si son pocos, o usar empId si es numérico.
+            // Asumimos que debemos leerlo para obtener "employeeNumber".
+            const empDoc = await db.collection('employees').doc(empId).get();
+            const empData = empDoc.data();
             if (!empData) continue;
+            const employeeNumber = empData.employeeNumber || empId;
 
-            const employeeNumber = empData.employeeNumber || empData.id;
-            const nomipaqCode = data.nomipaqCode || 'ASI';
-            const nomipaqValue = data.nomipaqValue || '';
+            const dates = consolidatedData[empId];
+            for (const date in dates) {
+                const { attendance, incidence } = dates[date];
 
-            // Formato: EMPLEADO_ID|FECHA|CODIGO|VALOR
-            const line = `${employeeNumber}|${data.date}|${nomipaqCode}|${nomipaqValue}`;
-            lines.push(line);
+                // LÓGICA DE DOMINANCIA Y MEDIOS DÍAS
+                if (incidence) {
+                    const code = INCIDENCE_CODE_MAP[incidence.type] || 'PCS';
+
+                    if (incidence.type === 'half_day_family') {
+                        // Regla: Medio día (0.5).
+                        // 1. Emitir Permiso
+                        lines.push(`${employeeNumber}|${date}|${code}|0.5`);
+
+                        // 2. Si hay asistencia, emitir asistencia ajustada (0.5)
+                        if (attendance) {
+                            const attCode = attendance.nomipaqCode || 'ASI';
+                            // Si es asistencia normal, ajustamos a 0.5
+                            // Si es falta (nomipaqCode=FINJ), ¿qué pasa?
+                            // Si tiene permiso de medio día y falta el otro medio... debería ser falta medio día?
+                            // Asumimos que attendance refleja lo que pasó (e.g. checkin/out).
+                            // Si hay attendance record, asumimos que trabajó o se generó falta.
+                            // Emitimos 0.5
+                            lines.push(`${employeeNumber}|${date}|${attCode}|0.5`);
+                        } else {
+                            // No hay asistencia registrada.
+                            // ¿Falta de medio día? ¿O descanso?
+                            // Si no hay registro, y no es día de descanso, suele ser Falta.
+                            // Pero closePeriodAutoProcess ya debió generar faltas si correspondía.
+                            // Si no hay attendance, no emitimos nada más (solo el permiso).
+                        }
+                    } else {
+                        // Incidencia Completa (Domina)
+                        // Emitimos Incidencia (Valor 1)
+                        lines.push(`${employeeNumber}|${date}|${code}|1`);
+
+                        // IGNORAMOS Asistencia (No duplicar)
+                        // (Salvo que sea horas extras? Si trabajó en vacaciones, es HE? 
+                        //  Complejo. Regla general: Incidencia justifica el día).
+                        if (attendance && attendance.overtimeHours > 0) {
+                            // Si tiene horas extras aprobadas, tal vez deberíamos pagarlas aparte?
+                            // Por ahora, seguimos regla estricta: Incidencia Domina Día Normal.
+                        }
+                    }
+                } else if (attendance) {
+                    // Solo Asistencia
+                    const code = attendance.nomipaqCode || 'ASI';
+                    const val = attendance.nomipaqValue || '1'; // Default 1 día
+                    lines.push(`${employeeNumber}|${date}|${code}|${val}`);
+                }
+            }
         }
 
         // Guardar archivo en Storage
@@ -1375,7 +1533,7 @@ async function generatePrenominaFile(
             }
         });
 
-        // Generar URL (manejo especial para emulador/desarrollo)
+        // Generar URL
         let url = '';
         try {
             const [signedUrl] = await file.getSignedUrl({

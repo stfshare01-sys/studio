@@ -16,8 +16,9 @@ import { useCollection } from '@/firebase/firestore/use-collection';
 import { collection, query, where, orderBy, Query } from 'firebase/firestore';
 import { useFirebase, useMemoFirebase } from '@/firebase/provider';
 import type { Incidence, IncidenceType, Employee, VacationBalance } from '@/lib/types';
-import { format } from 'date-fns';
+import { format, isSameDay, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { validateIncidencePolicy, INCIDENCE_RULES } from '@/lib/hcm-validation';
 
 interface NewIncidenceFormProps {
     userId: string;          // The user currently logged in
@@ -118,6 +119,14 @@ export function NewIncidenceForm({ userId, targetUserId, onSuccess, onCancel, cl
             setIsValidatingDates(true);
             setIsCalculatingDays(true);
 
+            // 0. Policy Validation (Client Side)
+            if (newIncidence.startDate && newIncidence.endDate && userIncidences) {
+                // Approximate effective days for initial check or wait for calculation
+                // We'll run policy check after calculation if needed, but some rules depend on dates alone.
+                // However, to check duration properly we need effective days.
+                // Let's calculate first.
+            }
+
             // 1. Check for date conflicts
             const conflictResult = checkDateConflict(
                 effectiveTargetUserId,
@@ -135,20 +144,54 @@ export function NewIncidenceForm({ userId, targetUserId, onSuccess, onCancel, cl
 
             if (conflictResult.hasConflict) {
                 setDateConflictError(conflictResult.message || 'Las fechas seleccionadas se solapan con otra incidencia.');
+                setIsValidatingDates(false);
+                setIsCalculatingDays(false);
+                return; // Stop here
             } else {
                 setDateConflictError(null);
             }
 
             // 2. Calculate Effective Days (Backend Logic)
+            let currentEffectiveDays = 0;
             if (firestore && effectiveTargetUserId && !conflictResult.hasConflict) {
                 try {
-                    const result = await calculateEffectiveLeaveDays(
-                        firestore,
-                        effectiveTargetUserId,
+                    // Special case for Half Day
+                    if (newIncidence.type === 'half_day_family') {
+                        // Force 0.5
+                        const result: EffectiveDaysResult = {
+                            totalDays: 0.5,
+                            effectiveDays: 0.5,
+                            holidays: 0,
+                            weekendDays: 0,
+                            details: [],
+                            usedDefaultSchedule: false
+                        };
+                        setCalculationResult(result);
+                        currentEffectiveDays = 0.5;
+                    } else {
+                        const result = await calculateEffectiveLeaveDays(
+                            firestore,
+                            effectiveTargetUserId,
+                            newIncidence.startDate,
+                            newIncidence.endDate
+                        );
+                        setCalculationResult(result);
+                        currentEffectiveDays = result.effectiveDays;
+                    }
+
+                    // 3. Run Policy Validation with calculated days
+                    const policyCheck = validateIncidencePolicy(
+                        newIncidence.type,
                         newIncidence.startDate,
-                        newIncidence.endDate
+                        newIncidence.endDate,
+                        currentEffectiveDays,
+                        userIncidences || []
                     );
-                    setCalculationResult(result);
+
+                    if (!policyCheck.isValid) {
+                        setDateConflictError(policyCheck.error || 'La solicitud no cumple con las políticas.');
+                    }
+
                 } catch (error) {
                     console.error("Error calculating effective days:", error);
                 }
@@ -159,7 +202,17 @@ export function NewIncidenceForm({ userId, targetUserId, onSuccess, onCancel, cl
         };
 
         runValidations();
-    }, [newIncidence.startDate, newIncidence.endDate, userIncidences, effectiveTargetUserId, firestore]);
+    }, [newIncidence.startDate, newIncidence.endDate, newIncidence.type, userIncidences, effectiveTargetUserId, firestore]);
+
+    // Effect to enforce Half Day single date constraint
+    useEffect(() => {
+        if (newIncidence.type === 'half_day_family' && newIncidence.startDate) {
+            // Force end date to be same as start date
+            if (newIncidence.endDate !== newIncidence.startDate) {
+                setNewIncidence(prev => ({ ...prev, endDate: prev.startDate }));
+            }
+        }
+    }, [newIncidence.type, newIncidence.startDate, newIncidence.endDate]);
 
     // Handle create new incidence
     const handleSubmit = async () => {
@@ -273,8 +326,18 @@ export function NewIncidenceForm({ userId, targetUserId, onSuccess, onCancel, cl
                         <SelectItem value="bereavement">Duelo</SelectItem>
                         <SelectItem value="maternity">Maternidad</SelectItem>
                         <SelectItem value="paternity">Paternidad</SelectItem>
+                        <SelectItem value="marriage">Matrimonio</SelectItem>
+                        <SelectItem value="adoption">Adopción</SelectItem>
+                        <SelectItem value="half_day_family">Permiso Medio Día</SelectItem>
+                        <SelectItem value="civic_duty">Deber Cívico</SelectItem>
+                        <SelectItem value="unpaid_leave">Permiso Sin Goce</SelectItem>
                     </SelectContent>
                 </Select>
+                {INCIDENCE_RULES[newIncidence.type]?.description && (
+                    <p className="text-xs text-muted-foreground mt-1 ml-1">
+                        {INCIDENCE_RULES[newIncidence.type]?.description}
+                    </p>
+                )}
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -289,58 +352,63 @@ export function NewIncidenceForm({ userId, targetUserId, onSuccess, onCancel, cl
                     />
                 </div>
                 <div>
-                    <Label htmlFor="end-date">Fecha fin</Label>
                     <Input
                         id="end-date"
                         type="date"
                         value={newIncidence.endDate}
                         onChange={(e) => setNewIncidence({ ...newIncidence, endDate: e.target.value })}
                         className={`mt-1 ${dateConflictError ? 'border-red-500' : ''}`}
+                        disabled={newIncidence.type === 'half_day_family'}
+                        title={newIncidence.type === 'half_day_family' ? "El permiso de medio día es para una sola fecha" : ""}
                     />
                 </div>
             </div>
 
             {/* Calculation Result Display */}
-            {isCalculatingDays ? (
-                <div className="text-sm text-muted-foreground flex items-center gap-2">
-                    <Loader2 className="h-3 w-3 animate-spin" /> Calculando días efectivos...
-                </div>
-            ) : calculationResult && !dateConflictError && (
-                <div className="bg-muted/30 p-3 rounded-md text-sm space-y-1 border">
-                    <div className="flex justify-between items-center font-medium">
-                        <span>Días a descontar/pagar:</span>
-                        <span className="text-primary text-lg">{calculationResult.effectiveDays} días</span>
+            {
+                isCalculatingDays ? (
+                    <div className="text-sm text-muted-foreground flex items-center gap-2">
+                        <Loader2 className="h-3 w-3 animate-spin" /> Calculando días efectivos...
                     </div>
-                    <div className="text-xs text-muted-foreground flex flex-col gap-1 pt-1 border-t mt-1">
-                        <div className="flex justify-between">
-                            <span>Duración calendario:</span>
-                            <span>{calculationResult.totalDays} días</span>
+                ) : calculationResult && !dateConflictError && (
+                    <div className="bg-muted/30 p-3 rounded-md text-sm space-y-1 border">
+                        <div className="flex justify-between items-center font-medium">
+                            <span>Días a descontar/pagar:</span>
+                            <span className="text-primary text-lg">{calculationResult.effectiveDays} días</span>
                         </div>
-                        {calculationResult.weekendDays > 0 && (
-                            <div className="flex justify-between text-orange-600/80">
-                                <span>Días descanso (no cuentan):</span>
-                                <span>-{calculationResult.weekendDays}</span>
+                        <div className="text-xs text-muted-foreground flex flex-col gap-1 pt-1 border-t mt-1">
+                            <div className="flex justify-between">
+                                <span>Duración calendario:</span>
+                                <span>{calculationResult.totalDays} días</span>
                             </div>
-                        )}
-                        {calculationResult.holidays > 0 && (
-                            <div className="flex justify-between text-green-600/80">
-                                <span>Días festivos (se pagan):</span>
-                                <span>-{calculationResult.holidays}</span>
-                            </div>
-                        )}
+                            {calculationResult.weekendDays > 0 && (
+                                <div className="flex justify-between text-orange-600/80">
+                                    <span>Días descanso (no cuentan):</span>
+                                    <span>-{calculationResult.weekendDays}</span>
+                                </div>
+                            )}
+                            {calculationResult.holidays > 0 && (
+                                <div className="flex justify-between text-green-600/80">
+                                    <span>Días festivos (se pagan):</span>
+                                    <span>-{calculationResult.holidays}</span>
+                                </div>
+                            )}
+                        </div>
                     </div>
-                </div>
-            )}
+                )
+            }
 
             {/* Date conflict warning */}
-            {dateConflictError && (
-                <Alert variant="destructive">
-                    <AlertTriangle className="h-4 w-4" />
-                    <AlertDescription>
-                        {dateConflictError}
-                    </AlertDescription>
-                </Alert>
-            )}
+            {
+                dateConflictError && (
+                    <Alert variant="destructive">
+                        <AlertTriangle className="h-4 w-4" />
+                        <AlertDescription>
+                            {dateConflictError}
+                        </AlertDescription>
+                    </Alert>
+                )
+            }
 
             <div>
                 <Label htmlFor="notes">Notas (opcional)</Label>
@@ -369,6 +437,6 @@ export function NewIncidenceForm({ userId, targetUserId, onSuccess, onCancel, cl
                     Enviar Solicitud
                 </Button>
             </div>
-        </div>
+        </div >
     );
 }
