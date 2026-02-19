@@ -27,15 +27,20 @@ export function initializeFirebase(): FirebaseServices {
     return firebaseServices;
   }
 
-  // Get the Firebase App instance, initializing it if necessary
-  const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+  // Capture whether this is the FIRST load before calling initializeApp/getApp.
+  // We need this flag to decide whether to call initializeFirestore (first time)
+  // or getFirestore (HMR re-run). Calling initializeFirestore() twice on the same
+  // app causes: "FIRESTORE INTERNAL ASSERTION FAILED: Unexpected state (ID: ca9)"
+  const isNewApp = !getApps().length;
+  const app = isNewApp ? initializeApp(firebaseConfig) : getApp();
   const auth = getAuth(app);
-  let firestore: Firestore;
-  try {
-    firestore = initializeFirestore(app, { experimentalForceLongPolling: true });
-  } catch (e) {
-    firestore = getFirestore(app);
-  }
+
+  // First load: initialize Firestore with our settings.
+  // HMR re-run: reuse the existing Firestore instance (getFirestore is idempotent).
+  const firestore: Firestore = isNewApp
+    ? initializeFirestore(app, { experimentalForceLongPolling: true })
+    : getFirestore(app);
+
   const storage = getStorage(app);
   const functions = getFunctions(app, 'us-central1');
 
