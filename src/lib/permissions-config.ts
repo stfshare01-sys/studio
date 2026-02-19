@@ -20,8 +20,7 @@ export const SYSTEM_LEVEL_CONFIG: Record<SystemRole, SystemLevelRule> = {
     HRManager: {
         requiredPermissions: [
             { module: 'hcm_employees', level: 'write' },
-            { module: 'hcm_prenomina', level: 'write' },
-            { module: 'hcm_settlements', level: 'write' }
+            { module: 'hcm_prenomina', level: 'write' }
         ],
         description: 'Gestión completa de RRHH y Nómina',
         rank: 3

@@ -43,7 +43,6 @@ export const SYSTEM_ROLES: Record<SystemRole, ModulePermission[]> = {
     { module: 'hcm_admin_positions', level: 'write' },
     { module: 'hcm_admin_locations', level: 'write' },
     { module: 'hcm_admin_departments', level: 'write' },
-    { module: 'hcm_settlements', level: 'write' },
     // Granular team management
     { module: 'hcm_team_tardiness', level: 'write' },
     { module: 'hcm_team_departures', level: 'write' },
@@ -79,7 +78,7 @@ export const SYSTEM_ROLES: Record<SystemRole, ModulePermission[]> = {
     { module: 'hcm_admin_positions', level: 'hidden' },
     { module: 'hcm_admin_locations', level: 'hidden' },
     { module: 'hcm_admin_departments', level: 'hidden' },
-    { module: 'hcm_settlements', level: 'hidden' },
+
     { module: 'hcm_team_tardiness', level: 'hidden' },
     { module: 'hcm_team_departures', level: 'hidden' },
     { module: 'hcm_team_overtime', level: 'hidden' },
@@ -111,7 +110,7 @@ export const SYSTEM_ROLES: Record<SystemRole, ModulePermission[]> = {
     { module: 'hcm_admin_positions', level: 'hidden' },
     { module: 'hcm_admin_locations', level: 'hidden' },
     { module: 'hcm_admin_departments', level: 'hidden' },
-    { module: 'hcm_settlements', level: 'hidden' },
+
     { module: 'hcm_team_tardiness', level: 'hidden' },
     { module: 'hcm_team_departures', level: 'hidden' },
     { module: 'hcm_team_overtime', level: 'hidden' },
@@ -143,7 +142,6 @@ export const SYSTEM_ROLES: Record<SystemRole, ModulePermission[]> = {
     { module: 'hcm_admin_positions', level: 'write' },
     { module: 'hcm_admin_locations', level: 'write' },
     { module: 'hcm_admin_departments', level: 'write' },
-    { module: 'hcm_settlements', level: 'write' },
     // Full team management for HR
     { module: 'hcm_team_tardiness', level: 'write' },
     { module: 'hcm_team_departures', level: 'write' },
@@ -179,7 +177,7 @@ export const SYSTEM_ROLES: Record<SystemRole, ModulePermission[]> = {
     { module: 'hcm_admin_positions', level: 'hidden' },
     { module: 'hcm_admin_locations', level: 'hidden' },
     { module: 'hcm_admin_departments', level: 'hidden' },
-    { module: 'hcm_settlements', level: 'hidden' },
+
     // Managers can manage their team
     { module: 'hcm_team_tardiness', level: 'write' },
     { module: 'hcm_team_departures', level: 'write' },
@@ -216,7 +214,6 @@ export const MODULE_INFO: Record<AppModule, { name: string; description: string;
   hcm_admin_positions: { name: 'Posiciones', description: 'Catálogo de posiciones', category: 'hcm' },
   hcm_admin_locations: { name: 'Ubicaciones', description: 'Catálogo de ubicaciones', category: 'hcm' },
   hcm_admin_departments: { name: 'Departamentos', description: 'Catálogo de departamentos', category: 'hcm' },
-  hcm_settlements: { name: 'Liquidaciones', description: 'Cálculos de finiquito y liquidación', category: 'hcm' },
   // Granular team management
   hcm_team_tardiness: { name: 'Retardos del Equipo', description: 'Gestionar y justificar retardos', category: 'hcm' },
   hcm_team_departures: { name: 'Salidas Tempranas', description: 'Gestionar salidas anticipadas', category: 'hcm' },
