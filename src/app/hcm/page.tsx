@@ -364,6 +364,12 @@ export default function HCMPage() {
                                                     Gestión de Vacaciones
                                                 </Link>
                                             </Button>
+                                            <Button asChild variant="outline" className="justify-start">
+                                                <Link href="/hcm/admin/holidays">
+                                                    <Calendar className="mr-2 h-4 w-4" />
+                                                    Calendarios de Días Festivos
+                                                </Link>
+                                            </Button>
                                         </CardContent>
                                     </Card>
                                 )}

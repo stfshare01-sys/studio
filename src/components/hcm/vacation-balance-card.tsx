@@ -15,6 +15,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Calendar, AlertCircle, TrendingUp, TrendingDown } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
 
 interface VacationBalanceCardProps {
@@ -25,6 +26,7 @@ interface VacationBalanceCardProps {
 export function VacationBalanceCard({ employeeId, employeeName }: VacationBalanceCardProps) {
     const { firestore, user } = useFirebase();
     const { hasPermission } = usePermissions();
+    const { toast } = useToast();
     const [balance, setBalance] = useState<VacationBalance | null>(null);
     const [loading, setLoading] = useState(true);
     const [showAdjustDialog, setShowAdjustDialog] = useState(false);
@@ -33,7 +35,7 @@ export function VacationBalanceCard({ employeeId, employeeName }: VacationBalanc
     const [adjustmentType, setAdjustmentType] = useState<'add' | 'subtract'>('add');
     const [adjusting, setAdjusting] = useState(false);
 
-    const canEdit = hasPermission('hcm_employees', 'write') || hasPermission('admin_users', 'write');
+    const canEdit = hasPermission('hcm_employees', 'write') || hasPermission('admin_users', 'write') || hasPermission('hcm_admin_vacation', 'write');
 
     useEffect(() => {
         loadBalance();
@@ -66,12 +68,12 @@ export function VacationBalanceCard({ employeeId, employeeName }: VacationBalanc
         if (!user) return;
 
         if (!adjustmentReason.trim() || adjustmentReason.trim().length < 10) {
-            console.error('El motivo debe tener al menos 10 caracteres');
+            toast({ title: 'El motivo debe tener al menos 10 caracteres', variant: 'destructive' });
             return;
         }
 
         if (adjustmentDays === 0) {
-            console.error('El ajuste debe ser diferente de cero');
+            toast({ title: 'El ajuste debe ser diferente de cero', variant: 'destructive' });
             return;
         }
 
@@ -87,20 +89,23 @@ export function VacationBalanceCard({ employeeId, employeeName }: VacationBalanc
             );
 
             if (result.success) {
+                toast({ title: `Saldo ajustado exitosamente: ${finalDays > 0 ? '+' : ''}${finalDays} días` });
                 setShowAdjustDialog(false);
                 setAdjustmentDays(0);
                 setAdjustmentReason('');
                 await loadBalance();
             } else {
-                console.error(result.error || 'Error al ajustar saldo');
+                toast({ title: result.error || 'Error al ajustar saldo', variant: 'destructive' });
             }
         } catch (error) {
             console.error('Error adjusting balance:', error);
+            toast({ title: 'Error al ajustar saldo', variant: 'destructive' });
         } finally {
             setAdjusting(false);
         }
     };
 
+    // Loading state
     if (loading) {
         return (
             <Card>
@@ -117,40 +122,130 @@ export function VacationBalanceCard({ employeeId, employeeName }: VacationBalanc
         );
     }
 
-    if (!balance) {
-        return (
-            <Card>
-                <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                        <Calendar className="h-5 w-5" />
-                        Saldo de Vacaciones
-                    </CardTitle>
-                </CardHeader>
-                <CardContent>
+    // Render the Adjust Dialog (always available, regardless of balance state)
+    const adjustDialog = (
+        <Dialog open={showAdjustDialog} onOpenChange={setShowAdjustDialog}>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>{balance ? 'Ajustar Saldo de Vacaciones' : 'Crear Saldo Inicial de Vacaciones'}</DialogTitle>
+                    <DialogDescription>
+                        {employeeName} {balance ? `• Saldo actual: ${balance.daysAvailable} días` : '• Sin saldo registrado'}
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                    <div className="space-y-2">
+                        <Label>Tipo de Ajuste</Label>
+                        <div className="flex gap-2">
+                            <Button
+                                variant={adjustmentType === 'add' ? 'default' : 'outline'}
+                                onClick={() => setAdjustmentType('add')}
+                                className="flex-1"
+                            >
+                                <TrendingUp className="h-4 w-4 mr-2" />
+                                Agregar días
+                            </Button>
+                            <Button
+                                variant={adjustmentType === 'subtract' ? 'default' : 'outline'}
+                                onClick={() => setAdjustmentType('subtract')}
+                                className="flex-1"
+                            >
+                                <TrendingDown className="h-4 w-4 mr-2" />
+                                Quitar días
+                            </Button>
+                        </div>
+                    </div>
+
+                    <div className="space-y-2">
+                        <Label>Cantidad de días</Label>
+                        <Input
+                            type="number"
+                            min="0"
+                            max="365"
+                            value={adjustmentDays}
+                            onChange={(e) => setAdjustmentDays(parseInt(e.target.value) || 0)}
+                        />
+                    </div>
+
+                    <div className="space-y-2">
+                        <Label>Motivo (obligatorio, mínimo 10 caracteres)</Label>
+                        <Textarea
+                            placeholder="Describe el motivo del ajuste..."
+                            value={adjustmentReason}
+                            onChange={(e) => setAdjustmentReason(e.target.value)}
+                            rows={3}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                            {adjustmentReason.length}/10 caracteres
+                        </p>
+                    </div>
+
                     <Alert>
                         <AlertCircle className="h-4 w-4" />
                         <AlertDescription>
-                            No hay saldo de vacaciones registrado para este empleado.
-                            {canEdit && ' Se creará automáticamente al realizar el primer ajuste.'}
+                            {balance ? (
+                                <>Nuevo saldo: {
+                                    balance.daysAvailable +
+                                    (adjustmentType === 'add' ? adjustmentDays : -adjustmentDays)
+                                } días</>
+                            ) : (
+                                <>Saldo inicial: {
+                                    adjustmentType === 'add' ? adjustmentDays : 0
+                                } días (se creará el registro automáticamente)</>
+                            )}
                         </AlertDescription>
                     </Alert>
-                    {canEdit && (
-                        <div className="mt-4 flex gap-2">
-                            <Button onClick={() => setShowAdjustDialog(true)}>
-                                Crear Saldo Inicial
-                            </Button>
-                            <Button variant="outline" asChild>
-                                <Link href="/hcm/admin/vacation-management">
-                                    Gestión de Vacaciones
-                                </Link>
-                            </Button>
-                        </div>
-                    )}
-                </CardContent>
-            </Card>
+                </div>
+                <DialogFooter>
+                    <Button variant="outline" onClick={() => setShowAdjustDialog(false)}>
+                        Cancelar
+                    </Button>
+                    <Button onClick={handleAdjustBalance} disabled={adjusting}>
+                        {adjusting ? 'Procesando...' : balance ? 'Confirmar Ajuste' : 'Crear Saldo'}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+
+    // No balance state
+    if (!balance) {
+        return (
+            <>
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                            <Calendar className="h-5 w-5" />
+                            Saldo de Vacaciones
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <Alert>
+                            <AlertCircle className="h-4 w-4" />
+                            <AlertDescription>
+                                No hay saldo de vacaciones registrado para este empleado.
+                                {canEdit && ' Se creará automáticamente al realizar el primer ajuste.'}
+                            </AlertDescription>
+                        </Alert>
+                        {canEdit && (
+                            <div className="mt-4 flex gap-2">
+                                <Button onClick={() => setShowAdjustDialog(true)}>
+                                    Crear Saldo Inicial
+                                </Button>
+                                <Button variant="outline" asChild>
+                                    <Link href="/hcm/admin/vacation-management">
+                                        Gestión de Vacaciones
+                                    </Link>
+                                </Button>
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+                {adjustDialog}
+            </>
         );
     }
 
+    // Balance exists state
     return (
         <>
             <Card>
@@ -222,85 +317,7 @@ export function VacationBalanceCard({ employeeId, employeeName }: VacationBalanc
                     )}
                 </CardContent>
             </Card>
-
-            {/* Adjust Dialog */}
-            <Dialog open={showAdjustDialog} onOpenChange={setShowAdjustDialog}>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>Ajustar Saldo de Vacaciones</DialogTitle>
-                        <DialogDescription>
-                            {employeeName} • Saldo actual: {balance?.daysAvailable || 0} días
-                        </DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-4 py-4">
-                        <div className="space-y-2">
-                            <Label>Tipo de Ajuste</Label>
-                            <div className="flex gap-2">
-                                <Button
-                                    variant={adjustmentType === 'add' ? 'default' : 'outline'}
-                                    onClick={() => setAdjustmentType('add')}
-                                    className="flex-1"
-                                >
-                                    <TrendingUp className="h-4 w-4 mr-2" />
-                                    Agregar días
-                                </Button>
-                                <Button
-                                    variant={adjustmentType === 'subtract' ? 'default' : 'outline'}
-                                    onClick={() => setAdjustmentType('subtract')}
-                                    className="flex-1"
-                                >
-                                    <TrendingDown className="h-4 w-4 mr-2" />
-                                    Quitar días
-                                </Button>
-                            </div>
-                        </div>
-
-                        <div className="space-y-2">
-                            <Label>Cantidad de días</Label>
-                            <Input
-                                type="number"
-                                min="0"
-                                max="365"
-                                value={adjustmentDays}
-                                onChange={(e) => setAdjustmentDays(parseInt(e.target.value) || 0)}
-                            />
-                        </div>
-
-                        <div className="space-y-2">
-                            <Label>Motivo (obligatorio, mínimo 10 caracteres)</Label>
-                            <Textarea
-                                placeholder="Describe el motivo del ajuste..."
-                                value={adjustmentReason}
-                                onChange={(e) => setAdjustmentReason(e.target.value)}
-                                rows={3}
-                            />
-                            <p className="text-xs text-muted-foreground">
-                                {adjustmentReason.length}/10 caracteres
-                            </p>
-                        </div>
-
-                        {balance && (
-                            <Alert>
-                                <AlertCircle className="h-4 w-4" />
-                                <AlertDescription>
-                                    Nuevo saldo: {
-                                        balance.daysAvailable +
-                                        (adjustmentType === 'add' ? adjustmentDays : -adjustmentDays)
-                                    } días
-                                </AlertDescription>
-                            </Alert>
-                        )}
-                    </div>
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setShowAdjustDialog(false)}>
-                            Cancelar
-                        </Button>
-                        <Button onClick={handleAdjustBalance} disabled={adjusting}>
-                            {adjusting ? 'Ajustando...' : 'Confirmar Ajuste'}
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
+            {adjustDialog}
         </>
     );
 }

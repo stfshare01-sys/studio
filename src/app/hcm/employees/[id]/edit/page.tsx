@@ -40,7 +40,7 @@ import {
     Clock,
 } from 'lucide-react';
 
-import type { Employee, Location, Position, CustomShift, User as UserType } from '@/lib/types';
+import type { Employee, Location, Position, CustomShift, User as UserType, Department } from '@/lib/types';
 
 export default function EditEmployeePage({ params }: { params: Promise<{ id: string }> }) {
     const router = useRouter();
@@ -75,6 +75,14 @@ export default function EditEmployeePage({ params }: { params: Promise<{ id: str
 
     const { data: positions } = useCollection<Position>(positionsQuery);
 
+    // Fetch Departments
+    const departmentsQuery = useMemoFirebase(() => {
+        if (!firestore || isUserLoading) return null;
+        return query(collection(firestore, 'departments'), where('isActive', '==', true));
+    }, [firestore, isUserLoading]);
+
+    const { data: departments } = useCollection<Department>(departmentsQuery);
+
     // Fetch Shifts
     const shiftsQuery = useMemoFirebase(() => {
         if (!firestore || isUserLoading) return null;
@@ -98,6 +106,7 @@ export default function EditEmployeePage({ params }: { params: Promise<{ id: str
                 fullName: employee.fullName,
                 email: employee.email,
                 department: employee.department,
+                positionId: (employee as any).positionId,
                 positionTitle: employee.positionTitle,
                 employmentType: employee.employmentType,
                 shiftType: employee.shiftType,
@@ -142,6 +151,28 @@ export default function EditEmployeePage({ params }: { params: Promise<{ id: str
             });
 
             await updateDoc(employeeDocRef, updateData);
+
+            // Sync key fields to the users collection (for workflows, requests, etc.)
+            // The employee's uid links to their users document
+            const employeeUid = employee?.userId;
+            if (employeeUid) {
+                const userDocRef = doc(firestore, 'users', employeeUid);
+                const userSyncData: Record<string, any> = {
+                    updatedAt: new Date().toISOString(),
+                };
+                if (formData.fullName !== undefined) userSyncData.fullName = formData.fullName;
+                if (formData.email !== undefined) userSyncData.email = formData.email;
+                if (formData.department !== undefined) userSyncData.department = formData.department;
+                // Sync directManagerId → managerId in users collection
+                if (formData.directManagerId !== undefined) {
+                    userSyncData.managerId = formData.directManagerId || deleteField();
+                }
+                try {
+                    await updateDoc(userDocRef, userSyncData);
+                } catch (syncError) {
+                    console.warn('Could not sync to users collection:', syncError);
+                }
+            }
 
             toast({
                 title: 'Empleado actualizado',
@@ -271,22 +302,45 @@ export default function EditEmployeePage({ params }: { params: Promise<{ id: str
                         <CardContent className="space-y-4">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div className="space-y-2">
-                                    <Label htmlFor="department">Departamento</Label>
-                                    <Input
-                                        id="department"
-                                        value={formData.department || ''}
-                                        onChange={(e) => handleInputChange('department', e.target.value)}
-                                        placeholder="Departamento"
-                                    />
+                                    <Label>Puesto / Cargo</Label>
+                                    <Select
+                                        value={(formData as any).positionId || 'none'}
+                                        onValueChange={(v) => {
+                                            const selectedPos = positions?.find(p => p.id === v);
+                                            handleInputChange('positionId' as any, v === 'none' ? undefined : v);
+                                            handleInputChange('positionTitle', selectedPos?.name || '');
+                                            // Auto-fill department from position
+                                            if (selectedPos?.departmentId) {
+                                                const dept = departments?.find(d => d.id === selectedPos.departmentId);
+                                                if (dept) {
+                                                    handleInputChange('department', dept.name);
+                                                }
+                                            }
+                                        }}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Seleccionar puesto" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="none">Sin puesto asignado</SelectItem>
+                                            {positions?.map((pos) => (
+                                                <SelectItem key={pos.id} value={pos.id}>
+                                                    {pos.name}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
                                 </div>
                                 <div className="space-y-2">
-                                    <Label htmlFor="positionTitle">Puesto</Label>
+                                    <Label>Departamento</Label>
                                     <Input
-                                        id="positionTitle"
-                                        value={formData.positionTitle || ''}
-                                        onChange={(e) => handleInputChange('positionTitle', e.target.value)}
-                                        placeholder="Titulo del puesto"
+                                        value={formData.department || 'Selecciona un puesto'}
+                                        disabled
+                                        className="bg-muted"
                                     />
+                                    <p className="text-xs text-muted-foreground">
+                                        Se asigna automáticamente según el puesto seleccionado
+                                    </p>
                                 </div>
                                 <div className="space-y-2">
                                     <Label>Tipo de Contrato</Label>

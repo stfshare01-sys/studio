@@ -41,7 +41,7 @@ export default function VacationManagementPage() {
     const [showBulkPreview, setShowBulkPreview] = useState(false);
 
     // Check permissions
-    const canManageVacations = hasPermission('hcm_employees', 'write') || hasPermission('admin_users', 'write');
+    const canManageVacations = hasPermission('hcm_employees', 'write') || hasPermission('admin_users', 'write') || hasPermission('hcm_admin_vacation', 'write');
 
     useEffect(() => {
         if (!canManageVacations) {
@@ -352,12 +352,18 @@ export default function VacationManagementPage() {
                                                 </div>
                                             </>
                                         ) : (
-                                            <Alert>
-                                                <AlertCircle className="h-4 w-4" />
-                                                <AlertDescription>
-                                                    Este empleado no tiene saldo de vacaciones registrado. Se creará automáticamente al realizar el primer ajuste.
-                                                </AlertDescription>
-                                            </Alert>
+                                            <div className="space-y-4">
+                                                <Alert>
+                                                    <AlertCircle className="h-4 w-4" />
+                                                    <AlertDescription>
+                                                        Este empleado no tiene saldo de vacaciones registrado. Se creará automáticamente al realizar el primer ajuste.
+                                                    </AlertDescription>
+                                                </Alert>
+                                                <Button onClick={() => setShowAdjustDialog(true)}>
+                                                    <Calendar className="h-4 w-4 mr-2" />
+                                                    Crear Saldo Inicial
+                                                </Button>
+                                            </div>
                                         )}
                                     </CardContent>
                                 </Card>
@@ -521,17 +527,21 @@ export default function VacationManagementPage() {
                             </p>
                         </div>
 
-                        {employeeBalance && (
-                            <Alert>
-                                <AlertCircle className="h-4 w-4" />
-                                <AlertDescription>
-                                    Nuevo saldo: {
+                        <Alert>
+                            <AlertCircle className="h-4 w-4" />
+                            <AlertDescription>
+                                {employeeBalance ? (
+                                    <>Nuevo saldo: {
                                         employeeBalance.daysAvailable +
                                         (adjustmentType === 'add' ? adjustmentDays : -adjustmentDays)
-                                    } días
-                                </AlertDescription>
-                            </Alert>
-                        )}
+                                    } días</>
+                                ) : (
+                                    <>Saldo inicial: {
+                                        adjustmentType === 'add' ? adjustmentDays : 0
+                                    } días (se creará el registro automáticamente)</>
+                                )}
+                            </AlertDescription>
+                        </Alert>
                     </div>
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setShowAdjustDialog(false)}>

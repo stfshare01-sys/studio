@@ -41,6 +41,8 @@ export type AppModule =
   | 'hcm_admin_positions'
   | 'hcm_admin_locations'
   | 'hcm_admin_departments'
+  | 'hcm_admin_holidays'
+  | 'hcm_admin_vacation'
   | 'hcm_settlements'
   // Granular team management permissions
   | 'hcm_team_tardiness'       // Gestionar retardos del equipo
