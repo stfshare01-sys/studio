@@ -21,7 +21,9 @@
       "Bash(npx next build:*)",
       "Bash(git stash:*)",
       "Bash(git rm:*)",
-      "Bash(dir:*)"
+      "Bash(dir:*)",
+      "Bash(git merge:*)",
+      "Bash(ls:*)"
     ]
   }
 }
