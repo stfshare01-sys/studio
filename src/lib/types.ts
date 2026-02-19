@@ -43,7 +43,6 @@ export type AppModule =
   | 'hcm_admin_departments'
   | 'hcm_admin_holidays'
   | 'hcm_admin_vacation'
-  | 'hcm_settlements'
   // Granular team management permissions
   | 'hcm_team_tardiness'       // Gestionar retardos del equipo
   | 'hcm_team_departures'      // Gestionar salidas tempranas
@@ -1057,43 +1056,6 @@ export type OfficialHoliday = {
   mandatory?: boolean;          // Si es obligatorio según LFT
   isObligatory?: boolean;       // Alias legacy — Descanso obligatorio según Art. 74 LFT
   premiumRequired?: boolean;    // Requiere pago de prima (200%)
-};
-
-/**
- * Datos de Liquidación/Finiquito
- */
-export type SettlementCalculation = {
-  id: string;
-  employeeId: string;
-  employeeName?: string;
-
-  // Tipo
-  type: 'resignation' | 'dismissal_justified' | 'dismissal_unjustified' | 'mutual_agreement';
-  terminationDate: string;
-
-  // Cálculos
-  proportionalVacation: number;
-  proportionalVacationPremium: number;
-  proportionalAguinaldo: number;
-  salaryPending: number;
-
-  // Indemnizaciones (según tipo)
-  severancePay?: number;        // 3 meses de salario (Art. 48 LFT)
-  seniorityPremium?: number;    // Prima de antigüedad (12 días/año, Art. 162 LFT)
-  twentyDaysPerYear?: number;   // 20 días por año (despido injustificado)
-
-  // Totales
-  totalPerceptions: number;
-  totalDeductions: number;
-  netSettlement: number;
-
-  // Estado
-  status: 'preliminary' | 'final' | 'paid';
-  paidAt?: string;
-
-  // Auditoría
-  calculatedAt: string;
-  calculatedById: string;
 };
 
 // =========================================================================

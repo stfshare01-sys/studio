@@ -437,25 +437,6 @@ service cloud.firestore {
     }
 
     /**
-     * @description Settlement/termination calculations
-     * Read: Only HR Managers and Admins
-     * Create: Cloud Functions handle creation with LFT formulas
-     * Update: Limited to status and approval fields
-     * @path /settlements/{settlementId}
-     */
-    match /settlements/{settlementId} {
-      allow read: if isHRManager();
-      // Settlements are created by Cloud Functions
-      allow create: if isHRManager();
-      // Only status updates allowed after creation
-      allow update: if isHRManager()
-        && request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(['status', 'approvedById', 'approvedByName', 'approvedAt', 'notes', 'updatedAt']);
-      // No client-side deletes - settlements are legal records
-      allow delete: if false;
-    }
-
-    /**
      * @description Accounting policies generated from prenomina
      * Read/Write: Only HR Managers and Admins
      * @path /accounting_policies/{policyId}

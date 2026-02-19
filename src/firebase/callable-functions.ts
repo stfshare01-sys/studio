@@ -58,37 +58,6 @@ interface ProcessEmployeeImportResponse {
     errors: { row: number; message: string }[];
 }
 
-interface CalculateSettlementRequest {
-    employeeId: string;
-    terminationType: 'resignation' | 'dismissal_justified' | 'dismissal_unjustified' | 'mutual_agreement';
-    terminationDate: string;
-}
-
-interface CalculateSettlementResponse {
-    success: boolean;
-    settlementId: string;
-    settlement: {
-        id: string;
-        employeeId: string;
-        employeeName: string;
-        type: string;
-        terminationDate: string;
-        proportionalVacation: number;
-        proportionalVacationPremium: number;
-        proportionalAguinaldo: number;
-        salaryPending: number;
-        severancePay: number;
-        seniorityPremium: number;
-        twentyDaysPerYear: number;
-        totalPerceptions: number;
-        totalDeductions: number;
-        netSettlement: number;
-        status: string;
-        calculatedAt: string;
-        calculatedById: string;
-    };
-}
-
 interface ApproveIncidenceRequest {
     incidenceId: string;
     action: 'approve' | 'reject';
@@ -178,29 +147,6 @@ export async function callProcessEmployeeImport(
 }
 
 /**
- * Calculates termination settlement using protected LFT formulas.
- * All calculations run server-side.
- * 
- * @requires Role: Admin or HRManager
- */
-export async function callCalculateSettlement(
-    params: CalculateSettlementRequest
-): Promise<CalculateSettlementResponse> {
-    try {
-        const { functions } = initializeFirebase();
-        const callable = httpsCallable<CalculateSettlementRequest, CalculateSettlementResponse>(
-            functions,
-            'calculateSettlement'
-        );
-
-        const result = await callable(params);
-        return result.data;
-    } catch (error) {
-        handleCallableError(error);
-    }
-}
-
-/**
  * Approves or rejects an incidence request.
  * 
  * @requires Role: Admin, HRManager, or Manager
@@ -270,8 +216,6 @@ export type {
     ConsolidatePrenominaResponse,
     ProcessEmployeeImportRequest,
     ProcessEmployeeImportResponse,
-    CalculateSettlementRequest,
-    CalculateSettlementResponse,
     ApproveIncidenceRequest,
     ApproveIncidenceResponse,
     GeneratePayrollReportsRequest,
