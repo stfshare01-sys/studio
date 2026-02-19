@@ -149,6 +149,11 @@ export default function IncidencesPage() {
             maternity: 'Maternidad',
             paternity: 'Paternidad',
             bereavement: 'Duelo',
+            marriage: 'Matrimonio',
+            adoption: 'Adopción',
+            civic_duty: 'Deber Cívico',
+            half_day_family: 'Permiso Medio Día',
+            unpaid_leave: 'Permiso Sin Goce',
             unjustified_absence: 'Falta Injustificada',
             abandono_empleo: 'Abandono de Empleo'
         };
@@ -243,6 +248,40 @@ export default function IncidencesPage() {
 
 
 
+    // Handle cancellation - For Approved Incidences
+    const handleCancel = async () => {
+        if (!selectedIncidence || !user) return;
+
+        if (!confirm('¿Estás seguro de que deseas cancelar esta incidencia aprobada? Esta acción revertirá los cambios en saldos.')) {
+            return;
+        }
+
+        setIsSubmitting(true);
+        try {
+            const result = await callApproveIncidence({
+                incidenceId: selectedIncidence.id,
+                action: 'cancel',
+            });
+
+            if (result.success) {
+                toast({
+                    title: 'Incidencia cancelada',
+                    description: 'La incidencia ha sido cancelada exitosamente.',
+                });
+                setIsReviewDialogOpen(false);
+                setSelectedIncidence(null);
+            }
+        } catch (error: any) {
+            toast({
+                title: 'Error',
+                description: error.message || 'No se pudo cancelar la incidencia.',
+                variant: 'destructive',
+            });
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
     // Format date
     const formatDate = (dateStr: string) => {
         try {
@@ -258,6 +297,10 @@ export default function IncidencesPage() {
     const pendingCount = incidences?.filter(i => i.status === 'pending').length ?? 0;
     const approvedCount = incidences?.filter(i => i.status === 'approved').length ?? 0;
     const rejectedCount = incidences?.filter(i => i.status === 'rejected').length ?? 0;
+
+    // Check if cancellable (Approved and Future/Present)
+    // Note: Backend has strict check, frontend can be looser or match backend
+    const isCancellable = selectedIncidence?.status === 'approved' && hasHRPermissions;
 
     return (
         <SiteLayout>
@@ -576,8 +619,23 @@ export default function IncidencesPage() {
                                     </Button>
                                 </DialogFooter>
                             )}
+
+                            {isCancellable && (
+                                <DialogFooter className="gap-2">
+                                    <Button
+                                        variant="secondary"
+                                        className="border-red-200 text-red-700 hover:bg-red-50"
+                                        onClick={handleCancel}
+                                        disabled={isSubmitting}
+                                    >
+                                        <AlertTriangle className="mr-2 h-4 w-4" />
+                                        Cancelar Solicitud
+                                    </Button>
+                                </DialogFooter>
+                            )}
                         </DialogContent>
                     </Dialog>
+
 
                     {/* Create Dialog */}
                     <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
