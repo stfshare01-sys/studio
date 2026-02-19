@@ -30,7 +30,7 @@ export function VacationBalanceCard({ employeeId, employeeName }: VacationBalanc
     const [balance, setBalance] = useState<VacationBalance | null>(null);
     const [loading, setLoading] = useState(true);
     const [showAdjustDialog, setShowAdjustDialog] = useState(false);
-    const [adjustmentDays, setAdjustmentDays] = useState<number>(0);
+    const [adjustmentDays, setAdjustmentDays] = useState<string>('0');
     const [adjustmentReason, setAdjustmentReason] = useState('');
     const [adjustmentType, setAdjustmentType] = useState<'add' | 'subtract'>('add');
     const [adjusting, setAdjusting] = useState(false);
@@ -72,14 +72,15 @@ export function VacationBalanceCard({ employeeId, employeeName }: VacationBalanc
             return;
         }
 
-        if (adjustmentDays === 0) {
+        if (!adjustmentDays || parseInt(adjustmentDays) === 0) {
             toast({ title: 'El ajuste debe ser diferente de cero', variant: 'destructive' });
             return;
         }
 
         setAdjusting(true);
         try {
-            const finalDays = adjustmentType === 'add' ? adjustmentDays : -adjustmentDays;
+            const numericDays = parseInt(adjustmentDays) || 0;
+            const finalDays = adjustmentType === 'add' ? numericDays : -numericDays;
             const result = await adjustVacationBalance(
                 employeeId,
                 finalDays,
@@ -91,7 +92,7 @@ export function VacationBalanceCard({ employeeId, employeeName }: VacationBalanc
             if (result.success) {
                 toast({ title: `Saldo ajustado exitosamente: ${finalDays > 0 ? '+' : ''}${finalDays} días` });
                 setShowAdjustDialog(false);
-                setAdjustmentDays(0);
+                setAdjustmentDays('0');
                 setAdjustmentReason('');
                 await loadBalance();
             } else {
@@ -162,7 +163,8 @@ export function VacationBalanceCard({ employeeId, employeeName }: VacationBalanc
                             min="0"
                             max="365"
                             value={adjustmentDays}
-                            onChange={(e) => setAdjustmentDays(parseInt(e.target.value) || 0)}
+                            onChange={(e) => setAdjustmentDays(e.target.value)}
+                            onFocus={(e) => e.target.select()}
                         />
                     </div>
 
@@ -185,11 +187,11 @@ export function VacationBalanceCard({ employeeId, employeeName }: VacationBalanc
                             {balance ? (
                                 <>Nuevo saldo: {
                                     balance.daysAvailable +
-                                    (adjustmentType === 'add' ? adjustmentDays : -adjustmentDays)
+                                    (adjustmentType === 'add' ? (parseInt(adjustmentDays) || 0) : -(parseInt(adjustmentDays) || 0))
                                 } días</>
                             ) : (
                                 <>Saldo inicial: {
-                                    adjustmentType === 'add' ? adjustmentDays : 0
+                                    adjustmentType === 'add' ? (parseInt(adjustmentDays) || 0) : 0
                                 } días (se creará el registro automáticamente)</>
                             )}
                         </AlertDescription>
