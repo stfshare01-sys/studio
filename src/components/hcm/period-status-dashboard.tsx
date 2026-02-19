@@ -61,7 +61,7 @@ export function PeriodStatusDashboard({ period }: PeriodStatusDashboardProps) {
 
     // Filtrar solo los que son jefes (tienen empleados a su cargo)
     const managers = allEmployees?.filter(emp =>
-        allEmployees.some(e => (e as any).managerId === emp.id)
+        allEmployees.some(e => (e as any).directManagerId === emp.id)
     ) || [];
 
     const closedCount = closures?.length || 0;
