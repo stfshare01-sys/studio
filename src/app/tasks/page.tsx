@@ -103,7 +103,7 @@ export default function InboxPage() {
         return query(
             collection(firestore, 'tasks'),
             where('assigneeId', '==', user.uid),
-            where('status', '==', 'Active')
+            where('status', 'in', ['Active', 'pending'])
         );
     }, [firestore, user, isUserLoading]);
 

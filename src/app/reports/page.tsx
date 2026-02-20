@@ -13,6 +13,7 @@ import { DateRangePicker } from "@/components/reports/date-range-picker";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import RequestVolumeChart from "@/components/reports/request-volume-chart";
 import { UserPerformanceTable } from "@/components/reports/user-performance-table";
+import { BottleneckChart } from "@/components/dashboard/bottleneck-chart";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ShieldAlert, Download, FileSpreadsheet } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -350,6 +351,16 @@ function ReportsView() {
                     </CardContent>
                 </Card>
 
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Análisis de Cuellos de Botella</CardTitle>
+                        <CardDescription>Tiempo promedio de finalización por tipo de tarea para identificar retrasos críticos.</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <BottleneckChart tasks={filteredData.tasks} isLoading={isLoadingTasks} />
+                    </CardContent>
+                </Card>
+
                 {(requests?.length === MAX_RECORDS || tasks?.length === MAX_RECORDS) && (
                     <p className="text-sm text-muted-foreground text-center">
                         ⚠️ Se muestran los últimos {MAX_RECORDS} registros. Use el filtro de fechas para ver datos específicos.
@@ -363,7 +374,7 @@ function ReportsView() {
 export default function ReportsPage() {
     const { user, isUserLoading: isAuthLoading } = useUser();
     const isAdmin = user?.role === 'Admin';
-    
+
     return (
         <SiteLayout>
             <div className="flex flex-1 flex-col p-4 pt-6 sm:p-6">
@@ -379,4 +390,3 @@ export default function ReportsPage() {
     );
 }
 
-    

@@ -16,7 +16,6 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { TaskCard, EnrichedTask } from "@/components/tasks/task-card";
 import React from "react";
 import { differenceInHours } from 'date-fns';
-import { BottleneckChart } from "@/components/dashboard/bottleneck-chart";
 import { StatCard } from "@/components/dashboard/stat-card";
 
 
@@ -59,15 +58,11 @@ export default function DashboardPage() {
     return query(
       collection(firestore, 'tasks'),
       where('assigneeId', '==', user.uid),
-      where('status', '==', 'Active')
+      where('status', 'in', ['Active', 'pending'])
     );
   }, [firestore, user, isUserLoading]);
 
-  const allTasksQuery = useMemoFirebase(() => {
-    // This query MUST wait for user loading AND authentication to finish
-    if (isUserLoading || !firestore || !user) return null;
-    return query(collection(firestore, 'tasks'), limit(1000));
-  }, [firestore, isUserLoading, user]);
+  const { data: tasks, isLoading: isLoadingTasks } = useCollection<Task>(tasksQuery);
 
   const { data: myRequests, isLoading: isLoadingMyRequests } = useCollection<RequestType>(myRequestsQuery);
 
@@ -78,9 +73,6 @@ export default function DashboardPage() {
 
   const { data: myIncidences, isLoading: isLoadingMyIncidences } = useCollection<Incidence>(myIncidencesQuery);
 
-  const { data: tasks, isLoading: isLoadingTasks } = useCollection<Task>(tasksQuery);
-  const { data: allTasks, isLoading: isLoadingAllTasks } = useCollection<Task>(allTasksQuery);
-
   const combinedRequests = React.useMemo(() => {
     const list: any[] = [];
     if (myRequests) {
@@ -89,7 +81,7 @@ export default function DashboardPage() {
     if (myIncidences) {
       myIncidences.forEach(inc => {
         const rule = INCIDENCE_RULES[inc.type];
-        const titleName = rule?.name || inc.type;
+        const titleName = rule?.description || inc.type;
         list.push({
           id: inc.id,
           title: `${titleName} (${inc.startDate} al ${inc.endDate})`,
@@ -127,12 +119,6 @@ export default function DashboardPage() {
     }
   }, [myRequests]);
 
-  const completedTasksCount = React.useMemo(() => {
-    if (!allTasks) return 0;
-    return allTasks.filter(t => t.status === 'Completed').length;
-  }, [allTasks]);
-
-
   return (
     <SiteLayout>
       <div className="flex flex-1 flex-col">
@@ -148,43 +134,24 @@ export default function DashboardPage() {
         <main className="flex flex-1 flex-col gap-8 p-4 pt-0 sm:p-6 sm:pt-0">
 
           {/* STATS CARDS */}
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-2">
             <StatCard
               title="Solicitudes en Progreso"
               value={stats.inProgress}
               icon={Hourglass}
-              description="Procesos activos que requieren acción."
+              description="Procesos activos que ha enviado."
               isLoading={isLoadingMyRequests || isLoadingMyIncidences}
 
-            />
-            <StatCard
-              title="Tareas Completadas"
-              value={completedTasksCount}
-              icon={CheckCircle}
-              description="Total de tareas completadas en todos los flujos."
-              isLoading={isLoadingAllTasks}
             />
             <StatCard
               title="Tiempo Promedio de Ciclo (Horas)"
               value={stats.avgCycleTime}
               icon={Timer}
-              description="Tiempo medio para completar una solicitud."
+              description="Tiempo medio para que le completen una solicitud."
               isLoading={isLoadingMyRequests || isLoadingMyIncidences}
 
             />
           </div>
-
-          {/* BOTTLENECK CHART */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Análisis de Cuellos de Botella</CardTitle>
-              <CardDescription>Tiempo promedio de finalización por tipo de tarea para identificar retrasos.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <BottleneckChart tasks={allTasks} isLoading={isLoadingAllTasks} />
-            </CardContent>
-          </Card>
-
 
           <Card>
             <CardHeader>
