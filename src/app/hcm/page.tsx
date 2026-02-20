@@ -1,6 +1,8 @@
 
 'use client';
 
+import { useState, useEffect } from 'react';
+
 import SiteLayout from '@/components/site-layout';
 import { useFirebase, useMemoFirebase } from '@/firebase/provider';
 import { useCollection } from '@/firebase/firestore/use-collection';
@@ -30,6 +32,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import type { Employee, Incidence, AttendanceImportBatch } from '@/lib/types';
+import { getDirectReports } from '@/firebase/actions/team-actions';
 
 /**
  * HCM Dashboard - Main page for Human Capital Management module
@@ -45,20 +48,48 @@ export default function HCMPage() {
 
     // Check if user has HR/Admin permissions (Write access to employees implies HR management)
     const hasHRPermissions = isAdmin || canWrite('hcm_employees');
+    // Check if Manager-only (not HR, not Admin)
+    const isManagerOnly = user?.role === 'Manager' && !hasHRPermissions;
+    const [teamIds, setTeamIds] = useState<string[]>([]);
 
-    // Fetch active employees count - only if user is loaded and has HR permissions
+    // Load team IDs for Manager
+    useEffect(() => {
+        if (isManagerOnly && user?.uid) {
+            getDirectReports(user.uid).then(res => {
+                if (res.success && res.employees) {
+                    setTeamIds(res.employees.map(e => e.id));
+                }
+            });
+        }
+    }, [isManagerOnly, user?.uid]);
+
+    // Fetch active employees count - for HR/Admin see all, for Manager see team
     const employeesQuery = useMemoFirebase(() => {
-        if (!firestore || isUserLoading || !user || !hasHRPermissions) return null;
-        return query(
-            collection(firestore, 'employees'),
-            where('status', '==', 'active'),
-            limit(100)
-        );
-    }, [firestore, isUserLoading, user, hasHRPermissions]);
+        if (!firestore || isUserLoading || !user) return null;
+
+        if (hasHRPermissions) {
+            return query(
+                collection(firestore, 'employees'),
+                where('status', '==', 'active'),
+                limit(100)
+            );
+        }
+
+        if (isManagerOnly) {
+            return query(
+                collection(firestore, 'employees'),
+                where('directManagerId', '==', user.uid),
+                where('status', '==', 'active'),
+                limit(100)
+            );
+        }
+
+        return null; // Regular employees don't see employee list
+    }, [firestore, isUserLoading, user, hasHRPermissions, isManagerOnly]);
 
     const { data: employees, isLoading: employeesLoading } = useCollection<Employee>(employeesQuery);
 
-    // Fetch pending incidences - only if user is loaded and has HR permissions
+    // Fetch pending incidences - HR sees all, Manager sees team, Employee sees own
     const incidencesQuery = useMemoFirebase(() => {
         if (!firestore || isUserLoading || !user) return null;
 
@@ -74,6 +105,18 @@ export default function HCMPage() {
             );
         }
 
+        // Managers see their team's pending incidences + their own
+        if (isManagerOnly && teamIds.length > 0) {
+            const allowedIds = [user.uid, ...teamIds].slice(0, 30);
+            return query(
+                baseQuery,
+                where('employeeId', 'in', allowedIds),
+                where('status', '==', 'pending'),
+                orderBy('createdAt', 'desc'),
+                limit(10)
+            );
+        }
+
         // Regular users only see their own
         return query(
             baseQuery,
@@ -82,7 +125,7 @@ export default function HCMPage() {
             orderBy('createdAt', 'desc'),
             limit(10)
         );
-    }, [firestore, isUserLoading, user, hasHRPermissions]);
+    }, [firestore, isUserLoading, user, hasHRPermissions, isManagerOnly, teamIds]);
 
 
     const { data: pendingIncidences, isLoading: incidencesLoading } = useCollection<Incidence>(incidencesQuery);

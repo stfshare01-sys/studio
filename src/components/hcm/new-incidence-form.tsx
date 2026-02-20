@@ -116,6 +116,9 @@ export function NewIncidenceForm({ userId, targetUserId, onSuccess, onCancel, cl
         }
 
         const runValidations = async () => {
+            // Skip validation if already submitting (prevents false positive from real-time listener)
+            if (isSubmitting) return;
+
             setIsValidatingDates(true);
             setIsCalculatingDays(true);
 
@@ -127,19 +130,23 @@ export function NewIncidenceForm({ userId, targetUserId, onSuccess, onCancel, cl
                 // Let's calculate first.
             }
 
-            // 1. Check for date conflicts
-            const conflictResult = checkDateConflict(
-                effectiveTargetUserId,
-                newIncidence.startDate,
-                newIncidence.endDate,
-                userIncidences.map(inc => ({
+            // 1. Check for date conflicts (exclude cancelled incidences)
+            const activeIncidences = userIncidences
+                .filter(inc => inc.status !== 'cancelled')
+                .map(inc => ({
                     id: inc.id,
                     employeeId: inc.employeeId,
                     type: inc.type,
                     startDate: inc.startDate,
                     endDate: inc.endDate,
                     status: inc.status
-                }))
+                }));
+
+            const conflictResult = checkDateConflict(
+                effectiveTargetUserId,
+                newIncidence.startDate,
+                newIncidence.endDate,
+                activeIncidences
             );
 
             if (conflictResult.hasConflict) {

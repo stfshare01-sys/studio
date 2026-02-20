@@ -93,6 +93,10 @@ export default function IncidencesPage() {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isCancelDialogOpen, setIsCancelDialogOpen] = useState(false);
 
+    // Bug 7: State for creating incidences on behalf of team members
+    const [createForEmployee, setCreateForEmployee] = useState<string>('');
+    const [teamEmployees, setTeamEmployees] = useState<Employee[]>([]);
+
 
 
     const hasHRPermissions = useMemo(() => ['Admin', 'HRManager'].includes(user?.role || ''), [user]);
@@ -100,15 +104,26 @@ export default function IncidencesPage() {
     const [teamIds, setTeamIds] = useState<string[]>([]);
 
     // Cargar equipo subordinado si el usuario es manager (para ver sus incidencias)
+    // También cargar la lista de empleados para el selector de creación (Bug 7)
     useEffect(() => {
-        if (isManagerOnly && user?.uid) {
+        if (!user?.uid) return;
+
+        if (isManagerOnly) {
             getDirectReports(user.uid).then(res => {
                 if (res.success && res.employees) {
                     setTeamIds(res.employees.map(e => e.id));
+                    setTeamEmployees(res.employees);
+                }
+            });
+        } else if (hasHRPermissions) {
+            // HR/Admin can create for anyone — load all employees
+            getDirectReports('all').then(res => {
+                if (res.success && res.employees) {
+                    setTeamEmployees(res.employees);
                 }
             });
         }
-    }, [isManagerOnly, user?.uid]);
+    }, [isManagerOnly, hasHRPermissions, user?.uid]);
 
     const incidencesQuery = useMemoFirebase(() => {
         if (!firestore || isUserLoading || !user) return null;
@@ -342,7 +357,7 @@ export default function IncidencesPage() {
 
     // Check if cancellable (Approved and Future/Present)
     // Note: Backend has strict check, frontend can be looser or match backend
-    const isCancellable = selectedIncidence?.status === 'approved' && hasHRPermissions;
+    const isCancellable = selectedIncidence?.status === 'approved' && (hasHRPermissions || isManagerOnly);
 
     return (
         <SiteLayout>
@@ -626,7 +641,7 @@ export default function IncidencesPage() {
                                         </div>
                                     )}
 
-                                    {selectedIncidence.status === 'pending' && hasHRPermissions && (
+                                    {selectedIncidence.status === 'pending' && (hasHRPermissions || isManagerOnly) && (
                                         <div className="space-y-3">
                                             <div>
                                                 <label className="text-sm font-medium">Motivo de rechazo (opcional)</label>
@@ -642,7 +657,7 @@ export default function IncidencesPage() {
                                 </div>
                             )}
 
-                            {selectedIncidence?.status === 'pending' && hasHRPermissions && (
+                            {selectedIncidence?.status === 'pending' && (hasHRPermissions || isManagerOnly) && (
                                 <DialogFooter className="gap-2">
                                     <Button
                                         variant="destructive"
@@ -680,20 +695,53 @@ export default function IncidencesPage() {
 
 
                     {/* Create Dialog */}
-                    <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+                    <Dialog open={isCreateDialogOpen} onOpenChange={(open) => {
+                        setIsCreateDialogOpen(open);
+                        if (!open) setCreateForEmployee('');
+                    }}>
                         <DialogContent className="max-w-md">
                             <DialogHeader>
                                 <DialogTitle>Nueva Solicitud de Incidencia</DialogTitle>
                                 <DialogDescription>
-                                    Completa los datos para crear tu solicitud
+                                    {(hasHRPermissions || isManagerOnly)
+                                        ? 'Crea una solicitud para ti o para un colaborador'
+                                        : 'Completa los datos para crear tu solicitud'
+                                    }
                                 </DialogDescription>
                             </DialogHeader>
+
+                            {/* Bug 7: Employee selector for Managers and HR */}
+                            {(hasHRPermissions || isManagerOnly) && teamEmployees.length > 0 && (
+                                <div className="space-y-2">
+                                    <Label>Crear solicitud para:</Label>
+                                    <Select value={createForEmployee || user?.uid || ''} onValueChange={setCreateForEmployee}>
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Yo mismo" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value={user?.uid || 'self'}>Yo mismo</SelectItem>
+                                            {teamEmployees.map(emp => (
+                                                <SelectItem key={emp.id} value={emp.id}>
+                                                    {emp.fullName} — {emp.positionId || 'Sin puesto'}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            )}
 
                             {user && (
                                 <NewIncidenceForm
                                     userId={user.uid}
-                                    onSuccess={() => setIsCreateDialogOpen(false)}
-                                    onCancel={() => setIsCreateDialogOpen(false)}
+                                    targetUserId={createForEmployee && createForEmployee !== user.uid ? createForEmployee : undefined}
+                                    onSuccess={() => {
+                                        setIsCreateDialogOpen(false);
+                                        setCreateForEmployee('');
+                                    }}
+                                    onCancel={() => {
+                                        setIsCreateDialogOpen(false);
+                                        setCreateForEmployee('');
+                                    }}
                                 />
                             )}
                         </DialogContent>

@@ -281,10 +281,10 @@ service cloud.firestore {
      * @path /employees/{employeeId}
      */
     match /employees/{employeeId} {
-      // Employees can read their own data, HR/Admin can read any
-      allow get: if isHRManager() || isOwner(employeeId);
-      // Only HR and Admin can list all employees
-      allow list: if isHRManager();
+      // Employees can read their own data, HR/Admin/Manager can read any
+      allow get: if isManagerOrHR() || isOwner(employeeId);
+      // HR, Admin, and Managers can list employees (Manager queries filter by directManagerId)
+      allow list: if isManagerOrHR();
       // Only HR and Admin can create/update employee records
       allow create, update: if isHRManager();
       // Admin solo puede borrar si ya está inactivo (Soft delete enforce)
@@ -340,11 +340,11 @@ service cloud.firestore {
 
       // Employees can create requests for themselves
       allow create: if isSignedIn() && request.resource.data.employeeId == request.auth.uid;
-      // HR/Admin can create incidences for any employee
-      allow create: if isHRManager();
+      // HR/Admin/Manager can create incidences for any employee
+      allow create: if isManagerOrHR();
 
-      // HR can approve/reject any incidence
-      allow update: if isHRManager();
+      // HR and Managers can approve/reject incidences
+      allow update: if isManagerOrHR();
       // Employees can only cancel their own pending requests
       allow update: if isSignedIn() &&
         resource.data.employeeId == request.auth.uid &&
@@ -474,11 +474,11 @@ service cloud.firestore {
      * @path /vacation_balances/{balanceId}
      */
     match /vacation_balances/{balanceId} {
-      // Employees can read their own vacation balance
-      allow get: if isSignedIn() && resource.data.employeeId == request.auth.uid;
+      // Employees can read their own vacation balance (get + list for queries)
+      allow get, list: if isSignedIn();
       // HR can read any vacation balance
       allow get, list: if isHRManager();
-      // Only HR can modify vacation balances
+      // Only HR can modify vacation balances (balance updates via incidence approval)
       allow create, update: if isHRManager();
       // No deletes - balance history is important
       allow delete: if false;

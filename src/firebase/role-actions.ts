@@ -240,7 +240,8 @@ export function isSystemRole(role: string): role is SystemRole {
 // -------------------------------------------------------------------------
 
 /**
- * Get all roles (system + custom)
+ * Get all roles (system + custom), deduplicated
+ * Bug 5 fix: Merges system roles with their Firestore overrides to avoid duplicate keys
  */
 export async function getAllRoles(firestore: Firestore): Promise<Role[]> {
   // First, create Role objects for system roles
@@ -249,7 +250,7 @@ export async function getAllRoles(firestore: Firestore): Promise<Role[]> {
     name,
     description: getSystemRoleDescription(name as SystemRole),
     isSystemRole: true,
-    systemLevel: name as SystemRole, // System level for system role is itself
+    systemLevel: name as SystemRole,
     permissions,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -258,12 +259,32 @@ export async function getAllRoles(firestore: Firestore): Promise<Role[]> {
   // Then, fetch custom roles from Firestore
   const rolesRef = collection(firestore, 'roles');
   const snapshot = await getDocs(rolesRef);
-  const customRoles = snapshot.docs.map(doc => ({
-    id: doc.id,
-    ...doc.data(),
-  })) as Role[];
 
-  return [...systemRoles, ...customRoles];
+  // Build a map of Firestore roles by ID
+  const firestoreRolesMap = new Map<string, Role>();
+  snapshot.docs.forEach(d => {
+    firestoreRolesMap.set(d.id, { id: d.id, ...d.data() } as Role);
+  });
+
+  // Merge: for system roles, prefer Firestore permissions if customized by admin
+  const systemRoleIds = new Set(systemRoles.map(r => r.id));
+  const mergedRoles: Role[] = systemRoles.map(sr => {
+    const fsVersion = firestoreRolesMap.get(sr.id);
+    if (fsVersion) {
+      // Use Firestore permissions but keep system role metadata
+      return { ...sr, permissions: fsVersion.permissions };
+    }
+    return sr;
+  });
+
+  // Add truly custom (non-system) roles from Firestore
+  firestoreRolesMap.forEach((role, id) => {
+    if (!systemRoleIds.has(id)) {
+      mergedRoles.push(role);
+    }
+  });
+
+  return mergedRoles;
 }
 
 /**
