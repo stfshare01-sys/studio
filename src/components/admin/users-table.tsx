@@ -35,6 +35,8 @@ import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
 import { toggleUserStatus, updateUserRole } from "@/firebase/admin-actions";
 import { TableSkeleton } from "../ui/table-skeleton";
+import { QueryConstraint } from "firebase/firestore";
+import { usePaginatedCollection } from "@/firebase/hooks/use-paginated-collection";
 
 function EditUserDialog({ user, allUsers, roles, isOpen, onOpenChange }: { user: User | null, allUsers: User[], roles: Role[], isOpen: boolean, onOpenChange: (open: boolean) => void }) {
     const { toast } = useToast();
@@ -170,79 +172,47 @@ export function UsersTable() {
     const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
     const [selectedUser, setSelectedUser] = useState<User | null>(null);
 
-    // Data state
-    const [users, setUsers] = useState<User[]>([]);
+    // Filter and search State
     const [roles, setRoles] = useState<Role[]>([]); // roles state
-    const [isLoading, setIsLoading] = useState(true);
-    const [lastDoc, setLastDoc] = useState<DocumentSnapshot | null>(null);
-    const [hasMore, setHasMore] = useState(true);
-
-    // Filters and sorting state
     const [searchTerm, setSearchTerm] = useState("");
     const [statusFilter, setStatusFilter] = useState<string>("all");
     const [roleFilter, setRoleFilter] = useState<string>("all");
     const [sortField, setSortField] = useState<SortField>("fullName");
     const [sortOrder, setSortOrder] = useState<SortOrder>("asc");
 
-    // Memoized search results (client-side search on top of server-side data)
+    // Build the query constraints
+    const constraints: QueryConstraint[] = useMemo(() => {
+        const c: QueryConstraint[] = [];
+        if (statusFilter !== "all") c.push(where('status', '==', statusFilter));
+        if (roleFilter !== "all") c.push(where('role', '==', roleFilter));
+        return c;
+    }, [statusFilter, roleFilter]);
+
+    // Use our new generic hook
+    const {
+        data: paginatedUsers,
+        loading: isLoading,
+        loadingMore,
+        hasMore,
+        loadMore,
+        error
+    } = usePaginatedCollection<User>({
+        path: 'users',
+        pageSize: PAGE_SIZE,
+        orderByField: sortField,
+        orderDirection: sortOrder,
+        constraints
+    });
+
+    // Memoized search results (client-side search on top of server-paged data)
     const filteredUsers = useMemo(() => {
-        if (!searchTerm) return users;
+        if (!searchTerm) return paginatedUsers;
         const term = searchTerm.toLowerCase();
-        return users.filter(u =>
+        return paginatedUsers.filter(u =>
             u.fullName.toLowerCase().includes(term) ||
             u.email.toLowerCase().includes(term)
         );
-    }, [users, searchTerm]);
-
-    const fetchUsers = useCallback(async (loadMore = false) => {
-        if (!firestore) return;
-        setIsLoading(true);
-
-        const usersCollection = collection(firestore, 'users');
-        let q = query(usersCollection, orderBy(sortField, sortOrder));
-
-        if (statusFilter !== "all") {
-            q = query(q, where('status', '==', statusFilter));
-        }
-        if (roleFilter !== "all") {
-            q = query(q, where('role', '==', roleFilter));
-        }
-
-        if (loadMore && lastDoc) {
-            q = query(q, startAfter(lastDoc), limit(PAGE_SIZE));
-        } else {
-            q = query(q, limit(PAGE_SIZE));
-        }
-
-        try {
-            const querySnapshot = await getDocs(q);
-            const newUsers = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User));
-            const lastVisible = querySnapshot.docs[querySnapshot.docs.length - 1];
-
-            setLastDoc(lastVisible);
-            setHasMore(querySnapshot.docs.length === PAGE_SIZE);
-
-            if (loadMore) {
-                setUsers(prev => [...prev, ...newUsers]);
-            } else {
-                setUsers(newUsers);
-            }
-        } catch (error) {
-            console.error("Error fetching users:", error);
-            toast({ variant: 'destructive', title: 'Error', description: 'No se pudieron cargar los usuarios.' });
-        } finally {
-            setIsLoading(false);
-        }
-    }, [firestore, sortField, sortOrder, statusFilter, roleFilter, lastDoc, toast]);
-
-
-    useEffect(() => {
-        setUsers([]); // Reset users on filter/sort change
-        setLastDoc(null);
-        setHasMore(true);
-        fetchUsers(false);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [sortField, sortOrder, statusFilter, roleFilter]); // `fetchUsers` is memoized, so we list dependencies here
+    }, [paginatedUsers, searchTerm]);
 
     // Load roles
     useEffect(() => {
@@ -289,8 +259,9 @@ export function UsersTable() {
         const newStatus = (user.status || 'active') === 'active' ? 'disabled' : 'active';
         try {
             await toggleUserStatus(user.id, newStatus === 'active');
-            // Update local state for immediate feedback
-            setUsers(prev => prev.map(u => u.id === user.id ? { ...u, status: newStatus } : u));
+            // Data will eventually re-sync, but for immediate UI changes, 
+            // since we don't expose setData from the hook directly, the next update will catch it.
+            // A more complex hook could allow local state mutation, but keeping it simple for now.
             toast({
                 title: `Usuario ${newStatus === 'active' ? 'Habilitado' : 'Deshabilitado'}`,
                 description: `${user.fullName} ha sido ${newStatus === 'active' ? 'habilitado' : 'deshabilitado'}.`,
@@ -331,7 +302,13 @@ export function UsersTable() {
                     </Select>
                 </div>
 
-                {isLoading && users.length === 0 ? (
+                {error && (
+                    <div className="bg-destructive/15 text-destructive p-3 rounded-md text-sm mb-4">
+                        Ha ocurrido un error al cargar los usuarios.
+                    </div>
+                )}
+
+                {isLoading && paginatedUsers.length === 0 ? (
                     <TableSkeleton columns={4} rows={5} />
                 ) : filteredUsers.length === 0 ? (
                     <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-8">
@@ -444,8 +421,8 @@ export function UsersTable() {
 
                 {hasMore && (
                     <div className="flex justify-center">
-                        <Button variant="outline" onClick={() => fetchUsers(true)} disabled={isLoading} className="gap-2">
-                            {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        <Button variant="outline" onClick={() => loadMore()} disabled={isLoading || loadingMore} className="gap-2">
+                            {(isLoading || loadingMore) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                             <ChevronDown className="h-4 w-4" /> Cargar más
                         </Button>
                     </div>

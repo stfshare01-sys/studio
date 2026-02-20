@@ -16,8 +16,7 @@ import { Badge } from '@/components/ui/badge';
 import { TableSkeleton } from '@/components/ui/table-skeleton';
 import { EmptyState } from '@/components/ui/empty-state';
 import { cn } from '@/lib/utils';
-
-import type { Task } from '@/types/bpmn';
+import type { Task } from '@/lib/types';
 
 export type TaskInboxContextFilter = 'HCM' | 'IT' | 'all';
 
@@ -206,7 +205,8 @@ export function TaskInbox({
                             </div>
                             <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0 ml-2" />
                         </Link>
-                    ))}
+                    );
+                })}
 
                 {!compact && filteredTasks.length >= taskLimit && (
                     <div className="pt-2 text-center">

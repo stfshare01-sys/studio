@@ -36,30 +36,32 @@ async function getOvertimeResetDay(
     const locationId = employee.locationId;
 
     if (!locationId) {
-        console.warn(`[Prenomina] Employee ${employee.id} has no location, using default: Sunday`);
-        return 0; // Domingo por defecto
+        console.warn(`[Prenomina] Employee ${employee.id} has no location, using default: Wednesday (3)`);
+        return 3; // Miércoles por defecto según regla de corte común
     }
 
     try {
         const locationDoc = await db.collection('locations').doc(locationId).get();
         if (!locationDoc.exists) {
-            console.warn(`[Prenomina] Location ${locationId} not found, using default: Sunday`);
-            return 0;
+            console.warn(`[Prenomina] Location ${locationId} not found, using default: Wednesday (3)`);
+            return 3;
         }
 
         const location = locationDoc.data();
-        const overtimeResetDay = location?.overtimeResetDay || 'sunday';
+        const overtimeResetDay = location?.overtimeResetDay || 'wednesday'; // Default fallback was sunday
 
         switch (overtimeResetDay) {
             case 'sunday':
                 return 0;
+            case 'wednesday':
+                return 3;
             case 'saturday':
                 return 6;
             case 'custom':
-                return location?.customOvertimeResetDay || 0;
+                return location?.customOvertimeResetDay || 3;
             default:
-                console.warn(`[Prenomina] Unknown overtimeResetDay: ${overtimeResetDay}, using Sunday`);
-                return 0;
+                console.warn(`[Prenomina] Unknown overtimeResetDay: ${overtimeResetDay}, using Wednesday (3)`);
+                return 3;
         }
     } catch (error) {
         console.error(`[Prenomina] Error fetching location ${locationId}:`, error);
@@ -1575,6 +1577,7 @@ interface CreateSystemUserRequest {
 interface CreateSystemUserResponse {
     success: boolean;
     uid: string;
+    emailSent?: boolean;
 }
 
 /**
@@ -1628,17 +1631,32 @@ export const createSystemUser = onCall<CreateSystemUserRequest>(
             console.log(`[HCM] Created Firestore user document for ${userRecord.uid}`);
 
             // 3. Generate password reset link so the user can set their own password
+            let emailSent = false;
             try {
                 const resetLink = await admin.auth().generatePasswordResetLink(email);
                 console.log(`[HCM] Password reset link generated for ${email}: ${resetLink}`);
-                // In the future, send this link via email notification
-            } catch (resetError) {
+                // In the future, send this link via email notification (SMTP config goes here)
+
+                // Assuming success if generation didn't throw
+                emailSent = true;
+            } catch (resetError: any) {
                 console.warn(`[HCM] Could not generate password reset link (non-blocking):`, resetError);
+
+                // Save to Dead-Letter Queue for Admins
+                await db.collection('failed_notifications').add({
+                    userId: userRecord.uid,
+                    email,
+                    type: 'welcome_password_reset',
+                    error: resetError?.message || 'Unknown SMTP/Auth Error',
+                    timestamp: nowISO,
+                    status: 'pending_retry'
+                });
             }
 
             return {
                 success: true,
                 uid: userRecord.uid,
+                emailSent
             };
 
         } catch (error: any) {

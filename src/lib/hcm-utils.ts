@@ -178,7 +178,12 @@ export function getDefaultIncidenceDays(type: IncidenceType): number {
         paternity: 5,              // 5 días (Art. 132 LFT)
         bereavement: 3,            // Generalmente 3 días
         unjustified_absence: 1,    // Por día
-        abandono_empleo: 1         // Manual, por CH
+        abandono_empleo: 1,        // Manual, por CH
+        marriage: 5,               // Variable
+        adoption: 15,              // Variable
+        unpaid_leave: 1,           // Variable
+        civic_duty: 1,             // Variable
+        half_day_family: 1         // Variable
     };
     return daysMap[type];
 }
@@ -952,10 +957,12 @@ export function datesOverlap(
     start2: string,
     end2: string
 ): boolean {
-    const s1 = new Date(start1);
-    const e1 = new Date(end1);
-    const s2 = new Date(start2);
-    const e2 = new Date(end2);
+    // Para evitar falsos positivos por husos horarios (UTC vs Local),
+    // comparamos asumiendo el formato YYYY-MM-DD extraído de los strings.
+    const s1 = start1.substring(0, 10);
+    const e1 = end1.substring(0, 10);
+    const s2 = start2.substring(0, 10);
+    const e2 = end2.substring(0, 10);
 
     // Dos rangos se solapan si:
     // El inicio de uno es antes o igual al fin del otro Y
@@ -1254,6 +1261,11 @@ export function determineDayStatus(dayData: DayPunchData): DayStatusResult {
             bereavement: { code: '1PCS', name: 'Duelo' },
             unjustified_absence: { code: '1FINJ', name: 'Falta injustificada' },
             abandono_empleo: { code: 'AE', name: 'Abandono de empleo' },
+            marriage: { code: '1PCS', name: 'Matrimonio' },
+            adoption: { code: '1PCS', name: 'Adopción' },
+            unpaid_leave: { code: 'PSGS', name: 'Permiso sin goce' },
+            civic_duty: { code: '1PCS', name: 'Deber Cívico' },
+            half_day_family: { code: '1PCS', name: 'Medio día' }
         };
 
         const incidenceInfo = incidenceCodeMap[dayData.incidenceType];

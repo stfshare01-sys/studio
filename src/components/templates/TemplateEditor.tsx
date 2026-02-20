@@ -32,7 +32,7 @@ import { CSS } from '@dnd-kit/utilities';
 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { useCollection, useFirestore, useMemoFirebase } from "@/firebase";
+import { useCollection, useFirestore, useMemoFirebase, useAuth } from "@/firebase";
 import { addDocumentNonBlocking, updateDocumentNonBlocking } from "@/firebase/non-blocking-updates";
 import { collection, doc } from "firebase/firestore";
 import { useRouter } from "next/navigation";
@@ -294,6 +294,9 @@ function LaneItem({ poolId, lane, laneIndex, totalLanes, handleUpdate, handleAdd
                         <DropdownMenuItem onSelect={() => handleAddStep(poolId, lane.id, "Gateway Paralelo", 'gateway-parallel')}><BpmnIcon type="gateway-parallel" className="mr-2" /> Gateway +</DropdownMenuItem>
                         <DropdownMenuItem onSelect={() => handleAddStep(poolId, lane.id, "Gateway Inclusivo", 'gateway-inclusive')}><BpmnIcon type="gateway-inclusive" className="mr-2" /> Gateway O</DropdownMenuItem>
                         <DropdownMenuSeparator />
+                        <DropdownMenuItem onSelect={() => handleAddStep(poolId, lane.id, "Sincronizador P.", 'gateway-parallel-join')}><BpmnIcon type="gateway-parallel" className="mr-2" /> Unir Paralelo</DropdownMenuItem>
+                        <DropdownMenuItem onSelect={() => handleAddStep(poolId, lane.id, "Sincronizador I.", 'gateway-inclusive-join')}><BpmnIcon type="gateway-inclusive" className="mr-2" /> Unir Inclusivo</DropdownMenuItem>
+                        <DropdownMenuSeparator />
                         <DropdownMenuItem onSelect={() => handleAddStep(poolId, lane.id, "Temporizador", 'timer')}><BpmnIcon type="timer" className="mr-2" /> Temporizador</DropdownMenuItem>
                     </DropdownMenuContent>
                 </DropdownMenu>
@@ -346,6 +349,8 @@ export function TemplateEditor({ mode, initialData, templateId }: TemplateEditor
     const { toast } = useToast();
     const firestore = useFirestore();
     const router = useRouter();
+    const auth = useAuth();
+    const user = auth?.currentUser;
 
     const [templateName, setTemplateName] = useState(initialData?.name || "");
     const [templateDescription, setTemplateDescription] = useState(initialData?.description || "");
@@ -427,7 +432,7 @@ export function TemplateEditor({ mode, initialData, templateId }: TemplateEditor
 
             if (mode === 'create') {
                 templateData.createdAt = new Date().toISOString();
-                templateData.createdBy = 'me'; // ToDo: Real user
+                templateData.createdBy = user?.uid || 'Sistema'; // Fixed to use actual ID
                 templateData.status = 'draft'; // New templates start as draft
                 templateData.version = 1;
 

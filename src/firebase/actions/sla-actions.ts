@@ -180,10 +180,49 @@ export async function runGlobalSLAProcessing(
                 const reqRef = doc(firestore, 'overtime_requests', reqId);
                 const hoursApproved = minutesToPay / 60;
 
-                // Calcular dobles/triples simples para el reporte (regla básica: primeras 9h dobles, resto triples semanal)
-                // Simplificación para el MVP SLA: asumimos todo doble por ahora si no hay historial semanal cargado
-                const doubleHours = hoursApproved;
-                const tripleHours = 0;
+                // Calculate start and end of the week for the request date
+                const reqDateObj = new Date(req.date + 'T00:00:00'); // Assuming YYYY-MM-DD
+                const dayOfWeek = reqDateObj.getDay(); // 0 is Sunday
+                const diffToMonday = reqDateObj.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1);
+                const startOfWeekObj = new Date(reqDateObj.setDate(diffToMonday));
+                const endOfWeekObj = new Date(startOfWeekObj);
+                endOfWeekObj.setDate(endOfWeekObj.getDate() + 6);
+
+                const startOfWeekStr = startOfWeekObj.toISOString().split('T')[0];
+                const endOfWeekStr = endOfWeekObj.toISOString().split('T')[0];
+
+                // Fetch previous overtime requests for this employee in the same week
+                const employeeWeeklyOvertimeQuery = query(
+                    collection(firestore, 'overtime_requests'),
+                    where('employeeId', '==', employeeId),
+                    where('date', '>=', startOfWeekStr),
+                    where('date', '<=', endOfWeekStr),
+                    where('status', 'in', ['approved', 'partial'])
+                );
+
+                const weeklyOvertimeDocs = await getDocs(employeeWeeklyOvertimeQuery);
+                let previousApprovedHoursThisWeek = 0;
+                weeklyOvertimeDocs.forEach(d => {
+                    // Do not count the current request if it's already in the DB and we are processing it
+                    // Though here we process 'pending' so it shouldn't match 'approved', but just in case:
+                    if (d.id !== reqId) {
+                        const pastReq = d.data() as OvertimeRequest;
+                        previousApprovedHoursThisWeek += (pastReq.hoursApproved || 0);
+                    }
+                });
+
+                // Calcular dobles/triples reales según LFT (tope 9 horas a la semana)
+                let doubleHours = 0;
+                let tripleHours = 0;
+
+                if (previousApprovedHoursThisWeek + hoursApproved <= 9) {
+                    doubleHours = hoursApproved;
+                } else if (previousApprovedHoursThisWeek >= 9) {
+                    tripleHours = hoursApproved;
+                } else {
+                    doubleHours = 9 - previousApprovedHoursThisWeek;
+                    tripleHours = hoursApproved - doubleHours;
+                }
 
                 batch.update(reqRef, {
                     status: newStatus,

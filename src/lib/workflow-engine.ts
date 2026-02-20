@@ -323,6 +323,8 @@ export async function completeTaskAndProgressWorkflow({
         const currentStepIndex = template.steps.findIndex(s => s.id === currentStepId);
         if (currentStepIndex === -1) return [];
 
+        let possibleNextSteps: WorkflowStepDefinition[] = [];
+
         // Rule-based routing for decision tasks
         if (currentStepDefinition?.outcomes && currentStepDefinition.outcomes.length > 0) {
             const rule = template.rules.find(r =>
@@ -332,17 +334,56 @@ export async function completeTaskAndProgressWorkflow({
             );
             if (rule && rule.action.type === 'ROUTE_TO_STEP') {
                 const nextStep = template.steps.find(s => s.id === (rule.action as any).stepId);
-                return nextStep ? [nextStep] : [];
+                if (nextStep) possibleNextSteps = [nextStep];
             }
         }
 
-        // Default sequential logic
-        const nextStepInSequence = template.steps[currentStepIndex + 1];
-        if (nextStepInSequence) {
-            return [nextStepInSequence];
+        // Default sequential logic if no outcome routing matched
+        if (possibleNextSteps.length === 0) {
+            const nextStepInSequence = template.steps[currentStepIndex + 1];
+            if (nextStepInSequence) {
+                possibleNextSteps = [nextStepInSequence];
+            }
         }
 
-        return [];
+        // --- JOIN GATEWAY SYNCHRONIZATION LOGIC ---
+        // If any of the possible next steps is a Join Gateway (e.g. parallel-join),
+        // we must check if ALL incoming paths to that step are also 'Completed'.
+        // If not, we withhold returning that step so it doesn't activate yet.
+        return possibleNextSteps.filter(nextStep => {
+            // Check if step is a join type or explicitly requires synchronization
+            if (nextStep.type === 'gateway-parallel-join' || nextStep.type === 'gateway-inclusive-join') {
+                // Find all steps that route to this Join step
+                const incomingStepsIds = template.rules
+                    .filter(r => r.action.type === 'ROUTE_TO_STEP' && (r.action as any).stepId === nextStep.id)
+                    .map(r => r.condition.fieldId);
+
+                // Also check implicit sequential incoming steps (the step immediately before it in the array)
+                const nextStepIndex = template.steps.findIndex(s => s.id === nextStep.id);
+                if (nextStepIndex > 0) {
+                    incomingStepsIds.push(template.steps[nextStepIndex - 1].id);
+                }
+
+                const uniqueIncomingIds = Array.from(new Set(incomingStepsIds));
+
+                // Verify if all these incoming steps in the current request are 'Completed'
+                const allPrerequisitesMet = uniqueIncomingIds.every(incomingId => {
+                    // Current task doesn't reflect as 'Completed' in the request.steps array yet in memory during this loop
+                    if (incomingId === task.stepId) return true;
+
+                    const stepInReq = updatedSteps.find(s => s.id === incomingId);
+                    // If the step exists in the request but is not completed, we are missing a branch
+                    if (stepInReq && stepInReq.status !== 'Completed') return false;
+                    return true;
+                });
+
+                if (!allPrerequisitesMet) {
+                    console.log(`[Workflow Engine] Join gateway ${nextStep.id} paused. Waiting for other parallel branches to complete.`);
+                    return false; // Exclude this step from activation
+                }
+            }
+            return true; // Keep step
+        });
     };
 
     const nextSteps = findNextSteps(task.stepId);

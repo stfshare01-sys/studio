@@ -66,6 +66,7 @@ import {
 import type { Incidence, IncidenceType, IncidenceStatus, Employee, VacationBalance } from '@/lib/types';
 import { getEmployeeByUserId } from '@/firebase/actions/employee-actions';
 import { createIncidence, getVacationBalance } from '@/firebase/actions/incidence-actions';
+import { getDirectReports } from '@/firebase/actions/team-actions';
 import { callApproveIncidence } from '@/firebase/callable-functions';
 import { checkDateConflict } from '@/lib/hcm-utils';
 import { format, parse, differenceInDays, startOfMonth, endOfMonth, eachDayOfInterval, startOfWeek, endOfWeek, isSameMonth, isSameDay, isWithinInterval, addMonths, subMonths } from 'date-fns';
@@ -94,7 +95,20 @@ export default function IncidencesPage() {
 
 
 
-    const hasHRPermissions = useMemo(() => ['Admin', 'HRManager', 'Manager'].includes(user?.role || ''), [user]);
+    const hasHRPermissions = useMemo(() => ['Admin', 'HRManager'].includes(user?.role || ''), [user]);
+    const isManagerOnly = useMemo(() => user?.role === 'Manager', [user]);
+    const [teamIds, setTeamIds] = useState<string[]>([]);
+
+    // Cargar equipo subordinado si el usuario es manager (para ver sus incidencias)
+    useEffect(() => {
+        if (isManagerOnly && user?.uid) {
+            getDirectReports(user.uid).then(res => {
+                if (res.success && res.employees) {
+                    setTeamIds(res.employees.map(e => e.id));
+                }
+            });
+        }
+    }, [isManagerOnly, user?.uid]);
 
     const incidencesQuery = useMemoFirebase(() => {
         if (!firestore || isUserLoading || !user) return null;
@@ -103,6 +117,19 @@ export default function IncidencesPage() {
 
         if (hasHRPermissions) {
             // HR/Admins can see all incidences
+            if (statusFilter !== 'all') {
+                q = query(q, where('status', '==', statusFilter));
+            }
+        } else if (isManagerOnly) {
+            // Los managers ven sus propias incidencias y las de su equipo
+            // Firestore 'in' soporta hasta 30 elementos.
+            const allowedIds = [user.uid, ...teamIds].slice(0, 30);
+
+            if (allowedIds.length > 0) {
+                q = query(q, where('employeeId', 'in', allowedIds));
+            } else {
+                q = query(q, where('employeeId', '==', user.uid));
+            }
             if (statusFilter !== 'all') {
                 q = query(q, where('status', '==', statusFilter));
             }
@@ -116,7 +143,7 @@ export default function IncidencesPage() {
 
         return query(q, orderBy('createdAt', 'desc'));
 
-    }, [firestore, isUserLoading, user, hasHRPermissions, statusFilter]);
+    }, [firestore, isUserLoading, user, hasHRPermissions, isManagerOnly, statusFilter, teamIds]);
 
     const { data: incidences, isLoading } = useCollection<Incidence>(incidencesQuery);
 

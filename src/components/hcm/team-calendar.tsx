@@ -45,7 +45,6 @@ interface TeamCalendarProps {
     onDayClick?: (date: Date, employeesOff: Employee[]) => void;
 }
 
-// Incidence type configuration
 const INCIDENCE_CONFIG: Record<IncidenceType, { icon: typeof Plane; color: string; label: string }> = {
     vacation: { icon: Plane, color: 'bg-blue-500', label: 'Vacaciones' },
     sick_leave: { icon: Stethoscope, color: 'bg-red-500', label: 'Incapacidad' },
@@ -54,7 +53,12 @@ const INCIDENCE_CONFIG: Record<IncidenceType, { icon: typeof Plane; color: strin
     paternity: { icon: Baby, color: 'bg-cyan-500', label: 'Paternidad' },
     bereavement: { icon: Heart, color: 'bg-gray-500', label: 'Duelo' },
     unjustified_absence: { icon: AlertCircle, color: 'bg-orange-500', label: 'Falta' },
-    abandono_empleo: { icon: AlertCircle, color: 'bg-red-700', label: 'Abandono' }
+    abandono_empleo: { icon: AlertCircle, color: 'bg-red-700', label: 'Abandono' },
+    marriage: { icon: Heart, color: 'bg-indigo-500', label: 'Matrimonio' },
+    adoption: { icon: Baby, color: 'bg-emerald-500', label: 'Adopción' },
+    unpaid_leave: { icon: User, color: 'bg-slate-500', label: 'Sin Goce' },
+    civic_duty: { icon: Clock, color: 'bg-yellow-600', label: 'Deber Cívico' },
+    half_day_family: { icon: Clock, color: 'bg-teal-500', label: 'Medio Día' }
 };
 
 /**

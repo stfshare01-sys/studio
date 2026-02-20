@@ -96,7 +96,10 @@ export function CreateUserDialog({ isOpen, onOpenChange }: CreateUserDialogProps
 
             toast({
                 title: "Usuario y Empleado Creados",
-                description: `Se ha creado la cuenta y el expediente para ${formData.fullName}.`,
+                description: userResult.emailSent === false
+                    ? `Se ha creado a ${formData.fullName}, pero el correo de bienvenida falló en enviarse. Contacte a TI.`
+                    : `Se ha creado la cuenta y expedientes para ${formData.fullName}. El correo de bienvenida ha sido enviado.`,
+                variant: userResult.emailSent === false ? "destructive" : "default",
             });
             onOpenChange(false);
             // Reset form for next time

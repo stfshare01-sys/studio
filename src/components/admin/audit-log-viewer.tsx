@@ -1,9 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { useFirestore } from '@/firebase/provider';
-import { useCollection } from '@/firebase/firestore/use-collection';
-import { collection, query, orderBy, limit, where } from 'firebase/firestore';
+import { usePaginatedCollection } from '@/firebase/hooks/use-paginated-collection';
 import {
     Table,
     TableBody,
@@ -12,38 +10,44 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { ShieldAlert, Search, FileText, User } from 'lucide-react';
+import { ShieldAlert, Search, FileText, User, ChevronDown, Loader2 } from 'lucide-react';
 import type { AuditLog } from '@/lib/types';
 
 export default function AuditLogViewer() {
     const [limitCount, setLimitCount] = useState(50);
     const [searchTerm, setSearchTerm] = useState('');
 
-    const firestore = useFirestore();
-
-    const logsQuery = useMemo(() => {
-        if (!firestore) return null;
-        return query(
-            collection(firestore, 'audit_logs'),
-            orderBy('timestamp', 'desc'),
-            limit(limitCount)
-        );
-    }, [firestore, limitCount]);
-
-    const { data: logs, isLoading } = useCollection<AuditLog>(logsQuery);
+    const {
+        data: logs,
+        loading: isLoading,
+        loadingMore,
+        hasMore,
+        loadMore,
+        error
+    } = usePaginatedCollection<AuditLog>({
+        path: 'audit_logs',
+        pageSize: limitCount,
+        orderByField: 'timestamp',
+        orderDirection: 'desc'
+    });
 
     // Client-side filtering for basic search (until sophisticated backend search is implemented)
-    const filteredLogs = logs?.filter(log =>
-        log.userFullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        log.action.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        log.requestId?.toLowerCase().includes(searchTerm.toLowerCase())
-    ) || [];
+    const filteredLogs = useMemo(() => {
+        if (!searchTerm) return logs;
+        const term = searchTerm.toLowerCase();
+        return logs.filter(log =>
+            log.userFullName.toLowerCase().includes(term) ||
+            log.action.toLowerCase().includes(term) ||
+            log.requestId?.toLowerCase().includes(term)
+        );
+    }, [logs, searchTerm]);
 
     const getActionBadge = (action: string) => {
         if (action.includes('DELETE')) return <Badge variant="destructive">{action}</Badge>;
@@ -151,6 +155,19 @@ export default function AuditLogViewer() {
                         </TableBody>
                     </Table>
                 </div>
+                {hasMore && (
+                    <div className="flex justify-center mt-6">
+                        <Button variant="outline" onClick={() => loadMore()} disabled={isLoading || loadingMore} className="gap-2">
+                            {(isLoading || loadingMore) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            <ChevronDown className="h-4 w-4" /> Cargar más
+                        </Button>
+                    </div>
+                )}
+                {error && (
+                    <div className="bg-destructive/15 text-destructive p-3 rounded-md text-sm mt-4">
+                        Ha ocurrido un error al cargar los registros de auditoría.
+                    </div>
+                )}
             </CardContent>
         </Card>
     );

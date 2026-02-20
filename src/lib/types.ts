@@ -102,7 +102,7 @@ export type User = {
 };
 
 // Represents a step within a template, before it becomes a live task
-export type WorkflowStepType = 'task' | 'gateway-exclusive' | 'gateway-parallel' | 'gateway-inclusive' | 'timer';
+export type WorkflowStepType = 'task' | 'gateway-exclusive' | 'gateway-parallel' | 'gateway-inclusive' | 'gateway-parallel-join' | 'gateway-inclusive-join' | 'timer';
 
 export type EscalationPolicy = {
   action: 'NOTIFY' | 'REASSIGN';

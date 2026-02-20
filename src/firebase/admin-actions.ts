@@ -44,10 +44,10 @@ interface CreateUserPayload {
  * This creates a real Firebase Auth user + Firestore document.
  * @param payload The user data for the new user.
  */
-export async function createNewUser(payload: CreateUserPayload): Promise<{ success: boolean, uid?: string }> {
+export async function createNewUser(payload: CreateUserPayload): Promise<{ success: boolean, uid?: string, emailSent?: boolean }> {
     try {
         const { functions } = initializeFirebase();
-        const createSystemUserFn = httpsCallable<CreateUserPayload, { success: boolean; uid: string }>(
+        const createSystemUserFn = httpsCallable<CreateUserPayload, { success: boolean; uid: string; emailSent: boolean }>(
             functions,
             'createSystemUser'
         );
@@ -56,7 +56,7 @@ export async function createNewUser(payload: CreateUserPayload): Promise<{ succe
 
         if (result.data.success && result.data.uid) {
             console.log(`[Admin] User created successfully: ${result.data.uid}`);
-            return { success: true, uid: result.data.uid };
+            return { success: true, uid: result.data.uid, emailSent: result.data.emailSent };
         }
 
         throw new Error('La función de creación de usuario no retornó éxito.');
