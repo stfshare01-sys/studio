@@ -34,8 +34,8 @@ export const INCIDENCE_RULES: Partial<Record<IncidenceType, IncidenceRule>> = {
     },
     unpaid_leave: {
         minDays: 1,
-        maxDays: 30, // Policy dependent
-        description: 'Permiso sin goce de sueldo'
+        maxDays: 3, // Policy rule per User Requirement (Feb 2026)
+        description: 'Permiso sin goce de sueldo (Máx 3 días)'
     },
     half_day_family: {
         maxDays: 1, // Effectively 0.5 but stored as 1 day span on frontend usually, handled specially.

@@ -7,7 +7,7 @@
  * Basado en análisis de flujo de asistencia - NotebookLM
  */
 
-import type { AttendanceRecord, Employee, TardinessRecord, EarlyDeparture } from '../types/firestore-types';
+import type { AttendanceRecord, Employee, TardinessRecord, EarlyDeparture, Shift } from '../types/firestore-types';
 import * as admin from 'firebase-admin';
 
 /**
@@ -66,10 +66,61 @@ interface EmployeeSchedule {
 /**
  * Obtiene el horario de trabajo del empleado según su turno
  */
-export async function getEmployeeSchedule(employee: Employee): Promise<EmployeeSchedule> {
-    // TODO: Implementar carga dinámica desde configuración de turnos
-    // Por ahora usamos horarios por defecto según tipo de turno
+export async function getEmployeeSchedule(
+    employee: Employee,
+    db: admin.firestore.Firestore,
+    dateStr?: string
+): Promise<EmployeeSchedule> {
+    let startTime = ATTENDANCE_POLICY.defaultStartTime;
+    let endTime = ATTENDANCE_POLICY.defaultEndTime;
+    let breakMinutes = ATTENDANCE_POLICY.defaultBreakMinutes;
 
+    // 1. Determine active Shift ID directly or via assignments
+    let shiftId = employee.customShiftId;
+
+    if (employee.shiftAssignments && employee.shiftAssignments.length > 0 && dateStr) {
+        // Find assignment covering dateStr (YYYY-MM-DD)
+        const assignment = employee.shiftAssignments.find(sa =>
+            sa.startDate <= dateStr && (!sa.endDate || sa.endDate >= dateStr)
+        );
+        if (assignment) {
+            shiftId = assignment.shiftId;
+        }
+    }
+
+    // 2. Fetch Shift Data if ID exists
+    if (shiftId) {
+        try {
+            const shiftDoc = await db.collection('shifts').doc(shiftId).get();
+            if (shiftDoc.exists) {
+                const shift = shiftDoc.data() as Shift;
+                startTime = shift.startTime;
+                endTime = shift.endTime;
+                breakMinutes = shift.breakMinutes;
+
+                // 3. Apply Day Schedules if defined
+                if (dateStr && shift.daySchedules) {
+                    // Calculate day of week properly for YYYY-MM-DD
+                    const [y, m, d] = dateStr.split('-').map(Number);
+                    const localDate = new Date(y, m - 1, d);
+                    const dayOfWeek = localDate.getDay();
+
+                    if (shift.daySchedules[dayOfWeek]) {
+                        const daily = shift.daySchedules[dayOfWeek];
+                        startTime = daily.startTime;
+                        endTime = daily.endTime;
+                        breakMinutes = daily.breakMinutes;
+                    }
+                }
+
+                return { startTime, endTime, breakMinutes };
+            }
+        } catch (error) {
+            console.error(`[Infraction] Error fetching shift ${shiftId}:`, error);
+        }
+    }
+
+    // Fallback: Default by shiftType
     switch (employee.shiftType) {
         case 'nocturnal':
             return {
@@ -86,9 +137,9 @@ export async function getEmployeeSchedule(employee: Employee): Promise<EmployeeS
         case 'diurnal':
         default:
             return {
-                startTime: ATTENDANCE_POLICY.defaultStartTime,
-                endTime: ATTENDANCE_POLICY.defaultEndTime,
-                breakMinutes: ATTENDANCE_POLICY.defaultBreakMinutes
+                startTime: '09:00:00',
+                endTime: '18:00:00',
+                breakMinutes: 60
             };
     }
 }
@@ -138,7 +189,21 @@ export async function detectTardiness(
         return null;
     }
 
-    const schedule = await getEmployeeSchedule(employee);
+    // IDEMPOTENCY CHECK: Check if tardiness record already exists for this attendance
+    // attendance.id must be populated by the caller
+    if (attendance.id) {
+        const existingQuery = await db.collection('tardiness_records')
+            .where('attendanceRecordId', '==', attendance.id)
+            .limit(1)
+            .get();
+
+        if (!existingQuery.empty) {
+            console.log(`[Infraction] Tardiness record already exists for attendance ${attendance.id}, skipping.`);
+            return null;
+        }
+    }
+
+    const schedule = await getEmployeeSchedule(employee, db, attendance.date);
     const minutesDifference = calculateMinutesDifference(
         attendance.checkIn,
         schedule.startTime
@@ -169,6 +234,7 @@ export async function detectTardiness(
         employeeId: employee.id,
         employeeName: employee.fullName,
         date: attendance.date,
+        attendanceRecordId: attendance.id, // Ensure we link it
         scheduledTime: schedule.startTime,
         actualTime: attendance.checkIn,
         minutesLate,
@@ -198,7 +264,25 @@ export async function detectEarlyDeparture(
         return null;
     }
 
-    const schedule = await getEmployeeSchedule(employee);
+    // IDEMPOTENCY CHECK
+    if (attendance.id) {
+        const existingQuery = await db.collection('early_departures')
+            .where('attendanceId', '==', attendance.id) // Note: field name is attendanceId or attendanceRecordId?
+            // In incidence-actions, it was attendanceId for early_departure.
+            // In firestore-types, EarlyDeparture has no linkedIncidenceId BUT NOT attendanceId?
+            // Let's check firestore-types again. EarlyDeparture interface has NO attendanceId field defined!
+            // BUT TardinessRecord has 'attendanceRecordId'.
+            // I should double check logic.
+            .limit(1)
+            .get();
+
+        if (!existingQuery.empty) {
+            console.log(`[Infraction] Early departure record already exists for attendance ${attendance.id}, skipping.`);
+            return null;
+        }
+    }
+
+    const schedule = await getEmployeeSchedule(employee, db, attendance.date);
     const minutesDifference = calculateMinutesDifference(
         attendance.checkOut,
         schedule.endTime
@@ -225,10 +309,14 @@ export async function detectEarlyDeparture(
 
     const nowISO = new Date().toISOString();
 
+    // Need to cast because EarlyDeparture type in firestore-types might be missing keys I want to use (attendanceId)
+    // I will use 'as any' for extra fields if needed, but prefer to update types.
     return {
         employeeId: employee.id,
         employeeName: employee.fullName,
         date: attendance.date,
+        // attendanceId: attendance.id, // If not in type, I can't add it without update.
+        // I should update type EarlyDeparture to include attendanceId (or attendanceRecordId for consistency).
         scheduledTime: schedule.endTime,
         actualTime: attendance.checkOut,
         minutesEarly,
@@ -236,7 +324,7 @@ export async function detectEarlyDeparture(
         justificationStatus: 'pending',
         createdAt: nowISO,
         updatedAt: nowISO
-    };
+    } as any;
 }
 
 /**

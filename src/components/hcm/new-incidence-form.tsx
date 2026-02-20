@@ -173,7 +173,8 @@ export function NewIncidenceForm({ userId, targetUserId, onSuccess, onCancel, cl
                             firestore,
                             effectiveTargetUserId,
                             newIncidence.startDate,
-                            newIncidence.endDate
+                            newIncidence.endDate,
+                            newIncidence.type
                         );
                         setCalculationResult(result);
                         currentEffectiveDays = result.effectiveDays;

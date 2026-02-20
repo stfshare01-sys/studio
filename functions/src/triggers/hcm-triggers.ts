@@ -26,7 +26,14 @@ const db = admin.firestore();
 export const onAttendanceCreated = onDocumentCreated(
     'attendance/{attendanceId}',
     async (event) => {
-        const attendance = event.data?.data() as AttendanceRecord;
+        const snapshot = event.data;
+        if (!snapshot) {
+            console.error('[HCM Trigger] No attendance data found');
+            return;
+        }
+
+        const data = snapshot.data();
+        const attendance = { ...data, id: snapshot.id } as AttendanceRecord;
 
         if (!attendance) {
             console.error('[HCM Trigger] No attendance data found');

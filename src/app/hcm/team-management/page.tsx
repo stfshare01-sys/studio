@@ -2580,12 +2580,13 @@ function TeamManagementContent() {
                                     <TableHead>Razón</TableHead>
                                     <TableHead>Asignado Por</TableHead>
                                     <TableHead>Estado</TableHead>
+                                    <TableHead className="text-right">Acciones</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
                                 {shiftHistory.length === 0 ? (
                                     <TableRow>
-                                        <TableCell colSpan={7} className="text-center text-muted-foreground">
+                                        <TableCell colSpan={8} className="text-center text-muted-foreground">
                                             No hay historial de turnos
                                         </TableCell>
                                     </TableRow>
@@ -2611,6 +2612,18 @@ function TeamManagementContent() {
                                                 <Badge variant={assign.status === 'active' ? 'outline' : 'destructive'} className="text-[10px]">
                                                     {assign.status === 'active' ? 'Activo' : 'Cancelado'}
                                                 </Badge>
+                                            </TableCell>
+                                            <TableCell className="text-right">
+                                                {assign.status === 'active' && (
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="h-8 px-2 text-destructive hover:text-destructive"
+                                                        onClick={() => setCancelShiftDialog({ open: true, assignment: assign })}
+                                                    >
+                                                        Cancelar
+                                                    </Button>
+                                                )}
                                             </TableCell>
                                         </TableRow>
                                     ))

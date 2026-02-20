@@ -371,11 +371,32 @@ export default function EmployeeDetailPage({ params }: { params: Promise<{ id: s
                                                     <span className="capitalize">{employee.employmentType?.replace('_', ' ') || 'N/A'}</span>
                                                 </div>
                                             </div>
-                                            <div>
-                                                <p className="text-sm font-medium text-muted-foreground mb-1">Turno</p>
-                                                <div className="flex items-center gap-2">
-                                                    <Clock className="h-4 w-4 text-muted-foreground" />
-                                                    <span className="capitalize">{getCurrentShift()}</span>
+                                            <div className="col-span-1">
+                                                <p className="text-sm font-medium text-muted-foreground mb-1">Turnos Asignados</p>
+                                                <div className="flex flex-col gap-1">
+                                                    {shiftAssignments && shiftAssignments.length > 0 ? (
+                                                        shiftAssignments.map(assignment => {
+                                                            const shiftName = shifts?.find(s => s.id === assignment.newShiftId)?.name || 'Turno desconocido';
+                                                            return (
+                                                                <div key={assignment.id} className="flex items-center gap-2 text-sm">
+                                                                    <Clock className="h-3 w-3 text-muted-foreground" />
+                                                                    <span>
+                                                                        {shiftName}
+                                                                        {assignment.assignmentType === 'temporary' && (
+                                                                            <span className="text-xs text-muted-foreground ml-1">
+                                                                                ({format(new Date(assignment.startDate), 'dd/MM', { locale: es })} - {assignment.endDate ? format(new Date(assignment.endDate), 'dd/MM', { locale: es }) : 'Indefinido'})
+                                                                            </span>
+                                                                        )}
+                                                                    </span>
+                                                                </div>
+                                                            );
+                                                        })
+                                                    ) : (
+                                                        <div className="flex items-center gap-2">
+                                                            <Clock className="h-4 w-4 text-muted-foreground" />
+                                                            <span className="capitalize">{getCurrentShift()}</span>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             </div>
                                             <div>

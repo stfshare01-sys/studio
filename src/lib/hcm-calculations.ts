@@ -43,10 +43,25 @@ export async function calculateEffectiveLeaveDays(
     firestore: Firestore,
     employeeId: string,
     startDate: string,
-    endDate: string
+    endDate: string,
+    incidenceType: string = 'vacation'
 ): Promise<EffectiveDaysResult> {
     const start = parseISO(startDate);
     const end = parseISO(endDate);
+
+    // If NOT vacation, effective days = calendar days (User Requirement)
+    // Non-vacation incidences are "days natural" (calendar days)
+    if (incidenceType !== 'vacation') {
+        const totalDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+        return {
+            totalDays,
+            effectiveDays: totalDays, // Same as calendar
+            holidays: 0,
+            weekendDays: 0,
+            details: [],
+            usedDefaultSchedule: false
+        };
+    }
 
     // 1. Fetch Employee Data
     const empRef = doc(firestore, 'employees', employeeId);

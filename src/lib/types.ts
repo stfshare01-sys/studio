@@ -1208,17 +1208,23 @@ export type CustomShift = {
   code: string;                   // Código (ej: "TM-01")
   type: ShiftType;                // Tipo base (diurnal, nocturnal, mixed)
 
-  // Horarios
-  startTime: string;              // Hora de entrada (HH:mm)
-  endTime: string;                // Hora de salida (HH:mm)
-  breakStartTime?: string;        // Inicio de descanso
-  breakEndTime?: string;          // Fin de descanso
-  breakMinutes: number;           // Minutos de descanso (si no hay horario específico)
+  // Configuración de horario
+  startTime: string; // HH:mm
+  endTime: string;   // HH:mm
+  breakMinutes: number; // Tiempo de descanso
 
-  // Días de la semana laborables (0=Dom, 1=Lun, ..., 6=Sab)
-  workDays: number[];             // ej: [1, 2, 3, 4, 5] para Lun-Vie
+  // NEW: Horarios específicos por día (opcional)
+  // Si existe una entrada para el día actual, sobreescribe el horario global
+  daySchedules?: {
+    [day: number]: { // 0=Domingo, 1=Lunes...
+      startTime: string;
+      endTime: string;
+      breakMinutes: number;
+    }
+  };
 
-  // Días de descanso
+  // Días laborales y de descanso
+  workDays: number[]; // 0=Sunday, 1=Monday, etc.
   restDays: number[];             // ej: [0, 6] para Dom y Sab
 
   // Horas calculadas

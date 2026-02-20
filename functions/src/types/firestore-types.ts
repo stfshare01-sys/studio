@@ -129,6 +129,7 @@ export interface TardinessRecord {
     employeeId: string;
     employeeName: string;
     date: string;
+    attendanceRecordId?: string; // Linked Attendance
     scheduledTime: string;
     actualTime: string;
     minutesLate: number;
@@ -148,6 +149,7 @@ export interface EarlyDeparture {
     employeeId: string;
     employeeName: string;
     date: string;
+    attendanceRecordId?: string; // Linked Attendance (aligned with Tardiness)
     scheduledTime: string;
     actualTime: string;
     minutesEarly: number;
@@ -223,4 +225,21 @@ export interface VacationBalance {
     movements: VacationMovement[];
     lastUpdated: string;
     createdAt: string;
+}
+
+export interface Shift {
+    id: string;
+    name: string;
+    type: 'diurnal' | 'nocturnal' | 'mixed';
+    startTime: string;
+    endTime: string;
+    breakMinutes: number;
+    workDays: number[]; // 0=Sun, 1=Mon, etc.
+    daySchedules?: Record<number, {
+        startTime: string;
+        endTime: string;
+        breakMinutes: number;
+    }>;
+    createdAt: string;
+    updatedAt: string;
 }

@@ -166,36 +166,47 @@ export function TaskInbox({
 
         return (
             <div className="space-y-2">
-                {filteredTasks.map((task) => (
-                    <Link
-                        key={task.id}
-                        href={`/requests/${task.requestId}?task=${task.id}`}
-                        className={cn(
-                            "flex items-center justify-between p-3 rounded-lg border",
-                            "hover:bg-muted/50 transition-colors",
-                            compact && "p-2"
-                        )}
-                    >
-                        <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
-                                <p className={cn(
-                                    "font-medium truncate",
-                                    compact ? "text-sm" : "text-base"
-                                )}>
-                                    {task.name}
+                {filteredTasks.map((task) => {
+                    // Determine link destination based on task type
+                    let href = `/requests/${task.requestId}?task=${task.id}`;
+
+                    if (task.type === 'incidence_approval' && task.metadata?.incidenceId) {
+                        // Use a special route or the standard incidence detail. 
+                        // Check if we need a dedicated approval page or just the detail.
+                        // For now, linking to incidence detail seems appropriate.
+                        href = `/hcm/incidences?incidentId=${task.metadata.incidenceId}`;
+                    }
+
+                    return (
+                        <Link
+                            key={task.id}
+                            href={href}
+                            className={cn(
+                                "flex items-center justify-between p-3 rounded-lg border",
+                                "hover:bg-muted/50 transition-colors",
+                                compact && "p-2"
+                            )}
+                        >
+                            <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                    <p className={cn(
+                                        "font-medium truncate",
+                                        compact ? "text-sm" : "text-base"
+                                    )}>
+                                        {task.name}
+                                    </p>
+                                    {getStatusBadge(task)}
+                                </div>
+                                <p className="text-xs text-muted-foreground mt-0.5">
+                                    {task.createdAt && formatDistanceToNow(new Date(task.createdAt), {
+                                        addSuffix: true,
+                                        locale: es
+                                    })}
                                 </p>
-                                {getStatusBadge(task)}
                             </div>
-                            <p className="text-xs text-muted-foreground mt-0.5">
-                                {task.createdAt && formatDistanceToNow(new Date(task.createdAt), {
-                                    addSuffix: true,
-                                    locale: es
-                                })}
-                            </p>
-                        </div>
-                        <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0 ml-2" />
-                    </Link>
-                ))}
+                            <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0 ml-2" />
+                        </Link>
+                    ))}
 
                 {!compact && filteredTasks.length >= taskLimit && (
                     <div className="pt-2 text-center">
