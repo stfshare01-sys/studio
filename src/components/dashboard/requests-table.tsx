@@ -28,40 +28,43 @@ import { Skeleton } from "../ui/skeleton";
 const PAGE_SIZE = 10;
 
 function SubmittedBy({ userId }: { userId: string }) {
-    const firestore = useFirestore();
-    const userRef = useMemoFirebase(() => {
-        if (!firestore || !userId) return null;
-        return doc(firestore, 'users', userId);
-    }, [firestore, userId]);
-    
-    const { data: user, isLoading } = useDoc<User>(userRef);
+  const firestore = useFirestore();
+  const userRef = useMemoFirebase(() => {
+    if (!firestore || !userId) return null;
+    return doc(firestore, 'users', userId);
+  }, [firestore, userId]);
 
-    if (isLoading) {
-        return <div className="flex items-center gap-2"><Skeleton className="h-8 w-8 rounded-full" /><Skeleton className="h-4 w-24" /></div>;
-    }
-    
-    if (!user) {
-        return <span className="text-muted-foreground">Usuario desconocido</span>;
-    }
+  const { data: user, isLoading } = useDoc<User>(userRef);
 
-    return (
-        <div className="flex items-center gap-2">
-            <Avatar className="h-8 w-8">
-                <AvatarImage src={user.avatarUrl} alt={user.fullName} />
-                <AvatarFallback>{user.fullName.charAt(0)}</AvatarFallback>
-            </Avatar>
-            <span>{user.fullName}</span>
-        </div>
-    );
+  if (isLoading) {
+    return <div className="flex items-center gap-2"><Skeleton className="h-8 w-8 rounded-full" /><Skeleton className="h-4 w-24" /></div>;
+  }
+
+  if (!user) {
+    return <span className="text-muted-foreground">Usuario desconocido</span>;
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <Avatar className="h-8 w-8">
+        <AvatarImage src={user.avatarUrl} alt={user.fullName} />
+        <AvatarFallback>{user.fullName.charAt(0)}</AvatarFallback>
+      </Avatar>
+      <span>{user.fullName}</span>
+    </div>
+  );
 }
 
 type SortField = "title" | "updatedAt" | "status";
 type SortOrder = "asc" | "desc";
 
+export type EnrichedRequestObj = Request & { isHcmIncidence?: boolean; incidenceType?: string; };
+
 interface RequestsTableProps {
-  requests: Request[];
+  requests: EnrichedRequestObj[];
   isLoading?: boolean;
 }
+
 
 export function RequestsTable({ requests, isLoading = false }: RequestsTableProps) {
   // Show skeleton while loading
@@ -237,24 +240,24 @@ export function RequestsTable({ requests, isLoading = false }: RequestsTableProp
                 <TableRow key={request.id}>
                   <TableCell>
                     <Link
-                      href={`/requests/${request.id}`}
+                      href={request.isHcmIncidence ? '/hcm/incidences' : `/requests/${request.id}`}
                       className="font-medium text-primary hover:underline"
                     >
                       {request.title}
                     </Link>
                     <div className="text-sm text-muted-foreground md:hidden mt-1">
-                       <Badge
+                      <Badge
                         variant={
-                            request.status === "Completed"
+                          request.status === "Completed"
                             ? "default"
                             : request.status === "Rejected"
-                            ? "destructive"
-                            : "secondary"
+                              ? "destructive"
+                              : "secondary"
                         }
                         className={request.status === 'Completed' ? 'bg-green-600 text-white' : ''}
-                        >
+                      >
                         {getStatusLabel(request.status)}
-                        </Badge>
+                      </Badge>
                     </div>
                   </TableCell>
                   <TableCell className="hidden sm:table-cell">
@@ -266,8 +269,8 @@ export function RequestsTable({ requests, isLoading = false }: RequestsTableProp
                         request.status === "Completed"
                           ? "default"
                           : request.status === "Rejected"
-                          ? "destructive"
-                          : "secondary"
+                            ? "destructive"
+                            : "secondary"
                       }
                       className={request.status === 'Completed' ? 'bg-green-600 text-white' : ''}
                     >

@@ -1039,7 +1039,12 @@ export function checkDateConflict(
         paternity: 'paternidad',
         bereavement: 'duelo',
         unjustified_absence: 'falta injustificada',
-        abandono_empleo: 'abandono de empleo'
+        abandono_empleo: 'abandono de empleo',
+        marriage: 'matrimonio',
+        adoption: 'adopción',
+        half_day_family: 'permiso medio día',
+        civic_duty: 'deber cívico',
+        unpaid_leave: 'permiso sin goce'
     };
 
     const conflictDescriptions = conflictingRanges.map(c =>
@@ -1060,10 +1065,18 @@ export function checkDateConflict(
 /**
  * Formatea una fecha en formato legible DD/MM/YYYY
  *
- * @param dateString - Fecha en formato ISO
+ * @param dateString - Fecha en formato ISO o YYYY-MM-DD
  * @returns Fecha formateada
  */
 function formatDate(dateString: string): string {
+    if (!dateString) return '';
+    // Para evitar desfase de zona horaria con fechas "YYYY-MM-DD", la separamos manualmente
+    if (dateString.length === 10 && dateString.includes('-')) {
+        const parts = dateString.split('-');
+        if (parts.length === 3) {
+            return `${parts[2]}/${parts[1]}/${parts[0]}`;
+        }
+    }
     const date = new Date(dateString);
     return date.toLocaleDateString('es-MX', {
         day: '2-digit',
@@ -1071,6 +1084,7 @@ function formatDate(dateString: string): string {
         year: 'numeric'
     });
 }
+
 
 /**
  * Valida una solicitud de incidencia completa incluyendo:

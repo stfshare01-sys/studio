@@ -7,7 +7,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { RequestsTable } from "@/components/dashboard/requests-table";
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase";
 import { collection, query, where, limit } from "firebase/firestore";
-import type { Request as RequestType, Task, User } from '@/lib/types';
+import type { Request as RequestType, Task, User, Incidence } from '@/lib/types';
+import { INCIDENCE_RULES } from '@/lib/hcm-validation';
 import { FilePlus, Hourglass, CheckCircle, Timer } from "lucide-react";
 import Link from "next/link";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -69,8 +70,43 @@ export default function DashboardPage() {
   }, [firestore, isUserLoading, user]);
 
   const { data: myRequests, isLoading: isLoadingMyRequests } = useCollection<RequestType>(myRequestsQuery);
+
+  const myIncidencesQuery = useMemoFirebase(() => {
+    if (isUserLoading || !firestore || !user?.uid) return null;
+    return query(collection(firestore, 'incidences'), where('employeeId', '==', user.uid));
+  }, [firestore, user?.uid, isUserLoading]);
+
+  const { data: myIncidences, isLoading: isLoadingMyIncidences } = useCollection<Incidence>(myIncidencesQuery);
+
   const { data: tasks, isLoading: isLoadingTasks } = useCollection<Task>(tasksQuery);
   const { data: allTasks, isLoading: isLoadingAllTasks } = useCollection<Task>(allTasksQuery);
+
+  const combinedRequests = React.useMemo(() => {
+    const list: any[] = [];
+    if (myRequests) {
+      list.push(...myRequests);
+    }
+    if (myIncidences) {
+      myIncidences.forEach(inc => {
+        const rule = INCIDENCE_RULES[inc.type];
+        const titleName = rule?.name || inc.type;
+        list.push({
+          id: inc.id,
+          title: `${titleName} (${inc.startDate} al ${inc.endDate})`,
+          status: inc.status === 'approved' ? 'Completed' : inc.status === 'rejected' ? 'Rejected' : 'In Progress',
+          submittedBy: user?.uid || '',
+          createdAt: inc.createdAt || new Date().toISOString(),
+          updatedAt: inc.updatedAt || new Date().toISOString(),
+          isHcmIncidence: true,
+          incidenceType: inc.type,
+          // fallback fields 
+          templateId: 'hcm', formValues: {}, currentStepId: 'hcm'
+        });
+      });
+    }
+    list.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+    return list;
+  }, [myRequests, myIncidences, user]);
 
 
   const stats = React.useMemo(() => {
@@ -118,7 +154,8 @@ export default function DashboardPage() {
               value={stats.inProgress}
               icon={Hourglass}
               description="Procesos activos que requieren acción."
-              isLoading={isLoadingMyRequests}
+              isLoading={isLoadingMyRequests || isLoadingMyIncidences}
+
             />
             <StatCard
               title="Tareas Completadas"
@@ -132,7 +169,8 @@ export default function DashboardPage() {
               value={stats.avgCycleTime}
               icon={Timer}
               description="Tiempo medio para completar una solicitud."
-              isLoading={isLoadingMyRequests}
+              isLoading={isLoadingMyRequests || isLoadingMyIncidences}
+
             />
           </div>
 
@@ -184,9 +222,9 @@ export default function DashboardPage() {
               <CardDescription>Rastree el estado de todas las solicitudes que ha enviado.</CardDescription>
             </CardHeader>
             <CardContent>
-              {isLoadingMyRequests && <DataTableSkeleton />}
-              {!isLoadingMyRequests && myRequests && <RequestsTable requests={myRequests} />}
-              {!isLoadingMyRequests && !myRequests?.length && (
+              {(isLoadingMyRequests || isLoadingMyIncidences) && <DataTableSkeleton />}
+              {!(isLoadingMyRequests || isLoadingMyIncidences) && combinedRequests.length > 0 && <RequestsTable requests={combinedRequests} />}
+              {!(isLoadingMyRequests || isLoadingMyIncidences) && combinedRequests.length === 0 && (
                 <EmptyState
                   variant="documents"
                   title="No tiene solicitudes"
