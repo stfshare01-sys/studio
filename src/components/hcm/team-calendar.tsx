@@ -95,7 +95,7 @@ function DayCell({
     const isCurrentDay = isToday(date);
     const dayIncidences = getIncidencesForDate(date, incidences);
 
-    // Group by employee
+    // Group incidences by employeeId
     const employeeIncidences = useMemo(() => {
         const map = new Map<string, Incidence[]>();
         dayIncidences.forEach(inc => {
@@ -105,6 +105,23 @@ function DayCell({
         return map;
     }, [dayIncidences]);
 
+    // Build display entries from incidences directly (not from employees array)
+    // This way dots always appear even when the employees array doesn't contain the match
+    const displayEntries = useMemo(() => {
+        const entries: { key: string; name: string; avatarUrl?: string; incidences: Incidence[] }[] = [];
+        employeeIncidences.forEach((incs, empId) => {
+            const emp = employees.find(e => e.id === empId);
+            entries.push({
+                key: empId,
+                name: emp?.fullName || incs[0]?.employeeName || 'Empleado',
+                avatarUrl: emp?.avatarUrl,
+                incidences: incs,
+            });
+        });
+        return entries;
+    }, [employeeIncidences, employees]);
+
+    // For the onClick callback, still try to resolve employee objects
     const employeesOff = employees.filter(e => employeeIncidences.has(e.id));
 
     const getInitials = (name: string) => {
@@ -130,22 +147,21 @@ function DayCell({
                 {format(date, 'd')}
             </div>
 
-            {/* Incidences */}
-            {employeesOff.length > 0 && (
+            {/* Incidences — render from incidence data directly */}
+            {isCurrentMonth && displayEntries.length > 0 && (
                 <div className="flex flex-wrap gap-0.5">
                     <TooltipProvider>
-                        {employeesOff.slice(0, 3).map(emp => {
-                            const empIncidences = employeeIncidences.get(emp.id) || [];
-                            const mainIncidence = empIncidences[0];
+                        {displayEntries.slice(0, 3).map(entry => {
+                            const mainIncidence = entry.incidences[0];
                             const config = mainIncidence ? INCIDENCE_CONFIG[mainIncidence.type] : null;
 
                             return (
-                                <Tooltip key={emp.id}>
+                                <Tooltip key={entry.key}>
                                     <TooltipTrigger asChild>
                                         <div className="relative">
                                             <Avatar className="h-6 w-6 border border-background">
-                                                <AvatarImage src={emp.avatarUrl} alt={emp.fullName} />
-                                                <AvatarFallback className="text-[10px]">{getInitials(emp.fullName)}</AvatarFallback>
+                                                <AvatarImage src={entry.avatarUrl} alt={entry.name} />
+                                                <AvatarFallback className="text-[10px]">{getInitials(entry.name)}</AvatarFallback>
                                             </Avatar>
                                             {config && (
                                                 <div className={`absolute -bottom-1 -right-1 h-3 w-3 rounded-full ${config.color} flex items-center justify-center`}>
@@ -155,8 +171,8 @@ function DayCell({
                                         </div>
                                     </TooltipTrigger>
                                     <TooltipContent>
-                                        <p className="font-medium">{emp.fullName}</p>
-                                        {empIncidences.map(inc => (
+                                        <p className="font-medium">{entry.name}</p>
+                                        {entry.incidences.map(inc => (
                                             <p key={inc.id} className="text-xs text-muted-foreground">
                                                 {INCIDENCE_CONFIG[inc.type]?.label || inc.type}
                                             </p>
@@ -165,16 +181,16 @@ function DayCell({
                                 </Tooltip>
                             );
                         })}
-                        {employeesOff.length > 3 && (
+                        {displayEntries.length > 3 && (
                             <Tooltip>
                                 <TooltipTrigger asChild>
                                     <div className="h-6 w-6 rounded-full bg-muted flex items-center justify-center text-[10px] font-medium">
-                                        +{employeesOff.length - 3}
+                                        +{displayEntries.length - 3}
                                     </div>
                                 </TooltipTrigger>
                                 <TooltipContent>
-                                    {employeesOff.slice(3).map(emp => (
-                                        <p key={emp.id} className="text-sm">{emp.fullName}</p>
+                                    {displayEntries.slice(3).map(entry => (
+                                        <p key={entry.key} className="text-sm">{entry.name}</p>
                                     ))}
                                 </TooltipContent>
                             </Tooltip>
