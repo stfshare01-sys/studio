@@ -51,6 +51,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useUser, useFirestore } from "@/firebase";
+import { usePermissions } from "@/hooks/use-permissions";
 import {
   PlusCircle,
   Shield,
@@ -407,7 +408,7 @@ export default function RolesPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [deleteRoleId, setDeleteRoleId] = useState<string | null>(null);
 
-  const hasAdminRole = user?.role === "Admin";
+  const { isAdmin: hasAdminRole } = usePermissions();
 
   // Load roles
   useEffect(() => {

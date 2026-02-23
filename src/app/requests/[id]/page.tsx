@@ -40,6 +40,7 @@ import {
     AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { completeTaskAndProgressWorkflow } from "@/lib/workflow-engine";
+import { usePermissions } from "@/hooks/use-permissions";
 
 function SubmittedBy({ userId }: { userId: string }) {
     const firestore = useFirestore();
@@ -147,7 +148,7 @@ export default function RequestDetailPage() {
     const { user, isUserLoading } = useUser();
     const firestore = useFirestore();
     const storage = useStorage();
-    const isAdmin = user?.role === 'Admin';
+    const { isAdmin } = usePermissions();
     const { toast } = useToast();
 
     const [requestRef, setRequestRef] = useState<any>(null);

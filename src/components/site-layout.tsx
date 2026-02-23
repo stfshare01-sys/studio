@@ -189,7 +189,6 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
             <SidebarTrigger />
           </div>
           <div className="flex items-center gap-1 ml-auto">
-            <GlobalSearch />
             <StyleSelector />
             <ThemeToggle />
             <NotificationCenter />

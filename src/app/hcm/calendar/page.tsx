@@ -1,12 +1,13 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import SiteLayout from '@/components/site-layout';
 import { useFirebase, useMemoFirebase } from '@/firebase/provider';
 import { hasDirectReports } from '@/firebase/actions/team-actions';
+import { getEmployeeByUserId } from '@/firebase/actions/employee-actions';
 import { useCollection } from '@/firebase/firestore/use-collection';
-import { collection, query, where, orderBy } from 'firebase/firestore';
+import { collection, query, where, orderBy, limit } from 'firebase/firestore';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { TeamCalendar } from '@/components/hcm/team-calendar';
 import type { Employee, Incidence } from '@/lib/types';
@@ -23,6 +24,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { format } from 'date-fns';
+import { usePermissions } from "@/hooks/use-permissions";
 import { es } from 'date-fns/locale';
 import { Skeleton } from '@/components/ui/skeleton';
 
@@ -86,12 +88,25 @@ export default function TeamCalendarPage() {
         }
     }, [user]);
 
-    const isGlobalManager = user?.role === 'Admin' || user?.role === 'HRManager';
-    const canAccess = isGlobalManager || isDirectManager;
+    const { hasPermission } = usePermissions();
+    const isGlobalManager = hasPermission('hcm_team_management_global', 'read');
+    const canAccess = true; // Everyone can access, but data is scoped
+
+    // Fetch the current user's employee document if they are not a global manager
+    const [managerDoc, setManagerDoc] = useState<Employee | null>(null);
+    useEffect(() => {
+        if (user?.uid && !isGlobalManager) {
+            getEmployeeByUserId(user.uid).then((res: any) => {
+                if (res.success && res.employee) {
+                    setManagerDoc(res.employee);
+                }
+            });
+        }
+    }, [user?.uid, isGlobalManager]);
 
     // Fetch active employees - only if user is loaded and has permissions
     const employeesQuery = useMemoFirebase(() => {
-        if (!firestore || isUserLoading || !canAccess || !user?.uid) return null;
+        if (!firestore || isUserLoading || !user?.uid) return null;
 
         if (isGlobalManager) {
             return query(
@@ -99,7 +114,7 @@ export default function TeamCalendarPage() {
                 where('status', '==', 'active'),
                 orderBy('fullName', 'asc')
             );
-        } else {
+        } else if (isDirectManager) {
             // Managers only see their direct reports
             return query(
                 collection(firestore, 'employees'),
@@ -107,40 +122,60 @@ export default function TeamCalendarPage() {
                 where('status', '==', 'active'),
                 orderBy('fullName', 'asc')
             );
+        } else {
+            // Regular employee just themselves
+            return query(
+                collection(firestore, 'employees'),
+                where('userId', '==', user.uid),
+                limit(1)
+            );
         }
-    }, [firestore, isUserLoading, canAccess, isGlobalManager, user?.uid]);
+    }, [firestore, isUserLoading, isGlobalManager, isDirectManager, user?.uid]);
 
-    const { data: employees, isLoading: employeesLoading } = useCollection<Employee>(employeesQuery);
+    const { data: rawEmployees, isLoading: employeesLoading } = useCollection<Employee>(employeesQuery);
+
+    const employees = useMemo(() => {
+        if (!rawEmployees) return [];
+        if (isGlobalManager) return rawEmployees;
+
+        let list = [...rawEmployees];
+        if (managerDoc && !list.find((e: Employee) => e.id === managerDoc.id)) {
+            list.push(managerDoc);
+        }
+        return list;
+    }, [rawEmployees, managerDoc, isGlobalManager]);
 
     // Fetch approved incidences - only if user is loaded and has permissions
     const incidencesQuery = useMemoFirebase(() => {
-        if (!firestore || isUserLoading || !canAccess) return null;
-        return query(
-            collection(firestore, 'incidences'),
-            where('status', '==', 'approved'),
-            orderBy('startDate', 'desc')
-        );
-    }, [firestore, isUserLoading, canAccess]);
+        if (!firestore || isUserLoading) return null;
+        if (isGlobalManager) {
+            return query(
+                collection(firestore, 'incidences'),
+                where('status', '==', 'approved'),
+                orderBy('startDate', 'desc')
+            );
+        } else if (employees && employees.length > 0) {
+            const validIds = employees.map((e: Employee) => e.id);
+            if (validIds.length > 0 && validIds.length <= 30) {
+                return query(
+                    collection(firestore, 'incidences'),
+                    where('employeeId', 'in', validIds),
+                    where('status', '==', 'approved')
+                );
+            }
+        }
+        return null; // Don't fetch if no employees configured yet
+    }, [firestore, isUserLoading, isGlobalManager, employees]);
 
     const { data: incidences, isLoading: incidencesLoading } = useCollection<Incidence>(incidencesQuery);
 
-    const isLoading = isUserLoading || (canAccess && (employeesLoading || incidencesLoading));
+    const isLoading = isUserLoading || employeesLoading || incidencesLoading;
 
     if (isUserLoading) {
         return (
             <SiteLayout>
                 <div className="flex-1 flex-col p-4 sm:p-6">
                     <CalendarSkeleton />
-                </div>
-            </SiteLayout>
-        );
-    }
-
-    if (!canAccess) {
-        return (
-            <SiteLayout>
-                <div className="flex-1 flex-col p-4 sm:p-6">
-                    <AccessDenied />
                 </div>
             </SiteLayout>
         );

@@ -157,7 +157,7 @@ function NewRequestPageContent() {
     const usersQuery = useMemoFirebase(() => collection(firestore, 'users'), [firestore]);
     const { data: users } = useCollection<User>(usersQuery);
 
-    const { permissions } = usePermissions();
+    const { permissions, isAdmin } = usePermissions();
 
     // Request On Behalf Of State
     const [requestOnBehalfOf, setRequestOnBehalfOf] = React.useState<string>('');
@@ -176,7 +176,7 @@ function NewRequestPageContent() {
         if (!users || !user) return [];
 
         // 1. HR / Global Admin: All users
-        const hasGlobalAccess = hasPermission(permissions, 'hcm_team_management_global', 'write') || user.role === 'Admin';
+        const hasGlobalAccess = hasPermission(permissions, 'hcm_team_management_global', 'write') || isAdmin;
         if (hasGlobalAccess) {
             return users;
         }

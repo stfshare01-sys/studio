@@ -65,11 +65,12 @@ const INCIDENCE_CONFIG: Record<IncidenceType, { icon: typeof Plane; color: strin
  * Get incidences for a specific date
  */
 function getIncidencesForDate(date: Date, incidences: Incidence[]): Incidence[] {
+    const dateStr = format(date, 'yyyy-MM-dd');
     return incidences.filter(inc => {
         if (inc.status !== 'approved') return false;
-        const startDate = new Date(inc.startDate);
-        const endDate = new Date(inc.endDate);
-        return date >= startDate && date <= endDate;
+        const startStr = inc.startDate.substring(0, 10);
+        const endStr = inc.endDate.substring(0, 10);
+        return dateStr >= startStr && dateStr <= endStr;
     });
 }
 
@@ -208,13 +209,13 @@ export function TeamCalendar({ employees, incidences, onDayClick }: TeamCalendar
 
     // Calculate stats for current month
     const monthStats = useMemo(() => {
-        const monthStart = startOfMonth(currentMonth);
-        const monthEnd = endOfMonth(currentMonth);
+        const monthStartStr = format(startOfMonth(currentMonth), 'yyyy-MM-dd');
+        const monthEndStr = format(endOfMonth(currentMonth), 'yyyy-MM-dd');
 
         const monthIncidences = approvedIncidences.filter(inc => {
-            const startDate = new Date(inc.startDate);
-            const endDate = new Date(inc.endDate);
-            return (startDate <= monthEnd && endDate >= monthStart);
+            const startStr = inc.startDate.substring(0, 10);
+            const endStr = inc.endDate.substring(0, 10);
+            return (startStr <= monthEndStr && endStr >= monthStartStr);
         });
 
         const vacationDays = monthIncidences
@@ -350,8 +351,8 @@ export function TeamCalendar({ employees, incidences, onDayClick }: TeamCalendar
                 </CardHeader>
                 <CardContent>
                     {approvedIncidences
-                        .filter(inc => new Date(inc.startDate) >= new Date())
-                        .sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime())
+                        .filter(inc => inc.startDate.substring(0, 10) >= format(new Date(), 'yyyy-MM-dd'))
+                        .sort((a, b) => a.startDate.localeCompare(b.startDate))
                         .slice(0, 5)
                         .map(inc => {
                             const config = INCIDENCE_CONFIG[inc.type];
@@ -376,7 +377,7 @@ export function TeamCalendar({ employees, incidences, onDayClick }: TeamCalendar
                                 </div>
                             );
                         })}
-                    {approvedIncidences.filter(inc => new Date(inc.startDate) >= new Date()).length === 0 && (
+                    {approvedIncidences.filter(inc => inc.startDate.substring(0, 10) >= format(new Date(), 'yyyy-MM-dd')).length === 0 && (
                         <p className="text-sm text-muted-foreground text-center py-4">
                             No hay ausencias programadas
                         </p>

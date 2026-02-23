@@ -18,6 +18,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ShieldAlert, Download, FileSpreadsheet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
+import { usePermissions } from "@/hooks/use-permissions";
 
 const MAX_RECORDS = 1000; // Limit queries to prevent performance issues
 
@@ -67,7 +68,7 @@ function AccessDenied() {
 function ReportsView() {
     const { toast } = useToast();
     const { user, isUserLoading } = useUser();
-    const isAdmin = user?.role === 'Admin';
+    const { isAdmin } = usePermissions();
     const firestore = useFirestore();
 
     const [dateRange, setDateRange] = useState<DateRange | undefined>({

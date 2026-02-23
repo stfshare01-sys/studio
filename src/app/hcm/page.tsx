@@ -225,20 +225,22 @@ export default function HCMPage() {
                             </Card>
                         )}
 
-                        <Card className="bento-item">
-                            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                                <CardTitle className="text-sm font-medium">Permisos Pendientes</CardTitle>
-                                <Timer className="h-4 w-4 text-muted-foreground" />
-                            </CardHeader>
-                            <CardContent>
-                                <div className="text-2xl font-bold">
-                                    {isLoading ? '...' : pendingCount}
-                                </div>
-                                <p className="text-xs text-muted-foreground">
-                                    Requieren aprobación
-                                </p>
-                            </CardContent>
-                        </Card>
+                        {hasHRPermissions && (
+                            <Card className="bento-item">
+                                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                                    <CardTitle className="text-sm font-medium">Permisos Pendientes</CardTitle>
+                                    <Timer className="h-4 w-4 text-muted-foreground" />
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="text-2xl font-bold">
+                                        {isLoading ? '...' : pendingCount}
+                                    </div>
+                                    <p className="text-xs text-muted-foreground">
+                                        Requieren aprobación
+                                    </p>
+                                </CardContent>
+                            </Card>
+                        )}
 
                         {hasHRPermissions && (
                             <Card className="bento-item">
@@ -283,7 +285,9 @@ export default function HCMPage() {
                     <Tabs defaultValue="overview" className="space-y-4">
                         <TabsList>
                             <TabsTrigger value="overview">Resumen</TabsTrigger>
-                            <TabsTrigger value="onboarding">Onboarding</TabsTrigger>
+                            {hasHRPermissions && (
+                                <TabsTrigger value="onboarding">Onboarding</TabsTrigger>
+                            )}
                         </TabsList>
 
                         <TabsContent value="overview" className="space-y-4">
@@ -422,122 +426,128 @@ export default function HCMPage() {
                                 )}
 
                                 {/* Recent Imports */}
-                                <Card className="bento-item">
-                                    <CardHeader>
-                                        <CardTitle>Importaciones Recientes</CardTitle>
-                                        <CardDescription>Últimos archivos de asistencia cargados</CardDescription>
-                                    </CardHeader>
-                                    <CardContent>
-                                        {importsLoading ? (
-                                            <p className="text-sm text-muted-foreground">Cargando...</p>
-                                        ) : recentImports && recentImports.length > 0 ? (
-                                            <div className="space-y-3">
-                                                {recentImports.slice(0, 3).map((importBatch) => (
-                                                    <div key={importBatch.id} className="flex items-center justify-between">
-                                                        <div className="flex items-center gap-2">
-                                                            {importBatch.status === 'completed' ? (
-                                                                <CheckCircle2 className="h-4 w-4 text-green-500" />
-                                                            ) : importBatch.status === 'failed' ? (
-                                                                <XCircle className="h-4 w-4 text-red-500" />
-                                                            ) : (
-                                                                <AlertTriangle className="h-4 w-4 text-yellow-500" />
-                                                            )}
-                                                            <span className="text-sm truncate max-w-[150px]">{importBatch.filename}</span>
+                                {hasHRPermissions && (
+                                    <Card className="bento-item">
+                                        <CardHeader>
+                                            <CardTitle>Importaciones Recientes</CardTitle>
+                                            <CardDescription>Últimos archivos de asistencia cargados</CardDescription>
+                                        </CardHeader>
+                                        <CardContent>
+                                            {importsLoading ? (
+                                                <p className="text-sm text-muted-foreground">Cargando...</p>
+                                            ) : recentImports && recentImports.length > 0 ? (
+                                                <div className="space-y-3">
+                                                    {recentImports.slice(0, 3).map((importBatch) => (
+                                                        <div key={importBatch.id} className="flex items-center justify-between">
+                                                            <div className="flex items-center gap-2">
+                                                                {importBatch.status === 'completed' ? (
+                                                                    <CheckCircle2 className="h-4 w-4 text-green-500" />
+                                                                ) : importBatch.status === 'failed' ? (
+                                                                    <XCircle className="h-4 w-4 text-red-500" />
+                                                                ) : (
+                                                                    <AlertTriangle className="h-4 w-4 text-yellow-500" />
+                                                                )}
+                                                                <span className="text-sm truncate max-w-[150px]">{importBatch.filename}</span>
+                                                            </div>
+                                                            <span className="text-xs text-muted-foreground">
+                                                                {importBatch.recordCount} registros
+                                                            </span>
                                                         </div>
-                                                        <span className="text-xs text-muted-foreground">
-                                                            {importBatch.recordCount} registros
-                                                        </span>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        ) : (
-                                            <p className="text-sm text-muted-foreground">
-                                                No hay importaciones recientes
-                                            </p>
-                                        )}
-                                    </CardContent>
-                                </Card>
+                                                    ))}
+                                                </div>
+                                            ) : (
+                                                <p className="text-sm text-muted-foreground">
+                                                    No hay importaciones recientes
+                                                </p>
+                                            )}
+                                        </CardContent>
+                                    </Card>
+                                )}
 
                                 {/* Alerts */}
-                                <Card className="bento-item">
-                                    <CardHeader>
-                                        <CardTitle>Alertas</CardTitle>
-                                        <CardDescription>Notificaciones importantes</CardDescription>
-                                    </CardHeader>
-                                    <CardContent>
-                                        {pendingCount > 0 ? (
-                                            <div className="flex items-start gap-2 p-3 bg-yellow-50 dark:bg-yellow-950/20 rounded-lg">
-                                                <AlertTriangle className="h-5 w-5 text-yellow-500 mt-0.5" />
-                                                <div>
-                                                    <p className="text-sm font-medium">Permisos pendientes</p>
-                                                    <p className="text-xs text-muted-foreground">
-                                                        Hay {pendingCount} solicitudes esperando aprobación
-                                                    </p>
+                                {hasHRPermissions && (
+                                    <Card className="bento-item">
+                                        <CardHeader>
+                                            <CardTitle>Alertas</CardTitle>
+                                            <CardDescription>Notificaciones importantes</CardDescription>
+                                        </CardHeader>
+                                        <CardContent>
+                                            {pendingCount > 0 ? (
+                                                <div className="flex items-start gap-2 p-3 bg-yellow-50 dark:bg-yellow-950/20 rounded-lg">
+                                                    <AlertTriangle className="h-5 w-5 text-yellow-500 mt-0.5" />
+                                                    <div>
+                                                        <p className="text-sm font-medium">Permisos pendientes</p>
+                                                        <p className="text-xs text-muted-foreground">
+                                                            Hay {pendingCount} solicitudes esperando aprobación
+                                                        </p>
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        ) : (
-                                            <p className="text-sm text-muted-foreground">
-                                                No hay alertas activas
-                                            </p>
-                                        )}
-                                    </CardContent>
-                                </Card>
+                                            ) : (
+                                                <p className="text-sm text-muted-foreground">
+                                                    No hay alertas activas
+                                                </p>
+                                            )}
+                                        </CardContent>
+                                    </Card>
+                                )}
                             </div>
                         </TabsContent>
 
-                        <TabsContent value="onboarding" className="space-y-4">
-                            <Card className="bento-item">
-                                <CardHeader>
-                                    <CardTitle>Empleados en Onboarding</CardTitle>
-                                    <CardDescription>
-                                        Seguimiento del proceso de integración
-                                    </CardDescription>
-                                </CardHeader>
-                                <CardContent>
-                                    {employeesLoading ? (
-                                        <p className="text-sm text-muted-foreground">Cargando...</p>
-                                    ) : employees?.filter(e => e.onboardingStatus && e.onboardingStatus !== 'completed').length ? (
-                                        <div className="space-y-3">
-                                            {employees
-                                                .filter(e => e.onboardingStatus && e.onboardingStatus !== 'completed')
-                                                .map((employee) => (
-                                                    <div
-                                                        key={employee.id}
-                                                        className="flex items-center justify-between p-3 border rounded-lg"
-                                                    >
-                                                        <div>
-                                                            <p className="font-medium">{employee.fullName}</p>
-                                                            <p className="text-sm text-muted-foreground">
-                                                                {employee.positionTitle} • {employee.department}
-                                                            </p>
+                        {hasHRPermissions && (
+                            <TabsContent value="onboarding" className="space-y-4">
+                                <Card className="bento-item">
+                                    <CardHeader>
+                                        <CardTitle>Empleados en Onboarding</CardTitle>
+                                        <CardDescription>
+                                            Seguimiento del proceso de integración
+                                        </CardDescription>
+                                    </CardHeader>
+                                    <CardContent>
+                                        {employeesLoading ? (
+                                            <p className="text-sm text-muted-foreground">Cargando...</p>
+                                        ) : employees?.filter(e => e.onboardingStatus && e.onboardingStatus !== 'completed').length ? (
+                                            <div className="space-y-3">
+                                                {employees
+                                                    .filter(e => e.onboardingStatus && e.onboardingStatus !== 'completed')
+                                                    .map((employee) => (
+                                                        <div
+                                                            key={employee.id}
+                                                            className="flex items-center justify-between p-3 border rounded-lg"
+                                                        >
+                                                            <div>
+                                                                <p className="font-medium">{employee.fullName}</p>
+                                                                <p className="text-sm text-muted-foreground">
+                                                                    {employee.positionTitle} • {employee.department}
+                                                                </p>
+                                                            </div>
+                                                            <div className="text-right">
+                                                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${employee.onboardingStatus === 'day_0' ? 'bg-blue-100 text-blue-800' :
+                                                                    employee.onboardingStatus === 'day_30' ? 'bg-yellow-100 text-yellow-800' :
+                                                                        employee.onboardingStatus === 'day_60' ? 'bg-orange-100 text-orange-800' :
+                                                                            'bg-green-100 text-green-800'
+                                                                    }`}>
+                                                                    {employee.onboardingStatus === 'day_0' ? 'Día 0' :
+                                                                        employee.onboardingStatus === 'day_30' ? 'Día 30' :
+                                                                            employee.onboardingStatus === 'day_60' ? 'Día 60' :
+                                                                                employee.onboardingStatus === 'day_90' ? 'Día 90' :
+                                                                                    employee.onboardingStatus}
+                                                                </span>
+                                                            </div>
                                                         </div>
-                                                        <div className="text-right">
-                                                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${employee.onboardingStatus === 'day_0' ? 'bg-blue-100 text-blue-800' :
-                                                                employee.onboardingStatus === 'day_30' ? 'bg-yellow-100 text-yellow-800' :
-                                                                    employee.onboardingStatus === 'day_60' ? 'bg-orange-100 text-orange-800' :
-                                                                        'bg-green-100 text-green-800'
-                                                                }`}>
-                                                                {employee.onboardingStatus === 'day_0' ? 'Día 0' :
-                                                                    employee.onboardingStatus === 'day_30' ? 'Día 30' :
-                                                                        employee.onboardingStatus === 'day_60' ? 'Día 60' :
-                                                                            employee.onboardingStatus === 'day_90' ? 'Día 90' :
-                                                                                employee.onboardingStatus}
-                                                            </span>
-                                                        </div>
-                                                    </div>
-                                                ))}
-                                        </div>
-                                    ) : (
-                                        <p className="text-sm text-muted-foreground">
-                                            No hay empleados en proceso de onboarding
-                                        </p>
-                                    )}
-                                </CardContent>
-                            </Card>
-                        </TabsContent>
+                                                    ))}
+                                            </div>
+                                        ) : (
+                                            <p className="text-sm text-muted-foreground">
+                                                No hay empleados en proceso de onboarding
+                                            </p>
+                                        )}
+                                    </CardContent>
+                                </Card>
+                            </TabsContent>
+                        )}
                     </Tabs>
                 </main>
-            </div>
-        </SiteLayout>
+            </div >
+        </SiteLayout >
     );
 }
