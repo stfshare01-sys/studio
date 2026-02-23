@@ -285,10 +285,9 @@ service cloud.firestore {
      * @path /employees/{employeeId}
      */
     match /employees/{employeeId} {
-      // Employees can read their own data, HR/Admin/Manager can read any
-      allow get: if isManagerOrHR() || isOwner(employeeId);
-      // HR, Admin, and Managers can list employees (Manager queries filter by directManagerId)
-      allow list: if isManagerOrHR();
+      // All authenticated users can read employees (needed for org chart hierarchy)
+      // Sensitive salary data is in the separate 'compensation' collection
+      allow read: if isSignedIn();
       // Only HR and Admin can create/update employee records
       allow create, update: if isHRManager();
       // Admin solo puede borrar si ya está inactivo (Soft delete enforce)
