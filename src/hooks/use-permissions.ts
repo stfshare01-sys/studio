@@ -49,18 +49,13 @@ export function usePermissions(): UsePermissionsReturn {
 
       try {
         const userRole = user.role || 'Member';
-        // For system roles, use cached permissions
-        if (isSystemRole(userRole)) {
-          setPermissions(SYSTEM_ROLES[userRole]);
-        } else {
-          // For custom roles, fetch from Firestore
-          const userPermissions = await getUserPermissions(
-            firestore,
-            userRole,
-            user.customRoleId || undefined
-          );
-          setPermissions(userPermissions);
-        }
+        // Always call getUserPermissions — it checks Firestore for admin overrides
+        const userPermissions = await getUserPermissions(
+          firestore,
+          userRole,
+          user.customRoleId || undefined
+        );
+        setPermissions(userPermissions);
       } catch (error) {
         console.error('Error loading permissions:', error);
         // Default to Member permissions on error
