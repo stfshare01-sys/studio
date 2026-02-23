@@ -187,14 +187,20 @@ export function OrgChartNode({ node, depth = 0, onEmployeeClick }: OrgChartNodeP
             {hasChildren && isExpanded && (
                 <div className="flex flex-col items-center animate-in fade-in slide-in-from-top-4 duration-300">
                     {/* Vertical line from parent to children-bar */}
-                    <div className="w-px h-6 bg-border" />
+                    <div className="w-[2px] h-6 bg-slate-400 dark:bg-slate-500 z-0" />
 
                     {/* Container for children */}
-                    <div className="flex gap-4 pt-4 border-t border-border relative">
+                    <div className="flex flex-nowrap w-max gap-4 pt-4 relative">
+                        {/* Horizontal connector line perfectly going from middle of first child to middle of last child */}
+                        {node.children.length > 1 && (
+                            <div className="absolute top-0 h-[2px] bg-slate-400 dark:bg-slate-500 z-0"
+                                style={{ left: '140px', right: '140px' }}
+                            />
+                        )}
                         {node.children.map((child) => (
                             <div key={child.id} className="relative flex flex-col items-center">
                                 {/* Vertical line TO child */}
-                                <div className="absolute -top-4 left-1/2 -translate-x-1/2 w-px h-4 bg-border" />
+                                <div className="absolute -top-4 left-1/2 -translate-x-1/2 w-[2px] h-4 bg-slate-400 dark:bg-slate-500 z-0" />
                                 <OrgChartNode node={child} depth={depth + 1} onEmployeeClick={onEmployeeClick} />
                             </div>
                         ))}
