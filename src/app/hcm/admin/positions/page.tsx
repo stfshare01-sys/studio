@@ -485,7 +485,7 @@ export default function PositionsAdminPage() {
                                                 }
                                             />
                                             <Label htmlFor="canApproveIncidences">
-                                                Puede aprobar incidencias
+                                                Puede aprobar permisos
                                             </Label>
                                         </div>
                                         <div className="flex items-center space-x-2">

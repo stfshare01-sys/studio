@@ -57,7 +57,7 @@ import { callConsolidatePrenomina, callGeneratePayrollReports } from '@/firebase
 import { NOMIPAQ_CODES } from '@/types/hcm-operational';
 
 /**
- * Consolidación de Asistencia - Revisión y cierre de incidencias para nómina
+ * Consolidación de Asistencia - Revisión y cierre de permisos para nómina
  * Esta pantalla NO incluye cálculos monetarios, solo datos de asistencia
  */
 export default function ConsolidacionAsistenciaPage() {
@@ -266,12 +266,12 @@ export default function ConsolidacionAsistenciaPage() {
             }
 
             // 1. Validate pending incidences
-            setConsolidationStep('Validando incidencias pendientes...');
+            setConsolidationStep('Validando permisos pendientes...');
             const pendingIncidences = await getPendingIncidences(selectedPeriod.start, selectedPeriod.end);
 
             if (pendingIncidences.length > 0) {
                 setValidationErrors([
-                    `Existen ${pendingIncidences.length} incidencias pendientes de aprobar/rechazar en este período. Revísalas antes de continuar.`
+                    `Existen ${pendingIncidences.length} permisos pendientes de aprobar/rechazar en este período. Revísalas antes de continuar.`
                 ]);
                 setIsConsolidating(false);
                 setConsolidationStep('');
@@ -1039,7 +1039,7 @@ export default function ConsolidacionAsistenciaPage() {
                             <DialogHeader>
                                 <DialogTitle>Cerrar Período y Consolidar</DialogTitle>
                                 <DialogDescription>
-                                    Este proceso validará incidencias, ejecutará SLA y consolidará la prenómina
+                                    Este proceso validará permisos, ejecutará SLA y consolidará la prenómina
                                 </DialogDescription>
                             </DialogHeader>
 
@@ -1047,7 +1047,7 @@ export default function ConsolidacionAsistenciaPage() {
                                 <div className="bg-muted/50 rounded-lg p-3 text-sm">
                                     <p className="font-medium mb-1">Este proceso realizará:</p>
                                     <ul className="text-muted-foreground space-y-1">
-                                        <li>• Validación de incidencias pendientes</li>
+                                        <li>• Validación de permisos pendientes</li>
                                         <li>• Ejecución de SLA para infracciones del período</li>
                                         <li>• Consolidación de prenómina</li>
                                         <li>• Cierre del período (no reversible)</li>

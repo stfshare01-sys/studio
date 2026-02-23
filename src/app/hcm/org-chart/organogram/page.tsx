@@ -1,31 +1,40 @@
 
 "use client";
 
+import React, { useState, useRef, useMemo } from "react";
 import SiteLayout from "@/components/site-layout";
 import { useFirestore, useCollection, useMemoFirebase } from "@/firebase";
 import { collection, query, where, orderBy } from "firebase/firestore";
-import type { Employee } from "@/lib/types";
+import type { Employee, User } from "@/lib/types";
 import { OrgChartTree, EmployeeDetailPanel } from "@/components/hcm/org-chart";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Maximize2, ZoomIn, ZoomOut } from "lucide-react";
 import Link from "next/link";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useState, useRef } from "react";
 
 export default function OrgChartPage() {
     const firestore = useFirestore();
     const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
 
-    const employeesQuery = useMemoFirebase(() => {
+    const usersQuery = useMemoFirebase(() => {
         if (!firestore) return null;
         return query(
-            collection(firestore, 'employees'),
+            collection(firestore, 'users'),
             where('status', '==', 'active'),
             orderBy('fullName', 'asc')
         );
     }, [firestore]);
 
-    const { data: employees, isLoading } = useCollection<Employee>(employeesQuery);
+    const { data: users, isLoading } = useCollection<User>(usersQuery);
+
+    const employees = useMemo(() => {
+        if (!users) return null;
+        return users.map(u => ({
+            ...u,
+            directManagerId: u.managerId,
+            positionTitle: u.department || 'Sin Puesto Asignado',
+        } as unknown as Employee));
+    }, [users]);
 
     // Zoom & Pan State
     const [scale, setScale] = useState(0.8);

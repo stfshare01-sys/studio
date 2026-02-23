@@ -370,7 +370,7 @@ export default function IncidencesPage() {
                             </Link>
                         </Button>
                         <div>
-                            <h1 className="text-2xl font-bold tracking-tight">Gestión de Incidencias</h1>
+                            <h1 className="text-2xl font-bold tracking-tight">Gestión de Permisos</h1>
                             <p className="text-muted-foreground">
                                 Permisos, vacaciones, incapacidades y ausencias
                             </p>
@@ -491,7 +491,7 @@ export default function IncidencesPage() {
                         /* Incidences Table */
                         <Card>
                             <CardHeader>
-                                <CardTitle>Incidencias</CardTitle>
+                                <CardTitle>Permisos</CardTitle>
                                 <CardDescription>
                                     {isLoading ? 'Cargando...' : `${filteredIncidences.length} registros`}
                                 </CardDescription>
@@ -513,13 +513,13 @@ export default function IncidencesPage() {
                                         {isLoading ? (
                                             <TableRow>
                                                 <TableCell colSpan={7} className="text-center py-8">
-                                                    Cargando incidencias...
+                                                    Cargando permisos...
                                                 </TableCell>
                                             </TableRow>
                                         ) : filteredIncidences.length === 0 ? (
                                             <TableRow>
                                                 <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                                                    No se encontraron incidencias
+                                                    No se encontraron permisos
                                                 </TableCell>
                                             </TableRow>
                                         ) : (

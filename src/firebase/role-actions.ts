@@ -204,9 +204,9 @@ export const MODULE_INFO: Record<AppModule, { name: string; description: string;
   admin_roles: { name: 'Gestión de Roles', description: 'Crear y gestionar roles y permisos', category: 'admin' },
   hcm_employees: { name: 'Empleados', description: 'Gestionar perfiles de empleados', category: 'hcm' },
   hcm_attendance: { name: 'Asistencia', description: 'Registros de asistencia diaria', category: 'hcm' },
-  hcm_incidences: { name: 'Incidencias', description: 'Permisos, vacaciones y ausencias', category: 'hcm' },
+  hcm_incidences: { name: 'Permisos', description: 'Permisos, vacaciones y ausencias', category: 'hcm' },
   hcm_prenomina: { name: 'Pre-nómina', description: 'Consolidación de nómina', category: 'hcm' },
-  hcm_calendar: { name: 'Calendario', description: 'Calendario de incidencias del equipo', category: 'hcm' },
+  hcm_calendar: { name: 'Calendario', description: 'Calendario de permisos del equipo', category: 'hcm' },
   hcm_org_chart: { name: 'Organigrama', description: 'Estructura organizacional', category: 'hcm' },
   hcm_talent_grid: { name: 'Talent Grid', description: 'Matriz 9-box de talento', category: 'hcm' },
   hcm_team_management: { name: 'Gestión de Equipo', description: 'Administrar retardos, horas extras y turnos de subordinados', category: 'hcm' },
@@ -564,7 +564,7 @@ function getSystemRoleDescription(role: SystemRole): string {
     Designer: 'Diseño de flujos de trabajo y plantillas',
     Member: 'Usuario estándar con acceso básico',
     HRManager: 'Gestión completa de recursos humanos',
-    Manager: 'Supervisión de equipo y aprobación de incidencias',
+    Manager: 'Supervisión de equipo y aprobación de permisos',
   };
   return descriptions[role];
 }

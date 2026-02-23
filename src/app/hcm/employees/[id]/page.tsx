@@ -327,7 +327,7 @@ export default function EmployeeDetailPage({ params }: { params: Promise<{ id: s
                         <TabsList className="grid w-full grid-cols-4 lg:w-[800px]">
                             <TabsTrigger value="general">General</TabsTrigger>
                             <TabsTrigger value="attendance">Asistencia</TabsTrigger>
-                            <TabsTrigger value="incidences">Incidencias</TabsTrigger>
+                            <TabsTrigger value="incidences">Permisos</TabsTrigger>
                             <TabsTrigger value="kardex">Kardex</TabsTrigger>
                         </TabsList>
 
@@ -488,7 +488,7 @@ export default function EmployeeDetailPage({ params }: { params: Promise<{ id: s
                         <TabsContent value="incidences" className="mt-6">
                             <Card>
                                 <CardHeader>
-                                    <CardTitle>Historial de Incidencias</CardTitle>
+                                    <CardTitle>Historial de Permisos</CardTitle>
                                     <CardDescription>Vacaciones, permisos e incapacidades</CardDescription>
                                 </CardHeader>
                                 <CardContent>
@@ -555,7 +555,7 @@ export default function EmployeeDetailPage({ params }: { params: Promise<{ id: s
                                         {(!incidences || incidences.length === 0) && (
                                             <div className="text-center py-12">
                                                 <AlertCircle className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
-                                                <p className="text-muted-foreground">No hay incidencias registradas.</p>
+                                                <p className="text-muted-foreground">No hay permisos registrados.</p>
                                             </div>
                                         )}
                                     </div>

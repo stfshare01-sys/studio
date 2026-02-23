@@ -44,7 +44,7 @@ const connectors = [
   },
   {
     name: "Jira",
-    description: "Cree y actualice incidencias y tareas de forma automática.",
+    description: "Cree y actualice permisos y tareas de forma automática.",
     icon: <JiraIcon className="h-8 w-8" />,
   },
   {

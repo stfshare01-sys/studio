@@ -320,10 +320,10 @@ export default function CommandCenterPage() {
     if (metrics.oldPendingIncidences > 0) {
       alertList.push({
         type: "danger",
-        title: `${metrics.oldPendingIncidences} incidencias sin aprobar > 48 horas`,
+        title: `${metrics.oldPendingIncidences} permisos sin aprobar > 48 horas`,
         description:
           "Hay solicitudes de incidencia que requieren atención urgente.",
-        actionLabel: "Ver incidencias",
+        actionLabel: "Ver permisos",
         actionHref: "/hcm/incidences",
       });
     }
@@ -341,7 +341,7 @@ export default function CommandCenterPage() {
     if (metrics.totalPendingIncidences > 10) {
       alertList.push({
         type: "warning",
-        title: `${metrics.totalPendingIncidences} incidencias pendientes`,
+        title: `${metrics.totalPendingIncidences} permisos pendientes`,
         description:
           "Hay un alto número de solicitudes esperando aprobación.",
         actionLabel: "Revisar",
@@ -435,7 +435,7 @@ export default function CommandCenterPage() {
               isLoading={isLoading}
             />
             <KpiCard
-              title="Incidencias Pendientes"
+              title="Permisos Pendientes"
               value={metrics.totalPendingIncidences}
               icon={Timer}
               subtitle="esperando aprobación"
@@ -604,7 +604,7 @@ export default function CommandCenterPage() {
             <Button variant="outline" className="h-auto py-4" asChild>
               <Link href="/hcm/incidences" className="flex flex-col items-center gap-2">
                 <FileCheck className="h-6 w-6" />
-                <span>Revisar Incidencias</span>
+                <span>Revisar Permisos</span>
               </Link>
             </Button>
             <Button variant="outline" className="h-auto py-4" asChild>

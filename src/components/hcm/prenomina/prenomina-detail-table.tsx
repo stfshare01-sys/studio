@@ -86,7 +86,7 @@ export function PrenominaDetailTable({ records, periodStart, periodEnd }: Prenom
                         <XCircle className="h-5 w-5 text-red-500" />
                     </TooltipTrigger>
                     <TooltipContent>
-                        <p>No elegible: {reason || 'Tiene incidencias'}</p>
+                        <p>No elegible: {reason || 'Tiene permisos'}</p>
                     </TooltipContent>
                 </Tooltip>
             </TooltipProvider>
@@ -204,7 +204,7 @@ export function PrenominaDetailTable({ records, periodStart, periodEnd }: Prenom
 }
 
 /**
- * Leyenda de códigos de incidencias
+ * Leyenda de códigos de permisos
  */
 export function IncidenceCodeLegend() {
     const codes = [

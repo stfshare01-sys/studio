@@ -220,7 +220,7 @@ export default function TeamCalendarPage() {
                             <CardTitle>Calendario de Ausencias</CardTitle>
                             <CardDescription>
                                 {isLoading ? 'Cargando...' :
-                                    `${totalEmployees} empleados • ${incidences?.length ?? 0} incidencias aprobadas`}
+                                    `${totalEmployees} empleados • ${incidences?.length ?? 0} permisos aprobados`}
                             </CardDescription>
                         </CardHeader>
                         <CardContent>

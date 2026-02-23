@@ -175,7 +175,7 @@ export default function HCMPage() {
                             Capital Humano
                         </h1>
                         <p className="text-muted-foreground mt-1">
-                            Gestión de personal, incidencias y pre-nómina
+                            Gestión de personal, permisos y pre-nómina
                         </p>
                     </div>
                     <div className="flex gap-2">
@@ -225,7 +225,7 @@ export default function HCMPage() {
 
                         <Card className="bento-item">
                             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                                <CardTitle className="text-sm font-medium">Incidencias Pendientes</CardTitle>
+                                <CardTitle className="text-sm font-medium">Permisos Pendientes</CardTitle>
                                 <Timer className="h-4 w-4 text-muted-foreground" />
                             </CardHeader>
                             <CardContent>
@@ -281,7 +281,6 @@ export default function HCMPage() {
                     <Tabs defaultValue="overview" className="space-y-4">
                         <TabsList>
                             <TabsTrigger value="overview">Resumen</TabsTrigger>
-                            <TabsTrigger value="incidences">Incidencias Pendientes</TabsTrigger>
                             <TabsTrigger value="onboarding">Onboarding</TabsTrigger>
                         </TabsList>
 
@@ -314,7 +313,7 @@ export default function HCMPage() {
                                             <Button asChild variant="outline" className="justify-start">
                                                 <Link href="/hcm/incidences">
                                                     <Calendar className="mr-2 h-4 w-4" />
-                                                    Gestionar Incidencias
+                                                    Gestionar Permisos
                                                 </Link>
                                             </Button>
                                         )}
@@ -468,7 +467,7 @@ export default function HCMPage() {
                                             <div className="flex items-start gap-2 p-3 bg-yellow-50 dark:bg-yellow-950/20 rounded-lg">
                                                 <AlertTriangle className="h-5 w-5 text-yellow-500 mt-0.5" />
                                                 <div>
-                                                    <p className="text-sm font-medium">Incidencias pendientes</p>
+                                                    <p className="text-sm font-medium">Permisos pendientes</p>
                                                     <p className="text-xs text-muted-foreground">
                                                         Hay {pendingCount} solicitudes esperando aprobación
                                                     </p>
@@ -482,61 +481,6 @@ export default function HCMPage() {
                                     </CardContent>
                                 </Card>
                             </div>
-                        </TabsContent>
-
-                        <TabsContent value="incidences" className="space-y-4">
-                            <Card className="bento-item">
-                                <CardHeader>
-                                    <CardTitle>Incidencias Pendientes de Aprobación</CardTitle>
-                                    <CardDescription>
-                                        Solicitudes de permisos, vacaciones e incapacidades
-                                    </CardDescription>
-                                </CardHeader>
-                                <CardContent>
-                                    {incidencesLoading ? (
-                                        <p className="text-sm text-muted-foreground">Cargando incidencias...</p>
-                                    ) : pendingIncidences && pendingIncidences.length > 0 ? (
-                                        <div className="space-y-3">
-                                            {pendingIncidences.map((incidence) => (
-                                                <div
-                                                    key={incidence.id}
-                                                    className="flex items-center justify-between p-3 border rounded-lg"
-                                                >
-                                                    <div>
-                                                        <p className="font-medium">{incidence.employeeName}</p>
-                                                        <p className="text-sm text-muted-foreground">
-                                                            {incidence.type === 'vacation' ? 'Vacaciones' :
-                                                                incidence.type === 'sick_leave' ? 'Incapacidad' :
-                                                                    incidence.type === 'personal_leave' ? 'Permiso Personal' :
-                                                                        incidence.type}
-                                                            {' • '}
-                                                            {incidence.startDate} - {incidence.endDate}
-                                                            {' • '}
-                                                            {incidence.totalDays} días
-                                                        </p>
-                                                    </div>
-                                                    <Button asChild size="sm">
-                                                        <Link href={`/hcm/incidences`}>
-                                                            Revisar
-                                                        </Link>
-                                                    </Button>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    ) : (
-                                        <p className="text-sm text-muted-foreground">
-                                            No hay incidencias pendientes de aprobación
-                                        </p>
-                                    )}
-                                    <div className="mt-4">
-                                        <Button asChild variant="outline">
-                                            <Link href="/hcm/incidences">
-                                                Ver todas las incidencias
-                                            </Link>
-                                        </Button>
-                                    </div>
-                                </CardContent>
-                            </Card>
                         </TabsContent>
 
                         <TabsContent value="onboarding" className="space-y-4">
