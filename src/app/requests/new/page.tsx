@@ -14,7 +14,7 @@ import { addDocumentNonBlocking, setDocumentNonBlocking, useCollection, useFires
 import { useToast } from "@/hooks/use-toast";
 import { usePermissions } from "@/hooks/use-permissions";
 import { hasPermission } from "@/firebase/role-actions";
-import { Template, User, FormField, FieldLayoutConfig, InitiatorPermission } from "@/lib/types";
+import type { Request, Template, User, FormField, InitiatorPermission, WorkflowStepDefinition, Employee, FieldLayoutConfig } from "@/lib/types";
 import { collection, doc } from "firebase/firestore";
 import { ref as storageRef, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import { Loader2, XCircle, Check, ChevronsUpDown, Search, User as UserIcon } from "lucide-react";
@@ -160,6 +160,9 @@ function NewRequestPageContent() {
     const usersQuery = useMemoFirebase(() => collection(firestore, 'users'), [firestore]);
     const { data: users } = useCollection<User>(usersQuery);
 
+    const employeesQuery = useMemoFirebase(() => collection(firestore, 'employees'), [firestore]);
+    const { data: employees } = useCollection<Employee>(employeesQuery);
+
     const { permissions, isAdmin } = usePermissions();
 
     // Request On Behalf Of State
@@ -185,8 +188,14 @@ function NewRequestPageContent() {
         }
 
         // 2. Manager: Direct reports + Self
-        // Check if I am anyone's manager
-        const mySubordinates = users.filter(u => u.managerId === user.uid);
+        // Find employees who report to the current user
+        const subordinateEmployeeIds = employees
+            ?.filter(emp => emp.directManagerId === user.uid)
+            .map(emp => emp.id) || [];
+
+        // Get the corresponding user records
+        const mySubordinates = users.filter(u => subordinateEmployeeIds.includes(u.id));
+
         if (mySubordinates.length > 0) {
             // Include self
             const self = users.find(u => u.id === user.uid);

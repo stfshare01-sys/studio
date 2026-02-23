@@ -9,7 +9,18 @@
  * true server-side execution, Cloud Functions should be used instead.
  */
 
-import { Firestore, doc, collection, getDoc, runTransaction, writeBatch } from 'firebase/firestore';
+import {
+    Firestore,
+    doc,
+    collection,
+    getDoc,
+    serverTimestamp,
+    getDocs,
+    query,
+    where,
+    runTransaction,
+    writeBatch
+} from "firebase/firestore";
 import type { Task, Request, Template, User, WorkflowStepDefinition, Rule } from './types';
 import { addDocumentNonBlocking, updateDocumentNonBlocking, setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import { intelligentTaskAssignment } from '@/ai/flows/intelligent-task-assignment';
@@ -305,6 +316,31 @@ export async function completeTaskAndProgressWorkflow({
             updatedAt: now,
             steps: updatedSteps,
         });
+
+        // Cancel all other pending tasks for this request
+        try {
+            const tasksQuery = query(
+                collection(firestore, 'tasks'),
+                where('requestId', '==', request.id),
+                where('status', '==', 'Pending')
+            );
+            // We can't await inside the non-blocking flow easily without making it block,
+            // but we can just fire off the updates. To safely getDocs we should await it here.
+            getDocs(tasksQuery).then(snapshot => {
+                snapshot.docs.forEach(docSnap => {
+                    // Don't cancel the task we just completed
+                    if (docSnap.id !== task.id) {
+                        updateDocumentNonBlocking(docSnap.ref, {
+                            status: 'Cancelled',
+                            completedAt: now
+                        });
+                    }
+                });
+            }).catch(err => console.error("Error cancelling sibling tasks:", err));
+        } catch (e) {
+            console.error("Failed to initiate task cancellation query", e);
+        }
+
         const notificationRef = collection(firestore, 'users', request.submittedBy, 'notifications');
         addDocumentNonBlocking(notificationRef, {
             title: 'Solicitud Rechazada',
