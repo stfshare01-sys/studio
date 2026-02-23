@@ -230,9 +230,17 @@ export const MODULE_INFO: Record<AppModule, { name: string; description: string;
   hcm_admin_vacation: { name: 'Gestión de Vacaciones', description: 'Ajustar saldos de vacaciones individual y masivamente', category: 'hcm' },
 };
 
-// Check if a role is a system role
+// System role names (canonical PascalCase)
+const SYSTEM_ROLE_NAMES: SystemRole[] = ['Admin', 'Member', 'Designer', 'HRManager', 'Manager'];
+
+// Check if a role is a system role (case-insensitive)
 export function isSystemRole(role: string): role is SystemRole {
-  return ['Admin', 'Member', 'Designer', 'HRManager', 'Manager'].includes(role);
+  return SYSTEM_ROLE_NAMES.some(r => r.toLowerCase() === role.toLowerCase());
+}
+
+// Normalize a role ID (possibly lowercase) to its canonical PascalCase system role name
+function normalizeSystemRoleName(roleId: string): SystemRole {
+  return SYSTEM_ROLE_NAMES.find(r => r.toLowerCase() === roleId.toLowerCase()) || roleId as SystemRole;
 }
 
 // -------------------------------------------------------------------------
@@ -381,8 +389,8 @@ export async function updateRole(
   }>,
   isAdminUser: boolean = false
 ): Promise<void> {
-  // Check if it's a system role
-  const isSystem = isSystemRole(roleId) || isSystemRole(roleId.charAt(0).toUpperCase() + roleId.slice(1));
+  // Check if it's a system role (case-insensitive)
+  const isSystem = isSystemRole(roleId);
 
   // Only admins can edit system roles
   if (isSystem && !isAdminUser) {
@@ -391,7 +399,7 @@ export async function updateRole(
 
   // For system roles, we need to update them in Firestore (create if not exists)
   if (isSystem) {
-    const systemRoleName = roleId.charAt(0).toUpperCase() + roleId.slice(1);
+    const systemRoleName = normalizeSystemRoleName(roleId);
     const roleRef = doc(firestore, 'roles', roleId);
     const snapshot = await getDoc(roleRef);
 
@@ -451,7 +459,7 @@ export async function updateRole(
  */
 export async function deleteRole(firestore: Firestore, roleId: string): Promise<void> {
   // Prevent deleting system roles
-  if (isSystemRole(roleId) || isSystemRole(roleId.charAt(0).toUpperCase() + roleId.slice(1))) {
+  if (isSystemRole(roleId)) {
     throw new Error('No se pueden eliminar los roles del sistema');
   }
 

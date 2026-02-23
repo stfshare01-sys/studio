@@ -141,6 +141,7 @@ function NewRequestPageContent() {
     const { data: firestoreTemplates } = useCollection<Template>(templatesRef);
 
     // Merge Firestore templates with System templates (fallbacks)
+    // Only show published templates (draft/archived are hidden from solicitud creation)
     const allTemplates = useMemo(() => {
         const dbTemplates = firestoreTemplates || [];
         const merged = [...dbTemplates];
@@ -151,7 +152,9 @@ function NewRequestPageContent() {
                 merged.push(sysTpl);
             }
         });
-        return merged;
+
+        // Filter: only published or legacy templates (no status = treat as published)
+        return merged.filter(t => !t.status || t.status === 'published');
     }, [firestoreTemplates]);
 
     const usersQuery = useMemoFirebase(() => collection(firestore, 'users'), [firestore]);

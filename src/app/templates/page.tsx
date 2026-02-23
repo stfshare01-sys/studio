@@ -4,19 +4,20 @@
 import SiteLayout from "@/components/site-layout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { FilePlus, FolderKanban, WandSparkles, Pencil, Globe, Lock } from "lucide-react";
+import { FilePlus, FolderKanban, WandSparkles, Pencil, Globe, Lock, ToggleLeft, ToggleRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase";
-import { collection, doc, setDoc } from "firebase/firestore";
+import { collection, doc, setDoc, updateDoc } from "firebase/firestore";
 import type { Template } from "@/lib/types";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { SimulateChangeDialog } from "@/components/templates/simulate-change-dialog";
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { preInstalledTemplates } from "@/lib/pre-installed-templates";
 import { usePermissions } from "@/hooks/use-permissions";
+import { useToast } from "@/hooks/use-toast";
 
 function TemplateSkeleton() {
     return (
@@ -53,6 +54,30 @@ export default function TemplatesPage() {
     const { data: templates, isLoading } = useCollection<Template>(templatesRef);
 
     const [simulationTemplate, setSimulationTemplate] = React.useState<Template | null>(null);
+    const [togglingId, setTogglingId] = useState<string | null>(null);
+    const { toast } = useToast();
+
+    const handleToggleStatus = async (template: Template) => {
+        if (!firestore) return;
+        setTogglingId(template.id);
+        try {
+            const newStatus = template.status === 'published' ? 'draft' : 'published';
+            const templateRef = doc(firestore, 'request_templates', template.id);
+            await updateDoc(templateRef, {
+                status: newStatus,
+                updatedAt: new Date().toISOString(),
+                ...(newStatus === 'published' ? { publishedAt: new Date().toISOString() } : {}),
+            });
+            toast({
+                title: newStatus === 'published' ? 'Plantilla publicada' : 'Plantilla despublicada',
+                description: `"${template.name}" ahora está ${newStatus === 'published' ? 'disponible para solicitudes' : 'en modo borrador'}.`,
+            });
+        } catch (error: any) {
+            toast({ title: 'Error', description: error.message || 'No se pudo cambiar el estado.', variant: 'destructive' });
+        } finally {
+            setTogglingId(null);
+        }
+    };
 
     // Seeding logic for pre-installed templates
     useEffect(() => {
@@ -144,9 +169,15 @@ export default function TemplatesPage() {
                                     </div>
                                 </CardContent>
                                 <CardFooter className="grid grid-cols-2 gap-2">
-                                    <Button asChild className="w-full">
-                                        <Link href={`/requests/new?templateId=${template.id}`}>Usar</Link>
-                                    </Button>
+                                    {template.status === 'published' ? (
+                                        <Button asChild className="w-full">
+                                            <Link href={`/requests/new?templateId=${template.id}`}>Usar</Link>
+                                        </Button>
+                                    ) : (
+                                        <Button variant="outline" className="w-full" disabled>
+                                            <Lock className="mr-2 h-4 w-4" /> Borrador
+                                        </Button>
+                                    )}
                                     {canCreate ? (
                                         <Button variant="outline" asChild className="w-full">
                                             <Link href={`/templates/edit/${template.id}`}>
@@ -155,6 +186,25 @@ export default function TemplatesPage() {
                                             </Link>
                                         </Button>
                                     ) : <div />}
+                                    {canCreate && (
+                                        <Button
+                                            variant="ghost"
+                                            className={cn(
+                                                "col-span-2 w-full text-sm",
+                                                template.status === 'published'
+                                                    ? 'text-green-600 hover:text-green-700'
+                                                    : 'text-muted-foreground hover:text-foreground'
+                                            )}
+                                            disabled={togglingId === template.id}
+                                            onClick={() => handleToggleStatus(template)}
+                                        >
+                                            {template.status === 'published' ? (
+                                                <><ToggleRight className="mr-2 h-4 w-4" /> Publicada — Clic para despublicar</>
+                                            ) : (
+                                                <><ToggleLeft className="mr-2 h-4 w-4" /> Borrador — Clic para publicar</>
+                                            )}
+                                        </Button>
+                                    )}
                                     {isAdmin && (
                                         <div className="col-span-2">
                                             <Button variant="secondary" className="w-full" onClick={() => setSimulationTemplate(template)}>
