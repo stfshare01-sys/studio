@@ -80,7 +80,8 @@ export default function TeamCalendarPage() {
     const [isDirectManager, setIsDirectManager] = useState(false);
 
     useEffect(() => {
-        if (user?.uid) {
+        const canCheckReports = user?.role && ['Manager', 'HRManager', 'Admin'].includes(user.role);
+        if (user?.uid && canCheckReports) {
             hasDirectReports(user.uid).then(setIsDirectManager);
         }
     }, [user]);

@@ -51,6 +51,7 @@ import Link from 'next/link';
 import type { Employee } from '@/lib/types';
 import { calculateYearsOfService } from '@/lib/hcm-utils';
 import { SearchEmptyState } from '@/components/ui/empty-state';
+import { usePermissions } from '@/hooks/use-permissions';
 
 /**
  * Employees Directory Page
@@ -61,8 +62,9 @@ export default function EmployeesPage() {
     const [departmentFilter, setDepartmentFilter] = useState<string>('all');
     const [statusFilter, setStatusFilter] = useState<string>('active');
 
-    // Check if user has HR/Admin permissions to view employees
-    const hasHRPermissions = user?.role === 'Admin';
+    // Check if user has HR/Admin permissions to view employees (dynamic permissions)
+    const { canRead, canWrite, isAdmin } = usePermissions();
+    const hasHRPermissions = isAdmin || canRead('hcm_employees');
 
     // Fetch employees - only if user has HR permissions
     const employeesQuery = useMemoFirebase(() => {

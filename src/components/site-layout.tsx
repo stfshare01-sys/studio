@@ -78,8 +78,10 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
   const [isManager, setIsManager] = useState(false);
 
   // Checks if user has direct reports to show Team Management link
+  // Only check for roles that have permission to list employees
   useEffect(() => {
-    if (user?.uid) {
+    const canCheckReports = user?.role && ['Manager', 'HRManager', 'Admin'].includes(user.role);
+    if (user?.uid && canCheckReports) {
       hasDirectReports(user.uid).then(setIsManager);
     }
   }, [user]);

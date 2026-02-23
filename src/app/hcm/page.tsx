@@ -143,15 +143,18 @@ export default function HCMPage() {
     const { data: recentImports, isLoading: importsLoading } = useCollection<AttendanceImportBatch>(importsQuery);
 
     // Check if current user has direct reports (for team management access)
+    // Only query for roles that have permission to list employees
     const directReportsQuery = useMemoFirebase(() => {
         if (!firestore || isUserLoading || !user?.id) return null;
+        // Only Manager/HR/Admin can list employees — Members would get permission denied
+        if (!hasHRPermissions && !isManagerOnly) return null;
         return query(
             collection(firestore, 'employees'),
             where('directManagerId', '==', user.id),
             where('status', '==', 'active'),
             limit(1)
         );
-    }, [firestore, isUserLoading, user?.id]);
+    }, [firestore, isUserLoading, user?.id, hasHRPermissions, isManagerOnly]);
 
     const { data: directReports, isLoading: directReportsLoading } = useCollection<Employee>(directReportsQuery);
     const hasDirectReports = (directReports && directReports.length > 0) || isAdmin;

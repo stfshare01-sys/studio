@@ -16,6 +16,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { SimulateChangeDialog } from "@/components/templates/simulate-change-dialog";
 import React, { useEffect } from "react";
 import { preInstalledTemplates } from "@/lib/pre-installed-templates";
+import { usePermissions } from "@/hooks/use-permissions";
 
 function TemplateSkeleton() {
     return (
@@ -42,7 +43,8 @@ function TemplateSkeleton() {
 export default function TemplatesPage() {
     const firestore = useFirestore();
     const { user } = useUser();
-    const canCreate = user?.role === 'Admin' || user?.role === 'Designer';
+    const { canWrite, isAdmin } = usePermissions();
+    const canCreate = isAdmin || canWrite('templates');
 
     const templatesRef = useMemoFirebase(() => {
         if (!firestore) return null;
@@ -153,7 +155,7 @@ export default function TemplatesPage() {
                                             </Link>
                                         </Button>
                                     ) : <div />}
-                                    {user?.role === 'Admin' && (
+                                    {isAdmin && (
                                         <div className="col-span-2">
                                             <Button variant="secondary" className="w-full" onClick={() => setSimulationTemplate(template)}>
                                                 <WandSparkles className="mr-2 h-4 w-4" />

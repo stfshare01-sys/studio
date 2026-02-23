@@ -30,6 +30,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { deleteDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import { useToast } from '@/hooks/use-toast';
+import { usePermissions } from '@/hooks/use-permissions';
 
 function TemplateSkeleton() {
   return (
@@ -58,7 +59,8 @@ export default function MasterListsPage() {
   const firestore = useFirestore();
   const { user } = useUser();
   const { toast } = useToast();
-  const canCreate = user?.role === 'Admin' || user?.role === 'Designer';
+  const { canWrite, isAdmin } = usePermissions();
+  const canCreate = isAdmin || canWrite('master_lists');
 
   const listsRef = useMemoFirebase(() => {
     if (!firestore) return null;

@@ -13,6 +13,7 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, Grid3X3, Info } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { usePermissions } from '@/hooks/use-permissions';
 
 /**
  * 9-Box Grid Talent Evaluation Page
@@ -20,8 +21,9 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 export default function TalentGridPage() {
     const { firestore, user, isUserLoading } = useFirebase();
 
-    // Check if user has HR/Admin permissions to view employees
-    const hasHRPermissions = user?.role === 'Admin';
+    // Check if user has HR/Admin permissions to view employees (dynamic permissions)
+    const { canRead, isAdmin } = usePermissions();
+    const hasHRPermissions = isAdmin || canRead('hcm_talent_grid');
 
     // Fetch active employees - only if user has HR permissions
     const employeesQuery = useMemoFirebase(() => {

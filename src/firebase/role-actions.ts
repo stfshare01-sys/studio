@@ -486,23 +486,36 @@ export async function deleteRole(firestore: Firestore, roleId: string): Promise<
 
 /**
  * Get permissions for a user based on their role
+ * Checks Firestore for admin-customized system roles before falling back to defaults
  */
 export async function getUserPermissions(
   firestore: Firestore,
   userRole: string,
   customRoleId?: string
 ): Promise<ModulePermission[]> {
-  // Check if it's a system role
-  if (isSystemRole(userRole)) {
-    return SYSTEM_ROLES[userRole];
-  }
-
-  // If there's a custom role ID, fetch it
+  // If there's a custom role ID, fetch it first
   if (customRoleId) {
     const role = await getRoleById(firestore, customRoleId);
     if (role) {
       return role.permissions;
     }
+  }
+
+  // For system roles, check if admin has customized permissions in Firestore
+  if (isSystemRole(userRole)) {
+    try {
+      const roleDocId = userRole.toLowerCase();
+      const roleDoc = await getDoc(doc(firestore, 'roles', roleDocId));
+      if (roleDoc.exists()) {
+        const data = roleDoc.data() as Role;
+        if (data.permissions?.length > 0) {
+          return data.permissions;
+        }
+      }
+    } catch {
+      // Fallback to hardcoded defaults if Firestore read fails
+    }
+    return SYSTEM_ROLES[userRole];
   }
 
   // Default to Member permissions if role not found
