@@ -3,7 +3,7 @@
 
 import React, { useState, useRef, useMemo } from "react";
 import SiteLayout from "@/components/site-layout";
-import { useFirestore, useCollection, useMemoFirebase } from "@/firebase";
+import { useFirestore, useCollection, useMemoFirebase, useFirebase } from "@/firebase";
 import { collection, query, where, orderBy } from "firebase/firestore";
 import type { Employee, User } from "@/lib/types";
 import { OrgChartTree, EmployeeDetailPanel } from "@/components/hcm/org-chart";
@@ -14,8 +14,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 export default function OrgChartPage() {
     const firestore = useFirestore();
+    const { user } = useFirebase();
     const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
 
+    const hasHRAccess = ['Admin', 'HRManager'].includes(user?.role || '');
+
+    // Read users (public collection — accessible by everyone)
     const usersQuery = useMemoFirebase(() => {
         if (!firestore) return null;
         return query(
@@ -25,16 +29,38 @@ export default function OrgChartPage() {
         );
     }, [firestore]);
 
-    const { data: users, isLoading } = useCollection<User>(usersQuery);
+    const { data: users, isLoading: usersLoading } = useCollection<User>(usersQuery);
 
+    // Read employees (protected — only for Admin/HRManager) to get directManagerId + positionTitle
+    const employeesQuery = useMemoFirebase(() => {
+        if (!firestore || !hasHRAccess) return null;
+        return query(
+            collection(firestore, 'employees'),
+            where('status', '==', 'active')
+        );
+    }, [firestore, hasHRAccess]);
+
+    const { data: employeeDocs, isLoading: employeesLoading } = useCollection<Employee>(employeesQuery);
+
+    const isLoading = usersLoading || (hasHRAccess && employeesLoading);
+
+    // Merge: use users for display, employees for hierarchy (directManagerId, positionTitle)
     const employees = useMemo(() => {
         if (!users) return null;
-        return users.map(u => ({
-            ...u,
-            directManagerId: u.managerId,
-            positionTitle: u.department || 'Sin Puesto Asignado',
-        } as unknown as Employee));
-    }, [users]);
+
+        // Build a lookup from employee docs for hierarchy data
+        const empLookup = new Map<string, Employee>();
+        employeeDocs?.forEach(doc => empLookup.set(doc.id, doc));
+
+        return users.map(u => {
+            const empData = empLookup.get(u.id);
+            return {
+                ...u,
+                directManagerId: empData?.directManagerId ?? u.managerId,
+                positionTitle: empData?.positionTitle ?? u.department ?? 'Sin Puesto Asignado',
+            } as unknown as Employee;
+        });
+    }, [users, employeeDocs]);
 
     // Zoom & Pan State
     const [scale, setScale] = useState(0.8);
