@@ -74,6 +74,7 @@ import { es } from 'date-fns/locale';
 import { useToast } from '@/hooks/use-toast';
 import { Label } from '@/components/ui/label';
 import { NewIncidenceForm } from '@/components/hcm/new-incidence-form';
+import { TeamCalendar } from '@/components/hcm/team-calendar';
 
 /**
  * Incidences Management Page
@@ -395,20 +396,6 @@ export default function IncidencesPage() {
                                 </TabsTrigger>
                             </TabsList>
                         </Tabs>
-
-                        {viewMode === 'calendar' && (
-                            <div className="flex items-center gap-2">
-                                <Button variant="outline" size="icon" onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}>
-                                    <ChevronLeft className="h-4 w-4" />
-                                </Button>
-                                <span className="font-medium min-w-[150px] text-center capitalize">
-                                    {format(currentMonth, 'MMMM yyyy', { locale: es })}
-                                </span>
-                                <Button variant="outline" size="icon" onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}>
-                                    <ChevronRight className="h-4 w-4" />
-                                </Button>
-                            </div>
-                        )}
                     </div>
 
                     {/* Stats */}
@@ -584,7 +571,14 @@ export default function IncidencesPage() {
                             </CardContent>
                         </Card>
 
-                    ) : null}
+                    ) : (
+                        <div className="mt-4">
+                            <TeamCalendar
+                                employees={teamEmployees || []}
+                                incidences={filteredIncidences || []}
+                            />
+                        </div>
+                    )}
 
                     {/* Review Dialog */}
                     <Dialog open={isReviewDialogOpen} onOpenChange={setIsReviewDialogOpen}>

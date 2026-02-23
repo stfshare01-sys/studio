@@ -5,6 +5,7 @@ import React, { useState } from "react";
 import { Employee } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { useFirebase } from "@/firebase/provider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ChevronDown, ChevronRight, User, Mail, Building2, Briefcase, Calendar, X, ExternalLink } from "lucide-react";
@@ -36,6 +37,9 @@ interface EmployeeDetailPanelProps {
 // --- Employee Detail Panel ---
 
 export function EmployeeDetailPanel({ employee, onClose }: EmployeeDetailPanelProps) {
+    const { user } = useFirebase();
+    const hasHRPermissions = ['Admin', 'HRManager'].includes(user?.role || '');
+
     const getInitials = (name: string) => {
         return name?.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || '??';
     };
@@ -101,13 +105,15 @@ export function EmployeeDetailPanel({ employee, onClose }: EmployeeDetailPanelPr
 
                 {/* Actions */}
                 <div className="pt-3 flex gap-2">
-                    <Button asChild size="sm" className="flex-1">
-                        <Link href={`/hcm/employees/${employee.id}`}>
-                            <ExternalLink className="h-4 w-4 mr-2" />
-                            Ver Expediente
-                        </Link>
-                    </Button>
-                    <Button size="sm" variant="outline" onClick={onClose}>
+                    {hasHRPermissions && (
+                        <Button asChild size="sm" className="flex-1">
+                            <Link href={`/hcm/employees/${employee.id}`}>
+                                <ExternalLink className="h-4 w-4 mr-2" />
+                                Ver Expediente
+                            </Link>
+                        </Button>
+                    )}
+                    <Button size="sm" variant="outline" onClick={onClose} className={hasHRPermissions ? "" : "flex-1"}>
                         Cerrar
                     </Button>
                 </div>
