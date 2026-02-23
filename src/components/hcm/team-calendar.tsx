@@ -104,7 +104,7 @@ function DayCell({
         return map;
     }, [dayIncidences]);
 
-    const employeesOff = employees.filter(e => e.userId && employeeIncidences.has(e.userId));
+    const employeesOff = employees.filter(e => employeeIncidences.has(e.id));
 
     const getInitials = (name: string) => {
         return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
@@ -134,7 +134,7 @@ function DayCell({
                 <div className="flex flex-wrap gap-0.5">
                     <TooltipProvider>
                         {employeesOff.slice(0, 3).map(emp => {
-                            const empIncidences = employeeIncidences.get(emp.userId!) || [];
+                            const empIncidences = employeeIncidences.get(emp.id) || [];
                             const mainIncidence = empIncidences[0];
                             const config = mainIncidence ? INCIDENCE_CONFIG[mainIncidence.type] : null;
 

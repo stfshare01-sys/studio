@@ -155,8 +155,7 @@ export default function TeamCalendarPage() {
                 orderBy('startDate', 'desc')
             );
         } else if (employees && employees.length > 0) {
-            // Incidences use the user's Auth UID as employeeId, not the Employee document ID.
-            const validIds = employees.map((e: Employee) => e.userId).filter(Boolean);
+            const validIds = employees.map((e: Employee) => e.id).filter(Boolean);
             if (validIds.length > 0 && validIds.length <= 30) {
                 return query(
                     collection(firestore, 'incidences'),

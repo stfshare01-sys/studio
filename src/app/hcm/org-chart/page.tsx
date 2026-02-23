@@ -77,7 +77,7 @@ export default function OrgChartPage() {
     return (
         <SiteLayout>
             <div className="flex flex-col h-[calc(100vh-65px)]">
-                <header className="flex items-center justify-between p-4 px-6 border-b bg-background z-10">
+                <header className="flex items-center justify-between p-4 px-6 border-b bg-background/95 backdrop-blur z-10 shadow-sm">
                     <div className="flex items-center gap-4">
                         <Button variant="ghost" size="icon" asChild>
                             <Link href="/hcm">
@@ -98,7 +98,7 @@ export default function OrgChartPage() {
                     )}
                 </header>
 
-                <main className="flex-1 relative bg-muted/5 overflow-hidden">
+                <main className="flex-1 relative bg-slate-50/80 dark:bg-slate-900/30 overflow-hidden">
                     {isLoading ? (
                         <div className="flex items-center justify-center h-full">
                             <div className="space-y-4 text-center">

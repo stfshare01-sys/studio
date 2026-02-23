@@ -464,29 +464,35 @@ export default function AttendancePage() {
                                         </TableRow>
                                     ) : attendanceRecords && attendanceRecords.length > 0 ? (
                                         attendanceRecords.slice(0, 10).map((record) => (
-                                            <TableRow key={record.id}>
-                                                <TableCell>{record.employeeName || employeeNames[record.employeeId] || record.employeeId}</TableCell>
-                                                <TableCell>{record.date}</TableCell>
-                                                <TableCell>{record.checkIn || '-'}</TableCell>
-                                                <TableCell>{record.checkOut || '-'}</TableCell>
-                                                <TableCell>{record.hoursWorked?.toFixed(2) || '-'}</TableCell>
-                                                <TableCell>
+                                            <TableRow
+                                                key={record.id}
+                                                className={!record.isValid ? "bg-red-50/50 hover:bg-red-50/80 dark:bg-red-950/20" : record.overtimeHours > 0 ? "bg-orange-50/50 hover:bg-orange-50/80 dark:bg-orange-950/20" : ""}
+                                            >
+                                                <TableCell className="font-medium">{record.employeeName || employeeNames[record.employeeId] || record.employeeId}</TableCell>
+                                                <TableCell className="tabular-nums whitespace-nowrap">{record.date}</TableCell>
+                                                <TableCell className="font-mono tabular-nums text-right">{record.checkIn || '-'}</TableCell>
+                                                <TableCell className="font-mono tabular-nums text-right">{record.checkOut || '-'}</TableCell>
+                                                <TableCell className="font-mono tabular-nums text-right font-medium">{record.hoursWorked?.toFixed(2) || '-'}</TableCell>
+                                                <TableCell className="text-right">
                                                     {record.overtimeHours > 0 ? (
-                                                        <Badge variant="outline" className="bg-orange-50">
+                                                        <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-950/50 dark:text-orange-400 dark:border-orange-800">
                                                             +{record.overtimeHours.toFixed(2)}h
                                                             {record.overtimeType && ` (${record.overtimeType === 'double' ? '2x' : '3x'})`}
                                                         </Badge>
                                                     ) : (
-                                                        '-'
+                                                        <span className="text-muted-foreground">-</span>
                                                     )}
                                                 </TableCell>
                                                 <TableCell>
                                                     {record.isValid ? (
-                                                        <CheckCircle2 className="h-4 w-4 text-green-500" />
+                                                        <div className="flex items-center gap-1 text-green-600 dark:text-green-500">
+                                                            <CheckCircle2 className="h-4 w-4" />
+                                                            <span className="text-xs font-medium">Válido</span>
+                                                        </div>
                                                     ) : (
-                                                        <div className="flex items-center gap-1">
-                                                            <AlertTriangle className="h-4 w-4 text-yellow-500" />
-                                                            <span className="text-xs text-muted-foreground truncate max-w-[150px]">
+                                                        <div className="flex items-center gap-1 text-red-600 dark:text-red-500">
+                                                            <AlertTriangle className="h-4 w-4" />
+                                                            <span className="text-xs font-medium truncate max-w-[150px]" title={record.validationNotes || undefined}>
                                                                 {record.validationNotes}
                                                             </span>
                                                         </div>

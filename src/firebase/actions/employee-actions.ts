@@ -71,6 +71,13 @@ export async function createEmployee(
 
         await setDoc(employeeRef, employeeData, {});
 
+        // Sync managerId to the user record for Org Chart visibility
+        if (payload.managerId) {
+            updateDocumentNonBlocking(doc(firestore, 'users', userId), {
+                managerId: payload.managerId
+            });
+        }
+
         console.log(`[HCM] Created employee record for ${userId}`);
         return { success: true, employeeId: userId };
     } catch (error) {

@@ -142,7 +142,7 @@ export function OrgChartNode({ node, depth = 0, onEmployeeClick }: OrgChartNodeP
         <div className="flex flex-col items-center">
             {/* The Node Card */}
             <Card
-                className={`relative w-[280px] z-10 transition-all hover:border-primary/50 cursor-pointer hover:shadow-md ${depth === 0 ? 'border-primary shadow-md' : ''}`}
+                className={`relative w-[280px] z-10 transition-all hover:border-primary/60 cursor-pointer hover:shadow-md shadow-sm border-slate-200 dark:border-slate-800 ${depth === 0 ? 'border-primary shadow-md ring-1 ring-primary/20' : ''}`}
                 onClick={handleCardClick}
             >
                 <CardContent className="p-4 flex items-center gap-3">
