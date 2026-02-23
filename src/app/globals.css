@@ -4,23 +4,21 @@
 
 @layer base {
   :root {
-    --background: 220 13% 88%;
-    /* #E0E0E0 */
+    --background: 220 14% 94%;
+    /* Slightly darker background to make white cards pop */
     --foreground: 222.2 84% 4.9%;
-    --card: 210 40% 98%;
-    /* Lighter than background for contrast */
+    --card: 0 0% 100%;
+    /* Pure white cards */
     --card-foreground: 222.2 84% 4.9%;
-    --popover: 210 40% 98%;
+    --popover: 0 0% 100%;
     --popover-foreground: 222.2 84% 4.9%;
     --primary: 207 44% 49%;
-    /* #4682B4 */
     --primary-foreground: 210 40% 98%;
     --secondary: 210 40% 96.1%;
     --secondary-foreground: 222.2 47.4% 11.2%;
     --muted: 210 40% 96.1%;
     --muted-foreground: 215.4 16.3% 46.9%;
     --accent: 185 94% 71%;
-    /* #7DF9FF */
     --accent-foreground: 222.2 47.4% 11.2%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 210 40% 98%;
@@ -33,53 +31,65 @@
     --chart-3: 197 37% 24%;
     --chart-4: 43 74% 66%;
     --chart-5: 27 87% 67%;
-    --sidebar-background: 210 40% 96.1%;
-    --sidebar-foreground: 222.2 84% 4.9%;
+
+    /* Dark sidebar for default theme */
+    --sidebar-background: 222.2 84% 4.9%;
+    --sidebar-foreground: 210 40% 98%;
     --sidebar-primary: 207 44% 49%;
     --sidebar-primary-foreground: 210 40% 98%;
-    --sidebar-accent: 210 40% 92%;
-    --sidebar-accent-foreground: 222.2 47.4% 11.2%;
-    --sidebar-border: 214.3 31.8% 91.4%;
+    --sidebar-accent: 217.2 32.6% 17.5%;
+    --sidebar-accent-foreground: 210 40% 98%;
+    --sidebar-border: 217.2 32.6% 17.5%;
     --sidebar-ring: 207 44% 49%;
   }
 
   .theme-vanguard {
-    --background: 35 20% 98%;
+    --background: 35 20% 92%;
+    /* Beige for background */
     --foreground: 25 35% 15%;
-    --card: 35 20% 100%;
+    --card: 0 0% 100%;
+    /* Pure white cards to pop out */
     --card-foreground: 25 35% 15%;
-    --primary: 25 35% 45%;
+    --primary: 25 60% 45%;
     --primary-foreground: 35 20% 98%;
-    --accent: 85 30% 85%;
+    --accent: 85 40% 70%;
     --accent-foreground: 25 35% 15%;
     --radius: 1.25rem;
-    --border: 25 10% 90%;
-    --sidebar-background: 35 20% 92%;
-    --sidebar-foreground: 25 35% 15%;
-    --sidebar-primary: 25 35% 45%;
-    --sidebar-primary-foreground: 35 20% 98%;
-    --sidebar-accent: 35 20% 86%;
-    --sidebar-accent-foreground: 25 35% 15%;
-    --sidebar-border: 25 10% 88%;
-    --sidebar-ring: 25 35% 45%;
+    --border: 25 15% 85%;
+
+    /* Dark contrasting sidebar */
+    --sidebar-background: 25 35% 15%;
+    /* Dark brown */
+    --sidebar-foreground: 35 20% 98%;
+    --sidebar-primary: 85 50% 65%;
+    /* Greenish */
+    --sidebar-primary-foreground: 25 35% 15%;
+    --sidebar-accent: 25 35% 25%;
+    --sidebar-accent-foreground: 35 20% 98%;
+    --sidebar-border: 25 35% 20%;
+    --sidebar-ring: 85 50% 65%;
   }
 
   .theme-liquid {
-    --background: 210 20% 96%;
+    --background: 210 25% 92%;
+    /* Blueish gray background */
     --foreground: 215 90% 10%;
-    --card: 210 40% 98% / 0.7;
-    --primary: 215 90% 40%;
-    --accent: 180 70% 60%;
-    --border: 215 90% 90%;
+    --card: 0 0% 100%;
+    /* Pure white with glow/glass effect */
+    --primary: 215 90% 45%;
+    --accent: 180 80% 50%;
+    --border: 215 50% 85%;
     --radius: 0.75rem;
-    --sidebar-background: 210 30% 93%;
-    --sidebar-foreground: 215 90% 10%;
-    --sidebar-primary: 215 90% 40%;
-    --sidebar-primary-foreground: 210 20% 96%;
-    --sidebar-accent: 210 30% 88%;
-    --sidebar-accent-foreground: 215 90% 10%;
-    --sidebar-border: 215 90% 85%;
-    --sidebar-ring: 215 90% 40%;
+
+    /* Very dark deep-sea blue sidebar */
+    --sidebar-background: 220 90% 12%;
+    --sidebar-foreground: 210 30% 95%;
+    --sidebar-primary: 180 80% 50%;
+    --sidebar-primary-foreground: 220 90% 12%;
+    --sidebar-accent: 220 90% 20%;
+    --sidebar-accent-foreground: 210 30% 95%;
+    --sidebar-border: 220 90% 18%;
+    --sidebar-ring: 180 80% 50%;
   }
 
   .theme-cyber {
@@ -159,18 +169,26 @@
   }
 
   .theme-vanguard .bento-item {
-    @apply transition-transform hover:scale-[1.01];
-    border: 1px solid hsl(var(--border) / 0.5);
-    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05);
+    @apply transition-transform hover:-translate-y-1;
+    border: 1px solid hsl(var(--border));
+    background-color: hsl(var(--card));
+    box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+    border-radius: var(--radius);
+  }
+
+  .theme-vanguard .bento-item:hover {
+    box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+    border-color: hsl(var(--primary)/0.3);
   }
 
   /* Liquid Glass Effects */
   .theme-liquid .glass-panel {
-    background: hsl(var(--card) / 0.4);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border: 1px solid hsl(var(--border) / 0.3);
-    box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.07);
+    background: linear-gradient(135deg, hsl(var(--card) / 0.8), hsl(var(--card) / 0.6));
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid hsl(var(--border) / 0.6);
+    box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.05);
+    border-radius: var(--radius);
   }
 
   .theme-liquid .liquid-node {

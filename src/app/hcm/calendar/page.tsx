@@ -196,11 +196,11 @@ export default function TeamCalendarPage() {
     // Calculate team availability
     const totalEmployees = employees?.length ?? 0;
     const todayAbsent = employees?.filter(emp => {
-        const today = new Date();
+        const todayStr = format(new Date(), 'yyyy-MM-dd');
         return incidences?.some(inc => {
-            const start = new Date(inc.startDate);
-            const end = new Date(inc.endDate);
-            return inc.employeeId === emp.id && today >= start && today <= end && inc.status === 'approved';
+            const startStr = inc.startDate.substring(0, 10);
+            const endStr = inc.endDate.substring(0, 10);
+            return inc.employeeId === emp.id && todayStr >= startStr && todayStr <= endStr && inc.status === 'approved';
         });
     }).length ?? 0;
 
@@ -295,9 +295,10 @@ export default function TeamCalendarPage() {
                         {selectedEmployees.map(emp => {
                             const empIncidences = incidences?.filter(inc => {
                                 if (inc.employeeId !== emp.id || !selectedDate) return false;
-                                const start = new Date(inc.startDate);
-                                const end = new Date(inc.endDate);
-                                return selectedDate >= start && selectedDate <= end;
+                                const dateStr = format(selectedDate, 'yyyy-MM-dd');
+                                const startStr = inc.startDate.substring(0, 10);
+                                const endStr = inc.endDate.substring(0, 10);
+                                return dateStr >= startStr && dateStr <= endStr;
                             }) ?? [];
 
                             return (

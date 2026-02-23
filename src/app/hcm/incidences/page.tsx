@@ -398,10 +398,10 @@ export default function IncidencesPage() {
                         </Tabs>
                     </div>
 
-                    {/* Stats */}
-                    <div className="grid gap-4 md:grid-cols-3">
-                        <Card>
-                            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    {/* Tarjetas KPI Superiores */}
+                    <div className="grid grid-cols-1 gap-6 mb-6 sm:grid-cols-2 lg:grid-cols-3 bento-grid">
+                        <Card className="bento-item border-l-4 border-l-yellow-500">
+                            <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
                                 <CardTitle className="text-sm font-medium">Pendientes</CardTitle>
                                 <Clock className="h-4 w-4 text-yellow-500" />
                             </CardHeader>
@@ -409,8 +409,8 @@ export default function IncidencesPage() {
                                 <div className="text-2xl font-bold text-yellow-600">{pendingCount}</div>
                             </CardContent>
                         </Card>
-                        <Card>
-                            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <Card className="bento-item border-l-4 border-l-green-500">
+                            <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
                                 <CardTitle className="text-sm font-medium">Aprobadas</CardTitle>
                                 <CheckCircle2 className="h-4 w-4 text-green-500" />
                             </CardHeader>
@@ -418,8 +418,8 @@ export default function IncidencesPage() {
                                 <div className="text-2xl font-bold text-green-600">{approvedCount}</div>
                             </CardContent>
                         </Card>
-                        <Card>
-                            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <Card className="bento-item border-l-4 border-l-red-500">
+                            <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
                                 <CardTitle className="text-sm font-medium">Rechazadas</CardTitle>
                                 <XCircle className="h-4 w-4 text-red-500" />
                             </CardHeader>
@@ -429,49 +429,47 @@ export default function IncidencesPage() {
                         </Card>
                     </div>
 
-                    {/* Filters */}
-                    <Card>
-                        <CardContent className="pt-6">
-                            <div className="flex flex-col md:flex-row gap-4">
-                                <div className="relative flex-1">
-                                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                                    <Input
-                                        placeholder="Buscar por empleado..."
-                                        value={searchTerm}
-                                        onChange={(e) => setSearchTerm(e.target.value)}
-                                        className="pl-10"
-                                        disabled={!hasHRPermissions}
-                                    />
-                                </div>
-                                <Select value={typeFilter} onValueChange={setTypeFilter}>
-                                    <SelectTrigger className="w-full md:w-[200px]">
-                                        <Filter className="mr-2 h-4 w-4" />
-                                        <SelectValue placeholder="Tipo" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="all">Todos los tipos</SelectItem>
-                                        <SelectItem value="vacation">Vacaciones</SelectItem>
-                                        <SelectItem value="sick_leave">Incapacidad</SelectItem>
-                                        <SelectItem value="personal_leave">Permiso Personal</SelectItem>
-                                        <SelectItem value="maternity">Maternidad</SelectItem>
-                                        <SelectItem value="paternity">Paternidad</SelectItem>
-                                        <SelectItem value="bereavement">Duelo</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                                <Select value={statusFilter} onValueChange={setStatusFilter}>
-                                    <SelectTrigger className="w-full md:w-[150px]">
-                                        <SelectValue placeholder="Estado" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="all">Todos</SelectItem>
-                                        <SelectItem value="pending">Pendientes</SelectItem>
-                                        <SelectItem value="approved">Aprobadas</SelectItem>
-                                        <SelectItem value="rejected">Rechazadas</SelectItem>
-                                    </SelectContent>
-                                </Select>
+                    {/* Filtros */}
+                    <div className="flex flex-col gap-4 mb-6 sm:flex-row sm:items-center sm:justify-between bg-card p-4 rounded-xl border shadow-sm">
+                        <div className="flex flex-col md:flex-row gap-4">
+                            <div className="relative flex-1">
+                                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                                <Input
+                                    placeholder="Buscar por empleado..."
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                    className="pl-10"
+                                    disabled={!hasHRPermissions}
+                                />
                             </div>
-                        </CardContent>
-                    </Card>
+                            <Select value={typeFilter} onValueChange={setTypeFilter}>
+                                <SelectTrigger className="w-full md:w-[200px]">
+                                    <Filter className="mr-2 h-4 w-4" />
+                                    <SelectValue placeholder="Tipo" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">Todos los tipos</SelectItem>
+                                    <SelectItem value="vacation">Vacaciones</SelectItem>
+                                    <SelectItem value="sick_leave">Incapacidad</SelectItem>
+                                    <SelectItem value="personal_leave">Permiso Personal</SelectItem>
+                                    <SelectItem value="maternity">Maternidad</SelectItem>
+                                    <SelectItem value="paternity">Paternidad</SelectItem>
+                                    <SelectItem value="bereavement">Duelo</SelectItem>
+                                </SelectContent>
+                            </Select>
+                            <Select value={statusFilter} onValueChange={setStatusFilter}>
+                                <SelectTrigger className="w-full md:w-[150px]">
+                                    <SelectValue placeholder="Estado" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">Todos</SelectItem>
+                                    <SelectItem value="pending">Pendientes</SelectItem>
+                                    <SelectItem value="approved">Aprobadas</SelectItem>
+                                    <SelectItem value="rejected">Rechazadas</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    </div>
 
 
                     {viewMode === 'list' ? (
@@ -767,7 +765,7 @@ export default function IncidencesPage() {
                     </AlertDialog>
                 </main>
             </div>
-        </SiteLayout>
+        </SiteLayout >
     );
 }
 

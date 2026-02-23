@@ -32,10 +32,11 @@ import {
     isSameMonth,
     isToday,
     isSameDay,
+    parseISO,
     addMonths,
     subMonths,
-    startOfWeek, // Used in calendarDays calculation
-    endOfWeek    // Used in calendarDays calculation
+    startOfWeek,
+    endOfWeek
 } from 'date-fns';
 import { es } from 'date-fns/locale';
 
@@ -371,7 +372,7 @@ export function TeamCalendar({ employees, incidences, onDayClick }: TeamCalendar
                                         </div>
                                     </div>
                                     <div className="text-right">
-                                        <p className="text-sm">{format(new Date(inc.startDate), 'dd MMM', { locale: es })}</p>
+                                        <p className="text-sm">{format(parseISO(inc.startDate), 'dd MMM', { locale: es })}</p>
                                         <p className="text-xs text-muted-foreground">{inc.totalDays} día{inc.totalDays !== 1 ? 's' : ''}</p>
                                     </div>
                                 </div>
