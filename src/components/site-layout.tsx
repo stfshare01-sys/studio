@@ -126,6 +126,13 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
     // Special check for Team Management based on actual reports
     if (item.href === '/hcm/team-management' && isManager) return true;
 
+    // If it's the root HCM nav item, check if ANY HCM sub-module is visible
+    if (item.href === '/hcm') {
+      return canRead('hcm_employees') || canRead('hcm_attendance') ||
+        canRead('hcm_incidences') || canRead('hcm_prenomina') ||
+        canRead('hcm_calendar') || canRead('hcm_org_chart');
+    }
+
     // Check read permission for the module
     return canRead(item.module);
   });

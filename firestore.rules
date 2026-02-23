@@ -134,9 +134,8 @@ service cloud.firestore {
        */
       match /notifications/{notificationId} {
         allow get, list: if isOwner(userId);
-        // HR, Managers and Admins can create notifications for any user
-        // (e.g., vacation adjustments, incidence approvals, task assignments)
-        allow create: if isManagerOrHR() || isOwner(userId);
+        // Any authenticated user can create notifications (needed for incidence routing)
+        allow create: if isSignedIn();
         allow update, delete: if isOwner(userId);
       }
     }

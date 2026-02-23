@@ -82,6 +82,7 @@ export default function DashboardPage() {
       myIncidences.forEach(inc => {
         const rule = INCIDENCE_RULES[inc.type];
         const titleName = rule?.description || inc.type;
+        const isCompleted = inc.status === 'approved' || inc.status === 'rejected';
         list.push({
           id: inc.id,
           title: `${titleName} (${inc.startDate} al ${inc.endDate})`,
@@ -89,6 +90,7 @@ export default function DashboardPage() {
           submittedBy: user?.uid || '',
           createdAt: inc.createdAt || new Date().toISOString(),
           updatedAt: inc.updatedAt || new Date().toISOString(),
+          completedAt: isCompleted ? (inc.updatedAt || new Date().toISOString()) : undefined,
           isHcmIncidence: true,
           incidenceType: inc.type,
           // fallback fields 
@@ -102,8 +104,8 @@ export default function DashboardPage() {
 
 
   const stats = React.useMemo(() => {
-    if (!myRequests) return { inProgress: 0, avgCycleTime: 0 };
-    const completedRequests = myRequests.filter(r => r.status === 'Completed' && r.completedAt && r.createdAt);
+    if (!combinedRequests) return { inProgress: 0, avgCycleTime: 0 };
+    const completedRequests = combinedRequests.filter(r => r.status === 'Completed' && r.completedAt && r.createdAt);
     const totalCycleTime = completedRequests.reduce((acc, curr) => {
       const completedAt = curr.completedAt ? new Date(curr.completedAt) : null;
       const createdAt = new Date(curr.createdAt);
@@ -114,10 +116,10 @@ export default function DashboardPage() {
     }, 0);
 
     return {
-      inProgress: myRequests.filter(r => r.status === 'In Progress').length,
+      inProgress: combinedRequests.filter(r => r.status === 'In Progress').length,
       avgCycleTime: completedRequests.length > 0 ? (totalCycleTime / completedRequests.length).toFixed(1) : 0,
     }
-  }, [myRequests]);
+  }, [combinedRequests]);
 
   return (
     <SiteLayout>
@@ -155,6 +157,26 @@ export default function DashboardPage() {
 
           <Card>
             <CardHeader>
+              <CardTitle>Mis Solicitudes</CardTitle>
+              <CardDescription>Rastree el estado de todas las solicitudes que ha enviado.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {(isLoadingMyRequests || isLoadingMyIncidences) && <DataTableSkeleton />}
+              {!(isLoadingMyRequests || isLoadingMyIncidences) && combinedRequests.length > 0 && <RequestsTable requests={combinedRequests} />}
+              {!(isLoadingMyRequests || isLoadingMyIncidences) && combinedRequests.length === 0 && (
+                <EmptyState
+                  variant="documents"
+                  title="No tiene solicitudes"
+                  description="Cree una nueva solicitud para empezar."
+                  actionLabel="Nueva Solicitud"
+                  onAction={() => window.location.href = '/requests/new'}
+                />
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
               <CardTitle>Mis Tareas Pendientes</CardTitle>
               <CardDescription>Estas son las tareas activas que requieren tu atención.</CardDescription>
             </CardHeader>
@@ -178,26 +200,6 @@ export default function DashboardPage() {
                   title="Bandeja de entrada vacía"
                   description="No tienes ninguna tarea asignada en este momento."
                   compact
-                />
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Mis Solicitudes</CardTitle>
-              <CardDescription>Rastree el estado de todas las solicitudes que ha enviado.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {(isLoadingMyRequests || isLoadingMyIncidences) && <DataTableSkeleton />}
-              {!(isLoadingMyRequests || isLoadingMyIncidences) && combinedRequests.length > 0 && <RequestsTable requests={combinedRequests} />}
-              {!(isLoadingMyRequests || isLoadingMyIncidences) && combinedRequests.length === 0 && (
-                <EmptyState
-                  variant="documents"
-                  title="No tiene solicitudes"
-                  description="Cree una nueva solicitud para empezar."
-                  actionLabel="Nueva Solicitud"
-                  onAction={() => window.location.href = '/requests/new'}
                 />
               )}
             </CardContent>
