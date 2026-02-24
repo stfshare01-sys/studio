@@ -87,7 +87,7 @@ export function TaskInbox({
             let q = query(
                 collection(firestore, 'tasks'),
                 where('assigneeId', '==', auth.currentUser.uid),
-                where('status', 'in', ['Pending', 'Active']),
+                where('status', 'in', ['Pending', 'Active', 'pending', 'active']),
                 orderBy('createdAt', 'desc'),
                 limit(taskLimit)
             );

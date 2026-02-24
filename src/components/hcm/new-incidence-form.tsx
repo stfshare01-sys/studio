@@ -200,6 +200,15 @@ export function NewIncidenceForm({ userId, targetUserId, onSuccess, onCancel, cl
                         setDateConflictError(policyCheck.error || 'La solicitud no cumple con las políticas.');
                     }
 
+                    // 4. Vacation balance validation — block if requesting more days than available
+                    if (newIncidence.type === 'vacation' && vacationBalance) {
+                        if (currentEffectiveDays > vacationBalance.daysAvailable) {
+                            setDateConflictError(
+                                `Saldo insuficiente. Tienes ${vacationBalance.daysAvailable} día(s) disponible(s) y estás solicitando ${currentEffectiveDays} día(s).`
+                            );
+                        }
+                    }
+
                 } catch (error) {
                     console.error("Error calculating effective days:", error);
                 }
@@ -210,7 +219,7 @@ export function NewIncidenceForm({ userId, targetUserId, onSuccess, onCancel, cl
         };
 
         runValidations();
-    }, [newIncidence.startDate, newIncidence.endDate, newIncidence.type, userIncidences, effectiveTargetUserId, firestore]);
+    }, [newIncidence.startDate, newIncidence.endDate, newIncidence.type, userIncidences, effectiveTargetUserId, firestore, vacationBalance]);
 
     // Effect to enforce Half Day single date constraint
     useEffect(() => {

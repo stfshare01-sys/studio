@@ -106,25 +106,31 @@ export default function IncidencesPage() {
 
     // Cargar equipo subordinado si el usuario es manager (para ver sus incidencias)
     // También cargar la lista de empleados para el selector de creación (Bug 7)
+    // Reload trigger — incremented after creating/approving incidences to refresh employee lists
+    const [teamReloadKey, setTeamReloadKey] = useState(0);
+
     useEffect(() => {
         if (!user?.uid) return;
 
         if (isManagerOnly) {
             getDirectReports(user.uid).then(res => {
                 if (res.success && res.employees) {
-                    setTeamIds(res.employees.map(e => e.id));
-                    setTeamEmployees(res.employees);
+                    // Safety net: filter out any non-active employees (e.g. recently terminated)
+                    const active = res.employees.filter(e => e.status === 'active');
+                    setTeamIds(active.map(e => e.id));
+                    setTeamEmployees(active);
                 }
             });
         } else if (hasHRPermissions) {
-            // HR/Admin can create for anyone — load all employees
+            // HR/Admin can create for anyone — load all active employees
             getDirectReports('all').then(res => {
                 if (res.success && res.employees) {
-                    setTeamEmployees(res.employees);
+                    const active = res.employees.filter(e => e.status === 'active');
+                    setTeamEmployees(active);
                 }
             });
         }
-    }, [isManagerOnly, hasHRPermissions, user?.uid]);
+    }, [isManagerOnly, hasHRPermissions, user?.uid, teamReloadKey]);
 
     const incidencesQuery = useMemoFirebase(() => {
         if (!firestore || isUserLoading || !user) return null;

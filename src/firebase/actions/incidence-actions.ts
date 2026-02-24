@@ -216,24 +216,22 @@ export async function updateIncidenceStatus(
                     link: '/hcm'
                 });
 
-                // [NEW] Complete associated Task
-                // Find task by metadata.incidenceId
+                // [FIX] Complete associated Task
+                // Use requestId (which equals incidenceId) — this field has a composite index
                 const tasksRef = collection(firestore, 'tasks');
                 const q = query(
                     tasksRef,
-                    where('metadata.incidenceId', '==', incidenceId),
-                    where('status', '==', 'pending')
+                    where('requestId', '==', incidenceId),
+                    where('status', 'in', ['pending', 'Pending'])
                 );
                 const taskSnap = await getDocs(q);
 
-                // Use Promise.all for parallel updates
+                // Mark all matching tasks as completed
                 await Promise.all(taskSnap.docs.map(tDoc =>
                     updateDoc(tDoc.ref, {
-                        status: 'completed', // TaskStatus
+                        status: 'completed',
                         completedAt: new Date().toISOString(),
                         completedBy: approvedById,
-                        // If rejected, allow re-submission? Usually incidence rejection is final for that specific request.
-                        // So 'completed' is appropriate.
                     })
                 ));
             }

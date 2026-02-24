@@ -361,7 +361,7 @@ export default function EmployeeDetailPage({ params }: { params: Promise<{ id: s
                                                 <p className="text-sm font-medium text-muted-foreground mb-1">Fecha de Ingreso</p>
                                                 <div className="flex items-center gap-2">
                                                     <Calendar className="h-4 w-4 text-muted-foreground" />
-                                                    <span>{format(new Date(employee.hireDate), 'PPP', { locale: es })}</span>
+                                                    <span>{format(new Date(employee.hireDate + (employee.hireDate?.includes('T') ? '' : 'T12:00:00')), 'PPP', { locale: es })}</span>
                                                 </div>
                                             </div>
                                             <div>

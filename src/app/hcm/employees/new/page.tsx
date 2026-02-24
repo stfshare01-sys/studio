@@ -186,7 +186,9 @@ export default function NewEmployeePage() {
                 shiftType: selectedShift?.type || 'diurnal',
                 shiftId: data.shiftId,
                 locationId: data.locationId,
-                hireDate: data.hireDate.toISOString(),
+                hireDate: data.hireDate instanceof Date
+                    ? data.hireDate.toISOString().split('T')[0]
+                    : String(data.hireDate).split('T')[0],
                 managerId: data.managerId || undefined,
                 rfc_curp: `${data.rfc || ''} ${data.curp || ''}`.trim() || undefined,
                 nss: data.nss || undefined,
