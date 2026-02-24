@@ -537,7 +537,7 @@ export default function IncidencesPage() {
                                                     </TableCell>
                                                     <TableCell>{getStatusBadge(incidence.status)}</TableCell>
                                                     <TableCell>
-                                                        {incidence.status === 'pending' && hasHRPermissions && (
+                                                        {incidence.status === 'pending' && (hasHRPermissions || isManagerOnly) && (
                                                             <Button
                                                                 size="sm"
                                                                 onClick={() => {
