@@ -126,6 +126,60 @@ export async function getDirectReports(
 }
 
 /**
+ * Obtiene subordinados recursivos (directos + subordinados de subordinados)
+ * Útil para que el jefe del jefe pueda ver las solicitudes de toda su cadena.
+ * maxDepth controla cuántos niveles de jerarquía recorrer (default: 3)
+ */
+export async function getHierarchicalReports(
+    managerId: string,
+    maxDepth: number = 3
+): Promise<{ success: boolean; employees?: Employee[]; error?: string }> {
+    try {
+        const { firestore } = initializeFirebase();
+        const allEmployees = new Map<string, Employee>();
+        let currentManagerIds = [managerId];
+
+        for (let depth = 0; depth < maxDepth; depth++) {
+            if (currentManagerIds.length === 0) break;
+
+            // Firestore 'in' supports up to 30 elements — batch if needed
+            const nextLevelManagerIds: string[] = [];
+
+            for (let i = 0; i < currentManagerIds.length; i += 30) {
+                const batch = currentManagerIds.slice(i, i + 30);
+                const employeesQuery = query(
+                    collection(firestore, 'employees'),
+                    where('directManagerId', 'in', batch),
+                    where('status', '==', 'active')
+                );
+
+                const snapshot = await getDocs(employeesQuery);
+                snapshot.docs.forEach(d => {
+                    const emp = { id: d.id, ...d.data() } as Employee;
+                    if (!allEmployees.has(emp.id)) {
+                        allEmployees.set(emp.id, emp);
+                        // This employee could also be a manager with their own subordinates
+                        nextLevelManagerIds.push(emp.id);
+                    }
+                });
+            }
+
+            currentManagerIds = nextLevelManagerIds;
+        }
+
+        // Sort by fullName
+        const sorted = Array.from(allEmployees.values()).sort((a, b) =>
+            (a.fullName || '').localeCompare(b.fullName || '')
+        );
+
+        return { success: true, employees: sorted };
+    } catch (error) {
+        console.error('[Team] Error getting hierarchical reports:', error);
+        return { success: false, error: 'Error obteniendo subordinados jerárquicos.' };
+    }
+}
+
+/**
  * Verifica si un usuario tiene subordinados directos
  */
 export async function hasDirectReports(

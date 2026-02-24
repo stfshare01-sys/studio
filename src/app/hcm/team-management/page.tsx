@@ -323,23 +323,29 @@ function TeamManagementContent() {
                         setOvertimeRequests(otResult.requests || []);
                         if (otResult.stats) setOvertimeStats(otResult.stats);
                     }
-                    // Also fetch hour banks for debt display
-                    const empsResult = await getDirectReports(managerToUse);
-                    if (empsResult.success && empsResult.employees) {
-                        const employeeIds = empsResult.employees.map(e => e.id).filter(Boolean);
-
-                        if (employeeIds.length > 0) {
-                            const hbResult = await getTeamHourBanks(employeeIds);
-                            if (hbResult.success && hbResult.hourBanks) {
-                                setHourBanks(hbResult.hourBanks);
+                    // Also fetch hour banks for debt display (may fail if no permission)
+                    try {
+                        const empsResult = await getDirectReports(managerToUse);
+                        if (empsResult.success && empsResult.employees) {
+                            const employeeIds = empsResult.employees.map(e => e.id).filter(Boolean);
+                            if (employeeIds.length > 0) {
+                                const hbResult = await getTeamHourBanks(employeeIds);
+                                if (hbResult.success && hbResult.hourBanks) {
+                                    setHourBanks(hbResult.hourBanks);
+                                }
+                            } else {
+                                setHourBanks([]);
                             }
-                        } else {
-                            setHourBanks([]);
                         }
+                    } catch (hbError) {
+                        // Hour bank read may fail for users without time_bank permissions
+                        console.warn('Hour bank data unavailable for overtime tab:', hbError);
+                        setHourBanks([]);
                     }
                     break;
 
                 case 'shifts':
+                    if (!hasPermission(permissions, 'hcm_team_shifts', 'read')) break;
                     // We use getTeamShiftAssignments for the team view
                     const assignmentsResult = await getTeamShiftAssignments(managerToUse);
                     if (assignmentsResult.success && assignmentsResult.assignments) {
@@ -353,6 +359,7 @@ function TeamManagementContent() {
                     break;
 
                 case 'hour-bank':
+                    if (!hasPermission(permissions, 'hcm_team_hour_bank', 'read')) break;
                     // Hour bank needs employee IDs, so we fetch employees first
                     const empResult = await getDirectReports(managerToUse);
                     if (empResult.success && empResult.employees) {
@@ -1365,15 +1372,20 @@ function TeamManagementContent() {
                                 <Badge variant="destructive" className="ml-2">{missingPunches.filter(p => !p.isJustified && !p.resultedInAbsence).length}</Badge>
                             )}
                         </TabsTrigger>
-                        <TabsTrigger value="overtime">
-
-                            Horas Extras
-                            {pendingOvertime.length > 0 && (
-                                <Badge className="ml-2">{pendingOvertime.length}</Badge>
-                            )}
-                        </TabsTrigger>
-                        <TabsTrigger value="shifts">Turnos y Horarios</TabsTrigger>
-                        <TabsTrigger value="hour-bank">Bolsa de Horas</TabsTrigger>
+                        {hasPermission(permissions, 'hcm_team_overtime', 'read') && (
+                            <TabsTrigger value="overtime">
+                                Horas Extras
+                                {pendingOvertime.length > 0 && (
+                                    <Badge className="ml-2">{pendingOvertime.length}</Badge>
+                                )}
+                            </TabsTrigger>
+                        )}
+                        {hasPermission(permissions, 'hcm_team_shifts', 'read') && (
+                            <TabsTrigger value="shifts">Turnos y Horarios</TabsTrigger>
+                        )}
+                        {hasPermission(permissions, 'hcm_team_hour_bank', 'read') && (
+                            <TabsTrigger value="hour-bank">Bolsa de Horas</TabsTrigger>
+                        )}
                     </TabsList>
 
                     {/* Filters for all tabs except daily overview */}

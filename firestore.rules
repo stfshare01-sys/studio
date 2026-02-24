@@ -699,19 +699,31 @@ service cloud.firestore {
 
     /**
      * @description Time bank records (bolsa de horas)
-     * Read: Employee can read their own, HR can read all
+     * Read: Employee (own), Manager (team), HR/Admin (all)
      * Write: HR/Admin only (balance updates happen through Cloud Functions)
      * @path /time_bank/{employeeId}
      */
     match /time_bank/{employeeId} {
       // Employees can read their own time bank
       allow get: if isSignedIn() && employeeId == request.auth.uid;
-      // HR can read any time bank
-      allow get, list: if isHRManager();
+      // Managers and HR can read any time bank (Managers need it for team view)
+      allow get, list: if isManagerOrHR();
       // Only HR/Admin can modify time banks
       allow create, update: if isHRManager();
       // No deletes
       allow delete: if false;
+    }
+
+    /**
+     * @description Shift assignments for employees
+     * Read: Manager (team), HR/Admin (all)
+     * Write: Manager (assign), HR/Admin (full)
+     * @path /shift_assignments/{assignmentId}
+     */
+    match /shift_assignments/{assignmentId} {
+      allow get, list: if isManagerOrHR();
+      allow create, update: if isManagerOrHR();
+      allow delete: if isHRManager();
     }
 
     // -------------------------------------------------------------------------

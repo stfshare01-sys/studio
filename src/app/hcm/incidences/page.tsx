@@ -66,7 +66,7 @@ import {
 import type { Incidence, IncidenceType, IncidenceStatus, Employee, VacationBalance } from '@/lib/types';
 import { getEmployeeByUserId } from '@/firebase/actions/employee-actions';
 import { createIncidence, getVacationBalance } from '@/firebase/actions/incidence-actions';
-import { getDirectReports } from '@/firebase/actions/team-actions';
+import { getDirectReports, getHierarchicalReports } from '@/firebase/actions/team-actions';
 import { callApproveIncidence } from '@/firebase/callable-functions';
 import { checkDateConflict } from '@/lib/hcm-utils';
 import { format, parse, differenceInDays, startOfMonth, endOfMonth, eachDayOfInterval, startOfWeek, endOfWeek, isSameMonth, isSameDay, isWithinInterval, addMonths, subMonths } from 'date-fns';
@@ -113,7 +113,8 @@ export default function IncidencesPage() {
         if (!user?.uid) return;
 
         if (isManagerOnly) {
-            getDirectReports(user.uid).then(res => {
+            // Use hierarchical reports so "jefe del jefe" can see subordinates' team
+            getHierarchicalReports(user.uid).then(res => {
                 if (res.success && res.employees) {
                     // Safety net: filter out any non-active employees (e.g. recently terminated)
                     const active = res.employees.filter(e => e.status === 'active');
