@@ -123,6 +123,25 @@ export async function createIncidence(
                 payload.type
             );
 
+            // Deduct vacation balance if vacation type (matches Cloud Function approval logic)
+            if (payload.type === 'vacation' && totalDays > 0) {
+                await updateVacationBalance(
+                    payload.employeeId,
+                    totalDays,
+                    'taken',
+                    docRef.id,
+                    payload.submitterId
+                );
+                console.log(`[HCM] Auto-approved vacation: deducted ${totalDays} days from ${payload.employeeId}`);
+            }
+
+            // Store approver info on the incidence (same as Cloud Function does)
+            await updateDoc(docRef, {
+                approvedById: payload.submitterId,
+                approvedByName: payload.submitterName || 'Manager',
+                approvedAt: now,
+            });
+
             // Notify Employee that their manager auto-approved it
             await createNotification(firestore, payload.employeeId, {
                 title: `Incidencia Aprobada (Automático)`,

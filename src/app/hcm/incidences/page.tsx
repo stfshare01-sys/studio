@@ -1,7 +1,8 @@
 
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
+import { useSearchParams } from 'next/navigation';
 import SiteLayout from '@/components/site-layout';
 import Link from 'next/link';
 import { useFirebase, useMemoFirebase } from '@/firebase/provider';
@@ -100,6 +101,10 @@ export default function IncidencesPage() {
 
 
 
+    // URL params — when navigating from task inbox with ?incidentId=<id>
+    const searchParams = useSearchParams();
+    const lastUrlSync = useRef<string | null>(null);
+
     const hasHRPermissions = useMemo(() => ['Admin', 'HRManager'].includes(user?.role || ''), [user]);
     const isManagerOnly = useMemo(() => user?.role === 'Manager', [user]);
     const [teamIds, setTeamIds] = useState<string[]>([]);
@@ -170,7 +175,27 @@ export default function IncidencesPage() {
 
     const { data: incidences, isLoading } = useCollection<Incidence>(incidencesQuery);
 
+    // Auto-select incidence from URL param (?incidentId=...) when coming from task inbox
+    useEffect(() => {
+        const incidentId = searchParams.get('incidentId');
 
+        // Only process if param changed (prevent re-triggering)
+        if (incidentId === lastUrlSync.current) return;
+        lastUrlSync.current = incidentId;
+
+        if (!incidentId || !incidences || incidences.length === 0) return;
+
+        const target = incidences.find(inc => inc.id === incidentId);
+        if (target) {
+            setSelectedIncidence(target);
+            setIsReviewDialogOpen(true);
+
+            // If it's pending, auto-filter to pending for cleaner view
+            if (target.status === 'pending') {
+                setStatusFilter('pending');
+            }
+        }
+    }, [searchParams, incidences]);
 
     // Filter incidences client-side for type and search
     const filteredIncidences = useMemo(() => {
@@ -446,7 +471,7 @@ export default function IncidencesPage() {
                                     value={searchTerm}
                                     onChange={(e) => setSearchTerm(e.target.value)}
                                     className="pl-10"
-                                    disabled={!hasHRPermissions}
+                                    disabled={!hasHRPermissions && !isManagerOnly}
                                 />
                             </div>
                             <Select value={typeFilter} onValueChange={setTypeFilter}>

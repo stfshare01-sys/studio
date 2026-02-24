@@ -1,0 +1,126 @@
+# Arquitectura Central: Módulo de Capital Humano (HCM)
+_Documento de Auditoría y Diseño de Referencia para prevensión de regresiones ("Avanzar 1, Retroceder 2")._
+
+Este documento detalla todas las piezas de software que componen el módulo de Capital Humano (HCM), desde las colecciones en base de datos hasta las reglas de negocio, con el objetivo de funcionar como "mapa del tesoro" antes de tocar cualquier línea de código.
+
+---
+
+## 1. Topología de Datos (Colecciones Firestore)
+
+El sistema opera bajo un ecosistema de colecciones interconectadas. Aquí están las principales y sus campos críticos de acoplamiento:
+
+| Colección | Propósito | Campos de Alta Dependencia (Riesgo de Acoplamiento) |
+| :--- | :--- | :--- |
+| **`employees`** | Datos Core del Empleado | `status` (active/disabled), `directManagerId` (dicta permisos), `locationId` (dicta reglas geográficas/tolerancia), `shiftType` / `customShiftId`. |
+| **`locations`** | Reglas Geográficas/Sede | `toleranceMinutes` (margen de retardo), `holidayCalendarId`, `companyBenefitDays`. |
+| **`attendance`** | Registros Diarios de Asistencia | `employeeId`, [date](file:///c:/Users/francisco.rivera/OneDrive%20-%20Stuffactory,%20S.A.%20de%20C.V/Escritorio/Proyectos/studio/functions/src/callable/hcm-operations.ts#700-710), `checkIn`/`checkOut`, `hoursWorked`, `overtimeHours`, `isValid`. |
+| **`incidences`** | Solicitudes (Vacaciones, Permisos) | `type` (vacation/sick_leave/etc.), `startDate`, `endDate`, `status` (pending/approved), `totalDays`. |
+| **`tardiness_records`** / **`early_departures`** | Infracciones de Tiempo | Referencian un registro de asistencia cruzado con el horario esperado. Tienen estado `isJustified`. |
+| **`overtime_requests`** | Solicitudes de H. Extras | Diferencía entre solicitadas vs aprobadas (`hoursRequested` vs `hoursApproved`). |
+| **`prenomina`** | Consolidado Final de Periodo | Totaliza todo. Si algo falla arriba, la prenomina se corrompe. Campos: `overtimeDoubleHours`, `overtimeTripleHours`, `holidayDays`. |
+| **`time_bank`** | Banco de Horas (Deuda/A favor) | `hoursBalance`. |
+
+---
+
+## 2. Reglas de Negocio Críticas (Business Logic)
+
+Antes de modificar el código, se deben respetar las siguientes invariantes del sistema:
+
+### A. Jerarquía y Permisos (`utils/hierarchy-validator.ts`)
+*   **Aprobaciones:** Solo el manager directo, el manager del manager (hacia arriba en la cadena), o alguien con el rol de `HRManager`/`Admin` pueden ver o aprobar incidencias/horas extra y justificar retardos.
+*   **Visibilidad:** La UI cruza frecuentemente el ID del usuario (`user.uid`) contra el campo `directManagerId` de los empleados para mostrar las bandejas de entrada.
+
+### B. Regla Mexicana 3x3 de Horas Extras (`lib/hcm-utils.ts`)
+*   Por Ley Federal del Trabajo (LFT), las horas extra ocurren semanalmente (Lunes a Domingo).
+*   Las primeras 9 horas extra de la semana se pagan al **Doble**.
+*   A partir de la 10ma hora extra, se pagan al **Triple**.
+*   El cálculo SIEMPRE debe mirar TODA la semana, independientemente de si un registro es de un solo día.
+
+### C. Días Efectivos y Días Festivos (DFT)
+*   **Vacaciones:** No cuentan los fines de semana ni los días festivos en el conteo de días tomados (`calculateEffectiveLeaveDays`).
+*   **Días Festivos Trabajados (DFT):** Si un empleado tiene registro de asistencia (`attendance`) en un día que su ubicación (`locations`) marca como festivo, su registro debe indicar "DFT" para el pago correspondiente (Prima Extra).
+
+---
+
+## 3. Mapas de Integración (Workflows)
+
+A continuación, los diagramas de cómo interactúan los módulos al registrar un evento.
+
+### Flujo Crítico 1: Carga de Asistencia y Detección Temprana
+
+```mermaid
+graph TD
+    A[Excel Upload / API] -->|Client: processAttendanceImport| B{Días Festivos / Tolerancia}
+    B -->|Pre-carga Docs| C(Calcula Horas Trabajadas y Overtime)
+    C -->|Evalúa 'hoursWorked' vs Shift| D[Crea 'attendance']
+    D --> E((Trigger Firestore: onAttendanceCreated))
+    E --> F{¿Tardanza o Salida Temprana?}
+    F -->|Sí| G[Crea 'tardiness_records' / 'early_departures']
+    G --> H[Dispara Notificación al Manager]
+```
+
+### Flujo Crítico 2: Aprobación Transaccional de Vacaciones
+
+```mermaid
+sequenceDiagram
+    participant E as Employee
+    participant UI as Client (Incidence Form)
+    participant F as Firestore (incidences)
+    participant CF as Cloud Function (approveIncidence)
+    participant B as Firestore (vacation_balances)
+
+    E->>UI: Solicita Vacaciones 
+    UI->>F: Crea registro (Pending) + Task para Manager
+    Note over UI, F: Manager revisa
+    UI->>CF: Click en Aprobar
+    Note over CF: INICIA TRANSACCIÓN BBDD
+    CF->>F: Valida Jerarquía y Fechas que no choquen
+    CF->>B: Revisa 'daysAvailable' >= Días Solicitados
+    CF->>B: Descuenta 'daysAvailable', suma 'daysTaken' (con Historial/Movement)
+    CF->>F: Cambia estado Incidencia a 'approved'
+    CF->>F: Limpia la Task asociada
+    Note over CF: FIN TRANSACCIÓN
+```
+
+### Flujo Crítico 3: Cierre de Prenómina (El "Cuello de Botella")
+
+El cierre junta todos los eventos en un documento de prenomina final. **Cualquier error aquí afecta directo el dinero del empleado y de la empresa.**
+
+```mermaid
+graph TD
+    A[HR Cierra Período] -->|Cloud Function| B(consolidatePrenomina)
+    B --> C[1. Auto-Rechaza Overtime Pendiente]
+    B --> D[2. Pasa Retardos Injustificados a Faltas Oficiales]
+    B --> F[3. Agrupa 'attendance' y recalcula 3x3 LFT]
+    B --> G[4. Suma Vacaciones / Sick Leaves]
+    C --> H[Genera Array de 'prenomina']
+    D --> H
+    F --> H
+    G --> H
+    H --> I[Cierre Final (Bloqueo de Periodo)]
+```
+
+---
+
+## 4. Diagnóstico "Clean Code" e Identificación de Acoplamiento (Riegos y Soluciones)
+
+Tras la revisión técnica del código fuente actual, se detectaron los siguientes puntos de fragilidad (Deuda Técnica) que causan el efecto "Arreglo 1, Rompo 2".
+
+### ⚠️ Acoplamiento 1: "Client-Side God Functions"
+**El Problema:** Archivos como [src/firebase/actions/incidence-actions.ts](file:///c:/Users/francisco.rivera/OneDrive%20-%20Stuffactory,%20S.A.%20de%20C.V/Escritorio/Proyectos/studio/src/firebase/actions/incidence-actions.ts) (específicamente [processAttendanceImport](file:///c:/Users/francisco.rivera/OneDrive%20-%20Stuffactory,%20S.A.%20de%20C.V/Escritorio/Proyectos/studio/src/firebase/actions/incidence-actions.ts#276-894)) tienen más de 500 líneas en una sola función ejecutándose **en el cliente (navegador)**. La función cruza caché en memoria, reglas de negocio de tolerancia, horarios, turnos y llamados múltiples a DB en el mismo flujo. Si algo falla por conexión a mitad de lectura, quedan registros huérfanos.
+**Solución Refactor:**
+1. Separar lógica puramente matemática e inyectarla como funciones externas desde un hub de dominio: `/lib/hcm/attendance-core.ts`.
+2. Mover el procesamiento masivo de lotes (Imports) hacia una *Callable Cloud Function* con background processing (`queue`), en lugar de sobrecargar la memoria del cliente.
+
+### ⚠️ Acoplamiento 2: "Duplicidad de Cálculos de Tiempo"
+**El Problema:** La regla 3x3 (Horas Extras) se calcula en [team-actions.ts](file:///c:/Users/francisco.rivera/OneDrive%20-%20Stuffactory,%20S.A.%20de%20C.V/Escritorio/Proyectos/studio/src/firebase/actions/team-actions.ts) (al aprobar) para guardarse, y se VUELVE a calcular desde cero en [hcm-operations.ts](file:///c:/Users/francisco.rivera/OneDrive%20-%20Stuffactory,%20S.A.%20de%20C.V/Escritorio/Proyectos/studio/functions/src/callable/hcm-operations.ts) (al generar prenómina). Si una función se corrige, y la otra no, el pago de prenómina no coincidirá con lo que aprobó el supervisor.
+**Solución Refactor:**
+Aplicar el principio "Single Source of Truth (SSOT)". Crear una única función `computeWeeklyOvertime(employeeId, weekRange)` en `/lib/hcm-calculations.ts` que sea invocada estrictamente por ambos lados, pasando una estructura de datos estándar y agnóstica a Firestore.
+
+### ⚠️ Acoplamiento 3: Race Conditions en Hooks vs Roles
+**El Problema:** La visualización del panel HCM ha lanzado antes el error _"Missing or insufficient permissions"_. Esto ocurre porque la UI monta las subscripciones (`useMemoFirebase` de asistencias o empleados) milisegundos ANTES de que el proveedor devuelva el Rol oficial cargado del backend.
+**Solución Refactor (Regla de `/permissions`):**
+Toda visualización y query en el módulo HCM en el Fron-End DEBE envolverse detrás de: `if (!hasHRPermissions) return null;` esperando a que el objeto `permissions` deje de estar en estado de "carga" antes de solicitar datos a Firebase.
+
+---
+**FIN DEL DOCUMENTO DE ARQUITECTURA HCM**
