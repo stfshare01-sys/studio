@@ -100,10 +100,12 @@ export async function createIncidence(
         const managerId = employeeData.directManagerId;
         const isAutoApproved = payload.submitterId && (payload.submitterId === managerId);
 
+        // Always create as 'pending' — auto-approval is handled via Cloud Function
+        // which runs with admin privileges and can write to vacation_balances atomically.
         const incidenceData: Omit<Incidence, 'id'> = {
             ...payload,
             totalDays,
-            status: isAutoApproved ? 'approved' : 'pending',
+            status: 'pending',
             createdAt: now,
             updatedAt: now
         };
@@ -114,7 +116,21 @@ export async function createIncidence(
         console.log(`[HCM] Created incidence ${docRef.id} for employee ${payload.employeeId}. Auto-approved: ${isAutoApproved}`);
 
         if (isAutoApproved) {
-            // Auto-justify right now
+            // Delegate approval to Cloud Function — it runs with admin privileges
+            // and handles vacation balance deduction in an atomic transaction.
+            // This avoids Firestore rules blocking Manager writes to vacation_balances.
+            try {
+                const cfResult = await callApproveIncidence({
+                    incidenceId: docRef.id,
+                    action: 'approve',
+                });
+                console.log(`[HCM] Auto-approved incidence ${docRef.id} via Cloud Function`, cfResult);
+            } catch (cfError) {
+                // If CF fails, incidence stays as 'pending' — manager can approve manually
+                console.warn('[HCM] Auto-approval via CF failed, incidence remains pending:', cfError);
+            }
+
+            // Auto-justify infractions (tardiness/absences) covered by this incidence
             await justifyInfractionsFromIncidence(
                 docRef.id,
                 payload.employeeId,
@@ -122,33 +138,6 @@ export async function createIncidence(
                 payload.endDate,
                 payload.type
             );
-
-            // Deduct vacation balance if vacation type (matches Cloud Function approval logic)
-            if (payload.type === 'vacation' && totalDays > 0) {
-                await updateVacationBalance(
-                    payload.employeeId,
-                    totalDays,
-                    'taken',
-                    docRef.id,
-                    payload.submitterId
-                );
-                console.log(`[HCM] Auto-approved vacation: deducted ${totalDays} days from ${payload.employeeId}`);
-            }
-
-            // Store approver info on the incidence (same as Cloud Function does)
-            await updateDoc(docRef, {
-                approvedById: payload.submitterId,
-                approvedByName: payload.submitterName || 'Manager',
-                approvedAt: now,
-            });
-
-            // Notify Employee that their manager auto-approved it
-            await createNotification(firestore, payload.employeeId, {
-                title: `Incidencia Aprobada (Automático)`,
-                message: `Tu jefe (${payload.submitterName || 'Manager'}) ha solicitado y aprobado ${payload.type} del ${payload.startDate} al ${payload.endDate}.`,
-                type: 'success',
-                link: '/hcm'
-            });
         } else {
             // [NEW] Create Task for Manager ONLY IF NOT AUTO-APPROVED
             if (managerId) {
