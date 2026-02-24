@@ -181,10 +181,13 @@ function NewRequestPageContent() {
     const availableSubjects = useMemo(() => {
         if (!users || !user) return [];
 
+        // Only consider active users
+        const activeUsers = users.filter(u => u.status === 'active' || !u.status);
+
         // 1. HR / Global Admin: All users
         const hasGlobalAccess = hasPermission(permissions, 'hcm_team_management_global', 'write') || isAdmin;
         if (hasGlobalAccess) {
-            return users;
+            return activeUsers;
         }
 
         // 2. Manager: Direct reports + Self
@@ -194,18 +197,18 @@ function NewRequestPageContent() {
             .map(emp => emp.id) || [];
 
         // Get the corresponding user records
-        const mySubordinates = users.filter(u => subordinateEmployeeIds.includes(u.id));
+        const mySubordinates = activeUsers.filter(u => subordinateEmployeeIds.includes(u.id));
 
         if (mySubordinates.length > 0) {
             // Include self
-            const self = users.find(u => u.id === user.uid);
+            const self = activeUsers.find(u => u.id === user.uid);
             return self ? [self, ...mySubordinates] : mySubordinates;
         }
 
         // 3. Regular Employee: Only Self
-        const self = users.find(u => u.id === user.uid);
+        const self = activeUsers.find(u => u.id === user.uid);
         return self ? [self] : [];
-    }, [users, user, permissions]);
+    }, [users, user, permissions, isAdmin, employees]);
 
     const filteredSubjects = useMemo(() => {
         if (!userSearch) return availableSubjects;
