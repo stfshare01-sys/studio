@@ -31,17 +31,21 @@ function getTaskRedirectUrl(task: EnrichedTask): string {
         return `/hcm/team-management${batchId ? `?batchId=${batchId}&tab=tardiness` : ''}`;
     }
 
+    // Handle incidence approval tasks (vacations, leaves, etc.)
+    if (task.type === 'incidence_approval') {
+        const incidenceId = task.metadata?.incidenceId;
+        return `/hcm/incidences${incidenceId ? `?incidentId=${incidenceId}` : ''}`;
+    }
+
     // Smart Redirection Rules
     if (title.includes('corte') && title.includes('quincena')) {
         return '/hcm/team-management?tab=overview';
     }
 
-    // For manager tasks related to incidences, we might want to go to the request details 
-    // OR the team management view. The requirement says "Gestión de Incidencias".
-    // Assuming '/requests/id' IS the management view for individual requests, 
-    // but the user might mean the Team Management > Incidences tab.
-    // Let's stick to Request Details for specific items as it's safer for now, 
-    // UNLESS it's explicitly "Corte".
+    // Generic fallback: use task's link property if available
+    if (task.link) {
+        return task.link;
+    }
 
     return `/requests/${task.requestId}`;
 }

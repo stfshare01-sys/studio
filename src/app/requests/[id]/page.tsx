@@ -159,57 +159,74 @@ export default function RequestDetailPage() {
         async function findRequestRef() {
             if (isUserLoading || !firestore || !user) return;
 
-            // 1. Try to find the request under the current user's path (most common case for submitters)
-            let userSpecificSnap = await getDoc(doc(firestore, 'users', user.uid, 'requests', id));
+            try {
+                // 1. Try to find the request under the current user's path (most common case for submitters)
+                let userSpecificSnap = await getDoc(doc(firestore, 'users', user.uid, 'requests', id));
 
-            if (userSpecificSnap.exists()) {
-                setRequestRef(userSpecificSnap.ref);
-                return;
-            }
-
-            // 2. If not found and user is admin, search across all requests
-            if (isAdmin) {
-                const requestsCollectionGroup = collectionGroup(firestore, 'requests');
-                const q = query(requestsCollectionGroup, where('id', '==', id), limit(1));
-                const querySnapshot = await getDocs(q);
-
-                if (!querySnapshot.empty) {
-                    setRequestRef(querySnapshot.docs[0].ref);
+                if (userSpecificSnap.exists()) {
+                    setRequestRef(userSpecificSnap.ref);
                     return;
                 }
-            }
 
-            // 3. Check if the user is directly assigned to any task for this request
-            const assignedTasksQuery = query(collection(firestore, 'tasks'), where('requestId', '==', id), where('assigneeId', '==', user.uid));
-            const assignedTasksSnapshot = await getDocs(assignedTasksQuery);
-            if (!assignedTasksSnapshot.empty) {
-                const requestsCollectionGroup = collectionGroup(firestore, 'requests');
-                const q = query(requestsCollectionGroup, where('id', '==', id), limit(1));
-                const querySnapshot = await getDocs(q);
-                if (!querySnapshot.empty) {
-                    setRequestRef(querySnapshot.docs[0].ref);
-                    return;
-                }
-            }
-
-            // 4. Fallback for managers - check if a task in this request is assigned to their direct reports
-            const teamEmployeesSnapshot = await getDocs(query(collection(firestore, 'employees'), where('directManagerId', '==', user.uid)));
-            const myTeamIds = teamEmployeesSnapshot.docs.map(d => d.id);
-            if (myTeamIds.length > 0) {
-                const tasksInRequestQuery = query(collection(firestore, 'tasks'), where('requestId', '==', id), where('assigneeId', 'in', myTeamIds));
-                const tasksSnapshot = await getDocs(tasksInRequestQuery);
-                if (!tasksSnapshot.empty) {
+                // 2. If not found and user is admin, search across all requests
+                if (isAdmin) {
                     const requestsCollectionGroup = collectionGroup(firestore, 'requests');
                     const q = query(requestsCollectionGroup, where('id', '==', id), limit(1));
                     const querySnapshot = await getDocs(q);
+
                     if (!querySnapshot.empty) {
                         setRequestRef(querySnapshot.docs[0].ref);
                         return;
                     }
                 }
-            }
 
-            setRequestNotFound(true);
+                // 3. Check if the user is directly assigned to any task for this request
+                const assignedTasksQuery = query(collection(firestore, 'tasks'), where('requestId', '==', id), where('assigneeId', '==', user.uid));
+                const assignedTasksSnapshot = await getDocs(assignedTasksQuery);
+                if (!assignedTasksSnapshot.empty) {
+                    try {
+                        const requestsCollectionGroup = collectionGroup(firestore, 'requests');
+                        const q = query(requestsCollectionGroup, where('id', '==', id), limit(1));
+                        const querySnapshot = await getDocs(q);
+                        if (!querySnapshot.empty) {
+                            setRequestRef(querySnapshot.docs[0].ref);
+                            return;
+                        }
+                    } catch (collectionGroupError) {
+                        console.warn('[RequestDetail] Collection group query failed (permissions):', collectionGroupError);
+                    }
+                }
+
+                // 4. Fallback for managers - check if a task in this request is assigned to their direct reports
+                try {
+                    const teamEmployeesSnapshot = await getDocs(query(collection(firestore, 'employees'), where('directManagerId', '==', user.uid)));
+                    const myTeamIds = teamEmployeesSnapshot.docs.map(d => d.id);
+                    if (myTeamIds.length > 0) {
+                        const tasksInRequestQuery = query(collection(firestore, 'tasks'), where('requestId', '==', id), where('assigneeId', 'in', myTeamIds));
+                        const tasksSnapshot = await getDocs(tasksInRequestQuery);
+                        if (!tasksSnapshot.empty) {
+                            try {
+                                const requestsCollectionGroup = collectionGroup(firestore, 'requests');
+                                const q = query(requestsCollectionGroup, where('id', '==', id), limit(1));
+                                const querySnapshot = await getDocs(q);
+                                if (!querySnapshot.empty) {
+                                    setRequestRef(querySnapshot.docs[0].ref);
+                                    return;
+                                }
+                            } catch (innerError) {
+                                console.warn('[RequestDetail] Collection group query failed in manager fallback:', innerError);
+                            }
+                        }
+                    }
+                } catch (managerError) {
+                    console.warn('[RequestDetail] Manager team lookup failed:', managerError);
+                }
+
+                setRequestNotFound(true);
+            } catch (error) {
+                console.error('[RequestDetail] Error finding request:', error);
+                setRequestNotFound(true);
+            }
         }
         findRequestRef();
     }, [firestore, user, id, isUserLoading, isAdmin]);

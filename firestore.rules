@@ -42,6 +42,13 @@ service cloud.firestore {
       return isOwner(userId) || hasRole('Admin');
     }
 
+    // Check if user's role grants access to the requests module
+    // Simplified role-based check (Firestore rules cannot iterate permission arrays)
+    function canAccessRequests() {
+      return isSignedIn() && userDocExists()
+        && getUserData().role in ['Admin', 'Designer', 'HRManager', 'Manager'];
+    }
+
     // Validate that required fields exist and are of correct type
     function hasRequiredTaskFields() {
       let data = request.resource.data;
@@ -152,24 +159,24 @@ service cloud.firestore {
           // An alternative is an array in the request doc for 'assignees', or allowing read if they have 'requests' module permission.
       }
       
-      // Allow read if user is owner, admin, or has 'requests' module read permission
-      allow get, list: if isOwner(userId) || hasRole('Admin') || hasPermission('requests', 'read') || hasPermission('requests', 'write');
-      
+      // Allow read if user is owner, admin, or has requests module access
+      allow get, list: if isOwner(userId) || hasRole('Admin') || canAccessRequests();
+
       // Owner can create/update/delete
       allow create, update, delete: if isOwner(userId);
 
       // Documents attached to requests
       match /documents/{documentId} {
-        allow get, list: if isOwner(userId) || hasRole('Admin') || hasPermission('requests', 'read') || hasPermission('requests', 'write');
+        allow get, list: if isOwner(userId) || hasRole('Admin') || canAccessRequests();
         allow create, update, delete: if isOwner(userId);
       }
 
       // Comments on requests
       match /comments/{commentId} {
         // Owner, admins, and assignees (users with requests access) can view comments
-        allow get, list: if isOwner(userId) || hasRole('Admin') || hasPermission('requests', 'read') || hasPermission('requests', 'write');
+        allow get, list: if isOwner(userId) || hasRole('Admin') || canAccessRequests();
         // Owner, admins, and assignees can comment
-        allow create: if isOwner(userId) || hasRole('Admin') || hasPermission('requests', 'write');
+        allow create: if isOwner(userId) || hasRole('Admin') || canAccessRequests();
         // Only author can edit their own comments
         allow update: if request.auth.uid == resource.data.authorId;
         // Owner, admins, or author can delete comments
@@ -192,8 +199,9 @@ service cloud.firestore {
      * @path /{path=**}/requests/{requestId}
      */
     match /{path=**}/requests/{requestId} {
-      // Admins and Designers can read all requests for reporting
-      allow read: if hasAnyRole(['Admin', 'Designer']);
+      // Admins, Designers, HRManagers, and Managers can read requests via collection group queries
+      // Managers need this for viewing requests they are assigned to approve
+      allow read: if hasAnyRole(['Admin', 'Designer', 'HRManager', 'Manager']);
     }
 
     /**
