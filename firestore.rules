@@ -145,22 +145,31 @@ service cloud.firestore {
      * @path /users/{userId}/requests/{requestId}
      */
     match /users/{userId}/requests/{requestId} {
-      // Owner can list their own requests, Admins can list all
-      allow list: if isOwner(userId) || hasRole('Admin');
-      // Owner can perform all operations on their requests
-      allow get, create, update, delete: if isOwner(userId);
+      // Helper function to check if user is assigned to a task for this request
+      function isAssignee() {
+        return isSignedIn() && exists(/databases/$(database)/documents/tasks/$(requestId)) 
+          || true; // TODO: properly query tasks, but cross-collection queries in rules without doc ID are tricky. 
+          // An alternative is an array in the request doc for 'assignees', or allowing read if they have 'requests' module permission.
+      }
+      
+      // Allow read if user is owner, admin, or has 'requests' module read permission
+      allow get, list: if isOwner(userId) || hasRole('Admin') || hasPermission('requests', 'read') || hasPermission('requests', 'write');
+      
+      // Owner can create/update/delete
+      allow create, update, delete: if isOwner(userId);
 
       // Documents attached to requests
       match /documents/{documentId} {
-        allow get, list, create, update, delete: if isOwner(userId);
+        allow get, list: if isOwner(userId) || hasRole('Admin') || hasPermission('requests', 'read') || hasPermission('requests', 'write');
+        allow create, update, delete: if isOwner(userId);
       }
 
-      // Comments on requests - only request owner, assignees, and admins can access
+      // Comments on requests
       match /comments/{commentId} {
-        // Only request owner and admins can view comments
-        allow get, list: if isOwner(userId) || hasRole('Admin');
-        // Only request owner and admins can comment
-        allow create: if isOwner(userId) || hasRole('Admin');
+        // Owner, admins, and assignees (users with requests access) can view comments
+        allow get, list: if isOwner(userId) || hasRole('Admin') || hasPermission('requests', 'read') || hasPermission('requests', 'write');
+        // Owner, admins, and assignees can comment
+        allow create: if isOwner(userId) || hasRole('Admin') || hasPermission('requests', 'write');
         // Only author can edit their own comments
         allow update: if request.auth.uid == resource.data.authorId;
         // Owner, admins, or author can delete comments

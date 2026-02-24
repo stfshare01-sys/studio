@@ -283,6 +283,24 @@
       ]
     },
     {
+      "collectionGroup": "employees",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "directManagerId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "fullName",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
       "collectionGroup": "prenomina",
       "queryScope": "COLLECTION",
       "fields": [
@@ -552,6 +570,16 @@
     }
   ],
   "fieldOverrides": [
+    {
+      "collectionGroup": "requests",
+      "fieldPath": "id",
+      "indexes": [
+        {
+          "order": "ASCENDING",
+          "queryScope": "COLLECTION_GROUP"
+        }
+      ]
+    },
     {
       "collectionGroup": "requests",
       "fieldPath": "createdAt",
