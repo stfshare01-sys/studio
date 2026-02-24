@@ -51,6 +51,8 @@ interface CreateIncidencePayload {
     isPaid: boolean;
     notes?: string;
     imssReference?: string;
+    submitterId?: string;
+    submitterName?: string;
 }
 
 import { calculateEffectiveLeaveDays } from '@/lib/hcm-calculations';
@@ -95,12 +97,13 @@ export async function createIncidence(
             totalDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
         }
 
+        const managerId = employeeData.directManagerId;
+        const isAutoApproved = payload.submitterId && (payload.submitterId === managerId);
+
         const incidenceData: Omit<Incidence, 'id'> = {
             ...payload,
             totalDays,
-            // Store breakdown in notes if not present? Or just rely on totalDays.
-            // Appending to notes is handled in frontend, but good to ensure here if needed.
-            status: 'pending',
+            status: isAutoApproved ? 'approved' : 'pending',
             createdAt: now,
             updatedAt: now
         };
@@ -108,45 +111,61 @@ export async function createIncidence(
         const incidenceRef = collection(firestore, 'incidences');
         const docRef = await addDoc(incidenceRef, incidenceData);
 
-        console.log(`[HCM] Created incidence ${docRef.id} for employee ${payload.employeeId}`);
+        console.log(`[HCM] Created incidence ${docRef.id} for employee ${payload.employeeId}. Auto-approved: ${isAutoApproved}`);
 
-        // [NEW] Create Task for Manager
-        const managerId = employeeData.directManagerId;
-        // If no direct manager, we might want to notify HR, but for now let's focus on Manager.
-        // We can assign to HR role if logic allows, but Task strictly uses assigneeId (User ID).
-        // For now, if manager exists, create task.
-        if (managerId) {
-            const taskData: any = {
-                requestId: docRef.id,
-                requestTitle: `Incidencia: ${payload.type}`,
-                requestOwnerId: payload.employeeId,
-                stepId: 'incidence-approval',
-                name: `Aprobar ${payload.type} - ${payload.employeeName}`,
-                status: 'pending', // TaskStatus
-                priority: 'high',
-                type: 'incidence_approval',
-                metadata: { incidenceId: docRef.id, employeeId: payload.employeeId },
-                assigneeId: managerId,
-                createdAt: now,
-                link: `/hcm/incidences`
-            };
-            await addDoc(collection(firestore, 'tasks'), taskData);
+        if (isAutoApproved) {
+            // Auto-justify right now
+            await justifyInfractionsFromIncidence(
+                docRef.id,
+                payload.employeeId,
+                payload.startDate,
+                payload.endDate,
+                payload.type
+            );
 
-            // Notification to Manager
-            await createNotification(firestore, managerId, {
-                title: 'Nueva Solicitud de Incidencia',
-                message: `${payload.employeeName} ha solicitado ${payload.type} del ${payload.startDate} al ${payload.endDate}.`,
-                type: 'task',
-                link: '/hcm/incidences'
+            // Notify Employee that their manager auto-approved it
+            await createNotification(firestore, payload.employeeId, {
+                title: `Incidencia Aprobada (Automático)`,
+                message: `Tu jefe (${payload.submitterName || 'Manager'}) ha solicitado y aprobado ${payload.type} del ${payload.startDate} al ${payload.endDate}.`,
+                type: 'success',
+                link: '/hcm'
             });
         } else {
-            // Fallback: Notify HR Managers generic
-            await notifyRole(firestore, 'HRManager', {
-                title: 'Nueva Solicitud de Incidencia (Sin Manager Directo)',
-                message: `${payload.employeeName} ha solicitado ${payload.type}. Requiere atención de RH.`,
-                type: 'warning',
-                link: '/hcm/incidences'
-            });
+            // [NEW] Create Task for Manager ONLY IF NOT AUTO-APPROVED
+            if (managerId) {
+                const taskData: any = {
+                    requestId: docRef.id,
+                    requestTitle: `Incidencia: ${payload.type}`,
+                    requestOwnerId: payload.employeeId,
+                    stepId: 'incidence-approval',
+                    name: `Aprobar ${payload.type} - ${payload.employeeName}`,
+                    status: 'pending', // TaskStatus
+                    priority: 'high',
+                    type: 'incidence_approval',
+                    moduleTag: 'HCM', // REQUIRED so it appears in HCM Dashboard Inbox
+                    metadata: { incidenceId: docRef.id, employeeId: payload.employeeId },
+                    assigneeId: managerId,
+                    createdAt: now,
+                    link: `/hcm/incidences`
+                };
+                await addDoc(collection(firestore, 'tasks'), taskData);
+
+                // Notification to Manager
+                await createNotification(firestore, managerId, {
+                    title: 'Nueva Solicitud de Incidencia',
+                    message: `${payload.employeeName} ha solicitado ${payload.type} del ${payload.startDate} al ${payload.endDate}.`,
+                    type: 'task',
+                    link: '/hcm/incidences'
+                });
+            } else {
+                // Fallback: Notify HR Managers generic
+                await notifyRole(firestore, 'HRManager', {
+                    title: 'Nueva Solicitud de Incidencia (Sin Manager Directo)',
+                    message: `${payload.employeeName} ha solicitado ${payload.type}. Requiere atención de RH.`,
+                    type: 'warning',
+                    link: '/hcm/incidences'
+                });
+            }
         }
 
         return { success: true, incidenceId: docRef.id };

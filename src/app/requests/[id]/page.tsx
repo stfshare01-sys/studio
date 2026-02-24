@@ -152,6 +152,7 @@ export default function RequestDetailPage() {
     const { toast } = useToast();
 
     const [requestRef, setRequestRef] = useState<any>(null);
+    const [requestNotFound, setRequestNotFound] = useState(false);
     const [newComment, setNewComment] = useState("");
 
     useEffect(() => {
@@ -166,7 +167,7 @@ export default function RequestDetailPage() {
                 return;
             }
 
-            // 2. If not found and user is admin, search across all requests using a collection group query.
+            // 2. If not found and user is admin, search across all requests
             if (isAdmin) {
                 const requestsCollectionGroup = collectionGroup(firestore, 'requests');
                 const q = query(requestsCollectionGroup, where('id', '==', id), limit(1));
@@ -178,8 +179,22 @@ export default function RequestDetailPage() {
                 }
             }
 
-            // 3. Fallback for managers - check if a task in this request is assigned to their direct reports
-            const myTeamIds = (await getDocs(query(collection(firestore, 'users'), where('managerId', '==', user.uid)))).docs.map(d => d.id);
+            // 3. Check if the user is directly assigned to any task for this request
+            const assignedTasksQuery = query(collection(firestore, 'tasks'), where('requestId', '==', id), where('assigneeId', '==', user.uid));
+            const assignedTasksSnapshot = await getDocs(assignedTasksQuery);
+            if (!assignedTasksSnapshot.empty) {
+                const requestsCollectionGroup = collectionGroup(firestore, 'requests');
+                const q = query(requestsCollectionGroup, where('id', '==', id), limit(1));
+                const querySnapshot = await getDocs(q);
+                if (!querySnapshot.empty) {
+                    setRequestRef(querySnapshot.docs[0].ref);
+                    return;
+                }
+            }
+
+            // 4. Fallback for managers - check if a task in this request is assigned to their direct reports
+            const teamEmployeesSnapshot = await getDocs(query(collection(firestore, 'employees'), where('directManagerId', '==', user.uid)));
+            const myTeamIds = teamEmployeesSnapshot.docs.map(d => d.id);
             if (myTeamIds.length > 0) {
                 const tasksInRequestQuery = query(collection(firestore, 'tasks'), where('requestId', '==', id), where('assigneeId', 'in', myTeamIds));
                 const tasksSnapshot = await getDocs(tasksInRequestQuery);
@@ -194,7 +209,7 @@ export default function RequestDetailPage() {
                 }
             }
 
-            setRequestRef(null);
+            setRequestNotFound(true);
         }
         findRequestRef();
     }, [firestore, user, id, isUserLoading, isAdmin]);
@@ -316,14 +331,14 @@ export default function RequestDetailPage() {
         }
     };
 
-    const isLoading = isUserLoading || !requestRef || isRequestLoading || areUsersLoading || isTemplateLoading || areAuditLogsLoading;
+    const isLoading = isUserLoading || (!requestRef && !requestNotFound) || isRequestLoading || areUsersLoading || isTemplateLoading || areAuditLogsLoading;
 
     if (isLoading && !request) {
         return <SiteLayout><RequestDetailSkeleton /></SiteLayout>;
     }
 
-    if (!request || !enrichedRequest || !template) {
-        if (!isRequestLoading && !request) notFound();
+    if (requestNotFound || !request || !enrichedRequest || !template) {
+        if (requestNotFound || (!isRequestLoading && !request)) notFound();
         return <SiteLayout><RequestDetailSkeleton /></SiteLayout>;
     }
 

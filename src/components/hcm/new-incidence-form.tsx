@@ -130,9 +130,9 @@ export function NewIncidenceForm({ userId, targetUserId, onSuccess, onCancel, cl
                 // Let's calculate first.
             }
 
-            // 1. Check for date conflicts (exclude cancelled incidences)
+            // 1. Check for date conflicts (exclude cancelled and rejected incidences)
             const activeIncidences = userIncidences
-                .filter(inc => inc.status !== 'cancelled')
+                .filter(inc => ['pending', 'approved'].includes(inc.status))
                 .map(inc => ({
                     id: inc.id,
                     employeeId: inc.employeeId,
@@ -247,6 +247,7 @@ export function NewIncidenceForm({ userId, targetUserId, onSuccess, onCancel, cl
                 startDate: newIncidence.startDate,
                 endDate: newIncidence.endDate,
                 isPaid: newIncidence.isPaid,
+                submitterId: userId,
                 notes: (newIncidence.notes || '') + (calculationResult ? `\n\n[Cálculo Automático]\nDías Efectivos: ${calculationResult.effectiveDays}\nDescansos: ${calculationResult.weekendDays}\nFestivos: ${calculationResult.holidays}` : '')
             });
 
