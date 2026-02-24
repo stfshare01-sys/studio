@@ -39,10 +39,6 @@ interface EmployeeDetailPanelProps {
 export function EmployeeDetailPanel({ employee, onClose }: EmployeeDetailPanelProps) {
     const { user } = useFirebase();
     const hasHRPermissions = ['Admin', 'HRManager'].includes(user?.role || '');
-    const isManager = user?.role === 'Manager';
-    const isDirectReport = employee.directManagerId === user?.uid;
-    // HR/Admin can view any employee's profile; Managers can only view their direct reports
-    const canViewExpediente = hasHRPermissions || (isManager && isDirectReport);
 
     const getInitials = (name: string) => {
         return name?.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || '??';
@@ -109,7 +105,7 @@ export function EmployeeDetailPanel({ employee, onClose }: EmployeeDetailPanelPr
 
                 {/* Actions */}
                 <div className="pt-3 flex gap-2">
-                    {canViewExpediente && (
+                    {hasHRPermissions && (
                         <Button asChild size="sm" className="flex-1">
                             <Link href={`/hcm/employees/${employee.id}`}>
                                 <ExternalLink className="h-4 w-4 mr-2" />
@@ -117,7 +113,7 @@ export function EmployeeDetailPanel({ employee, onClose }: EmployeeDetailPanelPr
                             </Link>
                         </Button>
                     )}
-                    <Button size="sm" variant="outline" onClick={onClose} className={canViewExpediente ? "" : "flex-1"}>
+                    <Button size="sm" variant="outline" onClick={onClose} className={hasHRPermissions ? "" : "flex-1"}>
                         Cerrar
                     </Button>
                 </div>

@@ -504,6 +504,9 @@ function TeamManagementContent() {
         }
     }, [searchParams]);
 
+    // Track the previous manager to detect manager switches
+    const prevManagerRef = useRef<string>('');
+
     // Effect to reload data when tab, date, or manager changes (AFTER initial load)
     useEffect(() => {
         // Only run after initial load is complete
@@ -512,14 +515,85 @@ function TeamManagementContent() {
             return;
         }
 
+        const managerChanged = prevManagerRef.current !== '' && prevManagerRef.current !== selectedManagerId;
+        prevManagerRef.current = selectedManagerId;
+
         console.log('🔁 Reload useEffect triggered', {
             activeTab,
             selectedDate,
             dateFilter,
-            selectedManagerId
+            selectedManagerId,
+            managerChanged
         });
 
-        loadTabData(activeTab);
+        // When manager changes, reload the employees list + all tab data for counters
+        if (managerChanged) {
+            const reloadAll = async () => {
+                setLoadingData(true);
+                try {
+                    // Reload employees for the new manager
+                    const empResult = await getDirectReports(selectedManagerId);
+                    if (empResult.success && empResult.employees) {
+                        setEmployees(empResult.employees);
+                        setHasSubordinates(empResult.employees.length > 0);
+                    } else {
+                        setEmployees([]);
+                        setHasSubordinates(false);
+                    }
+
+                    // Reload ALL tab data in parallel so header counters update correctly
+                    // Parse dateFilter safely (it can be 'all' when no batch is selected)
+                    const now = new Date();
+                    const [parsedYear, parsedMonth] = dateFilter !== 'all'
+                        ? dateFilter.split('-').map(Number) as [number, number]
+                        : [now.getFullYear(), now.getMonth() + 1];
+
+                    const [
+                        tardinessResult,
+                        departuresResult,
+                        overtimeResult,
+                        monthlyStatsResult,
+                        dailyStatsResult,
+                        missingPunchesResult
+                    ] = await Promise.all([
+                        getTeamTardiness(selectedManagerId, dateFilter),
+                        getTeamEarlyDepartures(selectedManagerId, dateFilter),
+                        getTeamOvertimeRequests(selectedManagerId, 'all'),
+                        getTeamMonthlyStats(selectedManagerId, parsedYear, parsedMonth),
+                        getTeamDailyStats(selectedManagerId, selectedDate),
+                        getTeamMissingPunches(selectedManagerId, dateFilter)
+                    ]);
+
+                    if (tardinessResult.success && tardinessResult.records) {
+                        setTardiness(tardinessResult.records);
+                    }
+                    if (departuresResult.success && departuresResult.records) {
+                        setEarlyDepartures(departuresResult.records);
+                    }
+                    if (overtimeResult.success) {
+                        setOvertimeRequests(overtimeResult.requests || []);
+                        if (overtimeResult.stats) setOvertimeStats(overtimeResult.stats);
+                    }
+                    if (monthlyStatsResult.success && monthlyStatsResult.stats) {
+                        setMonthlyStats(monthlyStatsResult.stats);
+                    }
+                    if (dailyStatsResult.success && dailyStatsResult.stats) {
+                        setDailyStats(dailyStatsResult.stats);
+                    }
+                    if (missingPunchesResult.success && missingPunchesResult.records) {
+                        setMissingPunches(missingPunchesResult.records);
+                    }
+                } catch (error) {
+                    console.error('Error reloading data for manager switch:', error);
+                } finally {
+                    setLoadingData(false);
+                }
+            };
+            reloadAll();
+        } else {
+            // Normal reload: just reload current tab data
+            loadTabData(activeTab);
+        }
     }, [activeTab, selectedDate, dateFilter, selectedManagerId, initialLoadDone]); // Removed loadingData and loadTabData from deps
 
     // Handlers
