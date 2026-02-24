@@ -414,7 +414,7 @@ service cloud.firestore {
      * @path /attendance_imports/{batchId}
      */
     match /attendance_imports/{batchId} {
-      allow read: if isHRManager();
+      allow read: if isManagerOrHR();
       allow create: if isHRManager();
       allow update: if isHRManager()
         && request.resource.data.diff(resource.data).affectedKeys()
@@ -557,7 +557,7 @@ service cloud.firestore {
      * @path /payroll_period_locks/{lockId}
      */
     match /payroll_period_locks/{lockId} {
-      allow read: if isHRManager();
+      allow read: if isManagerOrHR();
       allow create: if isHRManager();
       // Unlocking requires Admin
       allow update: if hasRole('Admin');
