@@ -404,17 +404,10 @@ service cloud.firestore {
       allow update, delete: if false; // Immutable
     }
 
-    /**
-     * @description Time bank for compensatory hours
-     * Read: Employee can read their own, HR can read all
-     * Write: HR only
-     * @path /time_bank/{employeeId}
-     */
-    match /time_bank/{employeeId} {
-      allow get: if isOwner(employeeId) || isHRManager();
-      allow list: if isHRManager();
-      allow write: if isHRManager();
-    }
+    // NOTE: time_bank rules are defined below (after early_departures/missing_punches)
+    // to avoid duplication. The previous block here was removed because its
+    // `allow write` (which includes delete) conflicted with the intended
+    // `allow delete: if false` in the detailed block below.
 
     /**
      * @description Attendance import batches (Excel/CSV uploads)

@@ -126,6 +126,7 @@ export function GlobalSearch() {
         setResults(newResults);
     } catch (error) {
         console.error("Global search failed:", error);
+        setResults([]);
     } finally {
         setIsLoading(false);
     }

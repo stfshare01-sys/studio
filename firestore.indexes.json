@@ -463,6 +463,20 @@
       ]
     },
     {
+      "collectionGroup": "tardiness_records",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "justificationStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "date",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
       "collectionGroup": "overtime_requests",
       "queryScope": "COLLECTION",
       "fields": [
@@ -532,6 +546,20 @@
       "fields": [
         {
           "fieldPath": "isJustified",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "date",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "early_departures",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "justificationStatus",
           "order": "ASCENDING"
         },
         {
