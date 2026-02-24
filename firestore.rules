@@ -227,8 +227,8 @@ service cloud.firestore {
 
       // Create: Allow incidence-related tasks (no BPMN request existence check needed)
       allow create: if isSignedIn()
-        && request.auth.uid == request.resource.data.requestOwnerId
-        && request.resource.data.type in ['incidence_approval', 'justification', 'tardiness_review', 'departure_review', 'overtime_review'];
+        && (request.auth.uid == request.resource.data.requestOwnerId || isManagerOrHR())
+        && request.resource.data.type in ['incidence_approval', 'attendance_justification', 'justification', 'tardiness_review', 'departure_review', 'overtime_review'];
 
       // Update: Assignee, request owner, or Admin can update specific fields
       allow update: if isSignedIn() && (

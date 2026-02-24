@@ -249,6 +249,15 @@ export function NewIncidenceForm({ userId, targetUserId, onSuccess, onCancel, cl
             // If we have employee data loaded, use it. Otherwise fallback to basic info if available.
             const employeeName = currentEmployee?.fullName || 'Unknown';
 
+            console.log('[HCM Form] Submit →', {
+                employeeId: effectiveTargetUserId,
+                employeeName,
+                submitterId: userId,
+                targetUserId,
+                type: newIncidence.type,
+                vacationBalanceBefore: vacationBalance?.daysAvailable,
+            });
+
             const result = await createIncidence({
                 employeeId: effectiveTargetUserId,
                 employeeName: employeeName,

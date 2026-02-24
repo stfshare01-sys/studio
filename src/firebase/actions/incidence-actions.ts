@@ -100,6 +100,15 @@ export async function createIncidence(
         const managerId = employeeData.directManagerId;
         const isAutoApproved = payload.submitterId && (payload.submitterId === managerId);
 
+        console.log('[HCM] createIncidence IDs →', {
+            employeeId: payload.employeeId,
+            submitterId: payload.submitterId,
+            directManagerId: managerId,
+            isAutoApproved,
+            type: payload.type,
+            totalDays,
+        });
+
         // Always create as 'pending' — auto-approval is handled via Cloud Function
         // which runs with admin privileges and can write to vacation_balances atomically.
         const incidenceData: Omit<Incidence, 'id'> = {
@@ -120,14 +129,15 @@ export async function createIncidence(
             // and handles vacation balance deduction in an atomic transaction.
             // This avoids Firestore rules blocking Manager writes to vacation_balances.
             try {
+                console.log(`[HCM] Calling CF approveIncidence for ${docRef.id}...`);
                 const cfResult = await callApproveIncidence({
                     incidenceId: docRef.id,
                     action: 'approve',
                 });
-                console.log(`[HCM] Auto-approved incidence ${docRef.id} via Cloud Function`, cfResult);
-            } catch (cfError) {
+                console.log(`[HCM] ✅ Auto-approved incidence ${docRef.id} via Cloud Function`, cfResult);
+            } catch (cfError: any) {
                 // If CF fails, incidence stays as 'pending' — manager can approve manually
-                console.warn('[HCM] Auto-approval via CF failed, incidence remains pending:', cfError);
+                console.error('[HCM] ❌ Auto-approval via CF FAILED:', cfError?.message || cfError);
             }
 
             // Auto-justify infractions (tardiness/absences) covered by this incidence
@@ -141,30 +151,39 @@ export async function createIncidence(
         } else {
             // [NEW] Create Task for Manager ONLY IF NOT AUTO-APPROVED
             if (managerId) {
-                const taskData: any = {
-                    requestId: docRef.id,
-                    requestTitle: `Incidencia: ${payload.type}`,
-                    requestOwnerId: payload.employeeId,
-                    stepId: 'incidence-approval',
-                    name: `Aprobar ${payload.type} - ${payload.employeeName}`,
-                    status: 'pending', // TaskStatus
-                    priority: 'high',
-                    type: 'incidence_approval',
-                    moduleTag: 'HCM', // REQUIRED so it appears in HCM Dashboard Inbox
-                    metadata: { incidenceId: docRef.id, employeeId: payload.employeeId },
-                    assigneeId: managerId,
-                    createdAt: now,
-                    link: `/hcm/incidences`
-                };
-                await addDoc(collection(firestore, 'tasks'), taskData);
+                try {
+                    const taskData: any = {
+                        requestId: docRef.id,
+                        requestTitle: `Incidencia: ${payload.type}`,
+                        requestOwnerId: payload.employeeId,
+                        stepId: 'incidence-approval',
+                        name: `Aprobar ${payload.type} - ${payload.employeeName}`,
+                        status: 'pending', // TaskStatus
+                        priority: 'high',
+                        type: 'incidence_approval',
+                        module: 'hcm', // [FIX] Changed from moduleTag to module to match tasks UI logic
+                        metadata: { incidenceId: docRef.id, employeeId: payload.employeeId },
+                        assigneeId: managerId,
+                        createdAt: now,
+                        link: `/hcm/incidences`
+                    };
+                    await addDoc(collection(firestore, 'tasks'), taskData);
 
-                // Notification to Manager
-                await createNotification(firestore, managerId, {
-                    title: 'Nueva Solicitud de Incidencia',
-                    message: `${payload.employeeName} ha solicitado ${payload.type} del ${payload.startDate} al ${payload.endDate}.`,
-                    type: 'task',
-                    link: '/hcm/incidences'
-                });
+                    // Notification to Manager
+                    await createNotification(firestore, managerId, {
+                        title: 'Nueva Solicitud de Incidencia',
+                        message: `${payload.employeeName} ha solicitado ${payload.type} del ${payload.startDate} al ${payload.endDate}.`,
+                        type: 'task',
+                        link: '/hcm/incidences'
+                    });
+                } catch (taskError) {
+                    console.error('[HCM] Incidence created but failed to create task/notification for manager:', taskError);
+                    return {
+                        success: true,
+                        incidenceId: docRef.id,
+                        error: 'La solicitud se guardó, pero hubo un error de permisos al notificar al manager. Contacte a RH.'
+                    };
+                }
             } else {
                 // Fallback: Notify HR Managers generic
                 await notifyRole(firestore, 'HRManager', {

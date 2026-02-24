@@ -77,6 +77,40 @@ if (!admin.apps.length) {
 const db = admin.firestore();
 
 // =========================================================================
+// HELPER: AUTO-COMPLETE INCIDENCE TASKS
+// =========================================================================
+
+/**
+ * Auto-completes tasks associated with an incidence when it is approved, rejected or cancelled.
+ */
+async function autoCompleteIncidenceTasks(incidenceId: string, action: 'approve' | 'reject' | 'cancel', approverId: string) {
+    try {
+        const tasksQuery = await db.collection('tasks')
+            .where('metadata.incidenceId', '==', incidenceId)
+            .where('status', '==', 'pending')
+            .get();
+
+        if (!tasksQuery.empty) {
+            const batch = db.batch();
+            const nowISO = new Date().toISOString();
+            tasksQuery.docs.forEach((doc) => {
+                batch.update(doc.ref, {
+                    status: 'completed',
+                    completedBy: approverId,
+                    completedAt: nowISO,
+                    completionReason: action === 'approve' ? 'approved' : (action === 'reject' ? 'rejected' : 'cancelled'),
+                    updatedAt: nowISO
+                });
+            });
+            await batch.commit();
+            console.log(`[HCM] Auto-completed ${tasksQuery.docs.length} tasks for incidence ${incidenceId}`);
+        }
+    } catch (e) {
+        console.error(`[HCM] Failed to auto-complete tasks for incidence ${incidenceId}`, e);
+    }
+}
+
+// =========================================================================
 // CONSOLIDATE PRENOMINA - TRANSACTIONAL
 // =========================================================================
 
@@ -881,6 +915,7 @@ export const approveIncidence = onCall<ApproveIncidenceRequest>(
                 }
 
                 console.log(`[HCM] Incidence ${incidenceId} cancelled by ${userData?.fullName}`);
+                await autoCompleteIncidenceTasks(incidenceId, 'cancel', approverId);
                 return { success: true };
             }
 
@@ -1030,6 +1065,7 @@ export const approveIncidence = onCall<ApproveIncidenceRequest>(
                     });
 
                     console.log(`[HCM] Vacation incidence ${incidenceId} approved by ${userData?.fullName} (transactional)`);
+                    await autoCompleteIncidenceTasks(incidenceId, 'approve', approverId);
                     return { success: true };
                 }
             }
@@ -1099,6 +1135,7 @@ export const approveIncidence = onCall<ApproveIncidenceRequest>(
                 });
 
                 console.log(`[HCM] Vacation incidence ${incidenceId} rejected by ${userData?.fullName} (transactional)`);
+                await autoCompleteIncidenceTasks(incidenceId, 'reject', approverId);
                 return { success: true };
             }
 
@@ -1118,6 +1155,8 @@ export const approveIncidence = onCall<ApproveIncidenceRequest>(
             await incidenceRef.update(updateData);
 
             console.log(`[HCM] Incidence ${incidenceId} ${action}ed by ${userData?.fullName}`);
+
+            await autoCompleteIncidenceTasks(incidenceId, action as 'approve' | 'reject', approverId);
 
             return { success: true };
 
