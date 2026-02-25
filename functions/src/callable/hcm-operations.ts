@@ -815,22 +815,43 @@ export const approveIncidence = onCall<ApproveIncidenceRequest>(
 
                 // For vacation incidences: restore the deducted days atomically
                 if (incidenceData.type === 'vacation') {
-                    await db.runTransaction(async (transaction) => {
-                        const balanceQuery = db.collection('vacation_balances')
-                            .where('employeeId', '==', incidenceData.employeeId)
-                            .orderBy('periodEnd', 'desc')
-                            .limit(1);
+                    const totalDays = incidenceData.totalDays || 0;
 
-                        const balanceSnapshot = await transaction.get(balanceQuery);
+                    console.log(`[HCM Cancel] Vacation cancel started. employeeId=${incidenceData.employeeId}, totalDays=${totalDays}, incidenceId=${incidenceId}`);
 
-                        if (!balanceSnapshot.empty) {
-                            const balanceDoc = balanceSnapshot.docs[0];
-                            const balanceData = balanceDoc.data();
-                            const totalDays = incidenceData.totalDays || 0;
+                    // Step 1: Find the balance document using direct .get()
+                    // (consistent with approve/reject paths — avoids transaction.get(Query) issues)
+                    const balanceQuerySnap = await db.collection('vacation_balances')
+                        .where('employeeId', '==', incidenceData.employeeId)
+                        .orderBy('periodEnd', 'desc')
+                        .limit(1)
+                        .get();
+
+                    console.log(`[HCM Cancel] Balance query result: found=${!balanceQuerySnap.empty}, docs=${balanceQuerySnap.size}`);
+
+                    if (balanceQuerySnap.empty) {
+                        console.warn(`[HCM Cancel] ⚠️ No vacation balance found for employee ${incidenceData.employeeId}. Cancelling without balance restore.`);
+                        // Just cancel the incidence — no balance to restore
+                        await incidenceRef.update({
+                            status: 'cancelled',
+                            cancelledById: approverId,
+                            cancelledByName: userData?.fullName,
+                            cancelledAt: nowISO,
+                            updatedAt: nowISO
+                        });
+                    } else {
+                        const balanceDocRef = balanceQuerySnap.docs[0].ref;
+
+                        // Step 2: Run transaction with DocumentReference (not Query)
+                        await db.runTransaction(async (transaction) => {
+                            const freshBalanceSnap = await transaction.get(balanceDocRef);
+                            const balanceData = freshBalanceSnap.data()!;
 
                             const currentTaken = balanceData.daysTaken || 0;
                             const newTaken = Math.max(0, currentTaken - totalDays);
                             const newAvailable = (balanceData.daysAvailable || 0) + totalDays;
+
+                            console.log(`[HCM Cancel] Balance before: taken=${currentTaken}, available=${balanceData.daysAvailable}. After: taken=${newTaken}, available=${newAvailable}`);
 
                             const newMovement = {
                                 id: `mov_cancelled_${Date.now()}`,
@@ -844,7 +865,7 @@ export const approveIncidence = onCall<ApproveIncidenceRequest>(
 
                             const updatedMovements = [...(balanceData.movements || []), newMovement].slice(-100);
 
-                            transaction.update(balanceDoc.ref, {
+                            transaction.update(balanceDocRef, {
                                 daysTaken: newTaken,
                                 daysAvailable: newAvailable,
                                 movements: updatedMovements,
@@ -858,19 +879,10 @@ export const approveIncidence = onCall<ApproveIncidenceRequest>(
                                 cancelledAt: nowISO,
                                 updatedAt: nowISO
                             });
+                        });
 
-                            console.log(`[HCM] Vacation cancelled. Restored ${totalDays} days. Available: ${balanceData.daysAvailable} -> ${newAvailable}`);
-                        } else {
-                            // No balance found, just cancel the incidence
-                            transaction.update(incidenceRef, {
-                                status: 'cancelled',
-                                cancelledById: approverId,
-                                cancelledByName: userData?.fullName,
-                                cancelledAt: nowISO,
-                                updatedAt: nowISO
-                            });
-                        }
-                    });
+                        console.log(`[HCM Cancel] ✅ Vacation cancelled. Restored ${totalDays} days for employee ${incidenceData.employeeId}`);
+                    }
                 } else {
                     // Non-vacation incidences: just mark as cancelled
                     await incidenceRef.update({
