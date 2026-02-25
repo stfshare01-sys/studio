@@ -13,6 +13,7 @@ export {
     consolidatePrenomina,
     processEmployeeImport,
     approveIncidence,
+    notifyNewIncidence,
     createSystemUser
 } from './callable/hcm-operations';
 

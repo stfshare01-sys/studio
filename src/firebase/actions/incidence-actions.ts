@@ -149,32 +149,50 @@ export async function createIncidence(
                 payload.type
             );
         } else {
-            // [NEW] Notify Manager ONLY IF NOT AUTO-APPROVED (Tasks are now exclusively for BPMN)
-            if (managerId) {
+            // Notify the appropriate approver via Cloud Function (handles escalation if manager is absent)
+            try {
+                const notifyResult = await callNotifyNewIncidence({
+                    incidenceId: docRef.id,
+                    employeeId: payload.employeeId,
+                    employeeName: payload.employeeName,
+                    managerId: managerId || '',
+                    type: payload.type,
+                    startDate: payload.startDate,
+                    endDate: payload.endDate,
+                });
+
+                if (notifyResult.escalated) {
+                    console.log(`[HCM] ⚠️ Notification escalated to ${notifyResult.notifiedName} (absent: ${notifyResult.absentManagerNames?.join(', ')})`);
+                } else {
+                    console.log(`[HCM] Notification sent to ${notifyResult.notifiedName}`);
+                }
+            } catch (notifyError: any) {
+                console.error('[HCM] Escalation CF failed, falling back to direct notification:', notifyError?.message || notifyError);
+                // Fallback: try direct notification to manager or HR
                 try {
-                    // Notification to Manager
-                    await createNotification(firestore, managerId, {
-                        title: 'Nueva Solicitud de Incidencia',
-                        message: `${payload.employeeName} ha solicitado ${payload.type} del ${payload.startDate} al ${payload.endDate}.`,
-                        type: 'warning',
-                        link: '/hcm/incidences'
-                    });
-                } catch (notiError) {
-                    console.error('[HCM] Incidence created but failed to create notification for manager:', notiError);
+                    if (managerId) {
+                        await createNotification(firestore, managerId, {
+                            title: 'Nueva Solicitud de Incidencia',
+                            message: `${payload.employeeName} ha solicitado ${payload.type} del ${payload.startDate} al ${payload.endDate}.`,
+                            type: 'warning',
+                            link: '/hcm/incidences'
+                        });
+                    } else {
+                        await notifyRole(firestore, 'HRManager', {
+                            title: 'Nueva Solicitud de Incidencia (Sin Manager Directo)',
+                            message: `${payload.employeeName} ha solicitado ${payload.type}. Requiere atención de RH.`,
+                            type: 'warning',
+                            link: '/hcm/incidences'
+                        });
+                    }
+                } catch (fallbackError) {
+                    console.error('[HCM] Fallback notification also failed:', fallbackError);
                     return {
                         success: true,
                         incidenceId: docRef.id,
                         error: 'La solicitud se guardó, pero hubo un error al notificar al manager. Contacte a RH.'
                     };
                 }
-            } else {
-                // Fallback: Notify HR Managers generic
-                await notifyRole(firestore, 'HRManager', {
-                    title: 'Nueva Solicitud de Incidencia (Sin Manager Directo)',
-                    message: `${payload.employeeName} ha solicitado ${payload.type}. Requiere atención de RH.`,
-                    type: 'warning',
-                    link: '/hcm/incidences'
-                });
             }
         }
 
