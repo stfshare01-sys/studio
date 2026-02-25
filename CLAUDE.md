@@ -1,4 +1,4 @@
-# /clean-code — Principios de Codigo Limpio y Anti-Fragilidad
+# Principios de Codigo Limpio y Anti-Fragilidad
 
 Seguir **SIEMPRE** estas practicas al momento de corregir bugs, agregar nuevas funciones o refactorizar codigo para evitar romper funcionalidades existentes:
 
@@ -54,3 +54,4 @@ Reglas especificas para este proyecto Firebase/Firestore:
 - **Additividad:** Las reglas de Firestore son ADITIVAS. Si CUALQUIER `allow` coincide, la operacion se permite. Nunca uses `allow write` (que incluye delete) si despues quieres `allow delete: if false`.
 - **Funciones Definidas:** SIEMPRE verificar que las funciones helper referenciadas en las reglas existan y esten definidas. Una funcion no definida causa permiso denegado.
 - **Consistencia Roles:** Mantener sincronizados los permisos entre `SYSTEM_ROLES` (client-side) y `firestore.rules` (server-side).
+- **Permisos de escritura:** Las colecciones protegidas como `vacation_balances` solo permiten escritura desde Cloud Functions (Admin SDK). NUNCA intentar escritura directa desde el cliente para colecciones protegidas — usar siempre la Cloud Function correspondiente.

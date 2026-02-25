@@ -149,39 +149,22 @@ export async function createIncidence(
                 payload.type
             );
         } else {
-            // [NEW] Create Task for Manager ONLY IF NOT AUTO-APPROVED
+            // [NEW] Notify Manager ONLY IF NOT AUTO-APPROVED (Tasks are now exclusively for BPMN)
             if (managerId) {
                 try {
-                    const taskData: any = {
-                        requestId: docRef.id,
-                        requestTitle: `Incidencia: ${payload.type}`,
-                        requestOwnerId: payload.employeeId,
-                        stepId: 'incidence-approval',
-                        name: `Aprobar ${payload.type} - ${payload.employeeName}`,
-                        status: 'pending', // TaskStatus
-                        priority: 'high',
-                        type: 'incidence_approval',
-                        module: 'hcm', // [FIX] Changed from moduleTag to module to match tasks UI logic
-                        metadata: { incidenceId: docRef.id, employeeId: payload.employeeId },
-                        assigneeId: managerId,
-                        createdAt: now,
-                        link: `/hcm/incidences`
-                    };
-                    await addDoc(collection(firestore, 'tasks'), taskData);
-
                     // Notification to Manager
                     await createNotification(firestore, managerId, {
                         title: 'Nueva Solicitud de Incidencia',
                         message: `${payload.employeeName} ha solicitado ${payload.type} del ${payload.startDate} al ${payload.endDate}.`,
-                        type: 'task',
+                        type: 'warning',
                         link: '/hcm/incidences'
                     });
-                } catch (taskError) {
-                    console.error('[HCM] Incidence created but failed to create task/notification for manager:', taskError);
+                } catch (notiError) {
+                    console.error('[HCM] Incidence created but failed to create notification for manager:', notiError);
                     return {
                         success: true,
                         incidenceId: docRef.id,
-                        error: 'La solicitud se guardó, pero hubo un error de permisos al notificar al manager. Contacte a RH.'
+                        error: 'La solicitud se guardó, pero hubo un error al notificar al manager. Contacte a RH.'
                     };
                 }
             } else {
@@ -243,24 +226,6 @@ export async function updateIncidenceStatus(
                     link: '/hcm'
                 });
 
-                // [FIX] Complete associated Task
-                // Use requestId (which equals incidenceId) — this field has a composite index
-                const tasksRef = collection(firestore, 'tasks');
-                const q = query(
-                    tasksRef,
-                    where('requestId', '==', incidenceId),
-                    where('status', 'in', ['pending', 'Pending'])
-                );
-                const taskSnap = await getDocs(q);
-
-                // Mark all matching tasks as completed
-                await Promise.all(taskSnap.docs.map(tDoc =>
-                    updateDoc(tDoc.ref, {
-                        status: 'completed',
-                        completedAt: new Date().toISOString(),
-                        completedBy: approvedById,
-                    })
-                ));
             }
         }
 
