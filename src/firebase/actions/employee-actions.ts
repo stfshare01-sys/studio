@@ -28,6 +28,7 @@ interface CreateEmployeePayload {
     costCenter?: string;
     locationId?: string; // Added locationId
     allowTimeForTime?: boolean;
+    employeeId?: string; // ZKTeco / Biometric ID
 }
 
 /**
@@ -68,6 +69,7 @@ export async function createEmployee(
         if (payload.locationId) employeeData.locationId = payload.locationId; // Map locationId
         if (payload.allowTimeForTime !== undefined) employeeData.allowTimeForTime = payload.allowTimeForTime;
         if (payload.shiftId) employeeData.customShiftId = payload.shiftId;
+        if (payload.employeeId) employeeData.employeeId = payload.employeeId;
 
         await setDoc(employeeRef, employeeData, {});
 

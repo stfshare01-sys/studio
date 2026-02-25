@@ -119,6 +119,7 @@ export default function EditEmployeePage({ params }: { params: Promise<{ id: str
                 costCenter: employee.costCenter,
                 locationId: employee.locationId,
                 allowTimeForTime: employee.allowTimeForTime || false,
+                employeeId: employee.employeeId,
             });
         }
     }, [employee]);
@@ -389,6 +390,18 @@ export default function EditEmployeePage({ params }: { params: Promise<{ id: str
                                         value={formData.hireDate || ''}
                                         onChange={(e) => handleInputChange('hireDate', e.target.value)}
                                     />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="employeeId">ID Reloj Checador (Opcional)</Label>
+                                    <Input
+                                        id="employeeId"
+                                        value={formData.employeeId || ''}
+                                        onChange={(e) => handleInputChange('employeeId', e.target.value)}
+                                        placeholder="Ej. 1004"
+                                    />
+                                    <p className="text-xs text-muted-foreground">
+                                        ID númérico utilizado en el reloj biométrico ZKTeco
+                                    </p>
                                 </div>
                                 <div className="space-y-2">
                                     <Label>Jefe Directo</Label>

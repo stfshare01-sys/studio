@@ -384,6 +384,8 @@ export async function processAttendanceImport(
             toleranceMinutes: number;
             locationId?: string;
             daySchedules?: Record<number, { startTime: string; endTime: string; breakMinutes: number }>;
+            customShiftId?: string;
+            realUid: string;
         }> = {};
         const employeeTimeBankBalances: Record<string, number> = {}; // Local cache for processing
 
@@ -396,32 +398,48 @@ export async function processAttendanceImport(
 
         // Pre-scan employees to collect shift IDs
         for (const empId of employeeIds) {
+            let empData: Employee | null = null;
+            let actualEmpUid = empId; // Store actual Firestore document UID
+
+            // Try first by document ID (useful if they used UID in the CSV directly)
             const empRef = doc(firestore, 'employees', empId);
             const empSnap = await getDoc(empRef);
-            if (empSnap.exists()) {
-                const empData = empSnap.data() as Employee;
 
+            if (empSnap.exists()) {
+                empData = empSnap.data() as Employee;
+            } else {
+                // If it doesn't exist by document ID, look up by the 'employeeId' field (ZKTeco internal id)
+                const employeesQuery = query(collection(firestore, 'employees'), where('employeeId', '==', empId), limit(1));
+                const employeesSnap = await getDocs(employeesQuery);
+
+                if (!employeesSnap.empty) {
+                    empData = employeesSnap.docs[0].data() as Employee;
+                    actualEmpUid = employeesSnap.docs[0].id; // Update to real UID
+                }
+            }
+
+            if (empData) {
                 // 1. Collect Custom Shift ID
                 if (empData.customShiftId) shiftsToFetch.add(empData.customShiftId);
 
                 // 2. Collect Historical Shift IDs
                 if (empData.shiftAssignments?.length) {
-                    employeeAssignments[empId] = empData.shiftAssignments;
+                    employeeAssignments[actualEmpUid] = empData.shiftAssignments;
                     empData.shiftAssignments.forEach(sa => shiftsToFetch.add(sa.shiftId));
                 }
 
-                // Store basic data first
+                // Store basic data first linked to the ORIGINAL spreadsheet empId to easily map rows later
                 employeeShifts[empId] = {
                     type: empData.shiftType || 'diurnal',
                     breakMinutes: 0,
-                    fullName: empData.fullName || empId,
+                    fullName: empData.fullName || actualEmpUid, // Use real user ID if name is blank
                     startTime: '',
                     endTime: '',
                     toleranceMinutes: 10,
                     locationId: empData.locationId || undefined,
-                    // Store customShiftId for fallback
-                    customShiftId: empData.customShiftId
-                } as any; // Cast to avoid strict type checks on temp props if needed
+                    customShiftId: empData.customShiftId,
+                    realUid: actualEmpUid // Important to store because we need to save the AttendanceRecord with this UID
+                } as any;
 
                 // Location caching
                 if (empData.locationId && !locationCache[empData.locationId]) {
@@ -430,10 +448,10 @@ export async function processAttendanceImport(
                     if (locSnap.exists()) locationCache[empData.locationId] = locSnap.data();
                 }
 
-                // TimeBank caching
-                const timeBankRef = doc(firestore, 'time_bank', empId);
+                // TimeBank caching - use the REAL firebase UID for timebank lookup!
+                const timeBankRef = doc(firestore, 'time_bank', actualEmpUid);
                 const timeBankSnap = await getDoc(timeBankRef);
-                employeeTimeBankBalances[empId] = timeBankSnap.exists() ? (timeBankSnap.data() as TimeBank).hoursBalance : 0;
+                employeeTimeBankBalances[actualEmpUid] = timeBankSnap.exists() ? (timeBankSnap.data() as TimeBank).hoursBalance : 0;
             }
         }
 
@@ -521,27 +539,28 @@ export async function processAttendanceImport(
             const rowNum = i + 2;
 
             try {
-                // DUPLICATE CHECK
-                if (existingRecordsMap.has(`${row.employeeId}_${row.date}`)) {
-                    // console.log(`[HCM] Skipping duplicate for ${row.employeeId} on ${row.date}`);
-                    skippedCount++;
-                    continue;
-                }
-
                 if (!employeeShifts[row.employeeId]) {
-                    errors.push({ row: rowNum, message: `Empleado ${row.employeeId} no encontrado` });
+                    errors.push({ row: rowNum, message: `Empleado ${row.employeeId} (ZKTeco ID) no encontrado` });
                     continue;
                 }
 
                 // Calculate hours worked with break deduction
                 let shiftConfig = employeeShifts[row.employeeId];
+                const actualUid = shiftConfig.realUid;
+
+                // DUPLICATE CHECK (Use actualUid for DB lookups)
+                if (existingRecordsMap.has(`${actualUid}_${row.date}`)) {
+                    // console.log(`[HCM] Skipping duplicate for ${actualUid} on ${row.date}`);
+                    skippedCount++;
+                    continue;
+                }
 
                 // -------------------------------------------------------------
                 // SHIFT RESOLUTION (Effective Shift for Date)
                 // -------------------------------------------------------------
                 // If employee has shift assignments, find the one active for this date
-                if (employeeAssignments[row.employeeId]) {
-                    const effectiveAssignment = employeeAssignments[row.employeeId].find(sa =>
+                if (employeeAssignments[actualUid]) {
+                    const effectiveAssignment = employeeAssignments[actualUid].find(sa =>
                         sa.startDate <= row.date && (!sa.endDate || sa.endDate >= row.date)
                     );
 
@@ -596,7 +615,7 @@ export async function processAttendanceImport(
                 // -------------------------------------------------------------
                 let hoursAppliedToDebt = 0;
                 let payableOvertimeHours = validation.overtimeHours;
-                let timeBankBalance = employeeTimeBankBalances[row.employeeId] || 0;
+                let timeBankBalance = employeeTimeBankBalances[actualUid] || 0;
 
                 // If user has debt (negative balance) and earned overtime today
                 if (timeBankBalance < 0 && validation.overtimeHours > 0) {
@@ -610,7 +629,7 @@ export async function processAttendanceImport(
                     payableOvertimeHours = overtime - hoursAppliedToDebt;
 
                     // Update local balance cache
-                    employeeTimeBankBalances[row.employeeId] += hoursAppliedToDebt;
+                    employeeTimeBankBalances[actualUid] += hoursAppliedToDebt;
 
                     // We will create the movement later or right here?
                     // Better to update TimeBank locally and create a movement record
@@ -644,8 +663,8 @@ export async function processAttendanceImport(
                 // Create attendance record
                 const attendanceRef = collection(firestore, 'attendance');
                 const attendanceData: Omit<AttendanceRecord, 'id'> = {
-                    employeeId: row.employeeId,
-                    employeeName: employeeShifts[row.employeeId]?.fullName, // Denormalize employee name
+                    employeeId: actualUid,
+                    employeeName: shiftConfig.fullName, // Denormalize employee name
                     date: row.date,
                     checkIn: row.checkIn,
                     checkOut: row.checkOut,
@@ -672,7 +691,7 @@ export async function processAttendanceImport(
                 // If we applied hours to debt, update Time Bank in Firestore
                 if (hoursAppliedToDebt > 0) {
                     await updateTimeBank(
-                        row.employeeId,
+                        actualUid,
                         hoursAppliedToDebt,
                         'earn', // 'earn' positive hours cancels out negative balance
                         `Compensación automática de deuda (Asistencia ${row.date})`,
@@ -739,34 +758,24 @@ export async function processAttendanceImport(
                         // If there is an approved incidence covering this date, we skip creating a tardiness record
                         // The user specified: "si ya existían permisos previamente registrados... no lo considerá como tal como una incidencia"
                         if (!incidenceSnap.empty) {
-                            // console.log(`[HCM] Skipping tardiness for ${row.employeeId} on ${row.date} due to existing approved incidence`);
                             // We act as if it's justified.
-                        } else if (!existingTardinessMap.has(`${row.employeeId}_${row.date}`)) {
+                        } else if (!existingTardinessMap.has(`${actualUid}_${row.date}`)) {
                             // Only create if no tardiness already exists for this employee+date
                             const diffMs = checkInDate.getTime() - scheduledStartDate.getTime();
                             const minutesLate = Math.floor(diffMs / 60000);
 
                             // Create Tardiness Record
                             const tardinessData: Omit<TardinessRecord, 'id'> = {
-                                employeeId: row.employeeId,
-                                employeeName: employeeShifts[row.employeeId]?.fullName ?? row.employeeId,
+                                employeeId: actualUid,
+                                employeeName: shiftConfig.fullName ?? actualUid,
                                 date: row.date,
                                 attendanceRecordId: newAttendanceRef.id,
-                                type: 'entry', // 'entry' missing in type definition? No, it's NOT in TardinessRecord interface I saw earlier.
-                                // Wait, TardinessRecord interface in firestore-types.ts DOES NOT have 'type'.
-                                // Client side interface might have it differently?
-                                // I should check types.ts (client) vs firestore-types.ts (functions).
-                                // incidence-actions.ts is CLIENT/Server Action, so it uses `src/lib/types.ts`.
-                                // Let's assume 'type' is valid or remove it if not.
-                                // The code I read earlier had type: 'entry'.
+                                type: 'entry',
                                 scheduledTime: scheduledStart,
                                 actualTime: row.checkIn,
                                 minutesLate,
                                 isJustified: false,
                                 justificationStatus: 'pending',
-                                // periodStartDate: row.date, // Simplificado // Removed based on interface
-                                // tardinessCountInPeriod: 1, // Requiere conteo real // Removed
-                                // tardinessCountInWeek: 1, // Requiere conteo real // Removed
                                 sanctionApplied: false,
                                 createdAt: now,
                                 updatedAt: now,
@@ -774,10 +783,10 @@ export async function processAttendanceImport(
                             } as any; // Cast to avoid partial mismatch during migration
 
                             const tRef = await addDoc(collection(firestore, 'tardiness_records'), tardinessData);
-                            existingTardinessMap.add(`${row.employeeId}_${row.date}`); // Prevent intra-batch duplicates
+                            existingTardinessMap.add(`${actualUid}_${row.date}`); // Prevent intra-batch duplicates
                             newRecordsToJustify.push({
                                 id: tRef.id,
-                                employeeId: row.employeeId,
+                                employeeId: actualUid,
                                 date: row.date,
                                 type: 'tardiness'
                             });
@@ -796,7 +805,7 @@ export async function processAttendanceImport(
                         const incidencesRef = collection(firestore, 'incidences');
                         const q = query(
                             incidencesRef,
-                            where('employeeId', '==', row.employeeId),
+                            where('employeeId', '==', actualUid),
                             where('startDate', '<=', row.date),
                             where('endDate', '>=', row.date),
                             where('status', '==', 'approved')
@@ -805,18 +814,15 @@ export async function processAttendanceImport(
                         const incidenceSnap = await getDocs(q);
 
                         if (!incidenceSnap.empty) {
-                            // console.log(`[HCM] Skipping early departure for ${row.employeeId} on ${row.date} due to existing approved incidence`);
-                        } else if (!existingDeparturesMap.has(`${row.employeeId}_${row.date}`)) {
+                            // console.log(`[HCM] Skipping early departure for ${actualUid} on ${row.date} due to existing approved incidence`);
+                        } else if (!existingDeparturesMap.has(`${actualUid}_${row.date}`)) {
                             // Only create if no early departure already exists for this employee+date
                             const diffMs = scheduledEndDate.getTime() - checkOutDate.getTime();
                             const minutesEarly = Math.floor(diffMs / 60000);
 
-                            // Create Early Departure Record which IS DIFFERENT from TardinessRecord
-                            // But here I'm only fixing the attendance ID usage.
-
                             const departureData = {
-                                employeeId: row.employeeId,
-                                employeeName: employeeShifts[row.employeeId]?.fullName ?? row.employeeId,
+                                employeeId: actualUid,
+                                employeeName: shiftConfig.fullName ?? actualUid,
                                 date: row.date,
                                 attendanceId: newAttendanceRef.id, // Use newAttendanceRef.id
                                 scheduledTime: scheduledEnd,
@@ -830,7 +836,7 @@ export async function processAttendanceImport(
                             };
 
                             await addDoc(collection(firestore, 'early_departures'), departureData);
-                            existingDeparturesMap.add(`${row.employeeId}_${row.date}`);
+                            existingDeparturesMap.add(`${actualUid}_${row.date}`);
                         }
                     }
                 }

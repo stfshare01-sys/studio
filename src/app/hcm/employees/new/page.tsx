@@ -61,6 +61,7 @@ const employeeSchema = z.object({
     curp: z.string().length(18, 'CURP debe tener 18 caracteres').optional().or(z.literal('')),
     nss: z.string().length(11, 'NSS debe tener 11 dígitos').optional().or(z.literal('')),
     allowTimeForTime: z.boolean().optional(),
+    employeeId: z.string().optional().or(z.literal('')), // Attendance System ID
 });
 
 type EmployeeFormValues = z.infer<typeof employeeSchema>;
@@ -125,6 +126,7 @@ export default function NewEmployeePage() {
             curp: '',
             nss: '',
             allowTimeForTime: false,
+            employeeId: '',
         },
     });
 
@@ -193,6 +195,7 @@ export default function NewEmployeePage() {
                 rfc_curp: `${data.rfc || ''} ${data.curp || ''}`.trim() || undefined,
                 nss: data.nss || undefined,
                 allowTimeForTime: data.allowTimeForTime || false,
+                employeeId: data.employeeId || undefined,
             });
 
             if (result.success) {
@@ -433,6 +436,23 @@ export default function NewEmployeePage() {
                                                         </Select>
                                                         <FormDescription>
                                                             Determina los días festivos y reglas locales
+                                                        </FormDescription>
+                                                        <FormMessage />
+                                                    </FormItem>
+                                                )}
+                                            />
+
+                                            <FormField
+                                                control={form.control}
+                                                name="employeeId"
+                                                render={({ field }) => (
+                                                    <FormItem>
+                                                        <FormLabel>ID Reloj Checador (ZKTeco)</FormLabel>
+                                                        <FormControl>
+                                                            <Input placeholder="Ej. 1004" {...field} />
+                                                        </FormControl>
+                                                        <FormDescription>
+                                                            Obligatorio si registra asistencia física
                                                         </FormDescription>
                                                         <FormMessage />
                                                     </FormItem>
