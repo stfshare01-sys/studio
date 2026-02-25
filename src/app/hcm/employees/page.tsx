@@ -46,7 +46,9 @@ import {
     BadgeCheck,
     ArrowLeft,
     Upload,
+    Download
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import Link from 'next/link';
 import type { Employee } from '@/lib/types';
 import { calculateYearsOfService } from '@/lib/hcm-utils';
@@ -116,6 +118,38 @@ export default function EmployeesPage() {
                     type === 'intern' ? 'Practicante' : '-';
     };
 
+    // Handler to export filtered employees to Excel
+    const handleExportExcel = () => {
+        if (!filteredEmployees || filteredEmployees.length === 0) return;
+
+        // Map data to a clean format for Excel
+        const exportData = filteredEmployees.map(emp => ({
+            'ID Numérico': emp.employeeId || '-',
+            'ID Sistema': emp.id,
+            'Nombre Completo': emp.fullName,
+            'Correo': emp.email,
+            'RFC': emp.rfc || '-',
+            'NSS': emp.nss || '-',
+            'CURP': emp.curp || '-',
+            'Puesto': emp.positionTitle || '-',
+            'Departamento': emp.department || '-',
+            'Turno': formatShiftType(emp.shiftType),
+            'Tipo de Contrato': formatEmploymentType(emp.employmentType),
+            'Fecha de Contratación': emp.hireDate || '-',
+            'Antigüedad (Años)': emp.hireDate ? calculateYearsOfService(emp.hireDate) : 0,
+            'Estado': emp.status === 'active' ? 'Activo' : 'Inactivo',
+            'Sueldo Bruto': emp.compensation?.grossSalary || 0
+        }));
+
+        // Create workbook and worksheet
+        const worksheet = XLSX.utils.json_to_sheet(exportData);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, 'Empleados');
+
+        // Generate download
+        XLSX.writeFile(workbook, `Directorio_Empleados_${new Date().toISOString().split('T')[0]}.xlsx`);
+    };
+
     return (
         <SiteLayout>
             <div className="flex flex-1 flex-col">
@@ -134,6 +168,12 @@ export default function EmployeesPage() {
                         </div>
                     </div>
                     <div className="flex gap-2">
+                        {hasHRPermissions && (
+                            <Button variant="outline" onClick={handleExportExcel} disabled={isLoading || filteredEmployees.length === 0}>
+                                <Download className="mr-2 h-4 w-4" />
+                                Exportar
+                            </Button>
+                        )}
                         <Button asChild variant="outline">
                             <Link href="/hcm/employees/import">
                                 <Upload className="mr-2 h-4 w-4" />
@@ -242,6 +282,11 @@ export default function EmployeesPage() {
                                                             <div>
                                                                 <div className="font-medium">{employee.fullName}</div>
                                                                 <div className="text-sm text-muted-foreground">{employee.email}</div>
+                                                                {employee.employeeId && (
+                                                                    <div className="text-xs text-muted-foreground mt-0.5">
+                                                                        ID: <span className="font-medium text-foreground">{employee.employeeId}</span>
+                                                                    </div>
+                                                                )}
                                                             </div>
                                                         </div>
                                                     </TableCell>

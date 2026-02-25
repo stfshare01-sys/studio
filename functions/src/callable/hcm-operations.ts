@@ -1143,6 +1143,70 @@ export const approveIncidence = onCall<ApproveIncidenceRequest>(
 
             console.log(`[HCM] Incidence ${incidenceId} ${action}ed by ${userData?.fullName}`);
 
+            // =========================================================================
+            // TASK RESOLUTION: Close pending tasks associated with this incidence
+            // =========================================================================
+            try {
+                // Fetch tasks where metadata.incidenceId matches this incidence
+                const tasksQuery = await db.collection('tasks')
+                    .where('metadata.incidenceId', '==', incidenceId)
+                    .where('status', 'in', ['pending', 'active', 'Pending', 'Active'])
+                    .get();
+
+                if (!tasksQuery.empty) {
+                    const batch = db.batch();
+                    tasksQuery.docs.forEach(doc => {
+                        batch.update(doc.ref, {
+                            status: 'completed',
+                            completedAt: nowISO,
+                            completedById: approverId,
+                            resolutionParams: { action, reason: rejectionReason || '' },
+                            updatedAt: nowISO
+                        });
+                    });
+                    await batch.commit();
+                    console.log(`[HCM] Closed ${tasksQuery.size} associated tasks for incidence ${incidenceId}`);
+                }
+            } catch (taskErr) {
+                console.error('[HCM] Error closing associated tasks:', taskErr);
+            }
+
+            // =========================================================================
+            // NOTIFICATION TRIGGER: Send email to the employee who requested it
+            // =========================================================================
+            try {
+                // Fetch the employee's email to send the resolution
+                const employeeDoc = await db.collection('employees').doc(incidenceData.employeeId).get();
+                if (employeeDoc.exists) {
+                    const employeeData = employeeDoc.data();
+                    if (employeeData && employeeData.email) {
+                        const notificationType = action === 'approve' ? 'incidence_approved' : 'incidence_rejected';
+                        const actionText = action === 'approve' ? 'aprobada' : 'rechazada';
+
+                        await db.collection('notifications').add({
+                            userId: incidenceData.employeeId,
+                            title: `Solicitud de permiso ${actionText}`,
+                            message: `Tu solicitud de ${incidenceData.type} ha sido ${actionText} por ${userData?.fullName || 'tu mánager'}.`,
+                            type: notificationType,
+                            read: false,
+                            createdAt: nowISO,
+                            link: `/hcm/incidences`, // They can view their incidences there
+                            metadata: {
+                                incidenceId: incidenceId,
+                                incidenceType: incidenceData.type,
+                                recipientEmail: employeeData.email,
+                                approverName: userData?.fullName || 'Mánager',
+                                action: action,
+                                rejectionReason: rejectionReason || ''
+                            }
+                        });
+                        console.log(`[HCM] Employee resolution notification generated for ${employeeData.email}`);
+                    }
+                }
+            } catch (notifyError) {
+                console.error('[HCM] Disparo de notificacion al empleado fallo, pero la operacion continua:', notifyError);
+            }
+
             return { success: true };
 
         } catch (error: any) {

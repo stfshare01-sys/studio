@@ -69,6 +69,45 @@ export const onNotificationCreated = onDocumentCreated(
             const subjectInfo = notificationData.title || 'Nueva Notificación de Recursos Humanos';
             const linkParam = notificationData.link ? `https://nexus.stuffactory.mx${notificationData.link}` : 'https://nexus.stuffactory.mx';
 
+            // Extract metadata if available to make emails legible
+            const meta = notificationData.metadata || {};
+            const typeNames: Record<string, string> = {
+                vacation: 'Vacaciones',
+                sick_leave: 'Incapacidad',
+                personal_leave: 'Permiso Personal',
+                maternity: 'Maternidad',
+                paternity: 'Paternidad',
+                bereavement: 'Duelo',
+                marriage: 'Matrimonio',
+                adoption: 'Adopción',
+                civic_duty: 'Deber Cívico',
+                half_day_family: 'Permiso de Medio Día',
+                unpaid_leave: 'Permiso sin goce',
+                unjustified_absence: 'Falta Injustificada'
+            };
+
+            // Use the dictionary if there's an incidenceType in metadata, otherwise use the title/message as is
+            let displayTitle = notificationData.title;
+            let displayMessage = notificationData.message;
+
+            if (meta.incidenceType) {
+                const readableName = typeNames[meta.incidenceType] || meta.incidenceType;
+
+                // If it's the approval/rejection notification we just created
+                if (notificationData.type === 'incidence_approved') {
+                    displayMessage = `Tu solicitud de <b>${readableName}</b> ha sido aprobada por ${meta.approverName || 'tu mánager'}.`;
+                } else if (notificationData.type === 'incidence_rejected') {
+                    displayMessage = `Tu solicitud de <b>${readableName}</b> ha sido rechazada por ${meta.approverName || 'tu mánager'}.`;
+                    if (meta.rejectionReason) {
+                        displayMessage += `<br/><br/><b>Motivo:</b> ${meta.rejectionReason}`;
+                    }
+                } else if (notificationData.type === 'new_incidence') {
+                    // This comes from the manager notifications 
+                    displayTitle = `Nueva solicitud de ${readableName}`;
+                    displayMessage = `El colaborador(a) ha solicitado un ${readableName}. Ingresa al sistema para revisarla y aprobarla.`;
+                }
+            }
+
             // Generate a simple HTML email body
             const htmlBody = `
             <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #ddd; border-radius: 8px; overflow: hidden;">
@@ -76,8 +115,8 @@ export const onNotificationCreated = onDocumentCreated(
                     <h2 style="color: #ffffff; margin: 0;">STUFFACTORY</h2>
                 </div>
                 <div style="padding: 20px; background-color: #f9fafb;">
-                    <h3 style="color: #1f2937;">${notificationData.title}</h3>
-                    <p style="color: #4b5563; line-height: 1.5;">${notificationData.message}</p>
+                    <h3 style="color: #1f2937;">${displayTitle}</h3>
+                    <p style="color: #4b5563; line-height: 1.5;">${displayMessage}</p>
                     
                     <div style="text-align: center; margin-top: 30px;">
                         <a href="${linkParam}" style="background-color: #2563eb; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-weight: bold; display: inline-block;">Ver Detalle en el Sistema</a>
