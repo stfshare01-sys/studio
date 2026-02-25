@@ -123,24 +123,96 @@ export default function AttendancePage() {
         // But for safety in Next.js client component:
         const { read, utils } = await import('xlsx');
 
-        const workbook = read(buffer, { type: 'array', cellDates: true, dateNF: 'yyyy-mm-dd' });
+        const workbook = read(buffer, { type: 'array', cellDates: true });
         const firstSheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[firstSheetName];
 
-        // Parse to JSON (array of arrays to handle headers manually or array of objects)
-        // Using header: 1 gives us an array of arrays [[val1, val2], [val1, val2]]
-        const jsonData = utils.sheet_to_json(worksheet, { header: 1, raw: false }) as string[][];
+        // Parse to JSON with raw: true to get Date objects if cellFormats are dates
+        const jsonData = utils.sheet_to_json(worksheet, { header: 1, raw: true }) as any[][];
 
         if (jsonData.length < 2) return [];
+
+        const normalizeDate = (val: any): string => {
+            if (!val) return '';
+            if (val instanceof Date) {
+                return format(val, 'yyyy-MM-dd');
+            }
+            if (typeof val === 'number') {
+                const d = new Date(Math.round((val - 25569) * 86400 * 1000));
+                return format(d, 'yyyy-MM-dd');
+            }
+            if (typeof val === 'string') {
+                const str = val.trim();
+                if (str.includes('/')) {
+                    const parts = str.split('/');
+                    if (parts.length === 3) {
+                        const p0 = parseInt(parts[0], 10);
+                        const p1 = parseInt(parts[1], 10);
+                        const p2 = parseInt(parts[2], 10);
+                        // DD/MM/YYYY
+                        if (p2 > 1000 && p1 <= 12 && p0 <= 31) {
+                            return `${p2}-${p1.toString().padStart(2, '0')}-${p0.toString().padStart(2, '0')}`;
+                        }
+                        // MM/DD/YYYY
+                        if (p2 > 1000 && p0 <= 12 && p1 <= 31) {
+                            return `${p2}-${p0.toString().padStart(2, '0')}-${p1.toString().padStart(2, '0')}`;
+                        }
+                        // YYYY/MM/DD
+                        if (p0 > 1000 && p1 <= 12 && p2 <= 31) {
+                            return `${p0}-${p1.toString().padStart(2, '0')}-${p2.toString().padStart(2, '0')}`;
+                        }
+                    }
+                }
+                // Try mapping YYYY-MM-DD
+                if (str.match(/^\d{4}-\d{2}-\d{2}/)) {
+                    return str.substring(0, 10);
+                }
+            }
+            return String(val);
+        };
+
+        const normalizeTime = (val: any): string => {
+            if (!val) return '';
+            if (val instanceof Date) {
+                return format(val, 'HH:mm:00');
+            }
+            if (typeof val === 'number') {
+                // Excel time fraction
+                const totalSeconds = Math.round(val * 86400);
+                const hours = Math.floor(totalSeconds / 3600);
+                const minutes = Math.floor((totalSeconds % 3600) / 60);
+                const seconds = totalSeconds % 60;
+                return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+            }
+            if (typeof val === 'string') {
+                const s = val.trim();
+                const isPM = s.toLowerCase().includes('p');
+                const isAM = s.toLowerCase().includes('a');
+
+                const timeParts = s.replace(/[^0-9:]/g, '').split(':');
+                if (timeParts.length >= 2) {
+                    let h = parseInt(timeParts[0], 10);
+                    const m = parseInt(timeParts[1], 10);
+                    const sec = timeParts.length > 2 ? parseInt(timeParts[2], 10) : 0;
+
+                    if (isPM && h < 12) h += 12;
+                    if (isAM && h === 12) h = 0;
+
+                    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
+                }
+                return s;
+            }
+            return String(val);
+        };
 
         // Skip header row (index 0) and map columns
         // Assuming format: EmployeeID | Date | CheckIn | CheckOut
         return jsonData.slice(1).map(row => {
             return {
                 employeeId: row[0] ? String(row[0]).trim() : '',
-                date: row[1] ? String(row[1]).trim() : '',
-                checkIn: row[2] ? String(row[2]).trim() : '',
-                checkOut: row[3] ? String(row[3]).trim() : ''
+                date: normalizeDate(row[1]),
+                checkIn: normalizeTime(row[2]),
+                checkOut: normalizeTime(row[3])
             };
         }).filter(row => row.employeeId && row.date);
     };
