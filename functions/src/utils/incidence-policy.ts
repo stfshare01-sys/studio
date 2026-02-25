@@ -69,7 +69,8 @@ export function validateIncidencePolicy(
     startDateStr: string,
     endDateStr: string,
     effectiveDays: number,
-    pastIncidences: Incidence[]
+    pastIncidences: Incidence[],
+    currentIncidenceId?: string
 ): ValidationResult {
     const rule = INCIDENCE_RULES[type];
     if (!rule) {
@@ -97,6 +98,7 @@ export function validateIncidencePolicy(
             inc.type === type &&
             inc.status !== 'rejected' &&
             inc.status !== 'cancelled' &&
+            inc.id !== currentIncidenceId &&
             getYear(parseISO(inc.startDate)) === startYear
         ).length;
 
