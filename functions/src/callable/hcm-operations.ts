@@ -956,6 +956,10 @@ export const approveIncidence = onCall<ApproveIncidenceRequest>(
                     .filter(d => d.id !== incidenceId)
                     .map(d => ({ id: d.id, ...d.data() } as PolicyIncidence));
 
+                console.log(`[HCM] Evaluating policy for incidence ${incidenceId}. Found ${allEmployeeIncidences.length} OTHER active incidences for employee ${incidenceData.employeeId}.`,
+                    allEmployeeIncidences.map(i => ({ id: i.id, type: i.type, status: i.status }))
+                );
+
                 // Calculate approximate effective days if not present (fallback)
                 // In approveIncidence, incidenceData.totalDays should be present from creation
                 const effectiveDays = incidenceData.totalDays || 1;
@@ -968,6 +972,8 @@ export const approveIncidence = onCall<ApproveIncidenceRequest>(
                     allEmployeeIncidences,
                     incidenceId
                 );
+
+                console.log(`[HCM] Policy check result:`, policyCheck);
 
                 if (!policyCheck.isValid) {
                     throw new HttpsError(
