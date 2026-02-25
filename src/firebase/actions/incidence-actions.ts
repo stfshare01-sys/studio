@@ -3,7 +3,7 @@
 import { doc, collection, addDoc, updateDoc, getDoc, getDocs, query, where, orderBy, limit, setDoc } from 'firebase/firestore';
 import { initializeFirebase } from '@/firebase';
 import { setDocumentNonBlocking, updateDocumentNonBlocking } from '../non-blocking-updates';
-import { callApproveIncidence, CloudFunctionError } from '../callable-functions';
+import { callApproveIncidence, callNotifyNewIncidence, CloudFunctionError } from '../callable-functions';
 import type {
     Employee,
     AttendanceRecord,
