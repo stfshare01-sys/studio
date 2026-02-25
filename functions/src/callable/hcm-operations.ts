@@ -15,7 +15,8 @@ import {
 } from '../utils/lft-calculations';
 import {
     canApproveForEmployee,
-    ApprovalType
+    ApprovalType,
+    findAvailableApprover
 } from '../utils/hierarchy-validator';
 import { validateIncidencePolicy, IncidenceType, Incidence as PolicyIncidence } from '../utils/incidence-policy';
 import type {
@@ -1183,23 +1184,27 @@ export const approveIncidence = onCall<ApproveIncidenceRequest>(
                         const notificationType = action === 'approve' ? 'incidence_approved' : 'incidence_rejected';
                         const actionText = action === 'approve' ? 'aprobada' : 'rechazada';
 
-                        await db.collection('notifications').add({
-                            userId: incidenceData.employeeId,
-                            title: `Solicitud de permiso ${actionText}`,
-                            message: `Tu solicitud de ${incidenceData.type} ha sido ${actionText} por ${userData?.fullName || 'tu mánager'}.`,
-                            type: notificationType,
-                            read: false,
-                            createdAt: nowISO,
-                            link: `/hcm/incidences`, // They can view their incidences there
-                            metadata: {
-                                incidenceId: incidenceId,
-                                incidenceType: incidenceData.type,
-                                recipientEmail: employeeData.email,
-                                approverName: userData?.fullName || 'Mánager',
-                                action: action,
-                                rejectionReason: rejectionReason || ''
-                            }
-                        });
+                        // [FIX] Write to user subcollection so onNotificationCreated trigger fires
+                        // Previously wrote to root 'notifications' which doesn't trigger emails
+                        await db.collection('users')
+                            .doc(incidenceData.employeeId)
+                            .collection('notifications')
+                            .add({
+                                title: `Solicitud de permiso ${actionText}`,
+                                message: `Tu solicitud de ${incidenceData.type} ha sido ${actionText} por ${userData?.fullName || 'tu mánager'}.`,
+                                type: notificationType,
+                                read: false,
+                                createdAt: nowISO,
+                                link: `/hcm/incidences`,
+                                metadata: {
+                                    incidenceId: incidenceId,
+                                    incidenceType: incidenceData.type,
+                                    recipientEmail: employeeData.email,
+                                    approverName: userData?.fullName || 'Mánager',
+                                    action: action,
+                                    rejectionReason: rejectionReason || ''
+                                }
+                            });
                         console.log(`[HCM] Employee resolution notification generated for ${employeeData.email}`);
                     }
                 }
@@ -1213,6 +1218,159 @@ export const approveIncidence = onCall<ApproveIncidenceRequest>(
             console.error('[HCM] Error approving incidence:', error);
             if (error instanceof HttpsError) throw error;
             throw new HttpsError('internal', `Error procesando incidencia: ${error.message}`);
+        }
+    }
+);
+
+// =========================================================================
+// NOTIFICACIÓN CON ESCALAMIENTO — Notifica al jefe disponible
+// =========================================================================
+
+interface NotifyNewIncidenceRequest {
+    incidenceId: string;
+    employeeId: string;
+    employeeName: string;
+    managerId: string;
+    type: string;
+    startDate: string;
+    endDate: string;
+}
+
+interface NotifyNewIncidenceResponse {
+    success: boolean;
+    notifiedId: string;
+    notifiedName: string;
+    escalated: boolean;
+    absentManagerNames?: string[];
+}
+
+/**
+ * Notifica al jefe correspondiente sobre una nueva solicitud de incidencia.
+ * Si el jefe directo está ausente (tiene una incidencia activa aprobada),
+ * escala al siguiente jefe en la cadena jerárquica y notifica también a RH.
+ *
+ * @requires Role: Any authenticated user (employee creating their own incidence)
+ */
+export const notifyNewIncidence = onCall<NotifyNewIncidenceRequest>(
+    { region: 'us-central1' },
+    async (request): Promise<NotifyNewIncidenceResponse> => {
+        if (!request.auth?.uid) {
+            throw new HttpsError('unauthenticated', 'Debe iniciar sesión.');
+        }
+
+        const { incidenceId, employeeId, employeeName, managerId, type, startDate, endDate } = request.data;
+
+        if (!incidenceId || !employeeId || !employeeName || !type) {
+            throw new HttpsError('invalid-argument', 'Parámetros incompletos para notificación.');
+        }
+
+        const nowISO = new Date().toISOString();
+
+        try {
+            // If no manager assigned, notify HR directly
+            if (!managerId) {
+                console.log(`[HCM Notify] No manager for ${employeeName}. Notifying HR directly.`);
+
+                const hrUsers = await db.collection('users')
+                    .where('role', '==', 'HRManager')
+                    .get();
+
+                const notifyPromises = hrUsers.docs.map(hrDoc =>
+                    db.collection('users').doc(hrDoc.id).collection('notifications').add({
+                        title: 'Nueva Solicitud de Incidencia (Sin Manager Directo)',
+                        message: `${employeeName} ha solicitado ${type} del ${startDate} al ${endDate}. Requiere atención de RH.`,
+                        type: 'warning',
+                        read: false,
+                        createdAt: nowISO,
+                        link: '/hcm/incidences',
+                        metadata: { incidenceId, incidenceType: type, escalated: false }
+                    })
+                );
+
+                await Promise.all(notifyPromises);
+
+                return {
+                    success: true,
+                    notifiedId: 'hr_role',
+                    notifiedName: 'Recursos Humanos',
+                    escalated: false,
+                };
+            }
+
+            // Find available approver (checks absence, walks chain if needed)
+            const result = await findAvailableApprover(employeeId);
+
+            const targetId = result.approverId || managerId;
+            const targetName = result.approverName || 'Manager';
+            const escalated = result.isEscalated;
+
+            // Build notification message
+            let notificationMessage = `${employeeName} ha solicitado ${type} del ${startDate} al ${endDate}.`;
+            if (escalated && result.absentManagerNames.length > 0) {
+                notificationMessage += ` (Solicitud escalada — ${result.absentManagerNames.join(', ')} no disponible(s))`;
+            }
+
+            // Notify the available approver
+            await db.collection('users').doc(targetId).collection('notifications').add({
+                title: escalated
+                    ? 'Solicitud de Incidencia Escalada'
+                    : 'Nueva Solicitud de Incidencia',
+                message: notificationMessage,
+                type: 'warning',
+                read: false,
+                createdAt: nowISO,
+                link: '/hcm/incidences',
+                metadata: {
+                    incidenceId,
+                    incidenceType: type,
+                    escalated,
+                    originalManagerId: managerId,
+                    absentManagers: result.absentManagerNames,
+                }
+            });
+
+            console.log(`[HCM Notify] Notified ${targetName} (${targetId}) for incidence ${incidenceId}. Escalated: ${escalated}`);
+
+            // If escalated, ALSO notify all HRManagers
+            if (escalated) {
+                const hrUsers = await db.collection('users')
+                    .where('role', '==', 'HRManager')
+                    .get();
+
+                const hrPromises = hrUsers.docs
+                    .filter(hrDoc => hrDoc.id !== targetId) // Don't duplicate if target IS HRManager
+                    .map(hrDoc =>
+                        db.collection('users').doc(hrDoc.id).collection('notifications').add({
+                            title: 'Solicitud de Incidencia Escalada',
+                            message: `${employeeName} ha solicitado ${type} del ${startDate} al ${endDate}. Su jefe directo (${result.absentManagerNames[0] || 'N/A'}) no está disponible. Se escaló a ${targetName}.`,
+                            type: 'warning',
+                            read: false,
+                            createdAt: nowISO,
+                            link: '/hcm/incidences',
+                            metadata: {
+                                incidenceId,
+                                incidenceType: type,
+                                escalated: true,
+                                originalManagerId: managerId,
+                            }
+                        })
+                    );
+
+                await Promise.all(hrPromises);
+                console.log(`[HCM Notify] Also notified ${hrUsers.size} HRManagers about escalation.`);
+            }
+
+            return {
+                success: true,
+                notifiedId: targetId,
+                notifiedName: targetName,
+                escalated,
+                absentManagerNames: result.absentManagerNames,
+            };
+
+        } catch (error: any) {
+            console.error('[HCM Notify] Error in notifyNewIncidence:', error);
+            throw new HttpsError('internal', `Error enviando notificación: ${error.message}`);
         }
     }
 );

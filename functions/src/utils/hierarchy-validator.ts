@@ -331,3 +331,128 @@ export async function canViewEmployeeRequests(
     const managerChain = await getManagerChain(employeeId);
     return managerChain.includes(viewerId);
 }
+
+// =========================================================================
+// ESCALAMIENTO DE NOTIFICACIONES — Detección de ausencia de jefe
+// =========================================================================
+
+/**
+ * Verifica si un manager tiene una incidencia activa (aprobada) que cubra la fecha actual.
+ * Se usa para determinar si la notificación debe escalarse al siguiente jefe en la cadena.
+ *
+ * @param managerId - ID del manager a verificar
+ * @returns true si el manager tiene una incidencia activa hoy
+ */
+export async function isManagerAbsent(managerId: string): Promise<boolean> {
+    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD (safe timezone)
+
+    try {
+        // Query: employeeId == managerId AND status == 'approved' AND startDate <= today
+        // Uses existing composite index: (employeeId ASC, status ASC, startDate DESC)
+        const incidencesSnap = await db.collection('incidences')
+            .where('employeeId', '==', managerId)
+            .where('status', '==', 'approved')
+            .where('startDate', '<=', today)
+            .orderBy('startDate', 'desc')
+            .limit(10) // Small limit — only need active ones
+            .get();
+
+        // Filter in memory: endDate >= today (Firestore doesn't support range on two fields)
+        const activeIncidences = incidencesSnap.docs.filter(doc => {
+            const data = doc.data();
+            return data.endDate >= today;
+        });
+
+        if (activeIncidences.length > 0) {
+            const types = activeIncidences.map(d => d.data().type).join(', ');
+            console.log(`[HCM Escalation] Manager ${managerId} is ABSENT (active: ${types})`);
+        }
+
+        return activeIncidences.length > 0;
+    } catch (error) {
+        console.error(`[HCM Escalation] Error checking manager absence for ${managerId}:`, error);
+        // On error, assume manager is available (don't escalate unnecessarily)
+        return false;
+    }
+}
+
+/**
+ * Resultado de búsqueda de aprobador disponible.
+ */
+export interface AvailableApproverResult {
+    approverId: string;
+    approverName: string;
+    isEscalated: boolean;
+    absentManagerNames: string[];
+}
+
+/**
+ * Busca el primer manager disponible (no ausente) en la cadena jerárquica del empleado.
+ * Si el jefe directo está ausente, sube por la cadena hasta encontrar uno disponible.
+ * Si ninguno está disponible, retorna el último en la cadena (RH será notificado aparte).
+ *
+ * @param employeeId - ID del empleado que solicita el permiso
+ * @returns Información del aprobador disponible y si hubo escalamiento
+ */
+export async function findAvailableApprover(
+    employeeId: string
+): Promise<AvailableApproverResult> {
+    // Get the employee's manager chain (direct manager first)
+    const managerChain = await getManagerChain(employeeId);
+
+    if (managerChain.length === 0) {
+        console.log(`[HCM Escalation] Employee ${employeeId} has no manager chain`);
+        return {
+            approverId: '',
+            approverName: '',
+            isEscalated: false,
+            absentManagerNames: [],
+        };
+    }
+
+    const absentManagerNames: string[] = [];
+
+    for (const managerId of managerChain) {
+        const absent = await isManagerAbsent(managerId);
+
+        if (!absent) {
+            // Found an available manager
+            const managerSnap = await db.collection('employees').doc(managerId).get();
+            const managerName = managerSnap.exists
+                ? (managerSnap.data()?.fullName || 'Manager')
+                : 'Manager';
+
+            const isEscalated = absentManagerNames.length > 0;
+            if (isEscalated) {
+                console.log(`[HCM Escalation] Escalated to ${managerName} (${managerId}). Absent: [${absentManagerNames.join(', ')}]`);
+            }
+
+            return {
+                approverId: managerId,
+                approverName: managerName,
+                isEscalated,
+                absentManagerNames,
+            };
+        }
+
+        // This manager is absent — record and continue up the chain
+        const mSnap = await db.collection('employees').doc(managerId).get();
+        const mName = mSnap.exists ? (mSnap.data()?.fullName || managerId) : managerId;
+        absentManagerNames.push(mName);
+    }
+
+    // ALL managers in the chain are absent — use the last one in the chain
+    // HR will also be notified since isEscalated = true
+    const lastManagerId = managerChain[managerChain.length - 1];
+    const lastSnap = await db.collection('employees').doc(lastManagerId).get();
+    const lastName = lastSnap.exists ? (lastSnap.data()?.fullName || 'Manager') : 'Manager';
+
+    console.warn(`[HCM Escalation] ALL managers absent for employee ${employeeId}. Using last in chain: ${lastName}`);
+
+    return {
+        approverId: lastManagerId,
+        approverName: lastName,
+        isEscalated: true,
+        absentManagerNames,
+    };
+}

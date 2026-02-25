@@ -86,7 +86,7 @@ export default function DashboardPage() {
         list.push({
           id: inc.id,
           title: `${titleName} (${inc.startDate} al ${inc.endDate})`,
-          status: inc.status === 'approved' ? 'Completed' : inc.status === 'rejected' ? 'Rejected' : 'In Progress',
+          status: inc.status === 'approved' ? 'Aprobado' : inc.status === 'rejected' ? 'Rechazado' : inc.status === 'cancelled' ? 'Cancelado' : 'Pendiente',
           submittedBy: user?.uid || '',
           createdAt: inc.createdAt || new Date().toISOString(),
           updatedAt: inc.updatedAt || new Date().toISOString(),
@@ -105,7 +105,10 @@ export default function DashboardPage() {
 
   const stats = React.useMemo(() => {
     if (!combinedRequests) return { inProgress: 0, avgCycleTime: 0 };
-    const completedRequests = combinedRequests.filter(r => r.status === 'Completed' && r.completedAt && r.createdAt);
+    const completedRequests = combinedRequests.filter(r =>
+      r.status === 'Completed' || r.status === 'Aprobado' || r.status === 'Rechazado' || r.status === 'Cancelado'
+    ).filter(r => r.completedAt && r.createdAt);
+
     const totalCycleTime = completedRequests.reduce((acc, curr) => {
       const completedAt = curr.completedAt ? new Date(curr.completedAt) : null;
       const createdAt = new Date(curr.createdAt);
@@ -116,7 +119,7 @@ export default function DashboardPage() {
     }, 0);
 
     return {
-      inProgress: combinedRequests.filter(r => r.status === 'In Progress').length,
+      inProgress: combinedRequests.filter(r => r.status === 'In Progress' || r.status === 'Pendiente').length,
       avgCycleTime: completedRequests.length > 0 ? (totalCycleTime / completedRequests.length).toFixed(1) : 0,
     }
   }, [combinedRequests]);

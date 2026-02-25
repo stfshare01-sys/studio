@@ -58,7 +58,11 @@ function SubmittedBy({ userId }: { userId: string }) {
 type SortField = "title" | "updatedAt" | "status";
 type SortOrder = "asc" | "desc";
 
-export type EnrichedRequestObj = Request & { isHcmIncidence?: boolean; incidenceType?: string; };
+export type EnrichedRequestObj = Omit<Request, 'status'> & {
+  status: Request['status'] | 'Aprobado' | 'Rechazado' | 'Cancelado' | 'Pendiente';
+  isHcmIncidence?: boolean;
+  incidenceType?: string;
+};
 
 interface RequestsTableProps {
   requests: EnrichedRequestObj[];
@@ -148,6 +152,9 @@ export function RequestsTable({ requests, isLoading = false }: RequestsTableProp
       case 'In Progress': return 'En Progreso';
       case 'Completed': return 'Completado';
       case 'Rejected': return 'Rechazado';
+      case 'Aprobado': return 'Aprobado';
+      case 'Pendiente': return 'Pendiente';
+      case 'Cancelado': return 'Cancelado';
       default: return status;
     }
   };
@@ -171,9 +178,9 @@ export function RequestsTable({ requests, isLoading = false }: RequestsTableProp
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Todos los estados</SelectItem>
-            <SelectItem value="In Progress">En Progreso</SelectItem>
-            <SelectItem value="Completed">Completado</SelectItem>
-            <SelectItem value="Rejected">Rechazado</SelectItem>
+            <SelectItem value="In Progress">En Progreso / Pendiente</SelectItem>
+            <SelectItem value="Completed">Completado / Aprobado</SelectItem>
+            <SelectItem value="Rejected">Rechazado / Cancelado</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -236,55 +243,58 @@ export function RequestsTable({ requests, isLoading = false }: RequestsTableProp
               </TableRow>
             </TableHeader>
             <TableBody>
-              {paginatedRequests.map((request) => (
-                <TableRow key={request.id}>
-                  <TableCell>
-                    <Link
-                      href={request.isHcmIncidence ? '/hcm/incidences' : `/requests/${request.id}`}
-                      className="font-medium text-primary hover:underline"
-                    >
-                      {request.title}
-                    </Link>
-                    <div className="text-sm text-muted-foreground md:hidden mt-1">
+              {paginatedRequests.map((request) => {
+                const status = request.status as string;
+                return (
+                  <TableRow key={request.id}>
+                    <TableCell>
+                      <Link
+                        href={request.isHcmIncidence ? '/hcm/incidences' : `/requests/${request.id}`}
+                        className="font-medium text-primary hover:underline"
+                      >
+                        {request.title}
+                      </Link>
+                      <div className="text-sm text-muted-foreground md:hidden mt-1">
+                        <Badge
+                          variant={
+                            status === "Completed" || status === "Aprobado"
+                              ? "default"
+                              : status === "Rejected" || status === "Rechazado" || status === "Cancelado"
+                                ? "destructive"
+                                : "secondary"
+                          }
+                          className={status === 'Completed' || status === 'Aprobado' ? 'bg-green-600 text-white' : ''}
+                        >
+                          {getStatusLabel(status)}
+                        </Badge>
+                      </div>
+                    </TableCell>
+                    <TableCell className="hidden sm:table-cell">
+                      <SubmittedBy userId={request.submittedBy} />
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell">
                       <Badge
                         variant={
-                          request.status === "Completed"
+                          status === "Completed" || status === "Aprobado"
                             ? "default"
-                            : request.status === "Rejected"
+                            : status === "Rejected" || status === "Rechazado" || status === "Cancelado"
                               ? "destructive"
                               : "secondary"
                         }
-                        className={request.status === 'Completed' ? 'bg-green-600 text-white' : ''}
+                        className={status === 'Completed' || status === 'Aprobado' ? 'bg-green-600 text-white' : ''}
                       >
-                        {getStatusLabel(request.status)}
+                        {getStatusLabel(status)}
                       </Badge>
-                    </div>
-                  </TableCell>
-                  <TableCell className="hidden sm:table-cell">
-                    <SubmittedBy userId={request.submittedBy} />
-                  </TableCell>
-                  <TableCell className="hidden md:table-cell">
-                    <Badge
-                      variant={
-                        request.status === "Completed"
-                          ? "default"
-                          : request.status === "Rejected"
-                            ? "destructive"
-                            : "secondary"
-                      }
-                      className={request.status === 'Completed' ? 'bg-green-600 text-white' : ''}
-                    >
-                      {getStatusLabel(request.status)}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="hidden text-right text-muted-foreground sm:table-cell">
-                    {formatDistanceToNow(new Date(request.updatedAt), {
-                      addSuffix: true,
-                      locale: es,
-                    })}
-                  </TableCell>
-                </TableRow>
-              ))}
+                    </TableCell>
+                    <TableCell className="hidden text-right text-muted-foreground sm:table-cell">
+                      {formatDistanceToNow(new Date(request.updatedAt), {
+                        addSuffix: true,
+                        locale: es,
+                      })}
+                    </TableCell>
+                  </TableRow>
+                )
+              })}
             </TableBody>
           </Table>
         </div>

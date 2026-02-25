@@ -169,6 +169,49 @@ export async function callApproveIncidence(
 }
 
 // =========================================================================
+// INCIDENCE NOTIFICATION WITH ESCALATION
+// =========================================================================
+
+interface NotifyNewIncidenceRequest {
+    incidenceId: string;
+    employeeId: string;
+    employeeName: string;
+    managerId: string;
+    type: string;
+    startDate: string;
+    endDate: string;
+}
+
+interface NotifyNewIncidenceResponse {
+    success: boolean;
+    notifiedId: string;
+    notifiedName: string;
+    escalated: boolean;
+    absentManagerNames?: string[];
+}
+
+/**
+ * Notifies the appropriate approver about a new incidence.
+ * If the direct manager is absent, escalates to the next available manager + HR.
+ */
+export async function callNotifyNewIncidence(
+    params: NotifyNewIncidenceRequest
+): Promise<NotifyNewIncidenceResponse> {
+    try {
+        const { functions } = initializeFirebase();
+        const callable = httpsCallable<NotifyNewIncidenceRequest, NotifyNewIncidenceResponse>(
+            functions,
+            'notifyNewIncidence'
+        );
+
+        const result = await callable(params);
+        return result.data;
+    } catch (error) {
+        handleCallableError(error);
+    }
+}
+
+// =========================================================================
 // PAYROLL REPORTS
 // =========================================================================
 
