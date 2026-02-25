@@ -682,6 +682,7 @@ export type Employee = User & {
   rfc_curp?: string;           // RFC con homoclave + CURP
   nss?: string;                // Número de Seguridad Social (IMSS)
   userId?: string;             // Authenticated User UID (optional, for linking to Auth)
+  employeeId?: string;         // Numerical ID for attendance (ZKTeco etc)
 
   // Datos laborales
   employmentType: EmploymentType;

@@ -124,21 +124,18 @@ export default function EmployeesPage() {
 
         // Map data to a clean format for Excel
         const exportData = filteredEmployees.map(emp => ({
-            'ID Numérico': emp.employeeId || '-',
-            'ID Sistema': emp.id,
+            'ID Empleado': emp.employeeId || 'No asignado',
             'Nombre Completo': emp.fullName,
             'Correo': emp.email,
-            'RFC': emp.rfc || '-',
+            'RFC / CURP': emp.rfc_curp || '-',
             'NSS': emp.nss || '-',
-            'CURP': emp.curp || '-',
             'Puesto': emp.positionTitle || '-',
             'Departamento': emp.department || '-',
             'Turno': formatShiftType(emp.shiftType),
             'Tipo de Contrato': formatEmploymentType(emp.employmentType),
             'Fecha de Contratación': emp.hireDate || '-',
             'Antigüedad (Años)': emp.hireDate ? calculateYearsOfService(emp.hireDate) : 0,
-            'Estado': emp.status === 'active' ? 'Activo' : 'Inactivo',
-            'Sueldo Bruto': emp.compensation?.grossSalary || 0
+            'Estado': emp.status === 'active' ? 'Activo' : 'Inactivo'
         }));
 
         // Create workbook and worksheet
@@ -284,7 +281,7 @@ export default function EmployeesPage() {
                                                                 <div className="text-sm text-muted-foreground">{employee.email}</div>
                                                                 {employee.employeeId && (
                                                                     <div className="text-xs text-muted-foreground mt-0.5">
-                                                                        ID: <span className="font-medium text-foreground">{employee.employeeId}</span>
+                                                                        ID Empleado: <span className="font-medium text-foreground">{employee.employeeId}</span>
                                                                     </div>
                                                                 )}
                                                             </div>
