@@ -950,8 +950,11 @@ export const approveIncidence = onCall<ApproveIncidenceRequest>(
                 }
 
                 // VALIDATION 2.5: Policy Rules (Frequency & Duration)
-                // Use the fetched incidences (conflictQuery) which contains all approved/pending incidences for this employee
-                const allEmployeeIncidences = conflictQuery.docs.map(d => ({ id: d.id, ...d.data() } as PolicyIncidence));
+                // Use the fetched incidences (conflictQuery) which contains all approved/pending incidences for this employee.
+                // IMPORTANT: Filter out the current incidence so it doesn't count against its own yearly limit.
+                const allEmployeeIncidences = conflictQuery.docs
+                    .filter(d => d.id !== incidenceId)
+                    .map(d => ({ id: d.id, ...d.data() } as PolicyIncidence));
 
                 // Calculate approximate effective days if not present (fallback)
                 // In approveIncidence, incidenceData.totalDays should be present from creation
