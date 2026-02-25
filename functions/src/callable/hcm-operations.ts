@@ -965,7 +965,8 @@ export const approveIncidence = onCall<ApproveIncidenceRequest>(
                     incidenceData.startDate,
                     incidenceData.endDate,
                     effectiveDays,
-                    allEmployeeIncidences
+                    allEmployeeIncidences,
+                    incidenceId
                 );
 
                 if (!policyCheck.isValid) {

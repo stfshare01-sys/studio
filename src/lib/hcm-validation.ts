@@ -66,7 +66,8 @@ export function validateIncidencePolicy(
     startDateStr: string,
     endDateStr: string,
     effectiveDays: number,
-    pastIncidences: Incidence[]
+    pastIncidences: Incidence[],
+    currentIncidenceId?: string
 ): ValidationResult {
     const rule = INCIDENCE_RULES[type];
     if (!rule) {
@@ -74,15 +75,6 @@ export function validateIncidencePolicy(
     }
 
     // 1. Duration Check
-    // If effectiveDays is passed, use it. Otherwise approximate with calendar days?
-    // Policy usually refers to "Paid Days" (Effective) or "Calendar Days"?
-    // For "Marriage", it's usually consecutive days (Calendar).
-    // For "Vacation", it's Effective.
-    // I'll use the passed `effectiveDays` as the primary metric if strictly defined, 
-    // but for Marriage/Bereavement usually it implies Calendar days count.
-    // However, the prompt says "Validar duracion".
-    // I'll assume effectiveDays is the paid amount.
-
     if (rule.maxDays && effectiveDays > rule.maxDays) {
         return {
             isValid: false,
@@ -101,15 +93,18 @@ export function validateIncidencePolicy(
     if (rule.maxPerYear) {
         const startYear = getYear(parseISO(startDateStr));
 
-        // Count Approved past incidences of same type in the same year
+        // Count Approved/Pending past incidences of same type in the same year.
+        // Ignore the current incidence being evaluated to avoid false positive limits.
         const count = pastIncidences.filter(inc =>
             inc.type === type &&
             inc.status !== 'rejected' &&
             inc.status !== 'cancelled' &&
+            inc.id !== currentIncidenceId &&
             getYear(parseISO(inc.startDate)) === startYear
         ).length;
 
-        // If we are creating a new one, count must be < maxPerYear
+        // If we are creating/approving the incidence, count must be <= maxPerYear
+        // We use >= here because 'count' now purely represents OTHER incidences
         if (count >= rule.maxPerYear) {
             return {
                 isValid: false,
