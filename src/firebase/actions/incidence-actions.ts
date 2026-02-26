@@ -824,7 +824,7 @@ export async function processAttendanceImport(
                                 employeeId: actualUid,
                                 employeeName: shiftConfig.fullName ?? actualUid,
                                 date: row.date,
-                                attendanceId: newAttendanceRef.id, // Use newAttendanceRef.id
+                                attendanceRecordId: newAttendanceRef.id, // Fixed from attendanceId
                                 scheduledTime: scheduledEnd,
                                 actualTime: row.checkOut,
                                 minutesEarly,

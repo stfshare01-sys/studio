@@ -130,16 +130,23 @@ export default function AttendancePage() {
         // Parse to JSON with raw: true to get Date objects if cellFormats are dates
         const jsonData = utils.sheet_to_json(worksheet, { header: 1, raw: true }) as any[][];
 
-        if (jsonData.length < 2) return [];
-
+        // Normalize dates to YYYY-MM-DD
         const normalizeDate = (val: any): string => {
             if (!val) return '';
             if (val instanceof Date) {
-                return format(val, 'yyyy-MM-dd');
+                // Fix timezone offset issues by using the UTC values since xlsx parses them as UTC midnights
+                const year = val.getUTCFullYear();
+                const month = String(val.getUTCMonth() + 1).padStart(2, '0');
+                const day = String(val.getUTCDate()).padStart(2, '0');
+                return `${year}-${month}-${day}`;
             }
             if (typeof val === 'number') {
+                // Excel date serial number
                 const d = new Date(Math.round((val - 25569) * 86400 * 1000));
-                return format(d, 'yyyy-MM-dd');
+                const year = d.getUTCFullYear();
+                const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+                const day = String(d.getUTCDate()).padStart(2, '0');
+                return `${year}-${month}-${day}`;
             }
             if (typeof val === 'string') {
                 const str = val.trim();

@@ -248,7 +248,12 @@ function TeamManagementContent() {
                 let periodStart: string;
                 let periodEnd: string;
 
-                if (dateFilter.length === 7) {
+                if (dateFilter === 'all') {
+                    setIsPeriodClosed(false);
+                    return;
+                }
+
+                if (/^\d{4}-\d{2}$/.test(dateFilter)) {
                     // Month format: "2026-02"
                     const [year, month] = dateFilter.split('-').map(Number);
                     const startDate = new Date(year, month - 1, 1);
@@ -256,7 +261,7 @@ function TeamManagementContent() {
                     periodStart = format(startDate, 'yyyy-MM-dd');
                     periodEnd = format(endDate, 'yyyy-MM-dd');
                 } else {
-                    // Specific date or range - use the date itself
+                    // Specific date or range - use the date itself, fallback to today if invalid
                     periodStart = dateFilter;
                     periodEnd = dateFilter;
                 }
