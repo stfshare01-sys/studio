@@ -260,10 +260,16 @@ function TeamManagementContent() {
                     const endDate = new Date(year, month, 0); // Last day of month
                     periodStart = format(startDate, 'yyyy-MM-dd');
                     periodEnd = format(endDate, 'yyyy-MM-dd');
-                } else {
-                    // Specific date or range - use the date itself, fallback to today if invalid
+                } else if (/^\d{4}-\d{2}-\d{2}$/.test(dateFilter)) {
+                    // Specific date format
                     periodStart = dateFilter;
                     periodEnd = dateFilter;
+                } else {
+                    // Invalid or unknown format, default to today
+                    const today = new Date();
+                    const formattedToday = format(today, 'yyyy-MM-dd');
+                    periodStart = formattedToday;
+                    periodEnd = formattedToday;
                 }
 
                 // Check if this specific date range is locked
@@ -554,11 +560,16 @@ function TeamManagementContent() {
                     }
 
                     // Reload ALL tab data in parallel so header counters update correctly
-                    // Parse dateFilter safely (it can be 'all' when no batch is selected)
+                    // Parse dateFilter safely (it can be 'all' or unsupported values)
                     const now = new Date();
-                    const [parsedYear, parsedMonth] = dateFilter !== 'all'
-                        ? dateFilter.split('-').map(Number) as [number, number]
-                        : [now.getFullYear(), now.getMonth() + 1];
+                    let parsedYear = now.getFullYear();
+                    let parsedMonth = now.getMonth() + 1;
+
+                    if (dateFilter !== 'all' && /^\d{4}-\d{2}/.test(dateFilter)) {
+                        const parts = dateFilter.split('-').map(Number);
+                        parsedYear = parts[0];
+                        parsedMonth = parts[1];
+                    }
 
                     const [
                         tardinessResult,
@@ -1671,7 +1682,7 @@ function TeamManagementContent() {
                                         ) : (
                                             filteredTardiness.map((record) => (
                                                 <TableRow key={record.id}>
-                                                    <TableCell>{new Date(record.date).toLocaleDateString('es-MX')}</TableCell>
+                                                    <TableCell>{new Date(record.date + (record.date.includes('T') ? '' : 'T12:00:00')).toLocaleDateString('es-MX')}</TableCell>
                                                     <TableCell className="font-medium">
                                                         {(record as any).employeeName || employees.find(e => e.id === record.employeeId)?.fullName || record.employeeId}
                                                     </TableCell>
@@ -1790,7 +1801,7 @@ function TeamManagementContent() {
                                         ) : (
                                             filteredDepartures.map((record) => (
                                                 <TableRow key={record.id}>
-                                                    <TableCell>{new Date(record.date).toLocaleDateString('es-MX')}</TableCell>
+                                                    <TableCell>{new Date(record.date + (record.date.includes('T') ? '' : 'T12:00:00')).toLocaleDateString('es-MX')}</TableCell>
                                                     <TableCell className="font-medium">{record.employeeName}</TableCell>
                                                     <TableCell>{record.scheduledEndTime}</TableCell>
                                                     <TableCell>{record.actualEndTime}</TableCell>
@@ -2023,7 +2034,7 @@ function TeamManagementContent() {
                                         ) : (
                                             filteredOvertime.map((request) => (
                                                 <TableRow key={request.id}>
-                                                    <TableCell>{new Date(request.date).toLocaleDateString('es-MX')}</TableCell>
+                                                    <TableCell>{new Date(request.date + (request.date.includes('T') ? '' : 'T12:00:00')).toLocaleDateString('es-MX')}</TableCell>
                                                     <TableCell className="font-medium">{request.employeeName}</TableCell>
                                                     <TableCell>
                                                         {(() => {
@@ -2326,7 +2337,7 @@ function TeamManagementContent() {
                     <DialogHeader>
                         <DialogTitle>Justificar Retardo</DialogTitle>
                         <DialogDescription>
-                            Ingresa el motivo de la justificación para el retardo del {justifyTardinessDialog.record && new Date(justifyTardinessDialog.record.date).toLocaleDateString()}.
+                            Ingresa el motivo de la justificación para el retardo del {justifyTardinessDialog.record && new Date(justifyTardinessDialog.record.date + (justifyTardinessDialog.record.date.includes('T') ? '' : 'T12:00:00')).toLocaleDateString('es-MX')}.
                         </DialogDescription>
                     </DialogHeader>
                     <div className="space-y-4 py-4">
@@ -2379,7 +2390,7 @@ function TeamManagementContent() {
                     <DialogHeader>
                         <DialogTitle>Justificar Salida Temprana</DialogTitle>
                         <DialogDescription>
-                            Ingresa el motivo de la justificación para la salida temprana del {justifyDepartureDialog.record && new Date(justifyDepartureDialog.record.date).toLocaleDateString()}.
+                            Ingresa el motivo de la justificación para la salida temprana del {justifyDepartureDialog.record && new Date(justifyDepartureDialog.record.date + (justifyDepartureDialog.record.date.includes('T') ? '' : 'T12:00:00')).toLocaleDateString('es-MX')}.
                         </DialogDescription>
                     </DialogHeader>
                     <div className="space-y-4 py-4">
@@ -2758,7 +2769,7 @@ function TeamManagementContent() {
                                 ) : (
                                     hourBankMovements.map((move) => (
                                         <TableRow key={move.id}>
-                                            <TableCell>{new Date(move.date).toLocaleDateString()}</TableCell>
+                                            <TableCell>{new Date(move.date + (move.date.includes('T') ? '' : 'T12:00:00')).toLocaleDateString()}</TableCell>
                                             <TableCell>
                                                 <Badge variant="outline">
                                                     {move.type === 'tardiness' ? 'Retardo' :

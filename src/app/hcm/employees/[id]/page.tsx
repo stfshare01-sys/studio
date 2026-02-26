@@ -459,7 +459,7 @@ export default function EmployeeDetailPage({ params }: { params: Promise<{ id: s
                                                     </div>
                                                     <div>
                                                         <p className="font-medium capitalize">
-                                                            {format(new Date(record.date), 'EEEE, d MMMM', { locale: es })}
+                                                            {format(new Date(record.date + 'T12:00:00'), 'EEEE, d MMMM', { locale: es })}
                                                         </p>
                                                         <p className="text-xs text-muted-foreground">
                                                             Entrada: {record.checkIn} • Salida: {record.checkOut}

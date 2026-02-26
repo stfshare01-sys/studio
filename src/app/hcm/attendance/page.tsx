@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Label } from '@/components/ui/label';
 import {
     Table,
     TableBody,
@@ -48,8 +49,13 @@ export default function AttendancePage() {
         success: boolean;
         message: string;
         details?: string;
+        errors?: any[];
+        batchId?: string;
     } | null>(null);
     const [employeeNames, setEmployeeNames] = useState<Record<string, string>>({});
+
+    // State to resolve string date formatting ambiguities
+    const [dateFormatPreference, setDateFormatPreference] = useState<'dd/mm' | 'mm/dd'>('dd/mm');
 
     // Fetch recent imports
     const importsQuery = useMemoFirebase(() => {
@@ -111,7 +117,7 @@ export default function AttendancePage() {
     }, [firestore, attendanceRecords, employeeNames]);
 
     // Parse file using xlsx library
-    const parseFile = async (file: File): Promise<Array<{
+    const parseFile = async (file: File, formatPreference: 'dd/mm' | 'mm/dd'): Promise<Array<{
         employeeId: string;
         date: string;
         checkIn: string;
@@ -156,14 +162,27 @@ export default function AttendancePage() {
                         const p0 = parseInt(parts[0], 10);
                         const p1 = parseInt(parts[1], 10);
                         const p2 = parseInt(parts[2], 10);
-                        // DD/MM/YYYY
-                        if (p2 > 1000 && p1 <= 12 && p0 <= 31) {
-                            return `${p2}-${p1.toString().padStart(2, '0')}-${p0.toString().padStart(2, '0')}`;
+                        // Depending on formatPreference, we choose how to handle early DD and MM
+                        if (formatPreference === 'dd/mm') {
+                            // DD/MM/YYYY
+                            if (p2 > 1000 && p1 <= 12 && p0 <= 31) {
+                                return `${p2}-${p1.toString().padStart(2, '0')}-${p0.toString().padStart(2, '0')}`;
+                            }
+                            // MM/DD/YYYY (fallback if DD/MM is invalid, e.g. month > 12)
+                            if (p2 > 1000 && p0 <= 12 && p1 <= 31) {
+                                return `${p2}-${p0.toString().padStart(2, '0')}-${p1.toString().padStart(2, '0')}`;
+                            }
+                        } else { // formatPreference === 'mm/dd'
+                            // MM/DD/YYYY
+                            if (p2 > 1000 && p0 <= 12 && p1 <= 31) {
+                                return `${p2}-${p0.toString().padStart(2, '0')}-${p1.toString().padStart(2, '0')}`;
+                            }
+                            // DD/MM/YYYY (fallback)
+                            if (p2 > 1000 && p1 <= 12 && p0 <= 31) {
+                                return `${p2}-${p1.toString().padStart(2, '0')}-${p0.toString().padStart(2, '0')}`;
+                            }
                         }
-                        // MM/DD/YYYY
-                        if (p2 > 1000 && p0 <= 12 && p1 <= 31) {
-                            return `${p2}-${p0.toString().padStart(2, '0')}-${p1.toString().padStart(2, '0')}`;
-                        }
+
                         // YYYY/MM/DD
                         if (p0 > 1000 && p1 <= 12 && p2 <= 31) {
                             return `${p0}-${p1.toString().padStart(2, '0')}-${p2.toString().padStart(2, '0')}`;
@@ -236,8 +255,8 @@ export default function AttendancePage() {
         try {
             setUploadProgress(30);
 
-            // Parse CSV/Excel using xlsx
-            const rows = await parseFile(file);
+            // Parse CSV/Excel using xlsx, pass in the format preference
+            const rows = await parseFile(file, dateFormatPreference);
             setUploadProgress(50);
 
             if (rows.length === 0) {
@@ -264,13 +283,16 @@ export default function AttendancePage() {
                     message: `Importación completada: ${result.successCount} procesados${skippedMsg}`,
                     details: result.errorCount && result.errorCount > 0
                         ? `${result.errorCount} registros con errores`
-                        : undefined
+                        : undefined,
+                    batchId: result.batchId,
+                    errors: result.errors
                 });
             } else {
                 setUploadResult({
                     success: false,
                     message: 'Error en la importación',
-                    details: result.errors?.[0]?.message
+                    details: result.errors?.[0]?.message,
+                    errors: result.errors
                 });
             }
         } catch (error) {
@@ -285,7 +307,7 @@ export default function AttendancePage() {
             // Reset file input
             event.target.value = '';
         }
-    }, [user]);
+    }, [user, dateFormatPreference]);
 
     // Download template
     const downloadTemplate = () => {
@@ -370,9 +392,38 @@ export default function AttendancePage() {
                                     className="hidden"
                                     id="file-upload"
                                 />
-                                <label
-                                    htmlFor="file-upload"
-                                    className={`cursor-pointer ${isUploading ? 'opacity-50' : ''}`}
+                                <div className="mb-6 flex flex-col items-center justify-center space-y-4">
+                                    <div className="flex flex-col sm:flex-row items-center gap-4 bg-muted/30 p-4 rounded-lg">
+                                        <Label htmlFor="date-format" className="font-semibold whitespace-nowrap">Formato de Fecha en Excel:</Label>
+                                        <div className="flex bg-muted p-1 rounded-md">
+                                            <Button
+                                                variant={dateFormatPreference === 'dd/mm' ? 'default' : 'ghost'}
+                                                size="sm"
+                                                onClick={() => setDateFormatPreference('dd/mm')}
+                                                className="h-8 text-xs font-medium"
+                                                disabled={isUploading}
+                                            >
+                                                DD/MM/YYYY (Ej. 31/12/2026)
+                                            </Button>
+                                            <Button
+                                                variant={dateFormatPreference === 'mm/dd' ? 'default' : 'ghost'}
+                                                size="sm"
+                                                onClick={() => setDateFormatPreference('mm/dd')}
+                                                className="h-8 text-xs font-medium"
+                                                disabled={isUploading}
+                                            >
+                                                MM/DD/YYYY (Ej. 12/31/2026)
+                                            </Button>
+                                        </div>
+                                    </div>
+                                    <p className="text-xs text-muted-foreground mt-2 mb-4">
+                                        Selecciona el formato que utiliza tu archivo Excel para evitar confusiones de mes y día.
+                                    </p>
+                                </div>
+                                <Button
+                                    onClick={() => document.getElementById('file-upload')?.click()}
+                                    disabled={isUploading}
+                                    className={`cursor-pointer w-full py-8 ${isUploading ? 'opacity-50' : ''}`}
                                 >
                                     <div className="flex flex-col items-center gap-2">
                                         <div className="p-4 bg-muted rounded-full">
@@ -387,7 +438,7 @@ export default function AttendancePage() {
                                             </p>
                                         </div>
                                     </div>
-                                </label>
+                                </Button>
                             </div>
 
                             {/* Progress Bar */}
