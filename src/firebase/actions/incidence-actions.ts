@@ -688,6 +688,20 @@ export async function processAttendanceImport(
                 const newAttendanceRef = await addDoc(attendanceRef, attendanceData);
                 successCount++;
 
+                // -------------------------------------------------------------
+                // MISSING PUNCHES DETECTION
+                // -------------------------------------------------------------
+                if (!row.checkIn || !row.checkOut) {
+                    const missingType = !row.checkIn && !row.checkOut ? 'both' : (!row.checkIn ? 'entry' : 'exit');
+                    await recordMissingPunch(
+                        actualUid,
+                        shiftConfig.fullName ?? actualUid,
+                        row.date,
+                        missingType as any,
+                        newAttendanceRef.id
+                    );
+                }
+
                 // If we applied hours to debt, update Time Bank in Firestore
                 if (hoursAppliedToDebt > 0) {
                     await updateTimeBank(
