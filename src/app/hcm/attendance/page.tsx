@@ -200,7 +200,7 @@ export default function AttendancePage() {
         const normalizeTime = (val: any): string => {
             if (!val) return '';
             if (val instanceof Date) {
-                return format(val, 'HH:mm:00');
+                return format(val, 'HH:mm:ss');
             }
             if (typeof val === 'number') {
                 // Excel time fraction

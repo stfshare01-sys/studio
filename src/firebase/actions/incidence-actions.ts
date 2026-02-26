@@ -1,6 +1,6 @@
 'use client';
 
-import { doc, collection, addDoc, updateDoc, getDoc, getDocs, query, where, orderBy, limit, setDoc } from 'firebase/firestore';
+import { doc, collection, addDoc, updateDoc, getDoc, getDocs, query, where, orderBy, limit, setDoc, deleteDoc, writeBatch } from 'firebase/firestore';
 import { initializeFirebase } from '@/firebase';
 import { setDocumentNonBlocking, updateDocumentNonBlocking } from '../non-blocking-updates';
 import { callApproveIncidence, callNotifyNewIncidence, CloudFunctionError } from '../callable-functions';
@@ -22,6 +22,7 @@ import type {
     EarlyDeparture,
     EmployeeShiftAssignment
 } from '@/lib/types';
+import type { MissingPunchRecord, MissingPunchType } from '@/types/hcm-operational';
 
 import {
     calculateVacationDays,
@@ -385,6 +386,9 @@ export async function processAttendanceImport(
             locationId?: string;
             daySchedules?: Record<number, { startTime: string; endTime: string; breakMinutes: number }>;
             customShiftId?: string;
+            allowOvertime: boolean;
+            workDays: number[];
+            restDays: number[];
             realUid: string;
         }> = {};
         const employeeTimeBankBalances: Record<string, number> = {}; // Local cache for processing
@@ -392,6 +396,7 @@ export async function processAttendanceImport(
         // Cache shifts and locations to avoid redundant reads
         const shiftCache: Record<string, any> = {};
         const locationCache: Record<string, any> = {};
+        const positionCache: Record<string, any> = {};
 
         const employeeAssignments: Record<string, EmployeeShiftAssignment[]> = {};
         const shiftsToFetch = new Set<string>();
@@ -428,17 +433,28 @@ export async function processAttendanceImport(
                     empData.shiftAssignments.forEach(sa => shiftsToFetch.add(sa.shiftId));
                 }
 
+                // 3. Collect Position ID for Overtime Rules
+                const extEmp = empData as any; // Using any to access potential extended fields
+                if (extEmp.positionId && !positionCache[extEmp.positionId]) {
+                    const posRef = doc(firestore, 'positions', extEmp.positionId);
+                    const posSnap = await getDoc(posRef);
+                    if (posSnap.exists()) positionCache[extEmp.positionId] = posSnap.data();
+                }
+
                 // Store basic data first linked to the ORIGINAL spreadsheet empId to easily map rows later
                 employeeShifts[empId] = {
                     type: empData.shiftType || 'diurnal',
                     breakMinutes: 0,
-                    fullName: empData.fullName || actualEmpUid, // Use real user ID if name is blank
+                    fullName: empData.fullName || actualEmpUid,
                     startTime: '',
                     endTime: '',
                     toleranceMinutes: 10,
                     locationId: empData.locationId || undefined,
                     customShiftId: empData.customShiftId,
-                    realUid: actualEmpUid // Important to store because we need to save the AttendanceRecord with this UID
+                    allowOvertime: extEmp.positionId && positionCache[extEmp.positionId] ? positionCache[extEmp.positionId].canEarnOvertime : true,
+                    workDays: [],
+                    restDays: [],
+                    realUid: actualEmpUid
                 } as any;
 
                 // Location caching
@@ -483,6 +499,8 @@ export async function processAttendanceImport(
                 config.endTime = sData.endTime || '';
                 config.breakMinutes = sData.breakMinutes || 0;
                 config.daySchedules = sData.daySchedules || {};
+                config.workDays = sData.workDays || [];
+                config.restDays = sData.restDays || [];
             }
         }
 
@@ -579,6 +597,19 @@ export async function processAttendanceImport(
                         }
                     }
                 }
+
+                // DETERMINE IF IT IS A REST DAY
+                let isRestDay = false;
+                const [year, month, day] = row.date.split('-').map(Number);
+                const localDate = new Date(year, month - 1, day);
+                const dayOfWeek = localDate.getDay(); // 0=Sun
+
+                if (shiftConfig.restDays && shiftConfig.restDays.includes(dayOfWeek)) {
+                    isRestDay = true;
+                } else if (shiftConfig.workDays && shiftConfig.workDays.length > 0 && !shiftConfig.workDays.includes(dayOfWeek)) {
+                    isRestDay = true;
+                }
+
                 // Use break minutes from shift config if available, otherwise use LFT defaults
                 // LFT Art. 64: At least 30 min break for shifts > 6 hours. Common: 60 min for diurnal/mixed.
 
@@ -608,7 +639,13 @@ export async function processAttendanceImport(
                 const hoursWorked = calculateHoursWorked(row.checkIn, row.checkOut, defaultBreakMinutes);
 
                 // Validate workday according to shift type
-                const validation = validateWorkday(hoursWorked, shiftConfig.type);
+                // Validate workday and calculate hours
+                const validation = validateWorkday(
+                    hoursWorked,
+                    shiftConfig.type,
+                    isRestDay,
+                    shiftConfig.allowOvertime
+                );
 
                 // -------------------------------------------------------------
                 // DEBT COMPENSATION (TIME BANK)
@@ -2336,32 +2373,7 @@ export async function getPendingEarlyDepartures(
 /**
  * Tipo de marcaje faltante
  */
-type MissingPunchType = 'entry' | 'exit' | 'both';
 
-/**
- * Tipo importado desde hcm-operational
- */
-interface MissingPunchRecord {
-    id: string;
-    employeeId: string;
-    employeeName?: string;
-    date: string;
-    attendanceRecordId?: string;
-    missingType: MissingPunchType;
-    isJustified: boolean;
-    justificationReason?: string;
-    providedEntryTime?: string;
-    providedExitTime?: string;
-    generatedTardinessId?: string;
-    generatedEarlyDepartureId?: string;
-    justifiedById?: string;
-    justifiedByName?: string;
-    justifiedAt?: string;
-    resultedInAbsence: boolean;
-    linkedAbsenceId?: string;
-    createdAt: string;
-    updatedAt: string;
-}
 
 /**
  * Registra un marcaje faltante
@@ -2612,5 +2624,96 @@ export async function getPendingMissingPunches(
     } catch (error) {
         console.error('[HCM] Error getting pending missing punches:', error);
         return { success: false, error: 'Error obteniendo marcajes faltantes pendientes.' };
+    }
+}
+
+/**
+ * Sincroniza retroactivamente los marcajes faltantes para todos los empleados
+ */
+export async function syncAllMissingPunches(): Promise<{ success: boolean; count: number; error?: string }> {
+    try {
+        const { firestore } = initializeFirebase();
+        const employeesSnap = await getDocs(collection(firestore, 'employees'));
+
+        let totalCreated = 0;
+        for (const employeeDoc of employeesSnap.docs) {
+            const employee = { id: employeeDoc.id, ...employeeDoc.data() } as Employee;
+            const result = await syncMissingPunchesForEmployee(employee.id);
+            if (result.success) {
+                totalCreated += result.count;
+            }
+        }
+
+        console.log(`[HCM] Sync finished. Created ${totalCreated} missing punch records.`);
+        return { success: true, count: totalCreated };
+    } catch (error) {
+        console.error('[HCM] Error syncing all missing punches:', error);
+        return { success: false, count: 0, error: 'Error al sincronizar marcajes faltantes.' };
+    }
+}
+
+/**
+ * Sincroniza los marcajes faltantes para un empleado específico
+ * Escanea los registros de asistencia y crea los missing_punches correspondientes si no existen
+ */
+export async function syncMissingPunchesForEmployee(employeeId: string): Promise<{ success: boolean; count: number }> {
+    try {
+        const { firestore } = initializeFirebase();
+
+        // 1. Obtener los últimos 90 días de asistencia para este empleado
+        const ninetyDaysAgo = new Date();
+        ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+        const startDate = ninetyDaysAgo.toISOString().split('T')[0];
+
+        const attendanceQuery = query(
+            collection(firestore, 'attendance'),
+            where('employeeId', '==', employeeId),
+            where('date', '>=', startDate)
+        );
+
+        const attendanceSnap = await getDocs(attendanceQuery);
+        let createdCount = 0;
+
+        for (const attDoc of attendanceSnap.docs) {
+            const att = attDoc.data() as AttendanceRecord;
+
+            // Determinar si falta algún marcaje
+            let missingType: MissingPunchType | null = null;
+            if (!att.checkIn && !att.checkOut) missingType = 'both';
+            else if (!att.checkIn) missingType = 'entry';
+            else if (!att.checkOut) missingType = 'exit';
+
+            if (missingType) {
+                // Verificar si ya existe un registro en missing_punches para este marcaje
+                const existingQuery = query(
+                    collection(firestore, 'missing_punches'),
+                    where('attendanceRecordId', '==', attDoc.id)
+                );
+                const existingSnap = await getDocs(existingQuery);
+
+                if (existingSnap.empty) {
+                    // Crear el registro de marcaje faltante
+                    const now = new Date().toISOString();
+                    const missingPunch: Omit<MissingPunchRecord, 'id'> = {
+                        employeeId: att.employeeId,
+                        employeeName: att.employeeName,
+                        date: att.date,
+                        attendanceRecordId: attDoc.id,
+                        missingType,
+                        isJustified: false,
+                        resultedInAbsence: false,
+                        createdAt: now,
+                        updatedAt: now
+                    };
+                    await addDoc(collection(firestore, 'missing_punches'), missingPunch);
+                    createdCount++;
+                }
+            }
+        }
+
+        return { success: true, count: createdCount };
+    } catch (error) {
+        console.error(`[HCM] Error syncing missing punches for ${employeeId}:`, error);
+        return { success: false, count: 0 };
     }
 }

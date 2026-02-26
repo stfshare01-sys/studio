@@ -71,12 +71,39 @@ export function getMaxHoursForShift(shiftType: ShiftType): number {
  * 
  * @param hoursWorked - Horas trabajadas en el día
  * @param shiftType - Tipo de jornada
+ * @param isRestDay - Si es día de descanso del empleado
+ * @param allowOvertime - Si el empleado genera horas extras
  * @returns Objeto de validación con desglose
  */
 export function validateWorkday(
     hoursWorked: number,
-    shiftType: ShiftType
+    shiftType: ShiftType,
+    isRestDay: boolean = false,
+    allowOvertime: boolean = true
 ): WorkdayValidation {
+    if (isRestDay) {
+        // Regla para día de descanso trabajado:
+        // Si genera tiempo extra: todo es extra
+        // Si NO genera tiempo extra: todo es normal (pero marcado como DL en pre-nómina)
+        if (allowOvertime) {
+            return {
+                isValid: true,
+                maxHours: 0,
+                regularHours: 0,
+                overtimeHours: hoursWorked,
+                message: 'Día de descanso trabajado (Extra)'
+            };
+        } else {
+            return {
+                isValid: true,
+                maxHours: 0,
+                regularHours: hoursWorked,
+                overtimeHours: 0,
+                message: 'Día de descanso trabajado (Normal)'
+            };
+        }
+    }
+
     const maxHours = getMaxHoursForShift(shiftType);
     const overtime = Math.max(hoursWorked - maxHours, 0);
 
