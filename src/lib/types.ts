@@ -1633,8 +1633,10 @@ export type EarlyDeparture = {
   employeeId: string;
   employeeName?: string;
   date: string;                     // YYYY-MM-DD
-  scheduledEndTime: string;         // Hora programada de salida (HH:mm)
-  actualEndTime: string;            // Hora real de salida (HH:mm)
+  scheduledEndTime?: string;         // Hora programada de salida (HH:mm)
+  actualEndTime?: string;            // Hora real de salida (HH:mm)
+  scheduledTime?: string;
+  actualTime?: string;
   minutesEarly: number;             // Minutos antes de lo programado
 
   // Estado de justificación

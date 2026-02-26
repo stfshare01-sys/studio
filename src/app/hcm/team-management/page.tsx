@@ -1803,8 +1803,8 @@ function TeamManagementContent() {
                                                 <TableRow key={record.id}>
                                                     <TableCell>{new Date(record.date + (record.date.includes('T') ? '' : 'T12:00:00')).toLocaleDateString('es-MX')}</TableCell>
                                                     <TableCell className="font-medium">{record.employeeName}</TableCell>
-                                                    <TableCell>{record.scheduledEndTime}</TableCell>
-                                                    <TableCell>{record.actualEndTime}</TableCell>
+                                                    <TableCell>{record.scheduledTime || record.scheduledEndTime}</TableCell>
+                                                    <TableCell>{record.actualTime || record.actualEndTime}</TableCell>
                                                     <TableCell>
                                                         <Badge variant="outline">{record.minutesEarly} min</Badge>
                                                     </TableCell>
