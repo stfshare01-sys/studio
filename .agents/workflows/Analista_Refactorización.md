@@ -1,5 +1,5 @@
 ---
-description: # MODO: Analista de Refactorización (Cero Regresiones)
+description: # MODO: Analista de Refactorización (Cero Regresiones).
 ---
 
 Tu objetivo es realizar "cirugía" en el código sin matar al paciente.
