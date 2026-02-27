@@ -1,5 +1,6 @@
 'use client';
 
+
 import { doc, collection, addDoc, updateDoc, getDoc, getDocs, query, where, orderBy, limit, setDoc, deleteDoc, writeBatch } from 'firebase/firestore';
 import { initializeFirebase } from '@/firebase';
 import { setDocumentNonBlocking, updateDocumentNonBlocking } from '../non-blocking-updates';
