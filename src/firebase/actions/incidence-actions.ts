@@ -593,6 +593,8 @@ export async function processAttendanceImport(
                                 endTime: sData.endTime || '',
                                 breakMinutes: sData.breakMinutes || 0,
                                 daySchedules: sData.daySchedules || {},
+                                workDays: sData.workDays || [],
+                                restDays: sData.restDays || [],
                             };
                         }
                     }
