@@ -779,7 +779,8 @@ export async function processAttendanceImport(
                 const toleranceMinutes = shiftConfig.toleranceMinutes;
 
                 // Check Tardiness
-                if (row.checkIn) {
+                // Solo cuenta retardo si no es descanso o si sí es descanso pero genera horas extra
+                if (row.checkIn && (!isRestDay || shiftConfig.allowOvertime)) {
                     const checkInDate = new Date(`2000-01-01T${row.checkIn}`);
                     const scheduledStartDate = new Date(`2000-01-01T${scheduledStart}`);
 
@@ -846,8 +847,9 @@ export async function processAttendanceImport(
                 }
 
                 // Check Early Departure
-                // Aplica si checkOut < scheduledEnd y trabajó >= 6 horas (regla de negocio)
-                if (row.checkOut && hoursWorked >= 6) {
+                // Aplica si checkOut < scheduledEnd
+                // Solo cuenta salida temprana si no es descanso o si sí es descanso pero genera horas extra
+                if (row.checkOut && (!isRestDay || shiftConfig.allowOvertime)) {
                     const checkOutDate = new Date(`2000-01-01T${row.checkOut}`);
                     const scheduledEndDate = new Date(`2000-01-01T${scheduledEnd}`);
 

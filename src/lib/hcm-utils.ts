@@ -81,27 +81,16 @@ export function validateWorkday(
     isRestDay: boolean = false,
     allowOvertime: boolean = true
 ): WorkdayValidation {
-    if (isRestDay) {
-        // Regla para día de descanso trabajado:
-        // Si genera tiempo extra: todo es extra
-        // Si NO genera tiempo extra: todo es normal (pero marcado como DL en pre-nómina)
-        if (allowOvertime) {
-            return {
-                isValid: true,
-                maxHours: 0,
-                regularHours: 0,
-                overtimeHours: hoursWorked,
-                message: 'Día de descanso trabajado (Extra)'
-            };
-        } else {
-            return {
-                isValid: true,
-                maxHours: 0,
-                regularHours: hoursWorked,
-                overtimeHours: 0,
-                message: 'Día de descanso trabajado (Normal)'
-            };
-        }
+    if (isRestDay && !allowOvertime) {
+        // Si el empleado no genera horas extra, el tiempo trabajado en día de descanso 
+        // se toma como tiempo normal correspondiente sin generar incidencias ni tiempo extra.
+        return {
+            isValid: true,
+            maxHours: getMaxHoursForShift(shiftType),
+            regularHours: hoursWorked,
+            overtimeHours: 0,
+            message: 'Día de descanso trabajado (Sin Extra)'
+        };
     }
 
     const maxHours = getMaxHoursForShift(shiftType);

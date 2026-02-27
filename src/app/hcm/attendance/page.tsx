@@ -311,7 +311,7 @@ export default function AttendancePage() {
 
     // Download template
     const downloadTemplate = () => {
-        const template = 'employeeId,date,checkIn,checkOut\nEMP001,2024-01-15,08:00:00,17:00:00\nEMP002,2024-01-15,09:00:00,18:00:00';
+        const template = 'employeeId,date,checkIn,checkOut\nEMP001,15/01/2026,08:00:00,17:00:00\nEMP002,15/01/2026,09:00:00,18:00:00';
         const blob = new Blob([template], { type: 'text/csv' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -482,7 +482,7 @@ export default function AttendancePage() {
                                 <h4 className="font-medium mb-2">Formato esperado del archivo:</h4>
                                 <div className="text-sm text-muted-foreground space-y-1">
                                     <p>• <strong>Columna A:</strong> ID del empleado (debe existir en el sistema)</p>
-                                    <p>• <strong>Columna B:</strong> Fecha (formato YYYY-MM-DD)</p>
+                                    <p>• <strong>Columna B:</strong> Fecha (formato DD/MM/YYYY o YYYY-MM-DD)</p>
                                     <p>• <strong>Columna C:</strong> Hora de entrada (formato HH:mm:ss)</p>
                                     <p>• <strong>Columna D:</strong> Hora de salida (formato HH:mm:ss)</p>
                                 </div>
