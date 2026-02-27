@@ -392,34 +392,7 @@ export default function AttendancePage() {
                                     className="hidden"
                                     id="file-upload"
                                 />
-                                <div className="mb-6 flex flex-col items-center justify-center space-y-4">
-                                    <div className="flex flex-col sm:flex-row items-center gap-4 bg-muted/30 p-4 rounded-lg">
-                                        <Label htmlFor="date-format" className="font-semibold whitespace-nowrap">Formato de Fecha en Excel:</Label>
-                                        <div className="flex bg-muted p-1 rounded-md">
-                                            <Button
-                                                variant={dateFormatPreference === 'dd/mm' ? 'default' : 'ghost'}
-                                                size="sm"
-                                                onClick={() => setDateFormatPreference('dd/mm')}
-                                                className="h-8 text-xs font-medium"
-                                                disabled={isUploading}
-                                            >
-                                                DD/MM/YYYY (Ej. 31/12/2026)
-                                            </Button>
-                                            <Button
-                                                variant={dateFormatPreference === 'mm/dd' ? 'default' : 'ghost'}
-                                                size="sm"
-                                                onClick={() => setDateFormatPreference('mm/dd')}
-                                                className="h-8 text-xs font-medium"
-                                                disabled={isUploading}
-                                            >
-                                                MM/DD/YYYY (Ej. 12/31/2026)
-                                            </Button>
-                                        </div>
-                                    </div>
-                                    <p className="text-xs text-muted-foreground mt-2 mb-4">
-                                        Selecciona el formato que utiliza tu archivo Excel para evitar confusiones de mes y día.
-                                    </p>
-                                </div>
+                                {/* Diagnostic: date format selector removed to verify deploy */}
                                 <Button
                                     onClick={() => document.getElementById('file-upload')?.click()}
                                     disabled={isUploading}
