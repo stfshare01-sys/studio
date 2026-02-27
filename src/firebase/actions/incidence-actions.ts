@@ -451,7 +451,9 @@ export async function processAttendanceImport(
                     toleranceMinutes: 10,
                     locationId: empData.locationId || undefined,
                     customShiftId: empData.customShiftId,
-                    allowOvertime: extEmp.positionId && positionCache[extEmp.positionId] ? positionCache[extEmp.positionId].canEarnOvertime : true,
+                    allowOvertime: extEmp.positionId && positionCache[extEmp.positionId]
+                        ? (positionCache[extEmp.positionId].generatesOvertime ?? positionCache[extEmp.positionId].canEarnOvertime ?? true)
+                        : true,
                     workDays: [],
                     restDays: [],
                     realUid: actualEmpUid
