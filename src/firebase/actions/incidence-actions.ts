@@ -427,7 +427,7 @@ export async function processAttendanceImport(
                 // 1. Collect Custom Shift ID
                 if (empData.customShiftId) shiftsToFetch.add(empData.customShiftId);
 
-                // 2. Collect Historical Shift IDs
+                // 2. Collect Historical Shift IDs (legacy embedded array — fallback only)
                 if (empData.shiftAssignments?.length) {
                     employeeAssignments[actualEmpUid] = empData.shiftAssignments;
                     empData.shiftAssignments.forEach(sa => shiftsToFetch.add(sa.shiftId));
@@ -471,6 +471,39 @@ export async function processAttendanceImport(
             }
         }
 
+        // ---------------------------------------------------------------
+        // FETCH SHIFT ASSIGNMENTS FROM shift_assignments COLLECTION
+        // ---------------------------------------------------------------
+        // The team-management module saves assignments to this collection,
+        // NOT to the embedded empData.shiftAssignments array.
+        // We query by employeeId in batches of 30 (Firestore 'in' limit).
+        const allRealUids = Object.values(employeeShifts).map((c: any) => c.realUid).filter(Boolean);
+        for (let i = 0; i < allRealUids.length; i += 30) {
+            const batch = allRealUids.slice(i, i + 30);
+            try {
+                const saQuery = query(
+                    collection(firestore, 'shift_assignments'),
+                    where('employeeId', 'in', batch),
+                    where('status', '==', 'active')
+                );
+                const saSnap = await getDocs(saQuery);
+                for (const saDoc of saSnap.docs) {
+                    const sa = saDoc.data();
+                    const empUid = sa.employeeId as string;
+                    const mapped: EmployeeShiftAssignment = {
+                        shiftId: sa.newShiftId as string,
+                        startDate: sa.startDate as string,
+                        endDate: sa.endDate as string | undefined,
+                    };
+                    if (!employeeAssignments[empUid]) employeeAssignments[empUid] = [];
+                    employeeAssignments[empUid].push(mapped);
+                    shiftsToFetch.add(mapped.shiftId);
+                }
+            } catch (saError) {
+                console.error('[HCM] Error fetching shift_assignments:', saError);
+            }
+        }
+
         // Batch Fetch all needed shifts
         for (const shiftId of Array.from(shiftsToFetch)) {
             if (!shiftCache[shiftId]) {
@@ -501,6 +534,13 @@ export async function processAttendanceImport(
                 config.daySchedules = sData.daySchedules || {};
                 config.workDays = sData.workDays || [];
                 config.restDays = sData.restDays || [];
+
+                // Fallback: derive workDays from daySchedules keys if still empty
+                // (covers shifts created before workDays field was added)
+                if (config.workDays.length === 0 && sData.daySchedules && Object.keys(sData.daySchedules).length > 0) {
+                    config.workDays = Object.keys(sData.daySchedules).map(Number);
+                    config.restDays = [0, 1, 2, 3, 4, 5, 6].filter((d: number) => !config.workDays.includes(d));
+                }
             }
         }
 
@@ -586,15 +626,22 @@ export async function processAttendanceImport(
                         const sData = shiftCache[effectiveAssignment.shiftId];
                         if (sData) {
                             // Clone default config and override with historical shift data
+                            const overrideWorkDays = sData.workDays?.length
+                                ? sData.workDays
+                                : (sData.daySchedules && Object.keys(sData.daySchedules).length > 0)
+                                    ? Object.keys(sData.daySchedules).map(Number)
+                                    : [];
                             shiftConfig = {
                                 ...shiftConfig,
-                                type: sData.shiftType || 'diurnal',
+                                type: sData.shiftType || sData.type || 'diurnal',
                                 startTime: sData.startTime || '',
                                 endTime: sData.endTime || '',
                                 breakMinutes: sData.breakMinutes || 0,
                                 daySchedules: sData.daySchedules || {},
-                                workDays: sData.workDays || [],
-                                restDays: sData.restDays || [],
+                                workDays: overrideWorkDays,
+                                restDays: sData.restDays?.length
+                                    ? sData.restDays
+                                    : [0, 1, 2, 3, 4, 5, 6].filter((d: number) => !overrideWorkDays.includes(d)),
                             };
                         }
                     }
