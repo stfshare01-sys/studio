@@ -164,23 +164,23 @@ export default function AttendancePage() {
                         const p2 = parseInt(parts[2], 10);
                         // Depending on formatPreference, we choose how to handle early DD and MM
                         if (formatPreference === 'dd/mm') {
-                            // DD/MM/YYYY
+                            // En DD/MM/YYYY: p0 es Dia, p1 es Mes, p2 es Año
                             if (p2 > 1000 && p1 <= 12 && p0 <= 31) {
                                 return `${p2}-${p1.toString().padStart(2, '0')}-${p0.toString().padStart(2, '0')}`;
-                            }
-                            // MM/DD/YYYY (fallback if DD/MM is invalid, e.g. month > 12)
-                            if (p2 > 1000 && p0 <= 12 && p1 <= 31) {
-                                return `${p2}-${p0.toString().padStart(2, '0')}-${p1.toString().padStart(2, '0')}`;
                             }
                         } else { // formatPreference === 'mm/dd'
-                            // MM/DD/YYYY
+                            // En MM/DD/YYYY: p0 es Mes, p1 es Dia, p2 es Año
                             if (p2 > 1000 && p0 <= 12 && p1 <= 31) {
                                 return `${p2}-${p0.toString().padStart(2, '0')}-${p1.toString().padStart(2, '0')}`;
                             }
-                            // DD/MM/YYYY (fallback)
-                            if (p2 > 1000 && p1 <= 12 && p0 <= 31) {
-                                return `${p2}-${p1.toString().padStart(2, '0')}-${p0.toString().padStart(2, '0')}`;
-                            }
+                        }
+
+                        // Fallback genérico si el estricto falla (ejemplo: usuario dijo dd/mm pero subió mes en 13+)
+                        if (p2 > 1000 && p0 <= 12 && p1 <= 31) {
+                            return `${p2}-${p0.toString().padStart(2, '0')}-${p1.toString().padStart(2, '0')}`;
+                        }
+                        if (p2 > 1000 && p1 <= 12 && p0 <= 31) {
+                            return `${p2}-${p1.toString().padStart(2, '0')}-${p0.toString().padStart(2, '0')}`;
                         }
 
                         // YYYY/MM/DD

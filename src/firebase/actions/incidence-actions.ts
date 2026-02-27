@@ -697,6 +697,19 @@ export async function processAttendanceImport(
                     }
                 }
 
+                // Build validation notes combining holiday, rest-day, and shift messages
+                let attendanceValidationNotes: string | null = null;
+                if (isHolidayDate) {
+                    attendanceValidationNotes = `DFT: Trabajó en día festivo (${holidayName}). ${validation.message || ''}`;
+                } else if (isCompanyBenefitDate) {
+                    attendanceValidationNotes = `Día de beneficio empresa trabajado (${holidayName}). ${validation.message || ''}`;
+                } else if (isRestDay) {
+                    const dlLabel = shiftConfig.allowOvertime ? 'DL (con HE)' : 'DL (sin HE)';
+                    attendanceValidationNotes = `${dlLabel}: Día de descanso laborado. ${validation.message || ''}`;
+                } else {
+                    attendanceValidationNotes = validation.message ?? null;
+                }
+
                 // Create attendance record
                 const attendanceRef = collection(firestore, 'attendance');
                 const attendanceData: Omit<AttendanceRecord, 'id'> = {
@@ -712,12 +725,9 @@ export async function processAttendanceImport(
                     hoursAppliedToDebt,
                     overtimeType: payableOvertimeHours > 0 ? 'double' : null,
                     isValid: validation.isValid,
-                    validationNotes: isHolidayDate
-                        ? `DFT: Trabajó en día festivo (${holidayName}). ${validation.message || ''}`
-                        : isCompanyBenefitDate
-                            ? `Día de beneficio empresa trabajado (${holidayName}). ${validation.message || ''}`
-                            : (validation.message ?? null),
+                    validationNotes: attendanceValidationNotes,
                     ...(isCompanyBenefitDate && { isCompanyBenefitDay: true, holidayName }),
+                    ...(isRestDay && { isRestDay: true, isRestDayWorked: true }),
                     importBatchId: batchId,
                     createdAt: now
                 };
@@ -748,6 +758,38 @@ export async function processAttendanceImport(
                         `Compensación automática de deuda (Asistencia ${row.date})`,
                         'SISTEMA'
                     );
+                }
+
+                // -------------------------------------------------------------
+                // REST DAY WORKED INCIDENCE (DL / Prima Dominical)
+                // Si el empleado trabaja en su día de descanso, crear incidencia
+                // de "Descanso Laborado" (DL). Si es domingo → además Prima Dominical (PD).
+                // No se evalúan retardos ni salidas temprano en este escenario
+                // si el empleado NO genera horas extra (regla de negocio).
+                // -------------------------------------------------------------
+                if (isRestDay && (row.checkIn || row.checkOut)) {
+                    const isSunday = dayOfWeek === 0;
+                    await addDoc(collection(firestore, 'incidences_auto'), {
+                        employeeId: actualUid,
+                        employeeName: shiftConfig.fullName ?? actualUid,
+                        date: row.date,
+                        type: 'worked_rest_day',
+                        code: 'DL',
+                        hoursWorked,
+                        allowOvertime: shiftConfig.allowOvertime ?? false,
+                        isSunday,
+                        ...(isSunday && { sundayPremium: true, sundayCode: 'PD' }),
+                        attendanceRecordId: newAttendanceRef.id,
+                        importBatchId: batchId,
+                        status: 'auto_generated',
+                        createdAt: now
+                    });
+
+                    // Si NO genera horas extra, saltamos retardos y salidas temprano
+                    // El personal solo generó presencia en su día de descanso → DL
+                    if (!shiftConfig.allowOvertime) {
+                        continue; // Saltar al siguiente registro sin evaluar tardiness/early departure
+                    }
                 }
 
                 // -------------------------------------------------------------
