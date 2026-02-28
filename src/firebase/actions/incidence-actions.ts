@@ -731,12 +731,15 @@ export async function processAttendanceImport(
                     ? scheduledBreak
                     : (shiftConfig.type === 'diurnal' || shiftConfig.type === 'mixed') ? 60 : 30;
 
+                // Horas brutas (sin descontar break) — para cálculo de overtime
+                // El break es parte de la jornada ordinaria, NO se descuenta de las horas extra
+                const grossHours = calculateHoursWorked(row.checkIn, row.checkOut, 0);
+                // Horas efectivas (con break descontado) — para el registro de asistencia
                 const hoursWorked = calculateHoursWorked(row.checkIn, row.checkOut, defaultBreakMinutes);
 
-                // Validate workday according to shift type
-                // Validate workday and calculate hours
+                // Validate workday using gross hours so overtime is calculated correctly
                 const validation = validateWorkday(
-                    hoursWorked,
+                    grossHours,
                     shiftConfig.type,
                     isRestDay,
                     shiftConfig.allowOvertime
