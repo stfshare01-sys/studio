@@ -457,7 +457,8 @@ export async function processAttendanceImport(
                         : true,
                     workDays: [],
                     restDays: [],
-                    realUid: actualEmpUid
+                    realUid: actualEmpUid,
+                    directManagerId: extEmp.directManagerId || null
                 } as any;
 
                 // Location caching
@@ -812,6 +813,41 @@ export async function processAttendanceImport(
                         `Compensación automática de deuda (Asistencia ${row.date})`,
                         'SISTEMA'
                     );
+                }
+
+                // -------------------------------------------------------------
+                // OVERTIME REQUEST CREATION
+                // Si el empleado genera horas extra y tiene horas extra pagables,
+                // crear una solicitud de aprobación en overtime_requests.
+                // -------------------------------------------------------------
+                if (payableOvertimeHours > 0 && shiftConfig.allowOvertime) {
+                    try {
+                        const overtimeReason = isRestDay
+                            ? `Horas extra en día de descanso laborado (${row.date})`
+                            : `Horas extra detectadas automáticamente (${row.date})`;
+
+                        const overtimeData: Record<string, unknown> = {
+                            employeeId: actualUid,
+                            employeeName: shiftConfig.fullName ?? actualUid,
+                            date: row.date,
+                            hoursRequested: payableOvertimeHours,
+                            reason: overtimeReason,
+                            status: 'pending',
+                            approverLevel: 1,
+                            requestedToId: shiftConfig.directManagerId || uploadedById,
+                            requestedToName: '',
+                            attendanceRecordId: newAttendanceRef.id,
+                            importBatchId: batchId,
+                            createdAt: now,
+                            updatedAt: now
+                        };
+
+                        await addDoc(collection(firestore, 'overtime_requests'), overtimeData);
+                        console.log(`[HCM] Created overtime request for ${shiftConfig.fullName}: ${payableOvertimeHours}h on ${row.date}`);
+                    } catch (otError) {
+                        console.error(`[HCM] Error creating overtime request for ${actualUid}:`, otError);
+                        // No bloqueamos el flujo principal
+                    }
                 }
 
                 // -------------------------------------------------------------
