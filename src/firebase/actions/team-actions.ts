@@ -597,13 +597,13 @@ export async function getTeamOvertimeRequests(
                     collection(firestore, 'overtime_requests'),
                     where('employeeId', 'in', batch),
                     where('status', '==', statusFilter),
-                    orderBy('createdAt', 'desc')
+                    orderBy('date', 'asc')
                 );
             } else {
                 overtimeQuery = query(
                     collection(firestore, 'overtime_requests'),
                     where('employeeId', 'in', batch),
-                    orderBy('createdAt', 'desc')
+                    orderBy('date', 'asc')
                 );
             }
 
