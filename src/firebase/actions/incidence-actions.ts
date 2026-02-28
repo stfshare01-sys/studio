@@ -458,7 +458,8 @@ export async function processAttendanceImport(
                     workDays: [],
                     restDays: [],
                     realUid: actualEmpUid,
-                    directManagerId: extEmp.directManagerId || null
+                    directManagerId: extEmp.directManagerId || null,
+                    overtimeResetDay: locationCache[empData.locationId || '']?.overtimeResetDay || 'sunday'
                 } as any;
 
                 // Location caching
@@ -595,6 +596,45 @@ export async function processAttendanceImport(
                 locationBenefitDatesMap[locId] = dateSet;
             }
         }
+
+        // -------------------------------------------------------------
+        // WEEKLY OVERTIME ACCUMULATOR (LFT Art. 67-68)
+        // Tracks accumulated double hours per employee per week.
+        // Resets according to location's overtimeResetDay setting.
+        // Max 3h dobles/día, Max 9h dobles/semana, excedente → triple.
+        // -------------------------------------------------------------
+        const weeklyOvertimeAccum: Record<string, { doubleUsed: number; weekKey: string }> = {};
+
+        /**
+         * Calcula la clave de semana para una fecha según el día de reinicio.
+         * Retorna un string YYYY-Www que identifica la semana.
+         */
+        const getWeekKey = (dateStr: string, resetDay: string): string => {
+            const [y, m, d] = dateStr.split('-').map(Number);
+            const dateObj = new Date(y, m - 1, d);
+            const dayOfWeek = dateObj.getDay(); // 0=Sun
+
+            // Determinar qué día de la semana reinicia el conteo
+            let resetDayNum = 0; // Default: domingo
+            if (resetDay === 'saturday') resetDayNum = 6;
+            else if (resetDay === 'sunday') resetDayNum = 0;
+            else if (resetDay === 'custom') resetDayNum = 1; // Default lunes para custom
+
+            // Calcular el inicio de la semana según el día de reinicio
+            let diff = dayOfWeek - resetDayNum;
+            if (diff < 0) diff += 7;
+            const weekStart = new Date(dateObj);
+            weekStart.setDate(weekStart.getDate() - diff);
+
+            const ws = weekStart.toISOString().split('T')[0];
+            return ws; // Unique key per week
+        };
+
+        // Sort rows by employeeId then by date (chronological) for correct weekly accumulation
+        rows.sort((a, b) => {
+            if (a.employeeId !== b.employeeId) return a.employeeId.localeCompare(b.employeeId);
+            return a.date.localeCompare(b.date);
+        });
 
         // Process each row
         for (let i = 0; i < rows.length; i++) {
@@ -816,12 +856,48 @@ export async function processAttendanceImport(
                 }
 
                 // -------------------------------------------------------------
-                // OVERTIME REQUEST CREATION
-                // Si el empleado genera horas extra y tiene horas extra pagables,
-                // crear una solicitud de aprobación en overtime_requests.
+                // OVERTIME REQUEST CREATION (with LFT double/triple breakdown)
+                // LFT Art. 67-68: Max 3h dobles/día, Max 9h dobles/semana
+                // Excedente se paga como horas triples.
+                // Reinicio semanal según location.overtimeResetDay.
                 // -------------------------------------------------------------
                 if (payableOvertimeHours > 0 && shiftConfig.allowOvertime) {
                     try {
+                        // Calculate weekly accumulation key
+                        const resetDay = shiftConfig.overtimeResetDay || 'sunday';
+                        const weekKey = getWeekKey(row.date, resetDay);
+                        const accumKey = `${actualUid}_${weekKey}`;
+
+                        // Initialize or reset weekly accumulator
+                        if (!weeklyOvertimeAccum[accumKey]) {
+                            weeklyOvertimeAccum[accumKey] = { doubleUsed: 0, weekKey };
+                        }
+
+                        const accum = weeklyOvertimeAccum[accumKey];
+
+                        // LFT: Max 3h dobles/día, Max 9h dobles/semana
+                        const MAX_DAILY_DOUBLE = 3;
+                        const MAX_WEEKLY_DOUBLE = 9;
+                        const remainingWeeklyDouble = MAX_WEEKLY_DOUBLE - accum.doubleUsed;
+                        const availableDouble = Math.min(MAX_DAILY_DOUBLE, Math.max(remainingWeeklyDouble, 0));
+
+                        let doubleHours = 0;
+                        let tripleHours = 0;
+
+                        if (payableOvertimeHours <= availableDouble) {
+                            doubleHours = payableOvertimeHours;
+                        } else {
+                            doubleHours = availableDouble;
+                            tripleHours = payableOvertimeHours - availableDouble;
+                        }
+
+                        // Round to 2 decimals
+                        doubleHours = Math.round(doubleHours * 100) / 100;
+                        tripleHours = Math.round(tripleHours * 100) / 100;
+
+                        // Update weekly accumulator
+                        accum.doubleUsed += doubleHours;
+
                         const overtimeReason = isRestDay
                             ? `Horas extra en día de descanso laborado (${row.date})`
                             : `Horas extra detectadas automáticamente (${row.date})`;
@@ -831,6 +907,8 @@ export async function processAttendanceImport(
                             employeeName: shiftConfig.fullName ?? actualUid,
                             date: row.date,
                             hoursRequested: payableOvertimeHours,
+                            doubleHours,
+                            tripleHours,
                             reason: overtimeReason,
                             status: 'pending',
                             approverLevel: 1,
@@ -838,15 +916,16 @@ export async function processAttendanceImport(
                             requestedToName: '',
                             attendanceRecordId: newAttendanceRef.id,
                             importBatchId: batchId,
+                            weekKey,
+                            weeklyDoubleAccumulated: accum.doubleUsed,
                             createdAt: now,
                             updatedAt: now
                         };
 
                         await addDoc(collection(firestore, 'overtime_requests'), overtimeData);
-                        console.log(`[HCM] Created overtime request for ${shiftConfig.fullName}: ${payableOvertimeHours}h on ${row.date}`);
+                        console.log(`[HCM] Overtime request: ${shiftConfig.fullName} | ${row.date} | ${payableOvertimeHours}h → ${doubleHours}h dobles + ${tripleHours}h triples | week accum: ${accum.doubleUsed}/9`);
                     } catch (otError) {
                         console.error(`[HCM] Error creating overtime request for ${actualUid}:`, otError);
-                        // No bloqueamos el flujo principal
                     }
                 }
 
