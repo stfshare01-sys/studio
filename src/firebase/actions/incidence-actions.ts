@@ -544,8 +544,7 @@ export async function processAttendanceImport(
                     config.workDays = Object.keys(sData.daySchedules).map(Number);
                     config.restDays = [0, 1, 2, 3, 4, 5, 6].filter((d: number) => !config.workDays.includes(d));
                 }
-                // 🔍 DEBUG: Log shift hydration result
-                console.log(`[DEBUG-REST] Hydrated ${empId}: workDays=${JSON.stringify(config.workDays)}, restDays=${JSON.stringify(config.restDays)}, allowOvertime=${config.allowOvertime}, customShiftId=${customShiftId}`);
+
             }
         }
 
@@ -663,8 +662,7 @@ export async function processAttendanceImport(
                 } else if (shiftConfig.workDays && shiftConfig.workDays.length > 0 && !shiftConfig.workDays.includes(dayOfWeek)) {
                     isRestDay = true;
                 }
-                // 🔍 DEBUG: Log isRestDay calculation for EVERY row
-                console.log(`[DEBUG-REST] ${row.date} | dayOfWeek=${dayOfWeek} | isRestDay=${isRestDay} | restDays=${JSON.stringify(shiftConfig.restDays)} | workDays=${JSON.stringify(shiftConfig.workDays)} | allowOvertime=${shiftConfig.allowOvertime} | emp=${shiftConfig.fullName}`);
+
 
                 // Use break minutes from shift config if available, otherwise use LFT defaults
                 // LFT Art. 64: At least 30 min break for shifts > 6 hours. Common: 60 min for diurnal/mixed.
@@ -825,7 +823,7 @@ export async function processAttendanceImport(
                 // -------------------------------------------------------------
                 if (isRestDay && (row.checkIn || row.checkOut)) {
                     const isSunday = dayOfWeek === 0;
-                    console.log(`[DEBUG-REST] 🟢 REST DAY BLOCK ENTERED: ${row.date} | allowOvertime=${shiftConfig.allowOvertime} | will continue=${!shiftConfig.allowOvertime}`);
+
                     await addDoc(collection(firestore, 'incidences_auto'), {
                         employeeId: actualUid,
                         employeeName: shiftConfig.fullName ?? actualUid,
@@ -845,8 +843,8 @@ export async function processAttendanceImport(
                     // Si NO genera horas extra, saltamos retardos y salidas temprano
                     // El personal solo generó presencia en su día de descanso → DL
                     if (!shiftConfig.allowOvertime) {
-                        console.log(`[DEBUG-REST] ⏭️ SKIPPING tardiness/early departure for ${row.date} (no overtime)`);
                         continue; // Saltar al siguiente registro sin evaluar tardiness/early departure
+
                     }
                 }
 
@@ -880,8 +878,8 @@ export async function processAttendanceImport(
 
                 // Check Tardiness
                 // Solo cuenta retardo si no es descanso o si sí es descanso pero genera horas extra
-                console.log(`[DEBUG-REST] TARDINESS GUARD: ${row.date} | checkIn=${row.checkIn} | isRestDay=${isRestDay} | allowOvertime=${shiftConfig.allowOvertime} | willCheck=${!!(row.checkIn && (!isRestDay || shiftConfig.allowOvertime))}`);
                 if (row.checkIn && (!isRestDay || shiftConfig.allowOvertime)) {
+
                     const checkInDate = new Date(`2000-01-01T${row.checkIn}`);
                     const scheduledStartDate = new Date(`2000-01-01T${scheduledStart}`);
 
