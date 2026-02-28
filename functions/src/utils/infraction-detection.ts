@@ -55,6 +55,99 @@ async function isCompanyBenefitDay(
 }
 
 /**
+ * Verifica si una fecha es día de descanso según el turno del empleado
+ * y si el empleado genera horas extra (desde su puesto).
+ * Retorna true si la infracción debe OMITIRSE.
+ */
+async function shouldSkipInfractionForRestDay(
+    employee: Employee,
+    dateStr: string,
+    db: admin.firestore.Firestore
+): Promise<boolean> {
+    // 1. Determinar el shiftId activo
+    let shiftId = employee.customShiftId;
+
+    // Buscar asignaciones activas en la colección shift_assignments
+    if (shiftId) {
+        try {
+            const assignmentQuery = await db.collection('shift_assignments')
+                .where('employeeId', '==', employee.id)
+                .where('status', '==', 'active')
+                .get();
+
+            for (const aDoc of assignmentQuery.docs) {
+                const sa = aDoc.data();
+                if (sa.startDate <= dateStr && (!sa.endDate || sa.endDate >= dateStr)) {
+                    shiftId = sa.newShiftId as string;
+                    break;
+                }
+            }
+        } catch (err) {
+            console.warn('[Infraction] Error querying shift_assignments:', err);
+        }
+    }
+
+    // 2. Obtener workDays / restDays del turno
+    let workDays: number[] = [];
+    let restDays: number[] = [];
+
+    if (shiftId) {
+        try {
+            const shiftDoc = await db.collection('shifts').doc(shiftId).get();
+            if (shiftDoc.exists) {
+                const sData = shiftDoc.data()!;
+                workDays = sData.workDays || [];
+                restDays = sData.restDays || [];
+
+                // Fallback: derivar de daySchedules si workDays está vacío
+                if (workDays.length === 0 && sData.daySchedules && Object.keys(sData.daySchedules).length > 0) {
+                    workDays = Object.keys(sData.daySchedules).map(Number);
+                    restDays = [0, 1, 2, 3, 4, 5, 6].filter(d => !workDays.includes(d));
+                }
+            }
+        } catch (err) {
+            console.warn('[Infraction] Error fetching shift for rest day check:', err);
+        }
+    }
+
+    // 3. Determinar si es día de descanso
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const localDate = new Date(y, m - 1, d);
+    const dayOfWeek = localDate.getDay(); // 0=Sun
+
+    let isRestDay = false;
+    if (restDays.length > 0 && restDays.includes(dayOfWeek)) {
+        isRestDay = true;
+    } else if (workDays.length > 0 && !workDays.includes(dayOfWeek)) {
+        isRestDay = true;
+    }
+
+    if (!isRestDay) return false; // No es descanso, no omitir
+
+    // 4. Verificar si el puesto genera horas extra
+    let allowOvertime = true; // Default: sí genera
+    if (employee.positionId) {
+        try {
+            const posDoc = await db.collection('positions').doc(employee.positionId).get();
+            if (posDoc.exists) {
+                const posData = posDoc.data()!;
+                allowOvertime = posData.generatesOvertime ?? posData.canEarnOvertime ?? true;
+            }
+        } catch (err) {
+            console.warn('[Infraction] Error fetching position for overtime check:', err);
+        }
+    }
+
+    // Si es día de descanso Y NO genera horas extra → omitir infracción
+    if (!allowOvertime) {
+        console.log(`[Infraction] Skipping infraction on rest day ${dateStr} (dayOfWeek=${dayOfWeek}, allowOvertime=false) for ${employee.fullName}`);
+        return true;
+    }
+
+    return false;
+}
+
+/**
  * Horario de trabajo del empleado
  */
 interface EmployeeSchedule {
@@ -189,6 +282,11 @@ export async function detectTardiness(
         return null;
     }
 
+    // REST DAY CHECK: Skip tardiness on rest days when employee doesn't generate overtime
+    if (await shouldSkipInfractionForRestDay(employee, attendance.date, db)) {
+        return null;
+    }
+
     // IDEMPOTENCY CHECK: Check if tardiness record already exists for this attendance
     // attendance.id must be populated by the caller
     if (attendance.id) {
@@ -261,6 +359,11 @@ export async function detectEarlyDeparture(
 ): Promise<Omit<EarlyDeparture, 'id'> | null> {
     // Si no hay hora de salida, no podemos detectar salida temprana
     if (!attendance.checkOut) {
+        return null;
+    }
+
+    // REST DAY CHECK: Skip early departure on rest days when employee doesn't generate overtime
+    if (await shouldSkipInfractionForRestDay(employee, attendance.date, db)) {
         return null;
     }
 

@@ -16,6 +16,7 @@ export interface Employee {
     fullName: string;
     department?: string;
     positionTitle?: string;
+    positionId?: string;         // ID del puesto asociado
     locationId?: string; // Sincronizado desde profile
     employmentType: 'full_time' | 'part_time' | 'contractor';
     shiftType: 'diurnal' | 'nocturnal' | 'mixed';
@@ -235,6 +236,7 @@ export interface Shift {
     endTime: string;
     breakMinutes: number;
     workDays: number[]; // 0=Sun, 1=Mon, etc.
+    restDays?: number[]; // 0=Sun, 6=Sat
     daySchedules?: Record<number, {
         startTime: string;
         endTime: string;
