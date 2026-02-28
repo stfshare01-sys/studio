@@ -637,8 +637,8 @@ function TeamManagementContent() {
             const result = await justifyTardiness(
                 justifyTardinessDialog.record.id,
                 justificationReason,
-                user.id || '',
-                user.fullName || user.email || 'Admin',
+                user.uid || user.id || '',
+                user.fullName || user.displayName || user.email || 'Admin',
                 useHourBank,
                 justificationType
             );
@@ -649,7 +649,13 @@ function TeamManagementContent() {
                 setJustificationType(undefined);
                 setUseHourBank(false);
                 loadTabData('tardiness');
+                toast({ title: 'Retardo justificado', description: 'El retardo ha sido justificado correctamente.' });
+            } else {
+                toast({ title: 'Error', description: result.error || 'No se pudo justificar el retardo.', variant: 'destructive' });
             }
+        } catch (err) {
+            console.error('[Team] Error justifying tardiness:', err);
+            toast({ title: 'Error', description: 'Error inesperado al justificar retardo.', variant: 'destructive' });
         } finally {
             setSubmitting(false);
         }
@@ -663,8 +669,8 @@ function TeamManagementContent() {
             const result = await justifyEarlyDeparture(
                 justifyDepartureDialog.record.id,
                 justificationReason,
-                user.id || '',
-                user.fullName || user.email || 'Admin',
+                user.uid || user.id || '',
+                user.fullName || user.displayName || user.email || 'Admin',
                 useHourBank,
                 justificationType
             );
@@ -672,9 +678,16 @@ function TeamManagementContent() {
             if (result.success) {
                 setJustifyDepartureDialog({ open: false });
                 setJustificationReason('');
+                setJustificationType(undefined);
                 setUseHourBank(false);
                 loadTabData('early-departures');
+                toast({ title: 'Salida temprana justificada', description: 'La salida temprana ha sido justificada correctamente.' });
+            } else {
+                toast({ title: 'Error', description: result.error || 'No se pudo justificar la salida temprana.', variant: 'destructive' });
             }
+        } catch (err) {
+            console.error('[Team] Error justifying early departure:', err);
+            toast({ title: 'Error', description: 'Error inesperado al justificar salida temprana.', variant: 'destructive' });
         } finally {
             setSubmitting(false);
         }
