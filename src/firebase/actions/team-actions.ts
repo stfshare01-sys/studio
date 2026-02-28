@@ -259,7 +259,7 @@ export async function getTeamTardiness(
 
             const qConstraints = [
                 where('employeeId', 'in', batch),
-                orderBy('date', 'desc')
+                orderBy('date', 'asc')
             ];
 
             if (dateFilter !== 'all') {
@@ -533,7 +533,7 @@ export async function getTeamEarlyDepartures(
 
             const qConstraints = [
                 where('employeeId', 'in', batch),
-                orderBy('date', 'desc')
+                orderBy('date', 'asc')
             ];
 
             if (dateFilter !== 'all') {
@@ -1464,7 +1464,7 @@ export async function getTeamMissingPunches(
 
             const qConstraints = [
                 where('employeeId', 'in', batch),
-                orderBy('date', 'desc')
+                orderBy('date', 'asc')
             ];
 
             if (dateFilter !== 'all') {
