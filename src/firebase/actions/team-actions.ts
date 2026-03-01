@@ -386,7 +386,8 @@ export async function justifyEarlyDeparture(
         });
 
         if (useHourBank) {
-            await addDebtToHourBank({
+            console.log(`[Team] Adding ${departure.minutesEarly} min debt to hour bank for employee ${departure.employeeId}`);
+            const hbResult = await addDebtToHourBank({
                 employeeId: departure.employeeId,
                 date: departure.date,
                 type: 'early_departure',
@@ -396,6 +397,11 @@ export async function justifyEarlyDeparture(
                 createdById: justifiedById,
                 createdByName: justifiedByName
             });
+            if (!hbResult.success) {
+                console.error('[Team] Failed to add debt to hour bank:', hbResult.error);
+                return { success: false, error: `Salida justificada, pero no se pudo registrar en bolsa de horas: ${hbResult.error}` };
+            }
+            console.log(`[Team] Hour bank updated. New balance: ${hbResult.newBalance} min, movement: ${hbResult.movementId}`);
         }
 
         // Send notification to employee

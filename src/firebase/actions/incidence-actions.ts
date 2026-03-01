@@ -2133,7 +2133,8 @@ export async function justifyTardiness(
         });
 
         if (useHourBank) {
-            await addDebtToHourBank({
+            console.log(`[HCM] Adding ${tardiness.minutesLate} min debt to hour bank for employee ${tardiness.employeeId}`);
+            const hbResult = await addDebtToHourBank({
                 employeeId: tardiness.employeeId,
                 date: tardiness.date,
                 type: 'tardiness',
@@ -2143,6 +2144,11 @@ export async function justifyTardiness(
                 createdById: justifiedById,
                 createdByName: justifiedByName
             });
+            if (!hbResult.success) {
+                console.error('[HCM] Failed to add debt to hour bank:', hbResult.error);
+                return { success: false, error: `Retardo justificado, pero no se pudo registrar en bolsa de horas: ${hbResult.error}` };
+            }
+            console.log(`[HCM] Hour bank updated. New balance: ${hbResult.newBalance} min, movement: ${hbResult.movementId}`);
         }
 
         // Check if this completes any pending tasks

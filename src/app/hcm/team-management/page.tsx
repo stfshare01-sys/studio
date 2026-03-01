@@ -647,9 +647,14 @@ function TeamManagementContent() {
                 setJustifyTardinessDialog({ open: false });
                 setJustificationReason('');
                 setJustificationType(undefined);
+                const wasHourBank = useHourBank;
                 setUseHourBank(false);
                 loadTabData('tardiness');
-                toast({ title: 'Retardo justificado', description: 'El retardo ha sido justificado correctamente.' });
+                // Refrescar bolsa de horas si se usó
+                if (wasHourBank) {
+                    loadTabData('hour-bank');
+                }
+                toast({ title: 'Retardo justificado', description: wasHourBank ? 'El retardo ha sido justificado y registrado en la bolsa de horas.' : 'El retardo ha sido justificado correctamente.' });
             } else {
                 toast({ title: 'Error', description: result.error || 'No se pudo justificar el retardo.', variant: 'destructive' });
             }
@@ -679,9 +684,14 @@ function TeamManagementContent() {
                 setJustifyDepartureDialog({ open: false });
                 setJustificationReason('');
                 setJustificationType(undefined);
+                const wasHourBank = useHourBank;
                 setUseHourBank(false);
                 loadTabData('early-departures');
-                toast({ title: 'Salida temprana justificada', description: 'La salida temprana ha sido justificada correctamente.' });
+                // Refrescar bolsa de horas si se usó
+                if (wasHourBank) {
+                    loadTabData('hour-bank');
+                }
+                toast({ title: 'Salida temprana justificada', description: wasHourBank ? 'La salida ha sido justificada y registrada en la bolsa de horas.' : 'La salida temprana ha sido justificada correctamente.' });
             } else {
                 toast({ title: 'Error', description: result.error || 'No se pudo justificar la salida temprana.', variant: 'destructive' });
             }

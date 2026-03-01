@@ -519,7 +519,8 @@ service cloud.firestore {
       // Managers can justify tardiness (limited update)
       allow update: if hasAnyRole(['Manager']) &&
         request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(['isJustified', 'justificationReason', 'justifiedById', 'justifiedAt', 'updatedAt']);
+          .hasOnly(['isJustified', 'justificationReason', 'justificationStatus', 'justificationType',
+                    'justifiedById', 'justifiedAt', 'sanctionApplied', 'hourBankApplied', 'updatedAt']);
       // No deletes
       allow delete: if false;
     }
@@ -657,7 +658,9 @@ service cloud.firestore {
       // Managers can justify early departures (limited fields)
       allow update: if hasAnyRole(['Manager']) &&
         request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(['isJustified', 'justificationReason', 'justifiedById', 'justifiedByName', 'justifiedAt', 'resultedInAbsence', 'updatedAt']);
+          .hasOnly(['isJustified', 'justificationReason', 'justificationStatus', 'justificationType',
+                    'justifiedById', 'justifiedByName', 'justifiedAt', 'resultedInAbsence',
+                    'hourBankApplied', 'updatedAt']);
       // HR can update all fields
       allow update: if isHRManager();
       // No deletes - history is important
@@ -691,19 +694,50 @@ service cloud.firestore {
     }
 
     /**
-     * @description Time bank records (bolsa de horas)
+     * @description Hour bank records (bolsa de horas)
      * Read: Employee (own), Manager (team), HR/Admin (all)
-     * Write: HR/Admin only (balance updates happen through Cloud Functions)
+     * Write: Managers (justification with hour bank), HR/Admin (manual adjustments)
+     * @path /hourBanks/{employeeId}
+     */
+    match /hourBanks/{employeeId} {
+      // Employees can read their own hour bank
+      allow get: if isSignedIn() && employeeId == request.auth.uid;
+      // Managers and HR can read any hour bank (Managers need it for team view)
+      allow get, list: if isManagerOrHR();
+      // Managers can create/update hour banks (needed for justification with bolsa de horas)
+      allow create, update: if isManagerOrHR();
+      // No deletes
+      allow delete: if false;
+    }
+
+    /**
+     * @description Hour bank movements (movimientos de bolsa de horas)
+     * Read: Employee (own), Manager (team), HR/Admin (all)
+     * Write: Managers (justification), HR/Admin (manual adjustments)
+     * @path /hourBankMovements/{movementId}
+     */
+    match /hourBankMovements/{movementId} {
+      // Employees can read their own movements
+      allow get: if isSignedIn() && resource.data.employeeId == request.auth.uid;
+      // Managers and HR can read any movement
+      allow get, list: if isManagerOrHR();
+      // Managers can create movements (needed for justification with bolsa de horas)
+      allow create: if isManagerOrHR();
+      // Only HR can update movements (corrections)
+      allow update: if isHRManager();
+      // No deletes - audit trail
+      allow delete: if false;
+    }
+
+    /**
+     * @description Legacy time_bank collection (DEPRECATED - use /hourBanks instead)
+     * Kept for backward compatibility during migration
      * @path /time_bank/{employeeId}
      */
     match /time_bank/{employeeId} {
-      // Employees can read their own time bank
       allow get: if isSignedIn() && employeeId == request.auth.uid;
-      // Managers and HR can read any time bank (Managers need it for team view)
       allow get, list: if isManagerOrHR();
-      // Only HR/Admin can modify time banks
-      allow create, update: if isHRManager();
-      // No deletes
+      allow create, update: if isManagerOrHR();
       allow delete: if false;
     }
 
