@@ -370,26 +370,28 @@ function TeamManagementContent() {
                     break;
 
                 case 'hour-bank':
-                    console.log('[loadTabData] hour-bank tab, checking permission hcm_team_hour_bank:read =', hasPermission(permissions, 'hcm_team_hour_bank', 'read'));
-                    if (!hasPermission(permissions, 'hcm_team_hour_bank', 'read')) {
-                        console.warn('[loadTabData] hour-bank skipped: no hcm_team_hour_bank:read permission');
-                        break;
-                    }
-                    // Hour bank needs employee IDs, so we fetch employees first
-                    const empResult = await getDirectReports(managerToUse);
-                    if (empResult.success && empResult.employees) {
-                        setEmployees(empResult.employees);
-                        if (empResult.employees.length > 0) {
-                            const empIds = empResult.employees.map(e => e.id);
-                            console.log('[loadTabData] hour-bank: fetching for', empIds.length, 'employees');
-                            const hbResult = await getTeamHourBanks(empIds);
-                            console.log('[loadTabData] hour-bank result:', hbResult.success, 'count:', hbResult.hourBanks?.length ?? 0);
-                            if (hbResult.success && hbResult.hourBanks) {
-                                setHourBanks(hbResult.hourBanks);
+                    // Seguridad delegada a Firestore rules (isManagerOrHR)
+                    // No usamos hasPermission aquí porque bloquea a usuarios con permisos válidos en Firestore
+                    try {
+                        const empResult = await getDirectReports(managerToUse);
+                        if (empResult.success && empResult.employees) {
+                            setEmployees(empResult.employees);
+                            if (empResult.employees.length > 0) {
+                                const empIds = empResult.employees.map(e => e.id);
+                                const hbResult = await getTeamHourBanks(empIds);
+                                if (hbResult.success && hbResult.hourBanks) {
+                                    setHourBanks(hbResult.hourBanks);
+                                } else {
+                                    console.warn('[loadTabData] hour-bank: query failed or empty', hbResult.error);
+                                    setHourBanks([]);
+                                }
+                            } else {
+                                setHourBanks([]);
                             }
-                        } else {
-                            setHourBanks([]);
                         }
+                    } catch (hbError) {
+                        console.warn('[loadTabData] hour-bank: error loading data', hbError);
+                        setHourBanks([]);
                     }
                     break;
 
