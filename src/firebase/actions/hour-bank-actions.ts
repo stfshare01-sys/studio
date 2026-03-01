@@ -88,6 +88,8 @@ export async function getTeamHourBanks(
             return { success: true, hourBanks: [] };
         }
 
+        console.log(`[getTeamHourBanks] Querying for ${employeeIds.length} employees:`, employeeIds);
+
         const { firestore } = initializeFirebase();
         const hourBanks: HourBank[] = [];
 
@@ -103,11 +105,15 @@ export async function getTeamHourBanks(
                 where('employeeId', 'in', chunk)
             );
             const snapshot = await getDocs(q);
+            console.log(`[getTeamHourBanks] Chunk query returned ${snapshot.size} docs`);
             snapshot.forEach((doc) => {
-                hourBanks.push({ id: doc.id, ...doc.data() } as HourBank);
+                const data = { id: doc.id, ...doc.data() } as HourBank;
+                console.log(`[getTeamHourBanks] Found hourBank for ${data.employeeId}: balance=${data.balanceMinutes} min`);
+                hourBanks.push(data);
             });
         }
 
+        console.log(`[getTeamHourBanks] Total hour banks found: ${hourBanks.length}`);
         return { success: true, hourBanks };
     } catch (error) {
         console.error('[getTeamHourBanks] Error:', error);
