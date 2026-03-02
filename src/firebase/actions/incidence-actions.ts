@@ -1059,29 +1059,16 @@ export async function processAttendanceImport(
                     const toleranceDate = new Date(scheduledStartDate.getTime() + toleranceMinutes * 60000);
 
                     if (checkInDate > toleranceDate) {
-                        // CHECK FOR APPROVED INCIDENCES FIRST
-                        // Logic based on User Requirements: specific permits/vacations override tardiness
-                        // We need to check if there is an approved incidence for this employee on this date
-
-                        // Note: ideally we should have prefetched incidences for performance, similar to existingRecordsMap
-                        // For now we do it per row but using a query limited to the date
-                        // Optimization: Prefetching logic should be added before the loop if performance becomes an issue
-
-                        const incidencesRef = collection(firestore, 'incidences');
-                        const q = query(
-                            incidencesRef,
-                            where('employeeId', '==', row.employeeId),
-                            where('startDate', '<=', row.date),
-                            where('endDate', '>=', row.date),
-                            where('status', '==', 'approved')
+                        // CHECK FOR APPROVED INCIDENCES — use pre-fetched map (actualUid)
+                        // Bug fix: old code queried with row.employeeId (ZKTeco ID) which
+                        // never matched incidences stored with Firebase UID → always failed
+                        const empIncidences = approvedIncidencesMap[actualUid] || [];
+                        const hasCoveringIncidence = empIncidences.some(inc =>
+                            inc.startDate <= row.date && inc.endDate >= row.date
                         );
 
-                        const incidenceSnap = await getDocs(q);
-
-                        // If there is an approved incidence covering this date, we skip creating a tardiness record
-                        // The user specified: "si ya existían permisos previamente registrados... no lo considerá como tal como una incidencia"
-                        if (!incidenceSnap.empty) {
-                            // We act as if it's justified.
+                        if (hasCoveringIncidence) {
+                            // Permiso aprobado cubre esta fecha → no crear retardo
                         } else if (!existingTardinessMap.has(`${actualUid}_${row.date}`)) {
                             // Only create if no tardiness already exists for this employee+date
                             const diffMs = checkInDate.getTime() - scheduledStartDate.getTime();
@@ -1125,20 +1112,14 @@ export async function processAttendanceImport(
                     const scheduledEndDate = new Date(`2000-01-01T${scheduledEnd}`);
 
                     if (checkOutDate < scheduledEndDate) {
-                        // CHECK FOR APPROVED INCIDENCES FIRST (EARLY DEPARTURE)
-                        const incidencesRef = collection(firestore, 'incidences');
-                        const q = query(
-                            incidencesRef,
-                            where('employeeId', '==', actualUid),
-                            where('startDate', '<=', row.date),
-                            where('endDate', '>=', row.date),
-                            where('status', '==', 'approved')
+                        // CHECK FOR APPROVED INCIDENCES — use pre-fetched map (actualUid)
+                        const empIncidences = approvedIncidencesMap[actualUid] || [];
+                        const hasCoveringIncidence = empIncidences.some(inc =>
+                            inc.startDate <= row.date && inc.endDate >= row.date
                         );
 
-                        const incidenceSnap = await getDocs(q);
-
-                        if (!incidenceSnap.empty) {
-                            // console.log(`[HCM] Skipping early departure for ${actualUid} on ${row.date} due to existing approved incidence`);
+                        if (hasCoveringIncidence) {
+                            // Permiso aprobado cubre esta fecha → no crear salida temprana
                         } else if (!existingDeparturesMap.has(`${actualUid}_${row.date}`)) {
                             // Only create if no early departure already exists for this employee+date
                             const diffMs = scheduledEndDate.getTime() - checkOutDate.getTime();
