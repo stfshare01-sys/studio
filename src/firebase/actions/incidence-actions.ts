@@ -598,6 +598,38 @@ export async function processAttendanceImport(
         }
 
         // -------------------------------------------------------------
+        // APPROVED INCIDENCES PRE-FETCH
+        // Pre-cargar incidencias aprobadas para no marcar como "Sin Registro"
+        // días cubiertos por permisos (Incapacidad, Duelo, Vacaciones, etc.)
+        // -------------------------------------------------------------
+        const approvedIncidencesMap: Record<string, Array<{ startDate: string; endDate: string; type: string }>> = {};
+        try {
+            // Query en lotes de 30 UIDs (límite Firestore 'in')
+            for (let i = 0; i < allRealUids.length; i += 30) {
+                const batch = allRealUids.slice(i, i + 30);
+                const incQuery = query(
+                    collection(firestore, 'incidences'),
+                    where('employeeId', 'in', batch),
+                    where('status', '==', 'approved')
+                );
+                const incSnap = await getDocs(incQuery);
+                for (const incDoc of incSnap.docs) {
+                    const data = incDoc.data();
+                    const empId = data.employeeId as string;
+                    if (!approvedIncidencesMap[empId]) approvedIncidencesMap[empId] = [];
+                    approvedIncidencesMap[empId].push({
+                        startDate: data.startDate as string,
+                        endDate: data.endDate as string,
+                        type: data.type as string
+                    });
+                }
+            }
+            console.log(`[HCM] Loaded approved incidences for ${Object.keys(approvedIncidencesMap).length} employees`);
+        } catch (incError) {
+            console.warn('[HCM] Error loading approved incidences, continuing without incidence check:', incError);
+        }
+
+        // -------------------------------------------------------------
         // WEEKLY OVERTIME ACCUMULATOR (LFT Art. 67-68)
         // Tracks accumulated double hours per employee per week.
         // Resets according to location's overtimeResetDay setting.
@@ -737,12 +769,19 @@ export async function processAttendanceImport(
                 // Horas efectivas (con break descontado) — para el registro de asistencia
                 const hoursWorked = calculateHoursWorked(row.checkIn, row.checkOut, defaultBreakMinutes);
 
-                // Validate workday using gross hours so overtime is calculated correctly
+                // Calcular horas programadas REALES del turno (bruto, incluyendo break)
+                // para que overtime se calcule contra la jornada real, no el máximo legal LFT
+                const actualScheduledHours = (scheduledStart && scheduledEnd)
+                    ? calculateHoursWorked(scheduledStart, scheduledEnd, 0)
+                    : undefined;
+
+                // Validate workday using gross hours and actual scheduled hours
                 const validation = validateWorkday(
                     grossHours,
                     shiftConfig.type,
                     isRestDay,
-                    shiftConfig.allowOvertime
+                    shiftConfig.allowOvertime,
+                    actualScheduledHours // Horas reales del turno (ej. 9h para horario 11-20)
                 );
 
                 // -------------------------------------------------------------
@@ -835,16 +874,31 @@ export async function processAttendanceImport(
 
                 // -------------------------------------------------------------
                 // MISSING PUNCHES DETECTION
+                // Solo crear si NO hay un permiso aprobado que cubra la fecha.
+                // Si el empleado tiene Incapacidad, Duelo, Vacaciones, etc.
+                // aprobadas, es normal que no tenga marcaje → no es "Sin Registro".
                 // -------------------------------------------------------------
                 if (!row.checkIn || !row.checkOut) {
-                    const missingType = !row.checkIn && !row.checkOut ? 'both' : (!row.checkIn ? 'entry' : 'exit');
-                    await recordMissingPunch(
-                        actualUid,
-                        shiftConfig.fullName ?? actualUid,
-                        row.date,
-                        missingType as any,
-                        newAttendanceRef.id
+                    // Verificar si existe un permiso aprobado que cubra esta fecha
+                    const empIncidences = approvedIncidencesMap[actualUid] || [];
+                    const coveringIncidence = empIncidences.find(inc =>
+                        inc.startDate <= row.date && inc.endDate >= row.date
                     );
+
+                    if (coveringIncidence) {
+                        // Día cubierto por permiso aprobado → NO crear missing punch
+                        console.log(`[HCM] Skipping missing punch for ${shiftConfig.fullName} on ${row.date} — covered by approved ${coveringIncidence.type}`);
+                    } else if (!isRestDay) {
+                        // Solo crear missing punch si NO es día de descanso
+                        const missingType = !row.checkIn && !row.checkOut ? 'both' : (!row.checkIn ? 'entry' : 'exit');
+                        await recordMissingPunch(
+                            actualUid,
+                            shiftConfig.fullName ?? actualUid,
+                            row.date,
+                            missingType as any,
+                            newAttendanceRef.id
+                        );
+                    }
                 }
 
                 // If we applied hours to debt, update Time Bank in Firestore
