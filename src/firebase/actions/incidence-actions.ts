@@ -785,6 +785,41 @@ export async function processAttendanceImport(
                 );
 
                 // -------------------------------------------------------------
+                // OVERTIME: Calcular con tolerancia
+                // rawOvertime = max(0, checkOut - scheduledEnd)
+                // effectiveLate = max(0, checkIn - scheduledStart - tolerance)
+                // overtime = rawOvertime - effectiveLate/60 (descuento por retardo)
+                // Al justificar retardo → overtime vuelve a rawOvertime
+                // -------------------------------------------------------------
+                let rawOvertimeHours = validation.overtimeHours;
+                let effectiveLateMinutes = 0;
+
+                if (row.checkOut && scheduledEnd && !isRestDay) {
+                    const coDate = new Date(`2000-01-01T${row.checkOut}`);
+                    const seDate = new Date(`2000-01-01T${scheduledEnd}`);
+                    // Handle overnight shifts
+                    let diffMs = coDate.getTime() - seDate.getTime();
+                    if (diffMs < -12 * 3600000) diffMs += 24 * 3600000;
+                    rawOvertimeHours = Math.max(0, Math.round((diffMs / 3600000) * 100) / 100);
+                }
+
+                if (row.checkIn && scheduledStart) {
+                    const ciDate = new Date(`2000-01-01T${row.checkIn}`);
+                    const ssDate = new Date(`2000-01-01T${scheduledStart}`);
+                    const toleranceMs = (shiftConfig.toleranceMinutes || 0) * 60000;
+                    const lateMs = ciDate.getTime() - ssDate.getTime() - toleranceMs;
+                    effectiveLateMinutes = Math.max(0, Math.floor(lateMs / 60000));
+                }
+
+                // Overtime con descuento por retardo efectivo (post-tolerancia)
+                const adjustedOvertimeHours = Math.max(0,
+                    Math.round((rawOvertimeHours - effectiveLateMinutes / 60) * 100) / 100
+                );
+
+                // Sobreescribir el overtime de validateWorkday con el cálculo correcto
+                validation.overtimeHours = adjustedOvertimeHours;
+
+                // -------------------------------------------------------------
                 // DEBT COMPENSATION (TIME BANK)
                 // -------------------------------------------------------------
                 let hoursAppliedToDebt = 0;
@@ -858,11 +893,14 @@ export async function processAttendanceImport(
                     hoursWorked,
                     regularHours: validation.regularHours,
                     overtimeHours: validation.overtimeHours,
+                    rawOvertimeHours, // Horas extra sin descuento de retardo — para recalcular al justificar
                     payableOvertimeHours,
                     hoursAppliedToDebt,
                     overtimeType: payableOvertimeHours > 0 ? 'double' : null,
                     isValid: validation.isValid,
                     validationNotes: attendanceValidationNotes,
+                    scheduledStart, // Guardar para recálculos
+                    scheduledEnd,   // Guardar para recálculos
                     ...(isCompanyBenefitDate && { isCompanyBenefitDay: true, holidayName }),
                     ...(isRestDay && { isRestDay: true, isRestDayWorked: true }),
                     importBatchId: batchId,
@@ -1071,7 +1109,8 @@ export async function processAttendanceImport(
                             // Permiso aprobado cubre esta fecha → no crear retardo
                         } else if (!existingTardinessMap.has(`${actualUid}_${row.date}`)) {
                             // Only create if no tardiness already exists for this employee+date
-                            const diffMs = checkInDate.getTime() - scheduledStartDate.getTime();
+                            // Calcular retardo desde la tolerancia, NO desde el inicio del turno
+                            const diffMs = checkInDate.getTime() - toleranceDate.getTime();
                             const minutesLate = Math.floor(diffMs / 60000);
 
                             // Create Tardiness Record
@@ -2077,7 +2116,8 @@ export async function recordTardiness(
     date: string,
     attendanceRecordId: string,
     scheduledTime: string,
-    actualTime: string
+    actualTime: string,
+    toleranceMinutes: number = 0
 ): Promise<{ success: boolean; tardinessId?: string; sanctionApplied?: boolean; error?: string }> {
     try {
         const { firestore } = initializeFirebase();
@@ -2085,7 +2125,8 @@ export async function recordTardiness(
 
         const [schedH, schedM] = scheduledTime.split(':').map(Number);
         const [actH, actM] = actualTime.split(':').map(Number);
-        const minutesLate = (actH * 60 + actM) - (schedH * 60 + schedM);
+        // Restar tolerancia del retardo: solo cuentan los minutos DESPUÉS de la tolerancia
+        const minutesLate = (actH * 60 + actM) - (schedH * 60 + schedM) - toleranceMinutes;
 
         if (minutesLate <= 0) return { success: false, error: 'No hay retardo.' };
 
@@ -2166,6 +2207,87 @@ export async function justifyTardiness(
             updatedAt: now,
             hourBankApplied: useHourBank
         });
+
+        // -------------------------------------------------------------
+        // RECALCULAR OVERTIME al justificar retardo
+        // Si el retardo se justifica, el overtime vuelve a rawOvertimeHours
+        // (sin descuento por retardo). También actualizar attendance + overtime_request.
+        // -------------------------------------------------------------
+        try {
+            // Buscar attendance record del mismo empleado y fecha
+            const attendanceQuery = query(
+                collection(firestore, 'attendance'),
+                where('employeeId', '==', tardiness.employeeId),
+                where('date', '==', tardiness.date),
+                limit(1)
+            );
+            const attendanceSnap = await getDocs(attendanceQuery);
+
+            if (!attendanceSnap.empty) {
+                const attendanceDoc = attendanceSnap.docs[0];
+                const attendanceData = attendanceDoc.data();
+                const rawOT = attendanceData.rawOvertimeHours;
+
+                // Solo recalcular si tenemos rawOvertimeHours guardado
+                if (rawOT !== undefined && rawOT > attendanceData.overtimeHours) {
+                    console.log(`[HCM] Recalculating overtime for ${tardiness.employeeId} on ${tardiness.date}: ${attendanceData.overtimeHours}h → ${rawOT}h`);
+
+                    // Actualizar attendance record
+                    await updateDoc(attendanceDoc.ref, {
+                        overtimeHours: rawOT,
+                        payableOvertimeHours: rawOT,
+                        updatedAt: now
+                    });
+
+                    // Buscar y actualizar overtime_request del mismo día
+                    const overtimeQuery = query(
+                        collection(firestore, 'overtime_requests'),
+                        where('employeeId', '==', tardiness.employeeId),
+                        where('date', '==', tardiness.date),
+                        limit(1)
+                    );
+                    const overtimeSnap = await getDocs(overtimeQuery);
+
+                    if (!overtimeSnap.empty) {
+                        const otDoc = overtimeSnap.docs[0];
+                        const roundedOT = Math.round(rawOT * 100) / 100;
+                        // Recalcular dobles/triples (simplificado: todo doble hasta 3h)
+                        const doubleHours = Math.min(roundedOT, 3);
+                        const tripleHours = Math.max(0, roundedOT - 3);
+                        await updateDoc(otDoc.ref, {
+                            hoursRequested: roundedOT,
+                            doubleHours: Math.round(doubleHours * 100) / 100,
+                            tripleHours: Math.round(tripleHours * 100) / 100,
+                            updatedAt: now
+                        });
+                        console.log(`[HCM] Updated overtime_request: ${roundedOT}h (${doubleHours}h dobles + ${tripleHours}h triples)`);
+                    } else {
+                        // No existe overtime_request pero hay rawOT > 0 → crear uno
+                        if (rawOT > 0) {
+                            const roundedOT = Math.round(rawOT * 100) / 100;
+                            const doubleHours = Math.min(roundedOT, 3);
+                            const tripleHours = Math.max(0, roundedOT - 3);
+                            await addDoc(collection(firestore, 'overtime_requests'), {
+                                employeeId: tardiness.employeeId,
+                                employeeName: attendanceData.employeeName || tardiness.employeeId,
+                                date: tardiness.date,
+                                hoursRequested: roundedOT,
+                                doubleHours: Math.round(doubleHours * 100) / 100,
+                                tripleHours: Math.round(tripleHours * 100) / 100,
+                                reason: `Horas extra recalculadas por justificación de retardo`,
+                                status: 'pending',
+                                createdAt: now,
+                                updatedAt: now
+                            });
+                            console.log(`[HCM] Created overtime_request after justify: ${roundedOT}h`);
+                        }
+                    }
+                }
+            }
+        } catch (otError) {
+            console.warn('[HCM] Error recalculating overtime after justification:', otError);
+            // No falla la justificación si el recálculo de overtime falla
+        }
 
         if (useHourBank) {
             console.log(`[HCM] Adding ${tardiness.minutesLate} min debt to hour bank for employee ${tardiness.employeeId}`);
@@ -2765,7 +2887,8 @@ export async function justifyMissingPunch(
                     missingPunch.date,
                     missingPunch.attendanceRecordId || missingPunchId,
                     scheduledEntryTime,
-                    providedEntryTime
+                    providedEntryTime,
+                    toleranceMinutes
                 );
                 if (tardinessResult.success && tardinessResult.tardinessId) {
                     generatedTardinessId = tardinessResult.tardinessId;
@@ -2793,6 +2916,58 @@ export async function justifyMissingPunch(
                 );
                 if (earlyResult.success && earlyResult.earlyDepartureId) {
                     generatedEarlyDepartureId = earlyResult.earlyDepartureId;
+                }
+            }
+        }
+
+        // -----------------------------------------------------------------
+        // OVERTIME: Si providedExitTime > scheduledExitTime → generar horas extra
+        // -----------------------------------------------------------------
+        let generatedOvertimeId: string | undefined;
+        if (providedExitTime && (missingPunch.missingType === 'exit' || missingPunch.missingType === 'both')) {
+            const [schedH, schedM] = scheduledExitTime.split(':').map(Number);
+            const [provH, provM] = providedExitTime.split(':').map(Number);
+            const scheduledMinutes = schedH * 60 + schedM;
+            const providedMinutes = provH * 60 + provM;
+            const overtimeMinutes = providedMinutes - scheduledMinutes;
+
+            if (overtimeMinutes > 0) {
+                const overtimeHours = Math.round((overtimeMinutes / 60) * 100) / 100;
+                const doubleHours = Math.min(overtimeHours, 3);
+                const tripleHours = Math.max(0, Math.round((overtimeHours - 3) * 100) / 100);
+
+                try {
+                    const otRef = await addDoc(collection(firestore, 'overtime_requests'), {
+                        employeeId: missingPunch.employeeId,
+                        employeeName: missingPunch.employeeName || '',
+                        date: missingPunch.date,
+                        hoursRequested: overtimeHours,
+                        doubleHours: Math.round(doubleHours * 100) / 100,
+                        tripleHours,
+                        reason: `Horas extra generadas al justificar marcaje faltante (salida ${providedExitTime} vs programada ${scheduledExitTime})`,
+                        status: 'pending',
+                        createdAt: now,
+                        updatedAt: now
+                    });
+                    generatedOvertimeId = otRef.id;
+                    console.log(`[HCM] Created overtime_request ${otRef.id} for ${missingPunch.employeeName}: ${overtimeHours}h (${doubleHours}h dobles + ${tripleHours}h triples)`);
+
+                    // Actualizar attendance record con nuevas horas
+                    if (missingPunch.attendanceRecordId) {
+                        const attendanceRef = doc(firestore, 'attendance', missingPunch.attendanceRecordId);
+                        const attendanceSnap = await getDoc(attendanceRef);
+                        if (attendanceSnap.exists()) {
+                            await updateDoc(attendanceRef, {
+                                checkOut: providedExitTime,
+                                overtimeHours,
+                                rawOvertimeHours: overtimeHours,
+                                payableOvertimeHours: overtimeHours,
+                                updatedAt: now
+                            });
+                        }
+                    }
+                } catch (otError) {
+                    console.warn('[HCM] Error creating overtime from missing punch:', otError);
                 }
             }
         }

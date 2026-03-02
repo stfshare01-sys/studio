@@ -799,7 +799,10 @@ export type AttendanceRecord = {
   hoursWorked: number;          // Total horas trabajadas
   regularHours: number;         // Horas dentro de jornada normal
   overtimeHours: number;        // Horas extra totales
+  rawOvertimeHours?: number;    // Overtime sin descuento de retardo (para recálculo al justificar)
   overtimeType?: 'double' | 'triple' | null; // Tipo según "Ley de los 9s"
+  scheduledStart?: string;      // HH:mm — hora programada de entrada
+  scheduledEnd?: string;        // HH:mm — hora programada de salida
 
   // Estado y validación
   isValid: boolean;             // Validación de jornada según turno

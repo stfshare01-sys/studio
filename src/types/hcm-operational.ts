@@ -54,9 +54,12 @@ export type AttendanceRecord = {
     hoursWorked: number;          // Total horas trabajadas
     regularHours: number;         // Horas dentro de jornada normal
     overtimeHours: number;        // Horas extra totales
+    rawOvertimeHours?: number;    // Overtime sin descuento de retardo (para recálculo al justificar)
     overtimeType?: 'double' | 'triple';
     isValid: boolean;
     validationNotes?: string;
+    scheduledStart?: string;      // HH:mm — hora programada de entrada
+    scheduledEnd?: string;        // HH:mm — hora programada de salida
     linkedIncidenceId?: string;
     importBatchId: string;
     createdAt: string;
