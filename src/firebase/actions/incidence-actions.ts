@@ -2650,7 +2650,7 @@ export async function recordMissingPunch(
             attendanceRecordId,
             missingType,
             isJustified: false,
-            resultedInAbsence: true, // Por defecto, marcaje faltante = falta
+            resultedInAbsence: false, // Pendiente hasta que el jefe decida: justificar o marcar falta
             createdAt: now,
             updatedAt: now,
         };
