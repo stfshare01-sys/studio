@@ -5,12 +5,16 @@ import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
   SidebarHeader,
   SidebarInset,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarProvider,
+  SidebarSeparator,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -54,6 +58,11 @@ type NavItem = {
   exact?: boolean;
 };
 
+type NavGroup = {
+  label: string;
+  items: NavItem[];
+};
+
 const ALL_NAV_ITEMS: NavItem[] = [
   { href: "/", icon: LayoutDashboard, label: "Panel", module: "dashboard", exact: true },
   { href: "/tasks", icon: CheckSquare, label: "Buzón", module: "requests" },
@@ -66,6 +75,36 @@ const ALL_NAV_ITEMS: NavItem[] = [
   { href: "/integrations", icon: Plug, label: "Integraciones", module: "integrations" },
   { href: "/admin/users", icon: Users, label: "Usuarios (Admin)", module: "admin_users" },
   { href: "/admin/roles", icon: Shield, label: "Roles y Permisos", module: "admin_roles" },
+];
+
+// Group definitions for sidebar — order matters
+const NAV_GROUPS: NavGroup[] = [
+  {
+    label: "Principal",
+    items: [
+      { href: "/", icon: LayoutDashboard, label: "Panel", module: "dashboard", exact: true },
+      { href: "/tasks", icon: CheckSquare, label: "Buzón", module: "requests" },
+    ],
+  },
+  {
+    label: "Módulos",
+    items: [
+      { href: "/hcm", icon: Briefcase, label: "Capital Humano", module: "hcm_employees" },
+      { href: "/reports", icon: BarChart3, label: "Informes", module: "reports" },
+      { href: "/process-mining", icon: Activity, label: "Minería de Procesos", module: "process_mining" },
+      { href: "/templates", icon: FolderKanban, label: "Plantillas", module: "templates" },
+      { href: "/master-lists", icon: Database, label: "Listas Maestras", module: "master_lists" },
+      { href: "/requests/new", icon: FilePlus, label: "Nueva Solicitud", module: "requests" },
+      { href: "/integrations", icon: Plug, label: "Integraciones", module: "integrations" },
+    ],
+  },
+  {
+    label: "Administración",
+    items: [
+      { href: "/admin/users", icon: Users, label: "Usuarios", module: "admin_users" },
+      { href: "/admin/roles", icon: Shield, label: "Roles y Permisos", module: "admin_roles" },
+    ],
+  },
 ];
 
 import { hasDirectReports } from "@/firebase/actions/team-actions";
@@ -149,38 +188,57 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
           </div>
         </SidebarHeader>
         <SidebarContent>
-          <SidebarMenu>
-            {navItems.map((item) => (
-              <SidebarMenuItem key={item.href}>
-                <SidebarMenuButton
-                  asChild
-                  isActive={item.exact ? pathname === item.href : pathname.startsWith(item.href)}
-                  className="w-full"
-                >
-                  <Link href={item.href}>
-                    <item.icon className="size-4" />
-                    <span>{item.label}</span>
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            ))}
-          </SidebarMenu>
+          {NAV_GROUPS.map((group, gi) => {
+            const visibleItems = group.items.filter(item => navItems.some(n => n.href === item.href));
+            if (visibleItems.length === 0) return null;
+            return (
+              <SidebarGroup key={group.label}>
+                <SidebarGroupLabel className="nav-group-label">{group.label}</SidebarGroupLabel>
+                <SidebarGroupContent>
+                  <SidebarMenu>
+                    {visibleItems.map((item) => (
+                      <SidebarMenuItem key={item.href}>
+                        <SidebarMenuButton
+                          asChild
+                          isActive={item.exact ? pathname === item.href : pathname.startsWith(item.href)}
+                          className="w-full"
+                          size="default"
+                        >
+                          <Link href={item.href}>
+                            <item.icon className="size-5 shrink-0" />
+                            <span>{item.label}</span>
+                          </Link>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    ))}
+                  </SidebarMenu>
+                </SidebarGroupContent>
+                {gi < NAV_GROUPS.length - 1 && <SidebarSeparator className="mt-2" />}
+              </SidebarGroup>
+            );
+          })}
         </SidebarContent>
-        <SidebarFooter className="p-4 border-t space-y-2">
-          <div className="flex items-center gap-3">
-            <Avatar className="h-9 w-9">
+        <SidebarFooter className="border-t">
+          <div className="flex items-center gap-3 px-3 pt-3 pb-2">
+            <Avatar className="h-8 w-8 shrink-0">
               {user?.avatarUrl && <AvatarImage src={user.avatarUrl} alt={displayName} />}
-              <AvatarFallback>{displayName.charAt(0)}</AvatarFallback>
+              <AvatarFallback className="text-xs">{displayName.charAt(0)}</AvatarFallback>
             </Avatar>
-            <div className="flex flex-col text-sm truncate">
-              <span className="font-semibold truncate">{displayName}</span>
-              <span className="text-muted-foreground truncate">{displayEmail}</span>
+            <div className="flex flex-col text-sm truncate min-w-0">
+              <span className="font-semibold truncate leading-tight">{displayName}</span>
+              <span className="text-xs opacity-60 truncate leading-tight">{displayEmail}</span>
             </div>
           </div>
-          <Button variant="outline" size="sm" className="w-full" onClick={handleSignOut} disabled={isUserLoading}>
-            <LogOut className="mr-2 h-4 w-4" />
-            Cerrar sesión
-          </Button>
+          <div className="px-3 pb-3">
+            <button
+              className="signout-btn"
+              onClick={handleSignOut}
+              disabled={isUserLoading}
+            >
+              <LogOut className="h-4 w-4" />
+              Cerrar sesión
+            </button>
+          </div>
         </SidebarFooter>
       </Sidebar>
       <SidebarInset>

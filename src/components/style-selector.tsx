@@ -12,10 +12,11 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-type DesignStyle = "classic" | "vanguard" | "liquid" | "cyber" | "aura";
+type DesignStyle = "classic" | "vanguard" | "liquid" | "cyber" | "aura" | "enterprise";
 
 const STYLES: { id: DesignStyle; label: string; icon: string }[] = [
     { id: "classic", label: "Classic (Default)", icon: "🏗️" },
+    { id: "enterprise", label: "Enterprise", icon: "🏢" },
     { id: "vanguard", label: "Vanguardia Humana", icon: "🌱" },
     { id: "liquid", label: "Flow Vidrio Líquido", icon: "💧" },
     { id: "cyber", label: "Cyber-Admin", icon: "🤖" },
@@ -38,7 +39,7 @@ export function StyleSelector() {
     const applyStyle = (style: DesignStyle) => {
         const root = document.documentElement;
         // Remove all theme classes first
-        root.classList.remove("theme-vanguard", "theme-liquid", "theme-cyber", "theme-aura");
+        root.classList.remove("theme-vanguard", "theme-liquid", "theme-cyber", "theme-aura", "theme-enterprise");
 
         // Add the new one if it's not classic
         if (style !== "classic") {
