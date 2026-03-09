@@ -206,4 +206,71 @@
   .theme-cyber .cyber-glow {
     text-shadow: 0 0 10px hsl(var(--primary) / 0.5);
   }
+
+  /* Aura Premium Styles - 2026 Modern Aesthetic */
+  .theme-aura {
+    --background: 222 47% 7%;
+    --foreground: 210 40% 98%;
+    --card: 222 47% 12%;
+    --card-foreground: 214 32% 91%;
+    --popover: 222 47% 10%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 250 85% 65%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 222 47% 15%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 222 47% 15%;
+    --muted-foreground: 217 32% 61%;
+    --accent: 180 100% 50%;
+    --accent-foreground: 222 47% 11%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 222 47% 20%;
+    --input: 222 47% 20%;
+    --ring: 250 85% 65%;
+    --radius: 1.5rem;
+
+    --sidebar-background: 222 47% 4%;
+    --sidebar-foreground: 210 40% 98%;
+    --sidebar-primary: 250 85% 65%;
+    --sidebar-primary-foreground: 210 40% 98%;
+    --sidebar-accent: 222 47% 12%;
+    --sidebar-accent-foreground: 180 100% 50%;
+    --sidebar-border: 222 47% 10%;
+    --sidebar-ring: 250 85% 65%;
+  }
+
+  .theme-aura .glass-aura {
+    background: linear-gradient(135deg, hsl(var(--card) / 0.7), hsl(var(--card) / 0.5));
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid hsl(var(--primary) / 0.2);
+    box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.4);
+    border-radius: var(--radius);
+  }
+
+  .theme-aura .button-aura {
+    @apply rounded-full font-semibold transition-all duration-300;
+    background: linear-gradient(90deg, hsl(var(--primary)) 0%, hsl(var(--accent)) 100%);
+    box-shadow: 0 4px 15px -1px hsl(var(--primary) / 0.4);
+  }
+
+  .theme-aura .button-aura:hover {
+    box-shadow: 0 8px 25px -1px hsl(var(--primary) / 0.6);
+    transform: translateY(-1px);
+    filter: brightness(1.1);
+  }
+
+  .theme-aura .bento-item {
+    @apply transition-all duration-500 hover:scale-[1.02];
+    background: hsl(var(--card) / 0.8);
+    backdrop-filter: blur(10px);
+    border: 1px solid hsl(var(--border) / 0.5);
+    box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
+  }
+
+  .theme-aura .bento-item:hover {
+    border-color: hsl(var(--accent) / 0.5);
+    box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.7), 0 0 20px -5px hsl(var(--primary) / 0.3);
+  }
 }
