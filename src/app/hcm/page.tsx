@@ -178,9 +178,9 @@ export default function HCMPage() {
                             Gestión de personal, permisos y pre-nómina
                         </p>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="header-action-bar">
                         {hasHRPermissions && (
-                            <Button asChild variant="default" className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700">
+                            <Button asChild variant="default" className="button-aura px-6">
                                 <Link href="/hcm/command-center">
                                     <LayoutDashboard className="mr-2 h-4 w-4" />
                                     Centro de Comando
@@ -188,7 +188,7 @@ export default function HCMPage() {
                             </Button>
                         )}
                         {canWrite('hcm_attendance') && (
-                            <Button asChild variant="outline">
+                            <Button asChild variant="outline" className="rounded-full border-primary/20 hover:bg-primary/10">
                                 <Link href="/hcm/attendance">
                                     <Upload className="mr-2 h-4 w-4" />
                                     Importar Asistencia
@@ -196,7 +196,7 @@ export default function HCMPage() {
                             </Button>
                         )}
                         {canWrite('hcm_employees') && (
-                            <Button asChild variant="outline">
+                            <Button asChild variant="outline" className="rounded-full border-primary/20 hover:bg-primary/10">
                                 <Link href="/hcm/employees/new">
                                     <UserPlus className="mr-2 h-4 w-4" />
                                     Nuevo Empleado
