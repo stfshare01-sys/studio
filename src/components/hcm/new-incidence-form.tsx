@@ -379,6 +379,7 @@ export function NewIncidenceForm({ userId, targetUserId, onSuccess, onCancel, cl
                     />
                 </div>
                 <div>
+                    <Label htmlFor="end-date">Fecha fin</Label>
                     <Input
                         id="end-date"
                         type="date"
