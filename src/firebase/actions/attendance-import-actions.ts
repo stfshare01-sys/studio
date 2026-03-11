@@ -66,12 +66,16 @@ interface ProcessAttendanceResult {
     errors?: Array<{ row: number; message: string }>;
 }
 
+export type OvertimeMode = 'daily_limit' | 'weekly_only';
+
 export async function processAttendanceImport(
     rows: AttendanceImportRow[],
     uploadedById: string,
     uploadedByName: string,
-    filename: string
+    filename: string,
+    options?: { overtimeMode?: OvertimeMode }
 ): Promise<ProcessAttendanceResult> {
+    const overtimeMode: OvertimeMode = options?.overtimeMode ?? 'daily_limit';
     try {
         const { firestore } = initializeFirebase();
         const now = new Date().toISOString();
@@ -90,7 +94,8 @@ export async function processAttendanceImport(
             skippedCount: 0,
             errorCount: 0,
             status: 'processing',
-            errors: []
+            errors: [],
+            overtimeMode
         };
 
         const batchDocRef = await addDoc(batchRef, batchData);
@@ -674,7 +679,9 @@ export async function processAttendanceImport(
 
                         const accum = weeklyOvertimeAccum[accumKey];
 
-                        const MAX_DAILY_DOUBLE = 3;
+                        // daily_limit: LFT estricta (3h dobles/día + 9h/semana)
+                        // weekly_only: sin tope diario, solo 9h dobles/semana
+                        const MAX_DAILY_DOUBLE = overtimeMode === 'weekly_only' ? Infinity : 3;
                         const MAX_WEEKLY_DOUBLE = 9;
                         const remainingWeeklyDouble = MAX_WEEKLY_DOUBLE - accum.doubleUsed;
                         const availableDouble = Math.min(MAX_DAILY_DOUBLE, Math.max(remainingWeeklyDouble, 0));

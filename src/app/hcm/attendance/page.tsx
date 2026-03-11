@@ -14,6 +14,13 @@ import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Label } from '@/components/ui/label';
 import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
+import {
     Table,
     TableBody,
     TableCell,
@@ -34,6 +41,7 @@ import {
 } from 'lucide-react';
 import type { AttendanceImportBatch, AttendanceRecord } from '@/lib/types';
 import { processAttendanceImport } from '@/firebase/actions/incidence-actions';
+import type { OvertimeMode } from '@/firebase/actions/attendance-import-actions';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 
@@ -56,6 +64,9 @@ export default function AttendancePage() {
 
     // State to resolve string date formatting ambiguities
     const [dateFormatPreference, setDateFormatPreference] = useState<'dd/mm' | 'mm/dd'>('dd/mm');
+
+    // Overtime mode: daily_limit (LFT 3h/día + 9h/semana) | weekly_only (solo 9h/semana)
+    const [overtimeMode, setOvertimeMode] = useState<OvertimeMode>('daily_limit');
 
     // Fetch recent imports
     const importsQuery = useMemoFirebase(() => {
@@ -268,7 +279,8 @@ export default function AttendancePage() {
                 rows,
                 user.uid,
                 user.fullName || user.email || 'Unknown',
-                file.name
+                file.name,
+                { overtimeMode }
             );
 
             setUploadProgress(100);
@@ -307,7 +319,7 @@ export default function AttendancePage() {
             // Reset file input
             event.target.value = '';
         }
-    }, [user, dateFormatPreference]);
+    }, [user, dateFormatPreference, overtimeMode]);
 
     // Download template
     const downloadTemplate = () => {
@@ -382,6 +394,29 @@ export default function AttendancePage() {
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
+                            {/* Overtime Mode Selector */}
+                            <div className="flex items-center gap-4 p-3 bg-muted/40 rounded-lg border">
+                                <Label htmlFor="overtime-mode" className="text-sm font-medium whitespace-nowrap">
+                                    Modo Horas Dobles:
+                                </Label>
+                                <Select
+                                    value={overtimeMode}
+                                    onValueChange={(val) => setOvertimeMode(val as OvertimeMode)}
+                                >
+                                    <SelectTrigger id="overtime-mode" className="w-[280px]">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="daily_limit">
+                                            H2 con Límite por Día (3h/día + 9h/sem)
+                                        </SelectItem>
+                                        <SelectItem value="weekly_only">
+                                            H2 sin Límite por Día (solo 9h/sem)
+                                        </SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
                             {/* Upload Area */}
                             <div className="border-2 border-dashed rounded-lg p-8 text-center">
                                 <input

@@ -970,6 +970,9 @@ export type AttendanceImportBatch = {
   skippedCount: number;         // Registros omitidos (duplicados)
   errorCount: number;           // Registros con error
 
+  // Modo de cálculo de horas extra
+  overtimeMode?: 'daily_limit' | 'weekly_only';
+
   // Estado
   status: 'uploading' | 'processing' | 'completed' | 'failed' | 'partial';
   errors?: ImportError[];
