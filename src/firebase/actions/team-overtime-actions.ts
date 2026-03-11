@@ -156,6 +156,37 @@ export async function approveOvertimeRequest(
 
         const request = snap.data() as OvertimeRequest;
 
+        // -----------------------------------------------------------------
+        // BLOQUEAR si hay retardos o salidas tempranas pendientes de resolver
+        // "Resuelto" = justificado, compensado o injustificado (NO 'pending')
+        // -----------------------------------------------------------------
+        const [pendingTardinessSnap, pendingDeparturesSnap] = await Promise.all([
+            getDocs(query(
+                collection(firestore, 'tardiness_records'),
+                where('employeeId', '==', request.employeeId),
+                where('justificationStatus', '==', 'pending')
+            )),
+            getDocs(query(
+                collection(firestore, 'early_departures'),
+                where('employeeId', '==', request.employeeId),
+                where('isJustified', '==', false)
+            ))
+        ]);
+
+        // Filtrar early_departures que aún no tienen justificationStatus (pending reales)
+        const pendingDepartures = pendingDeparturesSnap.docs.filter(d => {
+            const data = d.data();
+            return !data.justificationStatus || data.justificationStatus === 'pending';
+        });
+
+        const pendingCount = pendingTardinessSnap.size + pendingDepartures.length;
+        if (pendingCount > 0) {
+            return {
+                success: false,
+                error: `No se puede aprobar horas extras: el empleado tiene ${pendingTardinessSnap.size} retardo(s) y ${pendingDepartures.length} salida(s) temprana(s) sin resolver. Deben justificarse o marcarse como injustificadas primero.`
+            };
+        }
+
         // Determinar si es aprobación total o parcial
         const finalHoursApproved = hoursApproved !== undefined ? hoursApproved : request.hoursRequested;
         const isPartial = finalHoursApproved < request.hoursRequested;
@@ -327,6 +358,38 @@ export async function rejectOvertimeRequest(
         const now = new Date().toISOString();
 
         const ref = doc(firestore, 'overtime_requests', requestId);
+        const snap = await getDoc(ref);
+        if (!snap.exists()) {
+            return { success: false, error: 'Solicitud no encontrada.' };
+        }
+        const request = snap.data() as OvertimeRequest;
+
+        // Bloquear si hay incidencias pendientes
+        const [pendingTardinessSnap, pendingDeparturesSnap] = await Promise.all([
+            getDocs(query(
+                collection(firestore, 'tardiness_records'),
+                where('employeeId', '==', request.employeeId),
+                where('justificationStatus', '==', 'pending')
+            )),
+            getDocs(query(
+                collection(firestore, 'early_departures'),
+                where('employeeId', '==', request.employeeId),
+                where('isJustified', '==', false)
+            ))
+        ]);
+
+        const pendingDepartures = pendingDeparturesSnap.docs.filter(d => {
+            const data = d.data();
+            return !data.justificationStatus || data.justificationStatus === 'pending';
+        });
+
+        const pendingCount = pendingTardinessSnap.size + pendingDepartures.length;
+        if (pendingCount > 0) {
+            return {
+                success: false,
+                error: `No se puede rechazar horas extras: el empleado tiene ${pendingTardinessSnap.size} retardo(s) y ${pendingDepartures.length} salida(s) temprana(s) sin resolver.`
+            };
+        }
 
         await updateDoc(ref, {
             status: 'rejected',

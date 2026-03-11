@@ -187,6 +187,15 @@ export async function getTeamDailyStats(
             const incidenceSnap = await getDocs(incidenceQuery);
             const incidence = incidenceSnap.docs[0]?.data();
 
+            // Obtener marcaje faltante del día
+            const missingPunchQuery = query(
+                collection(firestore, 'missing_punches'),
+                where('employeeId', '==', employee.id),
+                where('date', '==', date)
+            );
+            const missingPunchSnap = await getDocs(missingPunchQuery);
+            const missingPunch = missingPunchSnap.docs[0]?.data();
+
             const dayStat: TeamDailyStats = {
                 date,
                 employeeId: employee.id,
@@ -200,7 +209,10 @@ export async function getTeamDailyStats(
                 overtimeStatus: overtime?.status,
                 hasIncidence: !!incidence,
                 incidenceType: incidence?.type,
-                incidenceStatus: incidence?.status
+                incidenceStatus: incidence?.status,
+                hasMissingPunch: !!missingPunch,
+                missingPunchType: missingPunch?.missingType,
+                missingPunchJustified: missingPunch?.isJustified
             };
 
             stats.push(dayStat);

@@ -139,86 +139,9 @@ export async function justifyTardiness(
             hourBankApplied: useHourBank
         });
 
-        // -------------------------------------------------------------
-        // RECALCULAR OVERTIME al justificar retardo
-        // Si el retardo se justifica, el overtime vuelve a rawOvertimeHours
-        // (sin descuento por retardo). También actualizar attendance + overtime_request.
-        // -------------------------------------------------------------
-        try {
-            // Buscar attendance record del mismo empleado y fecha
-            const attendanceQuery = query(
-                collection(firestore, 'attendance'),
-                where('employeeId', '==', tardiness.employeeId),
-                where('date', '==', tardiness.date),
-                limit(1)
-            );
-            const attendanceSnap = await getDocs(attendanceQuery);
-
-            if (!attendanceSnap.empty) {
-                const attendanceDoc = attendanceSnap.docs[0];
-                const attendanceData = attendanceDoc.data();
-                const rawOT = attendanceData.rawOvertimeHours;
-
-                // Solo recalcular si tenemos rawOvertimeHours guardado
-                if (rawOT !== undefined && rawOT > attendanceData.overtimeHours) {
-                    console.log(`[HCM] Recalculating overtime for ${tardiness.employeeId} on ${tardiness.date}: ${attendanceData.overtimeHours}h → ${rawOT}h`);
-
-                    // Actualizar attendance record
-                    await updateDoc(attendanceDoc.ref, {
-                        overtimeHours: rawOT,
-                        payableOvertimeHours: rawOT,
-                        updatedAt: now
-                    });
-
-                    // Buscar y actualizar overtime_request del mismo día
-                    const overtimeQuery = query(
-                        collection(firestore, 'overtime_requests'),
-                        where('employeeId', '==', tardiness.employeeId),
-                        where('date', '==', tardiness.date),
-                        limit(1)
-                    );
-                    const overtimeSnap = await getDocs(overtimeQuery);
-
-                    if (!overtimeSnap.empty) {
-                        const otDoc = overtimeSnap.docs[0];
-                        const roundedOT = Math.round(rawOT * 100) / 100;
-                        // Recalcular dobles/triples (simplificado: todo doble hasta 3h)
-                        const doubleHours = Math.min(roundedOT, 3);
-                        const tripleHours = Math.max(0, roundedOT - 3);
-                        await updateDoc(otDoc.ref, {
-                            hoursRequested: roundedOT,
-                            doubleHours: Math.round(doubleHours * 100) / 100,
-                            tripleHours: Math.round(tripleHours * 100) / 100,
-                            updatedAt: now
-                        });
-                        console.log(`[HCM] Updated overtime_request: ${roundedOT}h (${doubleHours}h dobles + ${tripleHours}h triples)`);
-                    } else {
-                        // No existe overtime_request pero hay rawOT > 0 → crear uno
-                        if (rawOT > 0) {
-                            const roundedOT = Math.round(rawOT * 100) / 100;
-                            const doubleHours = Math.min(roundedOT, 3);
-                            const tripleHours = Math.max(0, roundedOT - 3);
-                            await addDoc(collection(firestore, 'overtime_requests'), {
-                                employeeId: tardiness.employeeId,
-                                employeeName: attendanceData.employeeName || tardiness.employeeId,
-                                date: tardiness.date,
-                                hoursRequested: roundedOT,
-                                doubleHours: Math.round(doubleHours * 100) / 100,
-                                tripleHours: Math.round(tripleHours * 100) / 100,
-                                reason: `Horas extra recalculadas por justificación de retardo`,
-                                status: 'pending',
-                                createdAt: now,
-                                updatedAt: now
-                            });
-                            console.log(`[HCM] Created overtime_request after justify: ${roundedOT}h`);
-                        }
-                    }
-                }
-            }
-        } catch (otError) {
-            console.warn('[HCM] Error recalculating overtime after justification:', otError);
-            // No falla la justificación si el recálculo de overtime falla
-        }
+        // NOTA: Overtime ya NO se recalcula al justificar retardo.
+        // Overtime siempre es checkOut - scheduledEnd (sin descontar retardos).
+        // El mecanismo de bolsa de horas maneja los descuentos por separado.
 
         if (useHourBank) {
             console.log(`[HCM] Adding ${tardiness.minutesLate} min debt to hour bank for employee ${tardiness.employeeId}`);

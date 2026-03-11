@@ -524,14 +524,10 @@ export async function processAttendanceImport(
                 );
 
                 // -------------------------------------------------------------
-                // OVERTIME: Calcular con tolerancia
-                // rawOvertime = max(0, checkOut - scheduledEnd)
-                // effectiveLate = max(0, checkIn - scheduledStart - tolerance)
-                // overtime = rawOvertime - effectiveLate/60 (descuento por retardo)
-                // Al justificar retardo → overtime vuelve a rawOvertime
+                // OVERTIME: checkOut - scheduledEnd (SIN descontar retardos)
+                // Los retardos se manejan por separado vía bolsa de horas.
                 // -------------------------------------------------------------
                 let rawOvertimeHours = validation.overtimeHours;
-                let effectiveLateMinutes = 0;
 
                 if (row.checkOut && scheduledEnd && !isRestDay) {
                     const coDate = new Date(`2000-01-01T${row.checkOut}`);
@@ -541,18 +537,7 @@ export async function processAttendanceImport(
                     rawOvertimeHours = Math.max(0, Math.round((diffMs / 3600000) * 100) / 100);
                 }
 
-                if (row.checkIn && scheduledStart) {
-                    const ciDate = new Date(`2000-01-01T${row.checkIn}`);
-                    const ssDate = new Date(`2000-01-01T${scheduledStart}`);
-                    const toleranceMs = (shiftConfig.toleranceMinutes || 0) * 60000;
-                    const lateMs = ciDate.getTime() - ssDate.getTime() - toleranceMs;
-                    effectiveLateMinutes = Math.max(0, Math.floor(lateMs / 60000));
-                }
-
-                const adjustedOvertimeHours = Math.max(0,
-                    Math.round((rawOvertimeHours - effectiveLateMinutes / 60) * 100) / 100
-                );
-                validation.overtimeHours = adjustedOvertimeHours;
+                validation.overtimeHours = rawOvertimeHours;
 
                 // -------------------------------------------------------------
                 // DEBT COMPENSATION (TIME BANK)
@@ -640,7 +625,8 @@ export async function processAttendanceImport(
 
                     if (coveringIncidence) {
                         console.log(`[HCM] Skipping missing punch for ${shiftConfig.fullName} on ${row.date} — covered by approved ${coveringIncidence.type}`);
-                    } else if (!isRestDay) {
+                    } else {
+                        // Registrar missing punch sin importar si es día de descanso
                         const missingType = !row.checkIn && !row.checkOut ? 'both' : (!row.checkIn ? 'entry' : 'exit');
                         await recordMissingPunch(
                             actualUid,

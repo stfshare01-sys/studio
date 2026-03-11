@@ -1765,6 +1765,11 @@ export type TeamDailyStats = {
   hasIncidence: boolean;
   incidenceType?: IncidenceType;
   incidenceStatus?: IncidenceStatus;
+
+  // Marcajes faltantes
+  hasMissingPunch?: boolean;
+  missingPunchType?: 'entry' | 'exit' | 'both';
+  missingPunchJustified?: boolean;
 };
 
 /**

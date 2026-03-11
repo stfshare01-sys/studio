@@ -111,6 +111,18 @@ export default function TeamManagementPage() {
     );
 }
 
+// Helper: Formato homologado DD/MM/AAAA
+const formatDateDDMMYYYY = (dateStr: string): string => {
+    if (!dateStr) return '';
+    // Soporta YYYY-MM-DD y ISO timestamps
+    const d = new Date(dateStr.includes('T') ? dateStr : `${dateStr}T12:00:00`);
+    if (isNaN(d.getTime())) return dateStr;
+    const dd = d.getDate().toString().padStart(2, '0');
+    const mm = (d.getMonth() + 1).toString().padStart(2, '0');
+    const yyyy = d.getFullYear();
+    return `${dd}/${mm}/${yyyy}`;
+};
+
 function TeamManagementContent() {
     const searchParams = useSearchParams();
     const lastUrlSync = useRef<{ batchId: string | null; tab: string | null }>({ batchId: null, tab: null });
@@ -1466,7 +1478,7 @@ function TeamManagementContent() {
                                         <SelectItem value="all">Todos</SelectItem>
                                         {importBatches.map(batch => (
                                             <SelectItem key={batch.id} value={batch.id}>
-                                                {new Date(batch.uploadedAt).toLocaleDateString()} - {batch.filename}
+                                                {formatDateDDMMYYYY(batch.uploadedAt)} - {batch.filename}
                                             </SelectItem>
                                         ))}
                                     </SelectContent>
@@ -1526,13 +1538,14 @@ function TeamManagementContent() {
                                             <TableHead>Retardo</TableHead>
                                             <TableHead>Salida Temprana</TableHead>
                                             <TableHead>Horas Extras</TableHead>
+                                            <TableHead>Sin Registro</TableHead>
                                             <TableHead>Incidencia</TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
                                         {dailyStats.length === 0 ? (
                                             <TableRow>
-                                                <TableCell colSpan={5} className="text-center text-muted-foreground">
+                                                <TableCell colSpan={6} className="text-center text-muted-foreground">
                                                     Sin registros para este día
                                                 </TableCell>
                                             </TableRow>
@@ -1562,6 +1575,14 @@ function TeamManagementContent() {
                                                                         stat.overtimeStatus === 'partial' ? 'secondary' : 'outline'
                                                             }>
                                                                 {stat.overtimeHoursApproved || stat.overtimeHoursRequested}h
+                                                            </Badge>
+                                                        ) : '-'}
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        {stat.hasMissingPunch ? (
+                                                            <Badge variant={stat.missingPunchJustified ? 'secondary' : 'destructive'}>
+                                                                {stat.missingPunchType === 'both' ? 'Entrada + Salida' :
+                                                                    stat.missingPunchType === 'entry' ? 'Entrada' : 'Salida'}
                                                             </Badge>
                                                         ) : '-'}
                                                     </TableCell>
@@ -1714,7 +1735,7 @@ function TeamManagementContent() {
                                         ) : (
                                             filteredTardiness.map((record) => (
                                                 <TableRow key={record.id}>
-                                                    <TableCell>{new Date(record.date + (record.date.includes('T') ? '' : 'T12:00:00')).toLocaleDateString('es-MX')}</TableCell>
+                                                    <TableCell>{formatDateDDMMYYYY(record.date)}</TableCell>
                                                     <TableCell className="font-medium">
                                                         {(record as any).employeeName || employees.find(e => e.id === record.employeeId)?.fullName || record.employeeId}
                                                     </TableCell>
@@ -1833,7 +1854,7 @@ function TeamManagementContent() {
                                         ) : (
                                             filteredDepartures.map((record) => (
                                                 <TableRow key={record.id}>
-                                                    <TableCell>{new Date(record.date + (record.date.includes('T') ? '' : 'T12:00:00')).toLocaleDateString('es-MX')}</TableCell>
+                                                    <TableCell>{formatDateDDMMYYYY(record.date)}</TableCell>
                                                     <TableCell className="font-medium">{record.employeeName}</TableCell>
                                                     <TableCell>{record.scheduledTime || record.scheduledEndTime}</TableCell>
                                                     <TableCell>{record.actualTime || record.actualEndTime}</TableCell>
@@ -2066,7 +2087,7 @@ function TeamManagementContent() {
                                         ) : (
                                             filteredOvertime.map((request) => (
                                                 <TableRow key={request.id}>
-                                                    <TableCell>{new Date(request.date + (request.date.includes('T') ? '' : 'T12:00:00')).toLocaleDateString('es-MX')}</TableCell>
+                                                    <TableCell>{formatDateDDMMYYYY(request.date)}</TableCell>
                                                     <TableCell className="font-medium">{request.employeeName}</TableCell>
                                                     <TableCell>
                                                         {(() => {
@@ -2369,7 +2390,7 @@ function TeamManagementContent() {
                     <DialogHeader>
                         <DialogTitle>Justificar Retardo</DialogTitle>
                         <DialogDescription>
-                            Ingresa el motivo de la justificación para el retardo del {justifyTardinessDialog.record && new Date(justifyTardinessDialog.record.date + (justifyTardinessDialog.record.date.includes('T') ? '' : 'T12:00:00')).toLocaleDateString('es-MX')}.
+                            Ingresa el motivo de la justificación para el retardo del {justifyTardinessDialog.record && formatDateDDMMYYYY(justifyTardinessDialog.record.date)}.
                         </DialogDescription>
                     </DialogHeader>
                     <div className="space-y-4 py-4">
@@ -2399,12 +2420,40 @@ function TeamManagementContent() {
                                 placeholder="Ej. Tráfico pesado, cita médica..."
                             />
                         </div>
-                        {canEmployeeUseTimeBank(justifyTardinessDialog.record?.employeeId) && (
-                            <div className="flex items-center space-x-2">
-                                <Switch id="tardiness-hourbank" checked={useHourBank} onCheckedChange={setUseHourBank} />
-                                <Label htmlFor="tardiness-hourbank">Compensar con Bolsa de Horas</Label>
-                            </div>
-                        )}
+                        {canEmployeeUseTimeBank(justifyTardinessDialog.record?.employeeId) && (() => {
+                            const record = justifyTardinessDialog.record;
+                            const minutesLate = record?.minutesLate || 0;
+                            // Si ≥30 min de retardo Y el empleado genera HE → bolsa obligatoria
+                            const employeeHasOvertime = overtimeRequests.some(
+                                ot => ot.employeeId === record?.employeeId
+                            );
+                            const isForced = minutesLate >= 30 && employeeHasOvertime;
+
+                            // Forzar useHourBank si aplica
+                            if (isForced && !useHourBank) {
+                                // Side-effect seguro: solo se llama si aún no está forzado
+                                setTimeout(() => setUseHourBank(true), 0);
+                            }
+
+                            return (
+                                <div className="flex items-center space-x-2">
+                                    <Switch
+                                        id="tardiness-hourbank"
+                                        checked={isForced ? true : useHourBank}
+                                        onCheckedChange={isForced ? undefined : setUseHourBank}
+                                        disabled={isForced}
+                                    />
+                                    <Label htmlFor="tardiness-hourbank">
+                                        Compensar con Bolsa de Horas
+                                        {isForced && (
+                                            <span className="text-xs text-amber-600 ml-1">
+                                                (obligatorio: retardo ≥30 min con horas extras)
+                                            </span>
+                                        )}
+                                    </Label>
+                                </div>
+                            );
+                        })()}
                     </div>
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setJustifyTardinessDialog({ open: false })}>Cancelar</Button>
@@ -2422,7 +2471,7 @@ function TeamManagementContent() {
                     <DialogHeader>
                         <DialogTitle>Justificar Salida Temprana</DialogTitle>
                         <DialogDescription>
-                            Ingresa el motivo de la justificación para la salida temprana del {justifyDepartureDialog.record && new Date(justifyDepartureDialog.record.date + (justifyDepartureDialog.record.date.includes('T') ? '' : 'T12:00:00')).toLocaleDateString('es-MX')}.
+                            Ingresa el motivo de la justificación para la salida temprana del {justifyDepartureDialog.record && formatDateDDMMYYYY(justifyDepartureDialog.record.date)}.
                         </DialogDescription>
                     </DialogHeader>
                     <div className="space-y-4 py-4">
@@ -2740,7 +2789,7 @@ function TeamManagementContent() {
                                             </TableCell>
                                             <TableCell className="text-xs text-muted-foreground">
                                                 {assign.assignedByName}
-                                                <div className="text-[10px]">{new Date(assign.createdAt).toLocaleDateString()}</div>
+                                                <div className="text-[10px]">{formatDateDDMMYYYY(assign.createdAt)}</div>
                                             </TableCell>
                                             <TableCell>
                                                 <Badge variant={assign.status === 'active' ? 'outline' : 'destructive'} className="text-[10px]">
@@ -2801,7 +2850,7 @@ function TeamManagementContent() {
                                 ) : (
                                     hourBankMovements.map((move) => (
                                         <TableRow key={move.id}>
-                                            <TableCell>{new Date(move.date + (move.date.includes('T') ? '' : 'T12:00:00')).toLocaleDateString()}</TableCell>
+                                            <TableCell>{formatDateDDMMYYYY(move.date)}</TableCell>
                                             <TableCell>
                                                 <Badge variant="outline">
                                                     {move.type === 'tardiness' ? 'Retardo' :
