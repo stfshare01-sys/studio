@@ -753,6 +753,90 @@ service cloud.firestore {
       allow delete: if isHRManager();
     }
 
+    // =========================================================================
+    // HCM: Attendance & Incidence Collections
+    // =========================================================================
+
+    /**
+     * @description Attendance records (imported from checador)
+     * Read: Manager/HR (team/all)
+     * Write: Manager/HR (import), HR/Admin (edit)
+     * @path /attendance/{recordId}
+     */
+    match /attendance/{recordId} {
+      allow get, list: if isManagerOrHR();
+      allow create, update: if isManagerOrHR();
+      allow delete: if isHRManager();
+    }
+
+    /**
+     * @description Tardiness records
+     * Read/Write: Manager/HR
+     * @path /tardiness_records/{recordId}
+     */
+    match /tardiness_records/{recordId} {
+      allow get, list: if isManagerOrHR();
+      allow create, update: if isManagerOrHR();
+      allow delete: if isHRManager();
+    }
+
+    /**
+     * @description Early departure records
+     * Read/Write: Manager/HR
+     * @path /early_departures/{recordId}
+     */
+    match /early_departures/{recordId} {
+      allow get, list: if isManagerOrHR();
+      allow create, update: if isManagerOrHR();
+      allow delete: if isHRManager();
+    }
+
+    /**
+     * @description Missing punch records
+     * Read/Write: Manager/HR
+     * @path /missing_punches/{recordId}
+     */
+    match /missing_punches/{recordId} {
+      allow get, list: if isManagerOrHR();
+      allow create, update: if isManagerOrHR();
+      allow delete: if isHRManager();
+    }
+
+    /**
+     * @description Overtime requests
+     * Read/Write: Manager/HR
+     * @path /overtime_requests/{requestId}
+     */
+    match /overtime_requests/{requestId} {
+      allow get, list: if isManagerOrHR();
+      allow create, update: if isManagerOrHR();
+      allow delete: if isHRManager();
+    }
+
+    /**
+     * @description Hour bank balances
+     * Read: Manager/HR
+     * Write: Manager/HR (adjustments)
+     * @path /hour_banks/{bankId}
+     */
+    match /hour_banks/{bankId} {
+      allow get, list: if isManagerOrHR();
+      allow create, update: if isManagerOrHR();
+      allow delete: if false;
+    }
+
+    /**
+     * @description Hour bank movements
+     * Read: Manager/HR
+     * Write: Manager/HR (from justifications)
+     * @path /hour_bank_movements/{movementId}
+     */
+    match /hour_bank_movements/{movementId} {
+      allow get, list: if isManagerOrHR();
+      allow create, update: if isManagerOrHR();
+      allow delete: if false;
+    }
+
     // -------------------------------------------------------------------------
     // Catch-all for Admin (Recursive God Mode)
     // ⚠️ ZERO TRUST ENFORCED: Default is DENY ALL.

@@ -111,7 +111,7 @@ export default function TeamManagementPage() {
     );
 }
 
-// Helper: Formato homologado DD/MM/AAAA
+// Helper: Formato homologado DD-MM-AAAA
 const formatDateDDMMYYYY = (dateStr: string): string => {
     if (!dateStr) return '';
     // Soporta YYYY-MM-DD y ISO timestamps
@@ -120,7 +120,7 @@ const formatDateDDMMYYYY = (dateStr: string): string => {
     const dd = d.getDate().toString().padStart(2, '0');
     const mm = (d.getMonth() + 1).toString().padStart(2, '0');
     const yyyy = d.getFullYear();
-    return `${dd}/${mm}/${yyyy}`;
+    return `${dd}-${mm}-${yyyy}`;
 };
 
 function TeamManagementContent() {
@@ -1036,9 +1036,11 @@ function TeamManagementContent() {
             // Obtener horarios del shift del empleado
             // 1. Buscar asignación activa en shiftAssignments
             // 2. Fallback: turno base del empleado (customShiftId o shiftId)
-            // 3. Fallback: horario por defecto 09:00-18:00
+            // 3. Fallback: leer del registro de asistencia (attendance record)
+            // 4. Fallback: horario por defecto 09:00-18:00
             let scheduledStart = '09:00';
             let scheduledEnd = '18:00';
+            let shiftResolved = false;
 
             const employeeAssignment = shiftAssignments.find(sa =>
                 sa.employeeId === punch.employeeId &&
@@ -1050,8 +1052,11 @@ function TeamManagementContent() {
                 if (shift) {
                     scheduledStart = shift.startTime;
                     scheduledEnd = shift.endTime;
+                    shiftResolved = true;
                 }
-            } else {
+            }
+
+            if (!shiftResolved) {
                 // Fallback: turno base del empleado (customShiftId o shiftId)
                 const baseShiftId = (employee as any).customShiftId || (employee as any).shiftId;
                 if (baseShiftId) {
@@ -1059,9 +1064,31 @@ function TeamManagementContent() {
                     if (baseShift) {
                         scheduledStart = baseShift.startTime;
                         scheduledEnd = baseShift.endTime;
+                        shiftResolved = true;
                     }
                 }
-                console.warn(`[HCM] No se encontró asignación de turno activa para ${employee.fullName}, usando horario: ${scheduledStart}-${scheduledEnd}`);
+            }
+
+            if (!shiftResolved && punch.attendanceRecordId && firestore) {
+                // Fallback: leer horario del registro de asistencia importado
+                try {
+                    const { doc, getDoc } = await import('firebase/firestore');
+                    const attRef = doc(firestore, 'attendance', punch.attendanceRecordId);
+                    const attSnap = await getDoc(attRef);
+                    if (attSnap.exists()) {
+                        const attData = attSnap.data();
+                        if (attData.scheduledStart) scheduledStart = attData.scheduledStart;
+                        if (attData.scheduledEnd) scheduledEnd = attData.scheduledEnd;
+                        shiftResolved = true;
+                        console.log(`[HCM] Shift resolved from attendance record: ${scheduledStart}-${scheduledEnd}`);
+                    }
+                } catch (attErr) {
+                    console.warn('[HCM] Could not read attendance record for shift:', attErr);
+                }
+            }
+
+            if (!shiftResolved) {
+                console.warn(`[HCM] No se encontró turno para ${employee.fullName}, usando horario por defecto: ${scheduledStart}-${scheduledEnd}`);
             }
 
             console.log(`[HCM] justifyMissingPunch handler: employee=${employee.fullName}, scheduledStart=${scheduledStart}, scheduledEnd=${scheduledEnd}, providedEntry=${providedEntryTime}, providedExit=${providedExitTime}`);
