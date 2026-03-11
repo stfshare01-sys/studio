@@ -401,9 +401,7 @@ export async function rejectOvertimeRequest(
             updatedAt: now
         });
 
-        // Get request data to get employee info
-        const reqSnap = await getDoc(ref);
-        const request = reqSnap.data() as OvertimeRequest;
+        // request ya disponible del pre-check arriba
 
         // Send notification to employee
         notifyOvertimeRejected(
