@@ -529,7 +529,7 @@ export async function processAttendanceImport(
                 // -------------------------------------------------------------
                 let rawOvertimeHours = validation.overtimeHours;
 
-                if (row.checkOut && scheduledEnd && !isRestDay) {
+                if (row.checkOut && scheduledEnd) {
                     const coDate = new Date(`2000-01-01T${row.checkOut}`);
                     const seDate = new Date(`2000-01-01T${scheduledEnd}`);
                     let diffMs = coDate.getTime() - seDate.getTime();
@@ -625,8 +625,22 @@ export async function processAttendanceImport(
 
                     if (coveringIncidence) {
                         console.log(`[HCM] Skipping missing punch for ${shiftConfig.fullName} on ${row.date} — covered by approved ${coveringIncidence.type}`);
+                    } else if (isRestDay) {
+                        // Día de descanso: solo registrar si tiene UN registro pero no el otro
+                        // (señal de que SÍ fue a trabajar). Si no tiene ninguno, descansó.
+                        if ((row.checkIn && !row.checkOut) || (!row.checkIn && row.checkOut)) {
+                            const missingType = !row.checkIn ? 'entry' : 'exit';
+                            await recordMissingPunch(
+                                actualUid,
+                                shiftConfig.fullName ?? actualUid,
+                                row.date,
+                                missingType as any,
+                                newAttendanceRef.id
+                            );
+                        }
+                        // Si no tiene ninguno → normal, descansó
                     } else {
-                        // Registrar missing punch sin importar si es día de descanso
+                        // Día laboral: siempre registrar si falta alguno
                         const missingType = !row.checkIn && !row.checkOut ? 'both' : (!row.checkIn ? 'entry' : 'exit');
                         await recordMissingPunch(
                             actualUid,

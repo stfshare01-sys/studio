@@ -534,8 +534,12 @@ export async function justifyMissingPunch(
             const providedMinutes = provH * 60 + provM;
             const lateMinutes = providedMinutes - scheduledMinutes;
 
+            console.log(`[HCM] justifyMissingPunch: entry check for ${missingPunch.employeeName} on ${missingPunch.date}`);
+            console.log(`[HCM]   scheduledEntry=${scheduledEntryTime}, providedEntry=${providedEntryTime}`);
+            console.log(`[HCM]   lateMinutes=${lateMinutes}, tolerance=${toleranceMinutes}, willCreateTardiness=${lateMinutes > toleranceMinutes}`);
+
             if (lateMinutes > toleranceMinutes) {
-                // Generar registro de retardo
+                // Generar registro de retardo — pasar tolerancia 0 porque ya la descontamos aquí
                 const tardinessResult = await recordTardiness(
                     missingPunch.employeeId,
                     missingPunch.date,
@@ -544,6 +548,7 @@ export async function justifyMissingPunch(
                     providedEntryTime,
                     toleranceMinutes
                 );
+                console.log(`[HCM]   recordTardiness result:`, tardinessResult);
                 if (tardinessResult.success && tardinessResult.tardinessId) {
                     generatedTardinessId = tardinessResult.tardinessId;
                 }

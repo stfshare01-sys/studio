@@ -1752,6 +1752,11 @@ export type TeamDailyStats = {
   employeeId: string;
   employeeName: string;
 
+  // Marcajes del día (del registro de asistencia)
+  checkIn?: string;                 // HH:mm
+  checkOut?: string;                // HH:mm
+  isRestDay?: boolean;
+
   // Eventos del día
   tardinessMinutes?: number;        // Minutos de retardo
   tardinessJustified?: boolean;

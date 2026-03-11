@@ -150,6 +150,15 @@ export async function getTeamDailyStats(
         const stats: TeamDailyStats[] = [];
 
         for (const employee of subordinatesResult.employees) {
+            // Obtener asistencia del día (entrada/salida/descanso)
+            const attendanceQuery = query(
+                collection(firestore, 'attendance'),
+                where('employeeId', '==', employee.id),
+                where('date', '==', date)
+            );
+            const attendanceSnap = await getDocs(attendanceQuery);
+            const attendance = attendanceSnap.docs[0]?.data();
+
             // Obtener retardo del día
             const tardinessQuery = query(
                 collection(firestore, 'tardiness_records'),
@@ -200,6 +209,9 @@ export async function getTeamDailyStats(
                 date,
                 employeeId: employee.id,
                 employeeName: employee.fullName,
+                checkIn: attendance?.checkIn,
+                checkOut: attendance?.checkOut,
+                isRestDay: attendance?.isRestDay ?? false,
                 tardinessMinutes: tardiness?.minutesLate,
                 tardinessJustified: tardiness?.isJustified,
                 earlyDepartureMinutes: departure?.minutesEarly,

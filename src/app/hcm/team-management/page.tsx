@@ -1035,7 +1035,7 @@ function TeamManagementContent() {
         try {
             // Obtener horarios del shift del empleado
             // 1. Buscar asignación activa en shiftAssignments
-            // 2. Fallback: turno base del empleado (customShiftId)
+            // 2. Fallback: turno base del empleado (customShiftId o shiftId)
             // 3. Fallback: horario por defecto 09:00-18:00
             let scheduledStart = '09:00';
             let scheduledEnd = '18:00';
@@ -1052,8 +1052,8 @@ function TeamManagementContent() {
                     scheduledEnd = shift.endTime;
                 }
             } else {
-                // Fallback: turno base del empleado
-                const baseShiftId = (employee as any).customShiftId;
+                // Fallback: turno base del empleado (customShiftId o shiftId)
+                const baseShiftId = (employee as any).customShiftId || (employee as any).shiftId;
                 if (baseShiftId) {
                     const baseShift = shifts.find(s => s.id === baseShiftId);
                     if (baseShift) {
@@ -1063,6 +1063,8 @@ function TeamManagementContent() {
                 }
                 console.warn(`[HCM] No se encontró asignación de turno activa para ${employee.fullName}, usando horario: ${scheduledStart}-${scheduledEnd}`);
             }
+
+            console.log(`[HCM] justifyMissingPunch handler: employee=${employee.fullName}, scheduledStart=${scheduledStart}, scheduledEnd=${scheduledEnd}, providedEntry=${providedEntryTime}, providedExit=${providedExitTime}`);
 
             const result = await justifyMissingPunch(
                 punch.id,
@@ -1208,7 +1210,7 @@ function TeamManagementContent() {
         const matchesDate = !activeBatchRange || (record.date >= activeBatchRange.start && record.date <= activeBatchRange.end);
 
         return matchesSearch && matchesStatus && filterByShift(record.employeeId) && matchesEmployee && matchesDate;
-    });
+    }).sort((a, b) => a.date.localeCompare(b.date));
 
     const filteredDepartures = earlyDepartures.filter(record => {
         const matchesSearch = !searchTerm ||
@@ -1222,14 +1224,14 @@ function TeamManagementContent() {
         const matchesDate = !activeBatchRange || (record.date >= activeBatchRange.start && record.date <= activeBatchRange.end);
 
         return matchesSearch && matchesStatus && filterByShift(record.employeeId) && matchesEmployee && matchesDate;
-    });
+    }).sort((a, b) => a.date.localeCompare(b.date));
 
     const filteredOvertime = overtimeRequests.filter(r => {
         const matchesEmployee = selectedEmployeeFilter === 'all' || r.employeeId === selectedEmployeeFilter;
         // Date Filter (assuming r.date exists on OvertimeRequest)
         const matchesDate = !activeBatchRange || (r.date >= activeBatchRange.start && r.date <= activeBatchRange.end);
         return filterByShift(r.employeeId) && matchesEmployee && matchesDate;
-    });
+    }).sort((a, b) => a.date.localeCompare(b.date));
 
     const filteredAssignments = shiftAssignments.filter(r => {
         const matchesEmployee = selectedEmployeeFilter === 'all' || r.employeeId === selectedEmployeeFilter;
@@ -1245,7 +1247,7 @@ function TeamManagementContent() {
         // Date Filter
         const matchesDate = !activeBatchRange || (p.date >= activeBatchRange.start && p.date <= activeBatchRange.end);
         return matchesEmployee && matchesDate;
-    });
+    }).sort((a, b) => a.date.localeCompare(b.date));
 
 
     const filteredMonthlyStats = monthlyStats.filter(stat => {
@@ -1535,6 +1537,8 @@ function TeamManagementContent() {
                                     <TableHeader>
                                         <TableRow>
                                             <TableHead>Empleado</TableHead>
+                                            <TableHead>Entrada</TableHead>
+                                            <TableHead>Salida</TableHead>
                                             <TableHead>Retardo</TableHead>
                                             <TableHead>Salida Temprana</TableHead>
                                             <TableHead>Horas Extras</TableHead>
@@ -1545,7 +1549,7 @@ function TeamManagementContent() {
                                     <TableBody>
                                         {dailyStats.length === 0 ? (
                                             <TableRow>
-                                                <TableCell colSpan={6} className="text-center text-muted-foreground">
+                                                <TableCell colSpan={8} className="text-center text-muted-foreground">
                                                     Sin registros para este día
                                                 </TableCell>
                                             </TableRow>
@@ -1553,6 +1557,16 @@ function TeamManagementContent() {
                                             dailyStats.map((stat) => (
                                                 <TableRow key={stat.employeeId}>
                                                     <TableCell className="font-medium">{stat.employeeName}</TableCell>
+                                                    <TableCell>
+                                                        {stat.isRestDay && !stat.checkIn && !stat.checkOut
+                                                            ? <span className="text-blue-500 font-medium">Descanso</span>
+                                                            : stat.checkIn || '-'}
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        {stat.isRestDay && !stat.checkIn && !stat.checkOut
+                                                            ? <span className="text-blue-500 font-medium">Descanso</span>
+                                                            : stat.checkOut || '-'}
+                                                    </TableCell>
                                                     <TableCell>
                                                         {stat.tardinessMinutes ? (
                                                             <Badge variant={stat.tardinessJustified ? 'secondary' : 'destructive'}>
@@ -1589,7 +1603,17 @@ function TeamManagementContent() {
                                                     <TableCell>
                                                         {stat.hasIncidence ? (
                                                             <Badge variant={stat.incidenceStatus === 'approved' ? 'default' : 'outline'}>
-                                                                {stat.incidenceType}
+                                                                {stat.incidenceType === 'vacation' ? 'Vacaciones' :
+                                                                    stat.incidenceType === 'sick_leave' ? 'Incapacidad' :
+                                                                        stat.incidenceType === 'personal_leave' ? 'Permiso Personal' :
+                                                                            stat.incidenceType === 'maternity' ? 'Maternidad' :
+                                                                                stat.incidenceType === 'paternity' ? 'Paternidad' :
+                                                                                    stat.incidenceType === 'bereavement' ? 'Duelo' :
+                                                                                        stat.incidenceType === 'marriage' ? 'Matrimonio' :
+                                                                                            stat.incidenceType === 'unpaid_leave' ? 'Permiso sin Goce' :
+                                                                                                stat.incidenceType === 'unjustified_absence' ? 'Falta Injustificada' :
+                                                                                                    stat.incidenceType === 'abandono_empleo' ? 'Abandono de Empleo' :
+                                                                                                        stat.incidenceType || '-'}
                                                             </Badge>
                                                         ) : '-'}
                                                     </TableCell>
