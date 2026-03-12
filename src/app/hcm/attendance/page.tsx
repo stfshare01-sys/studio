@@ -167,20 +167,22 @@ export default function AttendancePage() {
             }
             if (typeof val === 'string') {
                 const str = val.trim();
-                if (str.includes('/')) {
-                    const parts = str.split('/');
+                // If it contains a slash or a hyphen but isn't already YYYY-MM-DD
+                if ((str.includes('/') || str.includes('-')) && !str.match(/^\d{4}-\d{2}-\d{2}/)) {
+                    const parts = str.split(/[\/-]/);
                     if (parts.length === 3) {
                         const p0 = parseInt(parts[0], 10);
                         const p1 = parseInt(parts[1], 10);
                         const p2 = parseInt(parts[2], 10);
+
                         // Depending on formatPreference, we choose how to handle early DD and MM
                         if (formatPreference === 'dd/mm') {
-                            // En DD/MM/YYYY: p0 es Dia, p1 es Mes, p2 es Año
+                            // En DD/MM/YYYY o DD-MM-YYYY: p0 es Dia, p1 es Mes, p2 es Año
                             if (p2 > 1000 && p1 <= 12 && p0 <= 31) {
                                 return `${p2}-${p1.toString().padStart(2, '0')}-${p0.toString().padStart(2, '0')}`;
                             }
                         } else { // formatPreference === 'mm/dd'
-                            // En MM/DD/YYYY: p0 es Mes, p1 es Dia, p2 es Año
+                            // En MM/DD/YYYY o MM-DD-YYYY: p0 es Mes, p1 es Dia, p2 es Año
                             if (p2 > 1000 && p0 <= 12 && p1 <= 31) {
                                 return `${p2}-${p0.toString().padStart(2, '0')}-${p1.toString().padStart(2, '0')}`;
                             }
@@ -194,13 +196,14 @@ export default function AttendancePage() {
                             return `${p2}-${p1.toString().padStart(2, '0')}-${p0.toString().padStart(2, '0')}`;
                         }
 
-                        // YYYY/MM/DD
+                        // YYYY/MM/DD o YYYY-MM-DD
                         if (p0 > 1000 && p1 <= 12 && p2 <= 31) {
                             return `${p0}-${p1.toString().padStart(2, '0')}-${p2.toString().padStart(2, '0')}`;
                         }
                     }
                 }
-                // Try mapping YYYY-MM-DD
+
+                // Try mapping standard YYYY-MM-DD
                 if (str.match(/^\d{4}-\d{2}-\d{2}/)) {
                     return str.substring(0, 10);
                 }

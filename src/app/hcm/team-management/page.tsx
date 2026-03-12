@@ -123,13 +123,10 @@ const formatDateDDMMYYYY = (dateStr: string): string => {
         }
     }
 
-    // Si viene del excel como MM-DD-YYYY o DD-MM-YYYY (ambos \d{2}-\d{2}-\d{4})
-    // Firebase Studio lo guarda como MM-DD-YYYY al parsiarlo en inglés (ej: 02-01-2026 = 1 Feb)
+    // Si viene del excel directamente como DD-MM-YYYY
     if (/^\d{2}[-/]\d{2}[-/]\d{4}$/.test(dateStr)) {
-        const parts = dateStr.split(/[-/]/);
-        // parts[0] = MM, parts[1] = DD, parts[2] = YYYY
-        // Retornamos DD-MM-YYYY
-        return `${parts[1]}-${parts[0]}-${parts[2]}`;
+        // Retornamos DD-MM-YYYY asegurando los guiones
+        return dateStr.replace(/\//g, '-');
     }
 
     // Fallback absoluto: intentar parsear como ISO
@@ -144,11 +141,11 @@ const formatDateDDMMYYYY = (dateStr: string): string => {
 // Helper: Parsear estricto a YYYY-MM-DD para ordenamiento cronológico
 const parseDateForSort = (dateStr: string): string => {
     if (!dateStr) return '';
-    // Si viene como MM-DD-YYYY (\d{2}-\d{2}-\d{4})
+    // Si viene como DD-MM-YYYY (\d{2}-\d{2}-\d{4})
     if (/^\d{2}[-/]\d{2}[-/]\d{4}$/.test(dateStr)) {
         const parts = dateStr.split(/[-/]/);
-        // parts[0] = MM, parts[1] = DD, parts[2] = YYYY
-        return `${parts[2]}-${parts[0]}-${parts[1]}`;
+        // parts[0] = DD, parts[1] = MM, parts[2] = YYYY
+        return `${parts[2]}-${parts[1]}-${parts[0]}`;
     }
     // Si ya es YYYY-MM-DD, lo devuelve tal cual
     return dateStr;
