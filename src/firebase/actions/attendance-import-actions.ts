@@ -797,35 +797,45 @@ export async function processAttendanceImport(
 
                         if (hasCoveringIncidence) {
                             // Permiso aprobado cubre esta fecha → no crear retardo
-                        } else if (!existingTardinessMap.has(`${actualUid}_${row.date}`)) {
-                            const diffMs = checkInDate.getTime() - toleranceDate.getTime();
-                            const minutesLate = Math.floor(diffMs / 60000);
+                        } else {
+                            // BUG #1 FIX: Check exact database explicitly
+                            const duplicateQuery = query(
+                                collection(firestore, 'tardiness_records'),
+                                where('employeeId', '==', actualUid),
+                                where('date', '==', row.date)
+                            );
+                            const duplicateSnap = await getDocs(duplicateQuery);
 
-                            const tardinessData: Omit<TardinessRecord, 'id'> = {
-                                employeeId: actualUid,
-                                employeeName: shiftConfig.fullName ?? actualUid,
-                                date: row.date,
-                                attendanceRecordId: newAttendanceRef.id,
-                                type: 'entry',
-                                scheduledTime: scheduledStart,
-                                actualTime: row.checkIn,
-                                minutesLate,
-                                isJustified: false,
-                                justificationStatus: 'pending',
-                                sanctionApplied: false,
-                                createdAt: now,
-                                updatedAt: now,
-                                importBatchId: batchId
-                            } as any;
+                            if (duplicateSnap.empty && !existingTardinessMap.has(`${actualUid}_${row.date}`)) {
+                                const diffMs = checkInDate.getTime() - toleranceDate.getTime();
+                                const minutesLate = Math.floor(diffMs / 60000);
 
-                            const tRef = await addDoc(collection(firestore, 'tardiness_records'), tardinessData);
-                            existingTardinessMap.add(`${actualUid}_${row.date}`);
-                            newRecordsToJustify.push({
-                                id: tRef.id,
-                                employeeId: actualUid,
-                                date: row.date,
-                                type: 'tardiness'
-                            });
+                                const tardinessData: Omit<TardinessRecord, 'id'> = {
+                                    employeeId: actualUid,
+                                    employeeName: shiftConfig.fullName ?? actualUid,
+                                    date: row.date,
+                                    attendanceRecordId: newAttendanceRef.id,
+                                    type: 'entry',
+                                    scheduledTime: scheduledStart,
+                                    actualTime: row.checkIn,
+                                    minutesLate,
+                                    isJustified: false,
+                                    justificationStatus: 'pending',
+                                    sanctionApplied: false,
+                                    createdAt: now,
+                                    updatedAt: now,
+                                    importBatchId: batchId
+                                } as any;
+
+                                const tRef = await addDoc(collection(firestore, 'tardiness_records'), tardinessData);
+                                existingTardinessMap.add(`${actualUid}_${row.date}`);
+                                newRecordsToJustify.push({
+                                    id: tRef.id,
+                                    employeeId: actualUid,
+                                    date: row.date,
+                                    type: 'tardiness'
+                                });
+                            }
                         }
                     }
                 }
@@ -843,27 +853,37 @@ export async function processAttendanceImport(
 
                         if (hasCoveringIncidence) {
                             // Permiso aprobado cubre esta fecha → no crear salida temprana
-                        } else if (!existingDeparturesMap.has(`${actualUid}_${row.date}`)) {
-                            const diffMs = scheduledEndDate.getTime() - checkOutDate.getTime();
-                            const minutesEarly = Math.floor(diffMs / 60000);
+                        } else {
+                            // BUG #1 FIX: Check exact database explicitly
+                            const duplicateQuery = query(
+                                collection(firestore, 'early_departures'),
+                                where('employeeId', '==', actualUid),
+                                where('date', '==', row.date)
+                            );
+                            const duplicateSnap = await getDocs(duplicateQuery);
 
-                            const departureData = {
-                                employeeId: actualUid,
-                                employeeName: shiftConfig.fullName ?? actualUid,
-                                date: row.date,
-                                attendanceRecordId: newAttendanceRef.id,
-                                scheduledTime: scheduledEnd,
-                                actualTime: row.checkOut,
-                                minutesEarly,
-                                isJustified: false,
-                                justificationStatus: 'pending',
-                                createdAt: now,
-                                updatedAt: now,
-                                importBatchId: batchId
-                            };
+                            if (duplicateSnap.empty && !existingDeparturesMap.has(`${actualUid}_${row.date}`)) {
+                                const diffMs = scheduledEndDate.getTime() - checkOutDate.getTime();
+                                const minutesEarly = Math.floor(diffMs / 60000);
 
-                            await addDoc(collection(firestore, 'early_departures'), departureData);
-                            existingDeparturesMap.add(`${actualUid}_${row.date}`);
+                                const departureData = {
+                                    employeeId: actualUid,
+                                    employeeName: shiftConfig.fullName ?? actualUid,
+                                    date: row.date,
+                                    attendanceRecordId: newAttendanceRef.id,
+                                    scheduledTime: scheduledEnd,
+                                    actualTime: row.checkOut,
+                                    minutesEarly,
+                                    isJustified: false,
+                                    justificationStatus: 'pending',
+                                    createdAt: now,
+                                    updatedAt: now,
+                                    importBatchId: batchId
+                                };
+
+                                await addDoc(collection(firestore, 'early_departures'), departureData);
+                                existingDeparturesMap.add(`${actualUid}_${row.date}`);
+                            }
                         }
                     }
                 }
