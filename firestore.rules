@@ -299,7 +299,10 @@ service cloud.firestore {
       // Sensitive salary data is in the separate 'compensation' collection
       allow read: if isSignedIn();
       // Only HR and Admin can create/update employee records
-      allow create, update: if isHRManager();
+      allow create: if isHRManager();
+      // HR/Admin can update any field. Managers can only update specific fields like customShiftId
+      allow update: if isHRManager() || 
+                    (isManagerOrHR() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['customShiftId', 'updatedAt']));
       // Admin solo puede borrar si ya está inactivo (Soft delete enforce)
       allow delete: if hasRole('Admin') && resource.data.status == 'inactive';
     }
