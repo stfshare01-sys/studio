@@ -524,17 +524,34 @@ export async function processAttendanceImport(
                 );
 
                 // -------------------------------------------------------------
-                // OVERTIME: checkOut - scheduledEnd (SIN descontar retardos)
-                // Los retardos se manejan por separado vía bolsa de horas.
+                // OVERTIME REDESIGNED: Fuera del Turno & DDL Logic
                 // -------------------------------------------------------------
-                let rawOvertimeHours = validation.overtimeHours;
+                let rawOvertimeHours = 0;
 
-                if (row.checkOut && scheduledEnd) {
-                    const coDate = new Date(`2000-01-01T${row.checkOut}`);
-                    const seDate = new Date(`2000-01-01T${scheduledEnd}`);
-                    let diffMs = coDate.getTime() - seDate.getTime();
-                    if (diffMs < -12 * 3600000) diffMs += 24 * 3600000;
-                    rawOvertimeHours = Math.max(0, Math.round((diffMs / 3600000) * 100) / 100);
+                if (shiftConfig.allowOvertime && scheduledStart && scheduledEnd) {
+                    let earlyArrivalOt = 0;
+                    let lateDepartureOt = 0;
+
+                    // 1. Llegada Temprana
+                    if (row.checkIn) {
+                        const ciDate = new Date(`2000-01-01T${row.checkIn}`);
+                        const ssDate = new Date(`2000-01-01T${scheduledStart}`);
+                        let diffMs = ssDate.getTime() - ciDate.getTime();
+                        // Ajuste por si cruza medianoche al revés
+                        if (diffMs < -12 * 3600000) diffMs += 24 * 3600000;
+                        earlyArrivalOt = Math.max(0, Math.round((diffMs / 3600000) * 100) / 100);
+                    }
+
+                    // 2. Salida Tarde
+                    if (row.checkOut) {
+                        const coDate = new Date(`2000-01-01T${row.checkOut}`);
+                        const seDate = new Date(`2000-01-01T${scheduledEnd}`);
+                        let diffMs = coDate.getTime() - seDate.getTime();
+                        if (diffMs < -12 * 3600000) diffMs += 24 * 3600000;
+                        lateDepartureOt = Math.max(0, Math.round((diffMs / 3600000) * 100) / 100);
+                    }
+
+                    rawOvertimeHours = earlyArrivalOt + lateDepartureOt;
                 }
 
                 validation.overtimeHours = rawOvertimeHours;

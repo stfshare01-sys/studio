@@ -469,14 +469,16 @@ function TeamManagementContent() {
                     overtimeResult,
                     monthlyStatsResult,
                     dailyStatsResult,
-                    missingPunchesResult
+                    missingPunchesResult,
+                    shiftsResult
                 ] = await Promise.all([
                     getTeamTardiness(managerIdToUse, dateFilter),
                     getTeamEarlyDepartures(managerIdToUse, dateFilter),
                     getTeamOvertimeRequests(managerIdToUse, 'all'),
                     getTeamMonthlyStats(managerIdToUse, ...dateFilter.split('-').map(Number) as [number, number]),
                     getTeamDailyStats(managerIdToUse, selectedDate),
-                    getTeamMissingPunches(managerIdToUse, dateFilter)
+                    getTeamMissingPunches(managerIdToUse, dateFilter),
+                    getAvailableShifts() // Load globally for the Dialog dropdowns
                 ]);
 
                 // Set all data states
@@ -498,6 +500,9 @@ function TeamManagementContent() {
                 }
                 if (dailyStatsResult.success && dailyStatsResult.stats) {
                     setDailyStats(dailyStatsResult.stats);
+                }
+                if (shiftsResult.success && shiftsResult.shifts) {
+                    setShifts(shiftsResult.shifts);
                 }
 
             } catch (error) {
