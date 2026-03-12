@@ -140,47 +140,47 @@ export default function AttendancePage() {
         // But for safety in Next.js client component:
         const { read, utils } = await import('xlsx');
 
-        const workbook = read(buffer, { type: 'array' });
+        const workbook = read(buffer, { type: 'array', cellDates: true });
         const firstSheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[firstSheetName];
 
-        // Usamos raw: false para que Excel NOS entregue el STRING literal ('2026/03/01' o '01-03-2026')
-        // Esto evita que el Timezone de México (UTC-6) reste 6 horas y lo aviente al día anterior.
-        const jsonData = utils.sheet_to_json(worksheet, { header: 1, raw: false, dateNF: 'YYYY-MM-DD' }) as any[][];
+        // Parse to JSON with raw: true to get Date objects if cellFormats are dates
+        const jsonData = utils.sheet_to_json(worksheet, { header: 1, raw: true }) as any[][];
 
         // Normalize dates to YYYY-MM-DD
         const normalizeDate = (val: any): string => {
             if (!val) return '';
-
+            if (val instanceof Date) {
+                // Fix timezone offset issues by using the UTC values since xlsx parses them as UTC midnights
+                const year = val.getUTCFullYear();
+                const month = String(val.getUTCMonth() + 1).padStart(2, '0');
+                const day = String(val.getUTCDate()).padStart(2, '0');
+                return `${year}-${month}-${day}`;
+            }
+            if (typeof val === 'number') {
+                // Excel date serial number
+                const d = new Date(Math.round((val - 25569) * 86400 * 1000));
+                const year = d.getUTCFullYear();
+                const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+                const day = String(d.getUTCDate()).padStart(2, '0');
+                return `${year}-${month}-${day}`;
+            }
             if (typeof val === 'string') {
                 const str = val.trim();
-
-                // Si el string ya viene con el formato puro YYYY-MM-DD, devolvemos directo
-                if (str.match(/^\d{4}-\d{2}-\d{2}$/)) {
-                    return str;
-                }
-
-                // Si viene como YYYY/MM/DD
-                if (str.match(/^\d{4}\/\d{2}\/\d{2}$/)) {
-                    return str.replaceAll('/', '-');
-                }
-
-                // If it contains a slash or a hyphen but isn't already YYYY-MM-DD
-                if ((str.includes('/') || str.includes('-')) && !str.match(/^\d{4}-\d{2}-\d{2}/)) {
-                    const parts = str.split(/[\/-]/);
+                if (str.includes('/')) {
+                    const parts = str.split('/');
                     if (parts.length === 3) {
                         const p0 = parseInt(parts[0], 10);
                         const p1 = parseInt(parts[1], 10);
                         const p2 = parseInt(parts[2], 10);
-
                         // Depending on formatPreference, we choose how to handle early DD and MM
                         if (formatPreference === 'dd/mm') {
-                            // En DD/MM/YYYY o DD-MM-YYYY: p0 es Dia, p1 es Mes, p2 es Año
+                            // En DD/MM/YYYY: p0 es Dia, p1 es Mes, p2 es Año
                             if (p2 > 1000 && p1 <= 12 && p0 <= 31) {
                                 return `${p2}-${p1.toString().padStart(2, '0')}-${p0.toString().padStart(2, '0')}`;
                             }
                         } else { // formatPreference === 'mm/dd'
-                            // En MM/DD/YYYY o MM-DD-YYYY: p0 es Mes, p1 es Dia, p2 es Año
+                            // En MM/DD/YYYY: p0 es Mes, p1 es Dia, p2 es Año
                             if (p2 > 1000 && p0 <= 12 && p1 <= 31) {
                                 return `${p2}-${p0.toString().padStart(2, '0')}-${p1.toString().padStart(2, '0')}`;
                             }
@@ -194,14 +194,13 @@ export default function AttendancePage() {
                             return `${p2}-${p1.toString().padStart(2, '0')}-${p0.toString().padStart(2, '0')}`;
                         }
 
-                        // YYYY/MM/DD o YYYY-MM-DD
+                        // YYYY/MM/DD
                         if (p0 > 1000 && p1 <= 12 && p2 <= 31) {
                             return `${p0}-${p1.toString().padStart(2, '0')}-${p2.toString().padStart(2, '0')}`;
                         }
                     }
                 }
-
-                // Try mapping standard YYYY-MM-DD
+                // Try mapping YYYY-MM-DD
                 if (str.match(/^\d{4}-\d{2}-\d{2}/)) {
                     return str.substring(0, 10);
                 }
