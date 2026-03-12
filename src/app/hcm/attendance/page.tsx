@@ -144,29 +144,27 @@ export default function AttendancePage() {
         const firstSheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[firstSheetName];
 
-        // Parse to JSON with raw: true to get Date objects if cellFormats are dates
-        const jsonData = utils.sheet_to_json(worksheet, { header: 1, raw: true }) as any[][];
+        // Usamos raw: false para que Excel NOS entregue el STRING literal ('2026/03/01' o '01-03-2026')
+        // Esto evita que el Timezone de México (UTC-6) reste 6 horas y lo aviente al día anterior.
+        const jsonData = utils.sheet_to_json(worksheet, { header: 1, raw: false, dateNF: 'YYYY-MM-DD' }) as any[][];
 
         // Normalize dates to YYYY-MM-DD
         const normalizeDate = (val: any): string => {
             if (!val) return '';
-            if (val instanceof Date) {
-                // Fix timezone offset issues by using the UTC values since xlsx parses them as UTC midnights
-                const year = val.getUTCFullYear();
-                const month = String(val.getUTCMonth() + 1).padStart(2, '0');
-                const day = String(val.getUTCDate()).padStart(2, '0');
-                return `${year}-${month}-${day}`;
-            }
-            if (typeof val === 'number') {
-                // Excel date serial number
-                const d = new Date(Math.round((val - 25569) * 86400 * 1000));
-                const year = d.getUTCFullYear();
-                const month = String(d.getUTCMonth() + 1).padStart(2, '0');
-                const day = String(d.getUTCDate()).padStart(2, '0');
-                return `${year}-${month}-${day}`;
-            }
+
             if (typeof val === 'string') {
                 const str = val.trim();
+
+                // Si el string ya viene con el formato puro YYYY-MM-DD, devolvemos directo
+                if (str.match(/^\d{4}-\d{2}-\d{2}$/)) {
+                    return str;
+                }
+
+                // Si viene como YYYY/MM/DD
+                if (str.match(/^\d{4}\/\d{2}\/\d{2}$/)) {
+                    return str.replaceAll('/', '-');
+                }
+
                 // If it contains a slash or a hyphen but isn't already YYYY-MM-DD
                 if ((str.includes('/') || str.includes('-')) && !str.match(/^\d{4}-\d{2}-\d{2}/)) {
                     const parts = str.split(/[\/-]/);
