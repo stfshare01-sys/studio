@@ -115,11 +115,6 @@ export default function TeamManagementPage() {
 const formatDateDDMMYYYY = (dateStr: string): string => {
     if (!dateStr) return '';
 
-    // Si ya viene como DD-MM-YYYY o DD/MM/YYYY
-    if (/^\d{2}[-/]\d{2}[-/]\d{4}$/.test(dateStr)) {
-        return dateStr.replace(/\//g, '-');
-    }
-
     // Si viene como YYYY-MM-DD o YYYY/MM/DD
     if (/^\d{4}[-/]\d{2}[-/]\d{2}$/.test(dateStr)) {
         const parts = dateStr.split(/[-/]/);
@@ -128,7 +123,16 @@ const formatDateDDMMYYYY = (dateStr: string): string => {
         }
     }
 
-    // Fallback: intentar parsear
+    // Si viene del excel como MM-DD-YYYY o DD-MM-YYYY (ambos \d{2}-\d{2}-\d{4})
+    // Firebase Studio lo guarda como MM-DD-YYYY al parsiarlo en inglés (ej: 02-01-2026 = 1 Feb)
+    if (/^\d{2}[-/]\d{2}[-/]\d{4}$/.test(dateStr)) {
+        const parts = dateStr.split(/[-/]/);
+        // parts[0] = MM, parts[1] = DD, parts[2] = YYYY
+        // Retornamos DD-MM-YYYY
+        return `${parts[1]}-${parts[0]}-${parts[2]}`;
+    }
+
+    // Fallback absoluto: intentar parsear como ISO
     const d = new Date(dateStr.includes('T') ? dateStr : `${dateStr}T12:00:00`);
     if (isNaN(d.getTime())) return dateStr;
     const dd = d.getDate().toString().padStart(2, '0');
@@ -137,13 +141,14 @@ const formatDateDDMMYYYY = (dateStr: string): string => {
     return `${dd}-${mm}-${yyyy}`;
 };
 
-// Helper: Parsear a YYYY-MM-DD estricto para ordenamiento cronológico
+// Helper: Parsear estricto a YYYY-MM-DD para ordenamiento cronológico
 const parseDateForSort = (dateStr: string): string => {
     if (!dateStr) return '';
-    // Si viene como DD-MM-YYYY
+    // Si viene como MM-DD-YYYY (\d{2}-\d{2}-\d{4})
     if (/^\d{2}[-/]\d{2}[-/]\d{4}$/.test(dateStr)) {
         const parts = dateStr.split(/[-/]/);
-        return `${parts[2]}-${parts[1]}-${parts[0]}`;
+        // parts[0] = MM, parts[1] = DD, parts[2] = YYYY
+        return `${parts[2]}-${parts[0]}-${parts[1]}`;
     }
     // Si ya es YYYY-MM-DD, lo devuelve tal cual
     return dateStr;
