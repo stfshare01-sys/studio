@@ -114,13 +114,39 @@ export default function TeamManagementPage() {
 // Helper: Formato homologado DD-MM-AAAA
 const formatDateDDMMYYYY = (dateStr: string): string => {
     if (!dateStr) return '';
-    // Soporta YYYY-MM-DD y ISO timestamps
+
+    // Si ya viene como DD-MM-YYYY o DD/MM/YYYY
+    if (/^\d{2}[-/]\d{2}[-/]\d{4}$/.test(dateStr)) {
+        return dateStr.replace(/\//g, '-');
+    }
+
+    // Si viene como YYYY-MM-DD o YYYY/MM/DD
+    if (/^\d{4}[-/]\d{2}[-/]\d{2}$/.test(dateStr)) {
+        const parts = dateStr.split(/[-/]/);
+        if (parts.length >= 3) {
+            return `${parts[2].slice(0, 2)}-${parts[1]}-${parts[0]}`;
+        }
+    }
+
+    // Fallback: intentar parsear
     const d = new Date(dateStr.includes('T') ? dateStr : `${dateStr}T12:00:00`);
     if (isNaN(d.getTime())) return dateStr;
     const dd = d.getDate().toString().padStart(2, '0');
     const mm = (d.getMonth() + 1).toString().padStart(2, '0');
     const yyyy = d.getFullYear();
     return `${dd}-${mm}-${yyyy}`;
+};
+
+// Helper: Parsear a YYYY-MM-DD estricto para ordenamiento cronológico
+const parseDateForSort = (dateStr: string): string => {
+    if (!dateStr) return '';
+    // Si viene como DD-MM-YYYY
+    if (/^\d{2}[-/]\d{2}[-/]\d{4}$/.test(dateStr)) {
+        const parts = dateStr.split(/[-/]/);
+        return `${parts[2]}-${parts[1]}-${parts[0]}`;
+    }
+    // Si ya es YYYY-MM-DD, lo devuelve tal cual
+    return dateStr;
 };
 
 function TeamManagementContent() {
@@ -1237,7 +1263,7 @@ function TeamManagementContent() {
         const matchesDate = !activeBatchRange || (record.date >= activeBatchRange.start && record.date <= activeBatchRange.end);
 
         return matchesSearch && matchesStatus && filterByShift(record.employeeId) && matchesEmployee && matchesDate;
-    }).sort((a, b) => a.date.localeCompare(b.date));
+    }).sort((a, b) => parseDateForSort(a.date).localeCompare(parseDateForSort(b.date)));
 
     const filteredDepartures = earlyDepartures.filter(record => {
         const matchesSearch = !searchTerm ||
@@ -1251,14 +1277,14 @@ function TeamManagementContent() {
         const matchesDate = !activeBatchRange || (record.date >= activeBatchRange.start && record.date <= activeBatchRange.end);
 
         return matchesSearch && matchesStatus && filterByShift(record.employeeId) && matchesEmployee && matchesDate;
-    }).sort((a, b) => a.date.localeCompare(b.date));
+    }).sort((a, b) => parseDateForSort(a.date).localeCompare(parseDateForSort(b.date)));
 
     const filteredOvertime = overtimeRequests.filter(r => {
         const matchesEmployee = selectedEmployeeFilter === 'all' || r.employeeId === selectedEmployeeFilter;
         // Date Filter (assuming r.date exists on OvertimeRequest)
         const matchesDate = !activeBatchRange || (r.date >= activeBatchRange.start && r.date <= activeBatchRange.end);
         return filterByShift(r.employeeId) && matchesEmployee && matchesDate;
-    }).sort((a, b) => a.date.localeCompare(b.date));
+    }).sort((a, b) => parseDateForSort(a.date).localeCompare(parseDateForSort(b.date)));
 
     const filteredAssignments = shiftAssignments.filter(r => {
         const matchesEmployee = selectedEmployeeFilter === 'all' || r.employeeId === selectedEmployeeFilter;
@@ -1274,7 +1300,7 @@ function TeamManagementContent() {
         // Date Filter
         const matchesDate = !activeBatchRange || (p.date >= activeBatchRange.start && p.date <= activeBatchRange.end);
         return matchesEmployee && matchesDate;
-    }).sort((a, b) => a.date.localeCompare(b.date));
+    }).sort((a, b) => parseDateForSort(a.date).localeCompare(parseDateForSort(b.date)));
 
 
     const filteredMonthlyStats = monthlyStats.filter(stat => {
@@ -2011,7 +2037,7 @@ function TeamManagementContent() {
 
                                                     return (
                                                         <TableRow key={punch.id}>
-                                                            <TableCell>{punch.date}</TableCell>
+                                                            <TableCell>{formatDateDDMMYYYY(punch.date)}</TableCell>
                                                             <TableCell>
                                                                 <div className="flex items-center gap-3">
                                                                     <Avatar className="h-8 w-8">
@@ -2947,7 +2973,7 @@ function TeamManagementContent() {
                             <div className="bg-muted p-3 rounded-lg space-y-2">
                                 <div className="flex justify-between">
                                     <span className="font-medium">Fecha:</span>
-                                    <span>{justifyMissingPunchDialog.punch.date}</span>
+                                    <span>{formatDateDDMMYYYY(justifyMissingPunchDialog.punch.date)}</span>
                                 </div>
                                 <div className="flex justify-between">
                                     <span className="font-medium">Tipo Faltante:</span>
