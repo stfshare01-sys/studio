@@ -140,7 +140,7 @@ export default function AttendancePage() {
         // But for safety in Next.js client component:
         const { read, utils } = await import('xlsx');
 
-        const workbook = read(buffer, { type: 'array', cellDates: true });
+        const workbook = read(buffer, { type: 'array' });
         const firstSheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[firstSheetName];
 
