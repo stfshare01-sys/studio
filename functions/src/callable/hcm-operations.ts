@@ -209,8 +209,9 @@ export const consolidatePrenomina = onCall<ConsolidatePrenominaRequest>(
                 });
 
                 // 2. Void the attendance record (if linked)
-                if (departure.attendanceId) {
-                    const attendanceRef = db.collection('attendance').doc(departure.attendanceId);
+                const attendanceRecordId = departure.attendanceRecordId || departure.attendanceId;
+                if (attendanceRecordId) {
+                    const attendanceRef = db.collection('attendance').doc(attendanceRecordId);
                     await attendanceRef.update({
                         isVoid: true,
                         voidReason: 'Converted to absence due to unjustified early departure',
@@ -250,8 +251,9 @@ export const consolidatePrenomina = onCall<ConsolidatePrenominaRequest>(
                 });
 
                 // 2. Void the attendance record (if linked)
-                if (punch.attendanceId) {
-                    const attendanceRef = db.collection('attendance').doc(punch.attendanceId);
+                const attendanceRecordId = punch.attendanceRecordId || punch.attendanceId;
+                if (attendanceRecordId) {
+                    const attendanceRef = db.collection('attendance').doc(attendanceRecordId);
                     await attendanceRef.update({
                         isVoid: true,
                         voidReason: 'Converted to absence due to unjustified missing punch',

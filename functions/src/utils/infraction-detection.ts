@@ -370,12 +370,7 @@ export async function detectEarlyDeparture(
     // IDEMPOTENCY CHECK
     if (attendance.id) {
         const existingQuery = await db.collection('early_departures')
-            .where('attendanceId', '==', attendance.id) // Note: field name is attendanceId or attendanceRecordId?
-            // In incidence-actions, it was attendanceId for early_departure.
-            // In firestore-types, EarlyDeparture has no linkedIncidenceId BUT NOT attendanceId?
-            // Let's check firestore-types again. EarlyDeparture interface has NO attendanceId field defined!
-            // BUT TardinessRecord has 'attendanceRecordId'.
-            // I should double check logic.
+            .where('attendanceRecordId', '==', attendance.id)
             .limit(1)
             .get();
 
@@ -403,11 +398,11 @@ export async function detectEarlyDeparture(
         return null;
     }
 
-    // Aplicar tolerancia dinámica (diferencia es negativa, por eso usamos Math.abs)
-    const minutesEarly = Math.abs(minutesDifference) - toleranceMinutes;
+    // Aplicar REGLA DE CERO TOLERANCIA (según requerimiento de usuario)
+    const minutesEarly = Math.abs(minutesDifference);
 
     if (minutesEarly <= 0) {
-        return null; // Dentro de tolerancia
+        return null;
     }
 
     const nowISO = new Date().toISOString();
@@ -418,8 +413,7 @@ export async function detectEarlyDeparture(
         employeeId: employee.id,
         employeeName: employee.fullName,
         date: attendance.date,
-        // attendanceId: attendance.id, // If not in type, I can't add it without update.
-        // I should update type EarlyDeparture to include attendanceId (or attendanceRecordId for consistency).
+        attendanceRecordId: attendance.id,
         scheduledTime: schedule.endTime,
         actualTime: attendance.checkOut,
         minutesEarly,

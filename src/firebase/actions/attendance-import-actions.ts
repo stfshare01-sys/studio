@@ -445,10 +445,26 @@ export async function processAttendanceImport(
                 // -------------------------------------------------------------
                 // SHIFT RESOLUTION (Effective Shift for Date)
                 // -------------------------------------------------------------
-                if (employeeAssignments[actualUid]) {
-                    const effectiveAssignment = employeeAssignments[actualUid].find(sa =>
+                if (employeeAssignments[actualUid] && employeeAssignments[actualUid].length > 0) {
+                    // Filter all assignments that cover the exact date
+                    const validAssignments = employeeAssignments[actualUid].filter(sa =>
                         sa.startDate <= row.date && (!sa.endDate || sa.endDate >= row.date)
                     );
+
+                    // Sort by start date DESC (newest first).
+                    // If we had 'assignmentType' we could prioritize temporary, but since we map to EmployeeShiftAssignment
+                    // which only has shiftId, startDate, endDate, we will assume an assignment with an endDate (Temporary)
+                    // takes precedence over one without an endDate (Permanent).
+                    validAssignments.sort((a, b) => {
+                        // 1. Temporary overrides Permanent
+                        if (a.endDate && !b.endDate) return -1;
+                        if (!a.endDate && b.endDate) return 1;
+
+                        // 2. Newest start date first
+                        return b.startDate.localeCompare(a.startDate);
+                    });
+
+                    const effectiveAssignment = validAssignments[0];
 
                     if (effectiveAssignment) {
                         const sData = shiftCache[effectiveAssignment.shiftId];
