@@ -25,6 +25,8 @@ import {
     addDoc,
     updateDoc,
     getDocs,
+    getDoc,
+    deleteDoc,
     query,
     where,
     orderBy
@@ -112,6 +114,68 @@ export async function assignShift(
             assignedById,
             assignedByName
         );
+
+        // ── RECÁLCULO DE RETARDOS PARA TURNO TEMPORAL ────────────────────────
+        // Si el turno es temporal, corregir retardos ya registrados en el rango
+        // de fechas que corresponden al nuevo horario. No bloquea el flujo.
+        if (assignmentType === 'temporary' && endDate && newShiftId) {
+            (async () => {
+                try {
+                    // Obtener el horario del nuevo turno
+                    const shiftSnap = await getDoc(doc(firestore, 'shifts', newShiftId));
+                    if (!shiftSnap.exists()) return;
+
+                    const shiftData = shiftSnap.data();
+                    // Resolver startTime: nivel raíz primero, luego daySchedules si aplica
+                    const newStartTime: string = shiftData.startTime || '';
+                    const daySchedules: Record<string, { startTime: string }> = shiftData.daySchedules || {};
+                    const toleranceMinutes = 10; // mismo default que el import
+
+                    // Buscar retardos pendientes (no justificados) en el rango de fechas
+                    const tardinessQ = query(
+                        collection(firestore, 'tardiness_records'),
+                        where('employeeId', '==', employeeId),
+                        where('date', '>=', startDate),
+                        where('date', '<=', endDate),
+                        where('isJustified', '==', false)
+                    );
+                    const tardinessSnap = await getDocs(tardinessQ);
+
+                    for (const tardinessDoc of tardinessSnap.docs) {
+                        const tardData = tardinessDoc.data();
+                        const recordDate: string = tardData.date;
+
+                        // Resolver el startTime correcto para ese día (daySchedules tiene precedencia)
+                        let effectiveStart = newStartTime;
+                        if (Object.keys(daySchedules).length > 0) {
+                            const [y, m, d] = recordDate.split('-').map(Number);
+                            const dayOfWeek = new Date(y, m - 1, d).getDay();
+                            if (daySchedules[dayOfWeek]?.startTime) {
+                                effectiveStart = daySchedules[dayOfWeek].startTime;
+                            }
+                        }
+
+                        if (!effectiveStart || !tardData.actualTime) continue;
+
+                        // Recalcular minutesLate con el nuevo horario
+                        const [sH, sM] = effectiveStart.split(':').map(Number);
+                        const [aH, aM] = (tardData.actualTime as string).split(':').map(Number);
+                        const newMinutesLate = (aH * 60 + aM) - (sH * 60 + sM) - toleranceMinutes;
+
+                        if (newMinutesLate <= 0) {
+                            // Con el nuevo horario NO habría retardo → eliminarlo
+                            await deleteDoc(tardinessDoc.ref);
+                            console.log(`[HCM] assignShift: retardo eliminado para ${employeeId} en ${recordDate} (nuevo horario ${effectiveStart})`);
+                        }
+                        // Si newMinutesLate > 0, sigue siendo retardo → no tocar
+                    }
+                } catch (recalcError) {
+                    // No-bloquear: si falla el recálculo, el turno ya fue asignado OK
+                    console.error('[HCM] assignShift: error en recálculo de retardos (no crítico):', recalcError);
+                }
+            })();
+        }
+        // ─────────────────────────────────────────────────────────────────────
 
         return { success: true, assignmentId: ref.id };
     } catch (error) {

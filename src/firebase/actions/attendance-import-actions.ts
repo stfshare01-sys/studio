@@ -644,7 +644,9 @@ export async function processAttendanceImport(
                 };
 
                 const newAttendanceRef = await addDoc(attendanceRef, attendanceData);
+                existingRecordsMap.add(`${actualUid}_${row.date}`); // Previene duplicado si el archivo tiene filas repetidas
                 successCount++;
+
 
                 // -------------------------------------------------------------
                 // MISSING PUNCHES DETECTION
