@@ -68,6 +68,9 @@ interface ProcessAttendanceResult {
 
 export type OvertimeMode = 'daily_limit' | 'weekly_only';
 
+// Evita ejecuciones concurrentes por doble clic en la UI
+let isProcessingImport = false;
+
 export async function processAttendanceImport(
     rows: AttendanceImportRow[],
     uploadedById: string,
@@ -75,6 +78,15 @@ export async function processAttendanceImport(
     filename: string,
     options?: { overtimeMode?: OvertimeMode }
 ): Promise<ProcessAttendanceResult> {
+    if (isProcessingImport) {
+        return {
+            success: false,
+            errors: [{ row: 0, message: 'Ya hay una importación en curso. Por favor espere a que termine el proceso actual.' }]
+        };
+    }
+    
+    isProcessingImport = true;
+    
     const overtimeMode: OvertimeMode = options?.overtimeMode ?? 'daily_limit';
     try {
         const { firestore } = initializeFirebase();
