@@ -131,12 +131,11 @@ export async function assignShift(
                     const daySchedules: Record<string, { startTime: string }> = shiftData.daySchedules || {};
                     const toleranceMinutes = 10; // mismo default que el import
 
-                    // Buscar retardos pendientes (no justificados) en el rango de fechas
+                    // Buscar retardos pendientes (no justificados) del empleado
+                    // Evitamos usar >= y <= en date junto con '==' en isJustified para no requerir índice compuesto en Firestore
                     const tardinessQ = query(
                         collection(firestore, 'tardiness_records'),
                         where('employeeId', '==', employeeId),
-                        where('date', '>=', startDate),
-                        where('date', '<=', endDate),
                         where('isJustified', '==', false)
                     );
                     const tardinessSnap = await getDocs(tardinessQ);
@@ -144,6 +143,10 @@ export async function assignShift(
                     for (const tardinessDoc of tardinessSnap.docs) {
                         const tardData = tardinessDoc.data();
                         const recordDate: string = tardData.date;
+
+                        // Filtrar por fecha en memoria
+                        if (recordDate < startDate || recordDate > endDate) continue;
+
 
                         // Resolver el startTime correcto para ese día (daySchedules tiene precedencia)
                         let effectiveStart = newStartTime;
