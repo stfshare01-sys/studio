@@ -337,6 +337,9 @@ export async function approveOvertimeRequest(
             console.error('[Team] Error checking task completion:', taskError);
         }
 
+        // Recalcular solicitudes pendientes afectadas por el cambio de acumulado
+        recalculatePendingWeeklyOvertime(request.employeeId, request.date);
+
         return { success: true };
     } catch (error) {
         console.error('[Team] Error approving overtime request:', error);
@@ -413,9 +416,113 @@ export async function rejectOvertimeRequest(
             rejectionReason
         );
 
+        // Recalcular solicitudes pendientes afectadas por el cambio de acumulado
+        recalculatePendingWeeklyOvertime(request.employeeId, request.date);
+
         return { success: true };
     } catch (error) {
         console.error('[Team] Error rejecting overtime request:', error);
         return { success: false, error: 'Error rechazando solicitud de horas extras.' };
+    }
+}
+
+/**
+ * Recalcula el desglose de dobles/triples para las solicitudes pendientes
+ * de una semana específica, cuando una solicitud existente cambia de estado.
+ */
+async function recalculatePendingWeeklyOvertime(employeeId: string, baseDate: string) {
+    try {
+        const { firestore } = initializeFirebase();
+        
+        // 1. Obtener rango semanal (Lun-Dom)
+        const requestDate = new Date(baseDate);
+        const dayOfWeek = requestDate.getDay(); // 0=Dom, 1=Lun, etc.
+        const diffToMon = requestDate.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1);
+        
+        const weekStart = new Date(requestDate);
+        weekStart.setDate(diffToMon);
+        
+        const weekEnd = new Date(weekStart);
+        weekEnd.setDate(weekStart.getDate() + 6);
+
+        const startStr = weekStart.toISOString().split('T')[0];
+        const endStr = weekEnd.toISOString().split('T')[0];
+
+        // 2. Obtener todas las aprobadas y pendientes de esa semana
+        const weekRequestsQuery = query(
+            collection(firestore, 'overtime_requests'),
+            where('employeeId', '==', employeeId),
+            where('status', 'in', ['approved', 'partial', 'pending']),
+            where('date', '>=', startStr),
+            where('date', '<=', endStr),
+            orderBy('date', 'asc')
+        );
+        
+        const snap = await getDocs(weekRequestsQuery);
+        const allRequests = snap.docs.map(d => ({ id: d.id, ref: d.ref, data: d.data() as OvertimeRequest }));
+
+        const approvedRequests = allRequests.filter(r => r.data.status === 'approved' || r.data.status === 'partial');
+        const pendingRequests = allRequests.filter(r => r.data.status === 'pending');
+
+        if (pendingRequests.length === 0) return;
+
+        // 3. Reconstruir el cálculo linealmente
+        const dailyTotals: Record<string, number> = {};
+        approvedRequests.forEach(r => {
+            const hours = r.data.hoursApproved !== undefined ? r.data.hoursApproved : r.data.hoursRequested;
+            dailyTotals[r.data.date] = (dailyTotals[r.data.date] || 0) + hours;
+        });
+
+        // 4. Recalcular cada pendiente en orden cronológico
+        for (const pending of pendingRequests) {
+            const tempTotals = { ...dailyTotals };
+            tempTotals[pending.data.date] = (tempTotals[pending.data.date] || 0) + pending.data.hoursRequested;
+
+            const input = Object.entries(tempTotals)
+                .map(([date, hours]) => ({ date, hours }))
+                .sort((a, b) => a.date.localeCompare(b.date));
+
+            // Calcular acumulado CON esta PENDIENTE evaluada como "final" de la cadena simulada
+            const calculation = calculateOvertimeWithRounding(input, 0);
+
+            // Calcular acumulado SIN esta pendiente (para sacar el delta específico)
+            const inputWithoutThis = input.map(d => {
+                if (d.date === pending.data.date) return { date: d.date, hours: (dailyTotals[pending.data.date] || 0) };
+                return d;
+            }).filter(d => d.hours > 0);
+
+            const calcWithout = calculateOvertimeWithRounding(inputWithoutThis, 0);
+
+            // Encontrar el breakdown particular del día de esta solicitud
+            const newDayBreakdown = calculation.dailyBreakdown.find(d => d.date === pending.data.date);
+            const prevDayBreakdown = calcWithout.dailyBreakdown.find(d => d.date === pending.data.date);
+
+            let newDouble = 0;
+            let newTriple = 0;
+
+            if (newDayBreakdown) {
+                const prevDouble = prevDayBreakdown ? prevDayBreakdown.doubleHours : 0;
+                const prevTriple = prevDayBreakdown ? prevDayBreakdown.tripleHours : 0;
+
+                newDouble = newDayBreakdown.doubleHours - prevDouble;
+                newTriple = newDayBreakdown.tripleHours - prevTriple;
+            }
+
+            // Actualizar si cambiaron (optimiza escrituras)
+            if (pending.data.doubleHours !== newDouble || pending.data.tripleHours !== newTriple) {
+                await updateDoc(pending.ref, {
+                    doubleHours: newDouble,
+                    tripleHours: newTriple,
+                    updatedAt: new Date().toISOString()
+                });
+                console.log(`[Overtime] Recalculada pendiente ${pending.id} -> Dobles: ${newDouble}, Triples: ${newTriple}`);
+            }
+
+            // Agregamos esta pendiente como "ya contada" para la siguiente pendiente en el bucle
+            dailyTotals[pending.data.date] = (dailyTotals[pending.data.date] || 0) + pending.data.hoursRequested;
+        }
+
+    } catch (error) {
+        console.error('[Team] Error recalculando horas extras pendientes semanales:', error);
     }
 }
