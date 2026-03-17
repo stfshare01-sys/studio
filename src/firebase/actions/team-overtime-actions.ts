@@ -413,8 +413,6 @@ export async function rejectOvertimeRequest(
             rejectionReason
         );
 
-}
-
     } catch (error) {
         console.error('[Team] Error rejecting overtime request:', error);
         return { success: false, error: 'Error rechazando solicitud de horas extras.' };
