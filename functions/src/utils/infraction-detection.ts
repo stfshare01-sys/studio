@@ -367,17 +367,30 @@ export async function detectEarlyDeparture(
         return null;
     }
 
-    // IDEMPOTENCY CHECK
+    // IDEMPOTENCY CHECK — dos capas para eliminar race conditions
+    // Capa 1: por attendanceRecordId (vínculo directo)
     if (attendance.id) {
-        const existingQuery = await db.collection('early_departures')
+        const existingByAttendance = await db.collection('early_departures')
             .where('attendanceRecordId', '==', attendance.id)
             .limit(1)
             .get();
 
-        if (!existingQuery.empty) {
-            console.log(`[Infraction] Early departure record already exists for attendance ${attendance.id}, skipping.`);
+        if (!existingByAttendance.empty) {
+            console.log(`[Infraction] Early departure already exists for attendance ${attendance.id}, skipping.`);
             return null;
         }
+    }
+
+    // Capa 2: por employeeId + date (guard contra race conditions de escritura)
+    const existingByDate = await db.collection('early_departures')
+        .where('employeeId', '==', employee.id)
+        .where('date', '==', attendance.date)
+        .limit(1)
+        .get();
+
+    if (!existingByDate.empty) {
+        console.log(`[Infraction] Early departure already exists for ${employee.fullName} on ${attendance.date}, skipping.`);
+        return null;
     }
 
     const schedule = await getEmployeeSchedule(employee, db, attendance.date);
