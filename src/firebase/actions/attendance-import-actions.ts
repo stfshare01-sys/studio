@@ -900,16 +900,17 @@ export async function processAttendanceImport(
 
                         if (hasCoveringIncidence) {
                             // Permiso aprobado cubre esta fecha → no crear salida temprana
-                        } else {
-                            // BUG #1 FIX: Check exact database explicitly
-                            const duplicateQuery = query(
+                        } else if (!existingDeparturesMap.has(`${actualUid}_${row.date}`)) {
+                            // Guard de idempotencia: consulta directa a BD antes de insertar
+                            const duplicateEDQuery = query(
                                 collection(firestore, 'early_departures'),
                                 where('employeeId', '==', actualUid),
-                                where('date', '==', row.date)
+                                where('date', '==', row.date),
+                                limit(1)
                             );
-                            const duplicateSnap = await getDocs(duplicateQuery);
+                            const duplicateEDSnap = await getDocs(duplicateEDQuery);
 
-                            if (duplicateSnap.empty && !existingDeparturesMap.has(`${actualUid}_${row.date}`)) {
+                            if (duplicateEDSnap.empty) {
                                 const diffMs = scheduledEndDate.getTime() - checkOutDate.getTime();
                                 const minutesEarly = Math.floor(diffMs / 60000);
 
@@ -928,8 +929,15 @@ export async function processAttendanceImport(
                                     importBatchId: batchId
                                 };
 
-                                await addDoc(collection(firestore, 'early_departures'), departureData);
+                                const edRef = await addDoc(collection(firestore, 'early_departures'), departureData);
+                                // Registrar en map para evitar duplicado si el Excel repite la fila
                                 existingDeparturesMap.add(`${actualUid}_${row.date}`);
+                                newRecordsToJustify.push({
+                                    id: edRef.id,
+                                    employeeId: actualUid,
+                                    date: row.date,
+                                    type: 'early_departure'
+                                });
                             }
                         }
                     }
@@ -996,6 +1004,9 @@ export async function processAttendanceImport(
     } catch (error) {
         console.error('[HCM] Error processing attendance import:', error);
         return { success: false, errors: [{ row: 0, message: 'Error general en la importación' }] };
+    } finally {
+        // Siempre liberar el mutex al terminar (éxito o error)
+        isProcessingImport = false;
     }
 }
 
