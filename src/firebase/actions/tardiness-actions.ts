@@ -338,6 +338,23 @@ export async function recordEarlyDeparture(
             return { success: false, error: 'No hay salida temprana (salió a tiempo o después).' };
         }
 
+        // ── GUARD DE IDEMPOTENCIA ──────────────────────────────────────────────
+        // Verifica si ya existe una salida temprana para este empleado en esta fecha.
+        // Evita duplicados sin importar desde qué ruta se invoque esta función.
+        const idempotencyQuery = query(
+            collection(firestore, 'early_departures'),
+            where('employeeId', '==', employeeId),
+            where('date', '==', date),
+            limit(1)
+        );
+        const idempotencySnap = await getDocs(idempotencyQuery);
+        if (!idempotencySnap.empty) {
+            const existingId = idempotencySnap.docs[0].id;
+            console.warn(`[HCM] recordEarlyDeparture: salida temprana duplicada ignorada para ${employeeId} en ${date}. ID existente: ${existingId}`);
+            return { success: true, earlyDepartureId: existingId, minutesEarly };
+        }
+        // ──────────────────────────────────────────────────────────────────────
+
         const earlyDepartureData: Omit<EarlyDepartureRecord, 'id'> = {
             employeeId,
             employeeName,
