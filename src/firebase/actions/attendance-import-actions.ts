@@ -16,7 +16,7 @@
  */
 
 import {
-    doc, collection, addDoc, getDoc, getDocs, query, where, limit,
+    doc, collection, addDoc, updateDoc, getDoc, getDocs, query, where, limit,
 } from 'firebase/firestore';
 import { initializeFirebase } from '@/firebase';
 import { setDocumentNonBlocking, updateDocumentNonBlocking } from '../non-blocking-updates';
@@ -630,7 +630,119 @@ export async function processAttendanceImport(
                     attendanceValidationNotes = validation.message ?? null;
                 }
 
-                // Create attendance record
+                // Fallback: si scheduledStart/scheduledEnd siguen vacíos, usar defaults por tipo
+                if (!scheduledStart || !scheduledEnd) {
+                    switch (shiftConfig.type) {
+                        case 'diurnal':
+                            scheduledStart = scheduledStart || '09:00';
+                            scheduledEnd = scheduledEnd || '18:00';
+                            break;
+                        case 'mixed':
+                            scheduledStart = scheduledStart || '10:00';
+                            scheduledEnd = scheduledEnd || '19:00';
+                            break;
+                        case 'nocturnal':
+                            scheduledStart = scheduledStart || '20:00';
+                            scheduledEnd = scheduledEnd || '05:00';
+                            break;
+                        default:
+                            scheduledStart = scheduledStart || '09:00';
+                            scheduledEnd = scheduledEnd || '18:00';
+                    }
+                }
+
+                // -----------------------------------------------------------------
+                // PRE-CREAR infracciones ANTES de escribir attendance.
+                // La Cloud Function onAttendanceCreated se dispara al escribir
+                // en 'attendance'. Si tardiness/early_departure ya existen,
+                // su guard de idempotencia los descarta automáticamente.
+                // -----------------------------------------------------------------
+
+                // Detectar retardo pre-emptivamente
+                let preCreatedTardinessId: string | undefined;
+                if (row.checkIn && (!isRestDay || shiftConfig.allowOvertime) && scheduledStart) {
+                    const checkInDate = new Date(`2000-01-01T${row.checkIn}`);
+                    const scheduledStartDate = new Date(`2000-01-01T${scheduledStart}`);
+                    const toleranceDate = new Date(scheduledStartDate.getTime() + shiftConfig.toleranceMinutes * 60000);
+
+                    if (checkInDate > toleranceDate) {
+                        const empIncidences = approvedIncidencesMap[actualUid] || [];
+                        const hasCovering = empIncidences.some(inc =>
+                            inc.startDate <= row.date && inc.endDate >= row.date
+                        );
+                        if (!hasCovering && !existingTardinessMap.has(`${actualUid}_${row.date}`)) {
+                            const dupTSnap = await getDocs(query(
+                                collection(firestore, 'tardiness_records'),
+                                where('employeeId', '==', actualUid),
+                                where('date', '==', row.date), limit(1)
+                            ));
+                            if (dupTSnap.empty) {
+                                const diffMs = checkInDate.getTime() - toleranceDate.getTime();
+                                const preRef = await addDoc(collection(firestore, 'tardiness_records'), {
+                                    employeeId: actualUid,
+                                    employeeName: shiftConfig.fullName ?? actualUid,
+                                    date: row.date,
+                                    attendanceRecordId: '__pending__',
+                                    type: 'entry',
+                                    scheduledTime: scheduledStart,
+                                    actualTime: row.checkIn,
+                                    minutesLate: Math.floor(diffMs / 60000),
+                                    isJustified: false,
+                                    justificationStatus: 'pending',
+                                    sanctionApplied: false,
+                                    importBatchId: batchId,
+                                    createdAt: now,
+                                    updatedAt: now,
+                                } as any);
+                                preCreatedTardinessId = preRef.id;
+                                existingTardinessMap.add(`${actualUid}_${row.date}`);
+                            }
+                        }
+                    }
+                }
+
+                // Detectar salida temprana pre-emptivamente
+                let preCreatedEarlyId: string | undefined;
+                if (row.checkOut && (!isRestDay || shiftConfig.allowOvertime) && scheduledEnd) {
+                    const checkOutDate = new Date(`2000-01-01T${row.checkOut}`);
+                    const scheduledEndDate = new Date(`2000-01-01T${scheduledEnd}`);
+
+                    if (checkOutDate < scheduledEndDate) {
+                        const empIncidences = approvedIncidencesMap[actualUid] || [];
+                        const hasCovering = empIncidences.some(inc =>
+                            inc.startDate <= row.date && inc.endDate >= row.date
+                        );
+                        if (!hasCovering && !existingDeparturesMap.has(`${actualUid}_${row.date}`)) {
+                            const dupEDSnap = await getDocs(query(
+                                collection(firestore, 'early_departures'),
+                                where('employeeId', '==', actualUid),
+                                where('date', '==', row.date), limit(1)
+                            ));
+                            if (dupEDSnap.empty) {
+                                const diffMs = scheduledEndDate.getTime() - checkOutDate.getTime();
+                                const preRef = await addDoc(collection(firestore, 'early_departures'), {
+                                    employeeId: actualUid,
+                                    employeeName: shiftConfig.fullName ?? actualUid,
+                                    date: row.date,
+                                    attendanceRecordId: '__pending__',
+                                    scheduledTime: scheduledEnd,
+                                    actualTime: row.checkOut,
+                                    minutesEarly: Math.floor(diffMs / 60000),
+                                    isJustified: false,
+                                    justificationStatus: 'pending',
+                                    importBatchId: batchId,
+                                    createdAt: now,
+                                    updatedAt: now,
+                                });
+                                preCreatedEarlyId = preRef.id;
+                                existingDeparturesMap.add(`${actualUid}_${row.date}`);
+                            }
+                        }
+                    }
+                }
+
+                // Create attendance record — se hace DESPUÉS de las infracciones
+                // para que la CF ya las encuentre en su check de idempotencia.
                 const attendanceRef = collection(firestore, 'attendance');
                 const attendanceData: Omit<AttendanceRecord, 'id'> = {
                     employeeId: actualUid,
@@ -656,8 +768,20 @@ export async function processAttendanceImport(
                 };
 
                 const newAttendanceRef = await addDoc(attendanceRef, attendanceData);
-                existingRecordsMap.add(`${actualUid}_${row.date}`); // Previene duplicado si el archivo tiene filas repetidas
+                existingRecordsMap.add(`${actualUid}_${row.date}`);
                 successCount++;
+
+                // Actualizar el attendanceRecordId en las infracciones pre-creadas
+                if (preCreatedTardinessId) {
+                    updateDoc(doc(firestore, 'tardiness_records', preCreatedTardinessId), {
+                        attendanceRecordId: newAttendanceRef.id, updatedAt: now
+                    }).catch(() => {});
+                }
+                if (preCreatedEarlyId) {
+                    updateDoc(doc(firestore, 'early_departures', preCreatedEarlyId), {
+                        attendanceRecordId: newAttendanceRef.id, updatedAt: now
+                    }).catch(() => {});
+                }
 
 
                 // -------------------------------------------------------------
@@ -806,141 +930,26 @@ export async function processAttendanceImport(
                 }
 
                 // -------------------------------------------------------------
-                // TARDINESS & EARLY DEPARTURE DETECTION
+                // TARDINESS & EARLY DEPARTURE — registrar pre-creados en newRecordsToJustify
+                // ya fueron creados ANTES de attendance (ver bloque de pre-creación arriba).
+                // Solo los añadimos a la lista para auto-justificación si procede.
                 // -------------------------------------------------------------
-                if (!scheduledStart || !scheduledEnd) {
-                    switch (shiftConfig.type) {
-                        case 'diurnal':
-                            scheduledStart = scheduledStart || '09:00';
-                            scheduledEnd = scheduledEnd || '18:00';
-                            break;
-                        case 'mixed':
-                            scheduledStart = scheduledStart || '10:00';
-                            scheduledEnd = scheduledEnd || '19:00';
-                            break;
-                        case 'nocturnal':
-                            scheduledStart = scheduledStart || '20:00';
-                            scheduledEnd = scheduledEnd || '05:00';
-                            break;
-                        default:
-                            scheduledStart = scheduledStart || '09:00';
-                            scheduledEnd = scheduledEnd || '18:00';
-                    }
+                if (preCreatedTardinessId) {
+                    newRecordsToJustify.push({
+                        id: preCreatedTardinessId,
+                        employeeId: actualUid,
+                        date: row.date,
+                        type: 'tardiness'
+                    });
                 }
 
-                const toleranceMinutes = shiftConfig.toleranceMinutes;
-
-                // Check Tardiness
-                if (row.checkIn && (!isRestDay || shiftConfig.allowOvertime)) {
-                    const checkInDate = new Date(`2000-01-01T${row.checkIn}`);
-                    const scheduledStartDate = new Date(`2000-01-01T${scheduledStart}`);
-                    const toleranceDate = new Date(scheduledStartDate.getTime() + toleranceMinutes * 60000);
-
-                    if (checkInDate > toleranceDate) {
-                        const empIncidences = approvedIncidencesMap[actualUid] || [];
-                        const hasCoveringIncidence = empIncidences.some(inc =>
-                            inc.startDate <= row.date && inc.endDate >= row.date
-                        );
-
-                        if (hasCoveringIncidence) {
-                            // Permiso aprobado cubre esta fecha → no crear retardo
-                        } else {
-                            // BUG #1 FIX: Check exact database explicitly
-                            const duplicateQuery = query(
-                                collection(firestore, 'tardiness_records'),
-                                where('employeeId', '==', actualUid),
-                                where('date', '==', row.date)
-                            );
-                            const duplicateSnap = await getDocs(duplicateQuery);
-
-                            if (duplicateSnap.empty && !existingTardinessMap.has(`${actualUid}_${row.date}`)) {
-                                const diffMs = checkInDate.getTime() - toleranceDate.getTime();
-                                const minutesLate = Math.floor(diffMs / 60000);
-
-                                const tardinessData: Omit<TardinessRecord, 'id'> = {
-                                    employeeId: actualUid,
-                                    employeeName: shiftConfig.fullName ?? actualUid,
-                                    date: row.date,
-                                    attendanceRecordId: newAttendanceRef.id,
-                                    type: 'entry',
-                                    scheduledTime: scheduledStart,
-                                    actualTime: row.checkIn,
-                                    minutesLate,
-                                    isJustified: false,
-                                    justificationStatus: 'pending',
-                                    sanctionApplied: false,
-                                    createdAt: now,
-                                    updatedAt: now,
-                                    importBatchId: batchId
-                                } as any;
-
-                                const tRef = await addDoc(collection(firestore, 'tardiness_records'), tardinessData);
-                                existingTardinessMap.add(`${actualUid}_${row.date}`);
-                                newRecordsToJustify.push({
-                                    id: tRef.id,
-                                    employeeId: actualUid,
-                                    date: row.date,
-                                    type: 'tardiness'
-                                });
-                            }
-                        }
-                    }
-                }
-
-                // Check Early Departure
-                if (row.checkOut && (!isRestDay || shiftConfig.allowOvertime)) {
-                    const checkOutDate = new Date(`2000-01-01T${row.checkOut}`);
-                    const scheduledEndDate = new Date(`2000-01-01T${scheduledEnd}`);
-
-                    if (checkOutDate < scheduledEndDate) {
-                        const empIncidences = approvedIncidencesMap[actualUid] || [];
-                        const hasCoveringIncidence = empIncidences.some(inc =>
-                            inc.startDate <= row.date && inc.endDate >= row.date
-                        );
-
-                        if (hasCoveringIncidence) {
-                            // Permiso aprobado cubre esta fecha → no crear salida temprana
-                        } else if (!existingDeparturesMap.has(`${actualUid}_${row.date}`)) {
-                            // Guard de idempotencia: consulta directa a BD antes de insertar
-                            const duplicateEDQuery = query(
-                                collection(firestore, 'early_departures'),
-                                where('employeeId', '==', actualUid),
-                                where('date', '==', row.date),
-                                limit(1)
-                            );
-                            const duplicateEDSnap = await getDocs(duplicateEDQuery);
-
-                            if (duplicateEDSnap.empty) {
-                                const diffMs = scheduledEndDate.getTime() - checkOutDate.getTime();
-                                const minutesEarly = Math.floor(diffMs / 60000);
-
-                                const departureData = {
-                                    employeeId: actualUid,
-                                    employeeName: shiftConfig.fullName ?? actualUid,
-                                    date: row.date,
-                                    attendanceRecordId: newAttendanceRef.id,
-                                    scheduledTime: scheduledEnd,
-                                    actualTime: row.checkOut,
-                                    minutesEarly,
-                                    isJustified: false,
-                                    justificationStatus: 'pending',
-                                    createdAt: now,
-                                    updatedAt: now,
-                                    importBatchId: batchId
-                                };
-
-                                const edRef = await addDoc(collection(firestore, 'early_departures'), departureData);
-                                // Registrar en map para evitar duplicado si el Excel repite la fila
-                                existingDeparturesMap.add(`${actualUid}_${row.date}`);
-                                newRecordsToJustify.push({
-                                    id: edRef.id,
-                                    employeeId: actualUid,
-                                    date: row.date,
-                                    type: 'early_departure'
-                                });
-                            }
-                        }
-                    }
+                if (preCreatedEarlyId) {
+                    newRecordsToJustify.push({
+                        id: preCreatedEarlyId,
+                        employeeId: actualUid,
+                        date: row.date,
+                        type: 'early_departure'
+                    });
                 }
             } catch (rowError) {
                 errors.push({ row: rowNum, message: `Error procesando fila: ${rowError}` });
