@@ -33,6 +33,14 @@ export const onAttendanceCreated = onDocumentCreated(
         }
 
         const data = snapshot.data();
+
+        // GUARD: Si el documento viene de una importación masiva, el import ya creó las
+        // infracciones con el turno efectivo correcto. Omitir para evitar duplicados.
+        if (data.importBatchId) {
+            console.log(`[HCM Trigger] Attendance ${snapshot.id} procesado por import (batch: ${data.importBatchId}). Detección automática omitida.`);
+            return;
+        }
+
         const attendance = { ...data, id: snapshot.id } as AttendanceRecord;
 
         if (!attendance) {
