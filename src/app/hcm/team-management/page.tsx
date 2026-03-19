@@ -1181,7 +1181,7 @@ function TeamManagementContent() {
                     status: 'absence_unjustified',
                     processed: true,
                     processedAt: serverTimestamp(),
-                    processedBy: user.uid,
+                    processedBy: user.uid || user.id || 'system',
                     updatedAt: serverTimestamp(),
                 });
             });
