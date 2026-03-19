@@ -653,10 +653,10 @@ export async function processAttendanceImport(
 
                 // -----------------------------------------------------------------
                 // PRE-CREAR infracciones ANTES de escribir attendance.
-                // La Cloud Function onAttendanceCreated se dispara al escribir
-                // en 'attendance'. Si tardiness/early_departure ya existen,
-                // su guard de idempotencia los descarta automáticamente.
                 // -----------------------------------------------------------------
+                
+                // Generar el ID de attendance anticipadamente para evitar race conditions con CF
+                const newAttendanceRef = doc(collection(firestore, 'attendance'));
 
                 // Detectar retardo pre-emptivamente
                 let preCreatedTardinessId: string | undefined;
@@ -684,7 +684,7 @@ export async function processAttendanceImport(
                                     employeeId: actualUid,
                                     employeeName: shiftConfig.fullName ?? actualUid,
                                     date: row.date,
-                                    attendanceRecordId: '__pending__',
+                                    attendanceRecordId: newAttendanceRef.id,
                                     type: 'entry',
                                     scheduledTime: scheduledStart,
                                     actualTime: row.checkIn,
@@ -704,50 +704,11 @@ export async function processAttendanceImport(
                 }
 
                 // Detectar salida temprana pre-emptivamente
+                // DESHABILITADO: Dejamos que la Cloud Function se encargue de crearlo para evitar duplicados.
                 let preCreatedEarlyId: string | undefined;
-                if (row.checkOut && (!isRestDay || shiftConfig.allowOvertime) && scheduledEnd) {
-                    const checkOutDate = new Date(`2000-01-01T${row.checkOut}`);
-                    const scheduledEndDate = new Date(`2000-01-01T${scheduledEnd}`);
-
-                    if (checkOutDate < scheduledEndDate) {
-                        const empIncidences = approvedIncidencesMap[actualUid] || [];
-                        const hasCovering = empIncidences.some(inc =>
-                            inc.startDate <= row.date && inc.endDate >= row.date
-                        );
-                        if (!hasCovering && !existingDeparturesMap.has(`${actualUid}_${row.date}`)) {
-                            const dupEDSnap = await getDocs(query(
-                                collection(firestore, 'early_departures'),
-                                where('employeeId', '==', actualUid),
-                                where('date', '==', row.date), limit(1)
-                            ));
-                            if (dupEDSnap.empty) {
-                                const diffMs = scheduledEndDate.getTime() - checkOutDate.getTime();
-                                const docId = `ed_${actualUid}_${row.date}`;
-                                const preRef = doc(firestore, 'early_departures', docId);
-                                await setDoc(preRef, {
-                                    employeeId: actualUid,
-                                    employeeName: shiftConfig.fullName ?? actualUid,
-                                    date: row.date,
-                                    attendanceRecordId: '__pending__',
-                                    scheduledTime: scheduledEnd,
-                                    actualTime: row.checkOut,
-                                    minutesEarly: Math.floor(diffMs / 60000),
-                                    isJustified: false,
-                                    justificationStatus: 'pending',
-                                    importBatchId: batchId,
-                                    createdAt: now,
-                                    updatedAt: now,
-                                });
-                                preCreatedEarlyId = docId;
-                                existingDeparturesMap.add(`${actualUid}_${row.date}`);
-                            }
-                        }
-                    }
-                }
 
                 // Create attendance record — se hace DESPUÉS de las infracciones
                 // para que la CF ya las encuentre en su check de idempotencia.
-                const attendanceRef = collection(firestore, 'attendance');
                 const attendanceData: Omit<AttendanceRecord, 'id'> = {
                     employeeId: actualUid,
                     employeeName: shiftConfig.fullName,
@@ -771,21 +732,9 @@ export async function processAttendanceImport(
                     createdAt: now
                 };
 
-                const newAttendanceRef = await addDoc(attendanceRef, attendanceData);
+                await setDoc(newAttendanceRef, attendanceData);
                 existingRecordsMap.add(`${actualUid}_${row.date}`);
                 successCount++;
-
-                // Actualizar el attendanceRecordId en las infracciones pre-creadas
-                if (preCreatedTardinessId) {
-                    updateDoc(doc(firestore, 'tardiness_records', preCreatedTardinessId), {
-                        attendanceRecordId: newAttendanceRef.id, updatedAt: now
-                    }).catch(() => {});
-                }
-                if (preCreatedEarlyId) {
-                    updateDoc(doc(firestore, 'early_departures', preCreatedEarlyId), {
-                        attendanceRecordId: newAttendanceRef.id, updatedAt: now
-                    }).catch(() => {});
-                }
 
 
                 // -------------------------------------------------------------

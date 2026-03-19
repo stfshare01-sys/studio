@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import SiteLayout from '@/components/site-layout';
 import { useFirebase, useMemoFirebase } from '@/firebase/provider';
 import { useCollection } from '@/firebase/firestore/use-collection';
-import { getFirestore, doc, getDoc, setDoc, updateDoc, Timestamp, collection, query, where, getDocs, orderBy, limit as firestoreLimit, limit } from 'firebase/firestore';
+import { getFirestore, doc, getDoc, setDoc, updateDoc, Timestamp, collection, query, where, getDocs, orderBy, limit as firestoreLimit, limit, runTransaction, serverTimestamp } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -1152,24 +1152,26 @@ function TeamManagementContent() {
 
         setSubmitting(true);
         try {
-            const punchRef = doc(firestore, 'missing_punches', punch.id);
+            await runTransaction(firestore, async (transaction) => {
+                const punchRef = doc(firestore, 'missing_punches', punch.id);
+                
+                // Si existe attendanceRecordId, lo actualizamos en la misma transacción
+                if (punch.attendanceRecordId && punch.attendanceRecordId !== '__pending__') {
+                    const attendanceRef = doc(firestore, 'attendance', punch.attendanceRecordId);
+                    transaction.update(attendanceRef, {
+                        status: 'absence_unjustified',
+                        nomipaqCode: '1FINJ',
+                        updatedAt: serverTimestamp(),
+                    });
+                }
 
-            await updateDoc(punchRef, {
-                resultedInAbsence: true,
-                processedAt: new Date().toISOString(),
-                processedBy: user.id,
-                updatedAt: new Date().toISOString(),
-            });
-
-            // Si existe attendanceRecordId, marcar como falta
-            if (punch.attendanceRecordId) {
-                const attendanceRef = doc(firestore, 'attendance', punch.attendanceRecordId);
-                await updateDoc(attendanceRef, {
-                    status: 'absence_unjustified',
-                    nomipaqCode: '1FINJ',
-                    updatedAt: new Date().toISOString(),
+                transaction.update(punchRef, {
+                    resultedInAbsence: true,
+                    processedAt: serverTimestamp(),
+                    processedBy: user.id,
+                    updatedAt: serverTimestamp(),
                 });
-            }
+            });
 
             toast({
                 title: "Marcaje marcado como falta",
