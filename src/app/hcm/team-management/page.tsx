@@ -1162,13 +1162,15 @@ function TeamManagementContent() {
                         status: 'absence_unjustified',
                         nomipaqCode: '1FINJ',
                         updatedAt: serverTimestamp(),
+                        // Agregar el evento al array podría requerir un read, por ahora solo actualizamos status
                     });
                 }
 
                 transaction.update(punchRef, {
-                    resultedInAbsence: true,
+                    status: 'absence_unjustified',
+                    processed: true,
                     processedAt: serverTimestamp(),
-                    processedBy: user.id,
+                    processedBy: user.uid,
                     updatedAt: serverTimestamp(),
                 });
             });
