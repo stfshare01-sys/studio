@@ -16,7 +16,7 @@
  */
 
 import {
-    doc, collection, addDoc, updateDoc, getDoc, getDocs, query, where, limit,
+    doc, collection, addDoc, updateDoc, getDoc, getDocs, query, where, limit, setDoc,
 } from 'firebase/firestore';
 import { initializeFirebase } from '@/firebase';
 import { setDocumentNonBlocking, updateDocumentNonBlocking } from '../non-blocking-updates';
@@ -678,7 +678,9 @@ export async function processAttendanceImport(
                             ));
                             if (dupTSnap.empty) {
                                 const diffMs = checkInDate.getTime() - toleranceDate.getTime();
-                                const preRef = await addDoc(collection(firestore, 'tardiness_records'), {
+                                const docId = `tard_${actualUid}_${row.date}`;
+                                const preRef = doc(firestore, 'tardiness_records', docId);
+                                await setDoc(preRef, {
                                     employeeId: actualUid,
                                     employeeName: shiftConfig.fullName ?? actualUid,
                                     date: row.date,
@@ -694,7 +696,7 @@ export async function processAttendanceImport(
                                     createdAt: now,
                                     updatedAt: now,
                                 } as any);
-                                preCreatedTardinessId = preRef.id;
+                                preCreatedTardinessId = docId;
                                 existingTardinessMap.add(`${actualUid}_${row.date}`);
                             }
                         }
@@ -720,7 +722,9 @@ export async function processAttendanceImport(
                             ));
                             if (dupEDSnap.empty) {
                                 const diffMs = scheduledEndDate.getTime() - checkOutDate.getTime();
-                                const preRef = await addDoc(collection(firestore, 'early_departures'), {
+                                const docId = `ed_${actualUid}_${row.date}`;
+                                const preRef = doc(firestore, 'early_departures', docId);
+                                await setDoc(preRef, {
                                     employeeId: actualUid,
                                     employeeName: shiftConfig.fullName ?? actualUid,
                                     date: row.date,
@@ -734,7 +738,7 @@ export async function processAttendanceImport(
                                     createdAt: now,
                                     updatedAt: now,
                                 });
-                                preCreatedEarlyId = preRef.id;
+                                preCreatedEarlyId = docId;
                                 existingDeparturesMap.add(`${actualUid}_${row.date}`);
                             }
                         }

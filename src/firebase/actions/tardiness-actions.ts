@@ -773,6 +773,11 @@ export async function syncMissingPunchesForEmployee(employeeId: string): Promise
             else if (!att.checkOut) missingType = 'exit';
 
             if (missingType) {
+                // Si es su día de descanso y no tiene ningún marcaje, simplemente no fue, no es falta
+                if (att.isRestDay && !att.isRestDayWorked && missingType === 'both') {
+                    continue;
+                }
+
                 // Verificar si ya existe un registro en missing_punches para este marcaje
                 const existingQuery = query(
                     collection(firestore, 'missing_punches'),

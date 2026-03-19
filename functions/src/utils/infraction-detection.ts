@@ -173,11 +173,20 @@ export async function getEmployeeSchedule(
 
     if (employee.shiftAssignments && employee.shiftAssignments.length > 0 && dateStr) {
         // Find assignment covering dateStr (YYYY-MM-DD)
-        const assignment = employee.shiftAssignments.find(sa =>
+        const validAssignments = employee.shiftAssignments.filter(sa =>
             sa.startDate <= dateStr && (!sa.endDate || sa.endDate >= dateStr)
         );
-        if (assignment) {
-            shiftId = assignment.shiftId;
+        
+        // Sort by start date DESC (newest first).
+        // Temporary overrides Permanent
+        validAssignments.sort((a, b) => {
+            if (a.endDate && !b.endDate) return -1;
+            if (!a.endDate && b.endDate) return 1;
+            return b.startDate.localeCompare(a.startDate);
+        });
+
+        if (validAssignments.length > 0) {
+            shiftId = validAssignments[0].shiftId;
         }
     }
 

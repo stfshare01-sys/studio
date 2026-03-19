@@ -2476,40 +2476,16 @@ function TeamManagementContent() {
                                 placeholder="Ej. Tráfico pesado, cita médica..."
                             />
                         </div>
-                        {canEmployeeUseTimeBank(justifyTardinessDialog.record?.employeeId) && (() => {
-                            const record = justifyTardinessDialog.record;
-                            const minutesLate = record?.minutesLate || 0;
-                            // Si ≥30 min de retardo Y el empleado genera HE → bolsa obligatoria
-                            const employeeHasOvertime = overtimeRequests.some(
-                                ot => ot.employeeId === record?.employeeId
-                            );
-                            const isForced = minutesLate >= 30 && employeeHasOvertime;
-
-                            // Forzar useHourBank si aplica
-                            if (isForced && !useHourBank) {
-                                // Side-effect seguro: solo se llama si aún no está forzado
-                                setTimeout(() => setUseHourBank(true), 0);
-                            }
-
-                            return (
-                                <div className="flex items-center space-x-2">
-                                    <Switch
-                                        id="tardiness-hourbank"
-                                        checked={isForced ? true : useHourBank}
-                                        onCheckedChange={isForced ? undefined : setUseHourBank}
-                                        disabled={isForced}
-                                    />
-                                    <Label htmlFor="tardiness-hourbank">
-                                        Compensar con Bolsa de Horas
-                                        {isForced && (
-                                            <span className="text-xs text-amber-600 ml-1">
-                                                (obligatorio: retardo ≥30 min con horas extras)
-                                            </span>
-                                        )}
-                                    </Label>
-                                </div>
-                            );
-                        })()}
+                        <div className="flex items-center justify-between">
+                            <Label htmlFor="compensate-tardiness" className="flex flex-col space-y-1">
+                                <span>Compensar con Bolsa de Horas</span>
+                            </Label>
+                            <Switch
+                                id="compensate-tardiness"
+                                checked={useHourBank}
+                                onCheckedChange={setUseHourBank}
+                            />
+                        </div>
                     </div>
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setJustifyTardinessDialog({ open: false })}>Cancelar</Button>
