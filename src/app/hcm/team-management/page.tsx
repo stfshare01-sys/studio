@@ -1154,16 +1154,27 @@ function TeamManagementContent() {
         try {
             await runTransaction(firestore, async (transaction) => {
                 const punchRef = doc(firestore, 'missing_punches', punch.id);
+                // MUST READ BEFORE WRITE in Firestore transactions
+                const punchDoc = await transaction.get(punchRef);
                 
+                if (!punchDoc.exists()) {
+                    throw new Error("El marcaje faltante ya no existe o fue eliminado.");
+                }
+
                 // Si existe attendanceRecordId, lo actualizamos en la misma transacción
                 if (punch.attendanceRecordId && punch.attendanceRecordId !== '__pending__') {
                     const attendanceRef = doc(firestore, 'attendance', punch.attendanceRecordId);
-                    transaction.update(attendanceRef, {
-                        status: 'absence_unjustified',
-                        nomipaqCode: '1FINJ',
-                        updatedAt: serverTimestamp(),
-                        // Agregar el evento al array podría requerir un read, por ahora solo actualizamos status
-                    });
+                    const attendanceDoc = await transaction.get(attendanceRef);
+                    
+                    if (attendanceDoc.exists()) {
+                        transaction.update(attendanceRef, {
+                            status: 'absence_unjustified',
+                            nomipaqCode: '1FINJ',
+                            updatedAt: serverTimestamp(),
+                            // Agregar el evento al array podría requerir manipulación adicional, 
+                            // por ahora solo actualizamos el status principal.
+                        });
+                    }
                 }
 
                 transaction.update(punchRef, {

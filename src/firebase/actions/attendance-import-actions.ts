@@ -704,8 +704,56 @@ export async function processAttendanceImport(
                 }
 
                 // Detectar salida temprana pre-emptivamente
-                // DESHABILITADO: Dejamos que la Cloud Function se encargue de crearlo para evitar duplicados.
                 let preCreatedEarlyId: string | undefined;
+
+                if (row.checkOut && scheduledEnd && !isCompanyBenefitDate && !isRestDay) {
+                    const [actH, actM] = row.checkOut.split(':').map(Number);
+                    const [schedH, schedM] = scheduledEnd.split(':').map(Number);
+                    
+                    if (!isNaN(actH) && !isNaN(schedH)) {
+                        const actualMinutes = actH * 60 + actM;
+                        const scheduledMinutes = schedH * 60 + schedM;
+                        const minutesDifference = scheduledMinutes - actualMinutes;
+
+                        // Cero tolerancia
+                        if (minutesDifference > 0) {
+                            const hasCovering = (approvedIncidencesMap[actualUid] || []).some(
+                                inc => inc.startDate <= row.date && inc.endDate >= row.date
+                            );
+
+                            if (!hasCovering && !existingDeparturesMap.has(`${actualUid}_${row.date}`)) {
+                                const dupEDSnap = await getDocs(query(
+                                    collection(firestore, 'early_departures'),
+                                    where('employeeId', '==', actualUid),
+                                    where('date', '==', row.date), 
+                                    limit(1)
+                                ));
+                                
+                                if (dupEDSnap.empty) {
+                                    const docId = `ed_${actualUid}_${row.date}`;
+                                    const preRef = doc(firestore, 'early_departures', docId);
+                                    await setDoc(preRef, {
+                                        employeeId: actualUid,
+                                        employeeName: shiftConfig.fullName,
+                                        date: row.date,
+                                        attendanceRecordId: newAttendanceRef.id,
+                                        scheduledTime: scheduledEnd,
+                                        actualTime: row.checkOut,
+                                        minutesEarly: minutesDifference,
+                                        isJustified: false,
+                                        justificationStatus: 'pending',
+                                        sanctionApplied: false,
+                                        importBatchId: batchId,
+                                        createdAt: now,
+                                        updatedAt: now,
+                                    } as any);
+                                    preCreatedEarlyId = docId;
+                                    existingDeparturesMap.add(`${actualUid}_${row.date}`);
+                                }
+                            }
+                        }
+                    }
+                }
 
                 // Create attendance record — se hace DESPUÉS de las infracciones
                 // para que la CF ya las encuentre en su check de idempotencia.
