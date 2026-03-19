@@ -1188,6 +1188,7 @@ function TeamManagementContent() {
 
                 transaction.update(punchRef, {
                     status: 'absence_unjustified',
+                    resultedInAbsence: true,
                     processed: true,
                     processedAt: serverTimestamp(),
                     processedBy: user.uid || user.id || 'system',

@@ -379,12 +379,12 @@ async function recalculateWeeklyOvertime(
         // 2. Obtener overtimeMode
         let overtimeMode: 'daily_limit' | 'weekly_only' = 'daily_limit';
         if (attendanceRecordId) {
-            const attRef = doc(firestore, 'attendance_records', attendanceRecordId);
+            const attRef = doc(firestore, 'attendance', attendanceRecordId);
             const attSnap = await getDoc(attRef);
             if (attSnap.exists()) {
                 const att = attSnap.data() as AttendanceRecord;
                 if (att.importBatchId) {
-                    const batchRef = doc(firestore, 'attendance_import_batches', att.importBatchId);
+                    const batchRef = doc(firestore, 'attendance_imports', att.importBatchId);
                     const batchSnap = await getDoc(batchRef);
                     if (batchSnap.exists()) {
                         overtimeMode = (batchSnap.data() as AttendanceImportBatch).overtimeMode || 'daily_limit';
