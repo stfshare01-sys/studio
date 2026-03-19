@@ -13,9 +13,6 @@
  *  - getTeamOvertimeRequests
  *  - approveOvertimeRequest
  *  - rejectOvertimeRequest
- *
- * Helpers privados:
- *  - recalculatePendingWeeklyOvertime
  */
 
 import {
@@ -26,8 +23,7 @@ import {
     getDocs,
     query,
     where,
-    orderBy,
-    type Firestore
+    orderBy
 } from 'firebase/firestore';
 import { initializeFirebase } from '@/firebase';
 import {
@@ -320,7 +316,7 @@ export async function approveOvertimeRequest(
         }
 
         // Check if this completes any pending tasks
-        // Basado en Plan de Implementación de NotebookLM
+        // // Basado en Plan de Implementación de NotebookLM
         try {
             const tasksQuery = query(
                 collection(firestore, 'tasks'),
@@ -340,11 +336,6 @@ export async function approveOvertimeRequest(
         } catch (taskError) {
             console.error('[Team] Error checking task completion:', taskError);
         }
-
-        // Recálculo no-bloqueante: actualiza el desglose dobles/triples de las
-        // solicitudes pendientes de esa semana ahora que el acumulado cambió.
-        recalculatePendingWeeklyOvertime(firestore, request.employeeId, request.date)
-            .catch(e => console.error('[Team] approveOvertimeRequest recalc error (no crítico):', e));
 
         return { success: true };
     } catch (error) {
@@ -410,6 +401,8 @@ export async function rejectOvertimeRequest(
             updatedAt: now
         });
 
+        // request ya disponible del pre-check arriba
+
         // Send notification to employee
         notifyOvertimeRejected(
             firestore,
@@ -420,123 +413,9 @@ export async function rejectOvertimeRequest(
             rejectionReason
         );
 
-        // Recálculo no-bloqueante: al rechazar, el acumulado semanal disminuye,
-        // por lo que las solicitudes pendientes pueden pasar de triples a dobles.
-        recalculatePendingWeeklyOvertime(firestore, request.employeeId, request.date)
-            .catch(e => console.error('[Team] rejectOvertimeRequest recalc error (no crítico):', e));
-
         return { success: true };
     } catch (error) {
         console.error('[Team] Error rejecting overtime request:', error);
         return { success: false, error: 'Error rechazando solicitud de horas extras.' };
-    }
-}
-
-// =========================================================================
-// HELPER PRIVADO: RECÁLCULO SEMANAL PENDIENTES
-// =========================================================================
-
-/**
- * Recalcula el desglose dobles/triples de TODAS las solicitudes `pending`
- * de la semana a la que pertenece `baseDate`, para el empleado dado.
- *
- * Se llama de forma no-bloqueante (fire-and-forget) tras approve/reject.
- * Errores individuales se loguean pero no propagan.
- */
-async function recalculatePendingWeeklyOvertime(
-    firestore: Firestore,
-    employeeId: string,
-    baseDate: string
-): Promise<void> {
-    // ── 1. Determinar rango Lunes–Domingo de la semana ─────────────────────
-    const [y, m, d] = baseDate.split('-').map(Number);
-    const dateObj = new Date(y, m - 1, d);
-    const dayOfWeek = dateObj.getDay(); // 0=Dom
-    const diffToMon = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-    const monday = new Date(dateObj);
-    monday.setDate(dateObj.getDate() + diffToMon);
-    const sunday = new Date(monday);
-    sunday.setDate(monday.getDate() + 6);
-
-    const startStr = monday.toISOString().split('T')[0];
-    const endStr   = sunday.toISOString().split('T')[0];
-
-    // ── 2. Obtener solicitudes approved + pending de esa semana ────────────
-    const weekQuery = query(
-        collection(firestore, 'overtime_requests'),
-        where('employeeId', '==', employeeId),
-        where('date', '>=', startStr),
-        where('date', '<=', endStr),
-        orderBy('date', 'asc')
-    );
-    const weekSnap = await getDocs(weekQuery);
-
-    const approved: Array<{ date: string; hours: number }> = [];
-    const pending: Array<{ id: string; date: string; hoursRequested: number }> = [];
-
-    for (const docSnap of weekSnap.docs) {
-        const r = docSnap.data() as OvertimeRequest;
-        if (r.status === 'approved' || r.status === 'partial') {
-            approved.push({ date: r.date, hours: r.hoursApproved ?? r.hoursRequested });
-        } else if (r.status === 'pending') {
-            pending.push({ id: docSnap.id, date: r.date, hoursRequested: r.hoursRequested });
-        }
-    }
-
-    if (pending.length === 0) {
-        console.log(`[HCM] recalculatePendingWeeklyOvertime: sin pendientes para ${employeeId} semana ${startStr}`);
-        return;
-    }
-
-    // ── 3. Para cada solicitud pending, calcular su desglose ───────────────
-    // Las approved son fijas; iteramos los pending en orden cronológico
-    // acumulando una a una.
-    const fixedApproved = [...approved];
-
-    for (const pendingReq of pending) {
-        try {
-            // Construir input SIN esta solicitud (solo aprobadas + pendientes anteriores ya procesadas)
-            const inputWithout = [...fixedApproved];
-
-            // Construir input CON esta solicitud
-            const inputWith = [
-                ...fixedApproved,
-                { date: pendingReq.date, hours: pendingReq.hoursRequested }
-            ].sort((a, b) => a.date.localeCompare(b.date));
-
-            // Calcular acumulado SIN y CON
-            const calcWithout = inputWithout.length > 0
-                ? calculateOvertimeWithRounding(inputWithout, 0)
-                : { dailyBreakdown: [] };
-
-            const calcWith = calculateOvertimeWithRounding(inputWith, 0);
-
-            const dayWithout = calcWithout.dailyBreakdown.find((b: any) => b.date === pendingReq.date);
-            const dayWith    = calcWith.dailyBreakdown.find((b: any) => b.date === pendingReq.date);
-
-            const prevDouble = dayWithout?.doubleHours ?? 0;
-            const prevTriple = dayWithout?.tripleHours ?? 0;
-            const newDouble  = dayWith?.doubleHours ?? 0;
-            const newTriple  = dayWith?.tripleHours ?? 0;
-
-            const doubleHours = Math.max(0, Math.round((newDouble - prevDouble) * 100) / 100);
-            const tripleHours = Math.max(0, Math.round((newTriple - prevTriple) * 100) / 100);
-
-            await updateDoc(doc(firestore, 'overtime_requests', pendingReq.id), {
-                doubleHours,
-                tripleHours,
-                updatedAt: new Date().toISOString()
-            });
-
-            console.log(`[HCM] recalcPendingWeekly: ${employeeId} | ${pendingReq.date} | ${doubleHours}h dobles + ${tripleHours}h triples`);
-
-            // Añadir esta solicitud al acumulado fijo para que las siguientes
-            // pendientes tomen en cuenta su contribución
-            fixedApproved.push({ date: pendingReq.date, hours: pendingReq.hoursRequested });
-            fixedApproved.sort((a, b) => a.date.localeCompare(b.date));
-
-        } catch (err) {
-            console.error(`[HCM] recalcPendingWeekly: error en solicitud ${pendingReq.id}:`, err);
-        }
     }
 }

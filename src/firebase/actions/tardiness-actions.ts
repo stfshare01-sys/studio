@@ -61,23 +61,6 @@ export async function recordTardiness(
 
         if (minutesLate <= 0) return { success: false, error: 'No hay retardo.' };
 
-        // ── GUARD DE IDEMPOTENCIA ─────────────────────────────────────────────
-        // Verifica si ya existe un retardo para este empleado en esta misma fecha.
-        // Esto evita duplicados sin importar desde qué path se invoque esta función.
-        const idempotencyQuery = query(
-            collection(firestore, 'tardiness_records'),
-            where('employeeId', '==', employeeId),
-            where('date', '==', date),
-            limit(1)
-        );
-        const idempotencySnap = await getDocs(idempotencyQuery);
-        if (!idempotencySnap.empty) {
-            const existingId = idempotencySnap.docs[0].id;
-            console.warn(`[HCM] recordTardiness: retardo duplicado ignorado para ${employeeId} en ${date}. ID existente: ${existingId}`);
-            return { success: true, tardinessId: existingId, sanctionApplied: false };
-        }
-        // ─────────────────────────────────────────────────────────────────────
-
         const thirtyDaysAgo = new Date();
         thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
         const weekStart = new Date();
@@ -337,23 +320,6 @@ export async function recordEarlyDeparture(
         if (minutesEarly <= 0) {
             return { success: false, error: 'No hay salida temprana (salió a tiempo o después).' };
         }
-
-        // ── GUARD DE IDEMPOTENCIA ──────────────────────────────────────────────
-        // Verifica si ya existe una salida temprana para este empleado en esta fecha.
-        // Evita duplicados sin importar desde qué ruta se invoque esta función.
-        const idempotencyQuery = query(
-            collection(firestore, 'early_departures'),
-            where('employeeId', '==', employeeId),
-            where('date', '==', date),
-            limit(1)
-        );
-        const idempotencySnap = await getDocs(idempotencyQuery);
-        if (!idempotencySnap.empty) {
-            const existingId = idempotencySnap.docs[0].id;
-            console.warn(`[HCM] recordEarlyDeparture: salida temprana duplicada ignorada para ${employeeId} en ${date}. ID existente: ${existingId}`);
-            return { success: true, earlyDepartureId: existingId, minutesEarly };
-        }
-        // ──────────────────────────────────────────────────────────────────────
 
         const earlyDepartureData: Omit<EarlyDepartureRecord, 'id'> = {
             employeeId,
