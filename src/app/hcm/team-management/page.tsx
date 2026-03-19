@@ -99,7 +99,8 @@ import type {
     ShiftAssignment,
     ShiftType,
     AttendanceImportBatch,
-    Position
+    Position,
+    PayrollPeriodLock
 } from '@/lib/types';
 import { JUSTIFICATION_TYPE_LABELS } from '@/lib/types';
 
@@ -172,6 +173,7 @@ function TeamManagementContent() {
     const [refreshing, setRefreshing] = useState(false);
     const [periodClosed, setPeriodClosed] = useState(false);
     const [isPeriodClosed, setIsPeriodClosed] = useState(false);
+    const [activeLocks, setActiveLocks] = useState<PayrollPeriodLock[]>([]);
     const [loadingPeriodStatus, setLoadingPeriodStatus] = useState(false);
 
     // State for filters
@@ -244,6 +246,10 @@ function TeamManagementContent() {
         }
     }, []);
 
+    // Helper: Verify if a specific date is within any of the active locks
+    const isDateLocked = useCallback((dateStr: string, locks: PayrollPeriodLock[]): boolean => {
+        return locks.some(lock => dateStr >= lock.periodStart && dateStr <= lock.periodEnd);
+    }, []);
 
     // Check if current period is closed using granular date-range locks
     useEffect(() => {
@@ -287,15 +293,18 @@ function TeamManagementContent() {
                 // Check if this specific date range is locked
                 const lockResult = await checkPeriodLock(periodStart, periodEnd);
 
-                if (lockResult.isLocked) {
-                    setIsPeriodClosed(true);
-                    console.log('🔒 Period is locked:', periodStart, '-', periodEnd);
+                if (lockResult.overlappingLocks && lockResult.overlappingLocks.length > 0) {
+                    setActiveLocks(lockResult.overlappingLocks);
+                    setIsPeriodClosed(true); // Retain for overall visual indicators if needed
+                    console.log('🔒 Period has overlapping locks:', periodStart, '-', periodEnd);
                 } else {
+                    setActiveLocks([]);
                     setIsPeriodClosed(false);
-                    console.log('✅ Period is open:', periodStart, '-', periodEnd);
+                    console.log('✅ Period is completely open:', periodStart, '-', periodEnd);
                 }
             } catch (error) {
                 console.error('Error checking period lock:', error);
+                setActiveLocks([]);
                 setIsPeriodClosed(false);
             } finally {
                 setLoadingPeriodStatus(false);
@@ -2065,14 +2074,14 @@ function TeamManagementContent() {
                                                                             variant="ghost"
                                                                             size="sm"
                                                                             className="text-destructive hover:text-destructive/90 hover:bg-destructive/10"
-                                                                            disabled={isPeriodClosed || submitting}
+                                                                            disabled={isDateLocked(punch.date, activeLocks) || submitting}
                                                                             onClick={() => handleMarkMissingPunchAsFault(punch)}
                                                                         >
                                                                             Marcar Falta
                                                                         </Button>
                                                                         <Button
                                                                             size="sm"
-                                                                            disabled={isPeriodClosed || submitting}
+                                                                            disabled={isDateLocked(punch.date, activeLocks) || submitting}
                                                                             onClick={() => {
                                                                                 setJustifyMissingPunchDialog({
                                                                                     open: true,

@@ -33,7 +33,7 @@ import {
 } from './notification-actions';
 import { checkAttendanceTaskCompletion } from './task-completion-actions';
 import { getDirectReports } from './team-queries';
-import type { OvertimeRequest } from '@/lib/types';
+import type { OvertimeRequest, Employee, Location, AttendanceRecord, AttendanceImportBatch } from '@/lib/types';
 import { calculateOvertimeWithRounding } from '@/lib/hcm-utils';
 
 // =========================================================================
@@ -191,106 +191,24 @@ export async function approveOvertimeRequest(
         const finalHoursApproved = hoursApproved !== undefined ? hoursApproved : request.hoursRequested;
         const isPartial = finalHoursApproved < request.hoursRequested;
 
-        // --- CALCULAR DESGLOSE DOBLES/TRIPLES (Contexto Semanal) ---
-        // 1. Obtener fecha y rango semanal (Lun-Dom) de la solicitud
-        const requestDate = new Date(request.date);
-        const dayOfWeek = requestDate.getDay(); // 0=Dom, 1=Lun, etc.
-        const diffToMon = requestDate.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1);
-        const weekStart = new Date(requestDate);
-        weekStart.setDate(diffToMon);
-        const weekEnd = new Date(weekStart);
-        weekEnd.setDate(weekStart.getDate() + 6);
-
-        const startStr = weekStart.toISOString().split('T')[0];
-        const endStr = weekEnd.toISOString().split('T')[0];
-
-        // 2. Buscar otras solicitudes APROBADAS en esa semana para el mismo empleado
-        const otherRequestsQuery = query(
-            collection(firestore, 'overtime_requests'),
-            where('employeeId', '==', request.employeeId),
-            where('status', '==', 'approved'), // Solo aprobadas
-            where('date', '>=', startStr),
-            where('date', '<=', endStr)
-        );
-        const otherDocs = await getDocs(otherRequestsQuery);
-
-        // 3. Construir array de horas diarias
-        // Agrupamos por fecha
-        const dailyTotals: Record<string, number> = {};
-
-        // Agregar las YA aprobadas
-        otherDocs.docs.forEach(d => {
-            const r = d.data() as OvertimeRequest;
-            // Excluir la actual si por error ya estaba aprobada (idempotencia)
-            if (d.id === requestId) return;
-            dailyTotals[r.date] = (dailyTotals[r.date] || 0) + (r.hoursApproved || 0);
-        });
-
-        // Agregar la ACTUAL con las horas que estamos aprobando
-        dailyTotals[request.date] = (dailyTotals[request.date] || 0) + finalHoursApproved;
-
-        // Convertir a array para la función de utilidad
-        const dailyOvertimeInput = Object.entries(dailyTotals)
-            .map(([date, hours]) => ({ date, hours }))
-            .sort((a, b) => a.date.localeCompare(b.date));
-
-        // 4. Calcular desglose con regla 3x3
-        // Usamos hourlyRate ficticio 0 porque solo nos interesan las horas
-        const calculation = calculateOvertimeWithRounding(dailyOvertimeInput, 0);
-
-        // 5. Extraer el desglose ESPECÍFICO de esta solicitud
-        // La función retorna el total semanal desglosado. Necesitamos saber cuánto aportó ESTA solicitud.
-        // Estrategia: Calcular SIN esta solicitud y restar, o mirar el dailyBreakdown del día específico.
-        // El dailyBreakdown nos dice cuánto de ese día fue doble/triple TOTAL.
-        // Si hay múltiples solicitudes el mismo día, esto asume que todas contribuyen proporcionalmente o por orden.
-        // Simplificación: Asignamos basándonos en el breakdown del día.
-
-        const dayBreakdown = calculation.dailyBreakdown.find(d => d.date === request.date);
-
-        // Si no hay breakdown (raro), fallback a todo triple
-        let doubleHours = 0;
-        let tripleHours = 0;
-
-        if (dayBreakdown) {
-            // El breakdown tiene el TOTAL del día.
-            // Si hubo otras solicitudes ese día, tenemos que ver qué parte nos "toca".
-            // Pero simplifiquemos: Recalculamos SÓLO el delta que esta solicitud añade.
-            // O mejor: Guardamos lo que el cálculo dice que es ese día, asumiendo que esta solicitud completó ese día.
-            // Si ya había horas ese día, el breakdown incluye ambas.
-
-            // Cuántas horas había ANTES de aprobar esta?
-            const previousHoursThatDay = (dailyTotals[request.date] || 0) - finalHoursApproved;
-
-            // Corremos cálculo SIN esta solicitud para ver "base"
-            const inputWithoutThis = dailyOvertimeInput.map(d => {
-                if (d.date === request.date) return { date: d.date, hours: previousHoursThatDay };
-                return d;
-            }).filter(d => d.hours > 0);
-
-            const calcWithout = calculateOvertimeWithRounding(inputWithoutThis, 0);
-            const prevDayBreakdown = calcWithout.dailyBreakdown.find(d => d.date === request.date);
-            const prevDouble = prevDayBreakdown ? prevDayBreakdown.doubleHours : 0;
-            const prevTriple = prevDayBreakdown ? prevDayBreakdown.tripleHours : 0;
-
-            // El delta son las horas de ESTA solicitud
-            doubleHours = dayBreakdown.doubleHours - prevDouble;
-            tripleHours = dayBreakdown.tripleHours - prevTriple;
-
-            // Ajustamos por redondeo error:
-            // Si la suma no da exacto, lo ponemos en triple (conservador) o doble.
-            // O mejor, confiamos en el delta.
-        }
-
+        // Simplemente actualizamos el documento con las horas aprobadas.
+        // Las horas dobles y triples se calcularán en `recalculateWeeklyOvertime`
         await updateDoc(ref, {
             status: isPartial ? 'partial' : 'approved',
             hoursApproved: finalHoursApproved,
-            doubleHours,
-            tripleHours,
             approvedById,
             approvedByName,
             approvedAt: now,
             updatedAt: now
         });
+
+        // Recalcular la semana completa con la configuración correcta de la ubicación
+        await recalculateWeeklyOvertime(
+            firestore,
+            request.employeeId,
+            request.date,
+            request.attendanceRecordId
+        );
 
         // Send notification to employee
         if (isPartial) {
@@ -394,12 +312,22 @@ export async function rejectOvertimeRequest(
         await updateDoc(ref, {
             status: 'rejected',
             hoursApproved: 0,
+            doubleHours: 0,
+            tripleHours: 0,
             approvedById: rejectedById,
             approvedByName: rejectedByName,
             approvedAt: now,
             rejectionReason,
             updatedAt: now
         });
+
+        // Recalcular la semana completa, por si había otras solicitudes que ahora deben ajustarse
+        await recalculateWeeklyOvertime(
+            firestore,
+            request.employeeId,
+            request.date,
+            request.attendanceRecordId
+        );
 
         // request ya disponible del pre-check arriba
 
@@ -417,5 +345,137 @@ export async function rejectOvertimeRequest(
     } catch (error) {
         console.error('[Team] Error rejecting overtime request:', error);
         return { success: false, error: 'Error rechazando solicitud de horas extras.' };
+    }
+}
+
+/**
+ * Recalcula y redistribuye las horas dobles/triples de una semana para todas las
+ * solicitudes aprobadas/parciales de un empleado, respetando la configuración de la ubicación.
+ */
+async function recalculateWeeklyOvertime(
+    firestore: any,
+    employeeId: string,
+    requestDateStr: string,
+    attendanceRecordId?: string
+): Promise<void> {
+    try {
+        // 1. Obtener location para reset day
+        const empRef = doc(firestore, 'employees', employeeId);
+        const empSnap = await getDoc(empRef);
+        const employee = empSnap.exists() ? empSnap.data() as Employee : null;
+
+        let resetDay = 1; // Default Monday
+        if (employee?.locationId) {
+            const locRef = doc(firestore, 'locations', employee.locationId);
+            const locSnap = await getDoc(locRef);
+            if (locSnap.exists()) {
+                const loc = locSnap.data() as Location;
+                if (loc.overtimeResetDay === 'sunday') resetDay = 0;
+                else if (loc.overtimeResetDay === 'saturday') resetDay = 6;
+                else if (loc.overtimeResetDay === 'custom' && loc.customOvertimeResetDay !== undefined) resetDay = loc.customOvertimeResetDay;
+            }
+        }
+
+        // 2. Obtener overtimeMode
+        let overtimeMode: 'daily_limit' | 'weekly_only' = 'daily_limit';
+        if (attendanceRecordId) {
+            const attRef = doc(firestore, 'attendance_records', attendanceRecordId);
+            const attSnap = await getDoc(attRef);
+            if (attSnap.exists()) {
+                const att = attSnap.data() as AttendanceRecord;
+                if (att.importBatchId) {
+                    const batchRef = doc(firestore, 'attendance_import_batches', att.importBatchId);
+                    const batchSnap = await getDoc(batchRef);
+                    if (batchSnap.exists()) {
+                        overtimeMode = (batchSnap.data() as AttendanceImportBatch).overtimeMode || 'daily_limit';
+                    }
+                }
+            }
+        }
+
+        // 3. Determinar el rango de la semana
+        const requestDate = new Date(requestDateStr);
+        const dayOfWeek = requestDate.getDay();
+        let diffToStart = requestDate.getDate() - dayOfWeek + resetDay;
+        if (dayOfWeek < resetDay) {
+            diffToStart -= 7;
+        }
+        const weekStart = new Date(requestDate);
+        weekStart.setDate(diffToStart);
+        const weekEnd = new Date(weekStart);
+        weekEnd.setDate(weekStart.getDate() + 6);
+
+        const startStr = weekStart.toISOString().split('T')[0];
+        const endStr = weekEnd.toISOString().split('T')[0];
+
+        // 4. Obtener solicitudes aprobadas/parciales en esa semana
+        const requestsQuery = query(
+            collection(firestore, 'overtime_requests'),
+            where('employeeId', '==', employeeId),
+            where('status', 'in', ['approved', 'partial']),
+            where('date', '>=', startStr),
+            where('date', '<=', endStr),
+            orderBy('date', 'asc') // Simple index
+        );
+        const snapshot = await getDocs(requestsQuery);
+        const requests = snapshot.docs.map(d => ({ id: d.id, ...d.data() })) as OvertimeRequest[];
+
+        // Agregamos un sort explícito adicional por createdAt para desempatar mismo día
+        requests.sort((a, b) => {
+            if (a.date === b.date) {
+                return a.createdAt.localeCompare(b.createdAt);
+            }
+            return a.date.localeCompare(b.date);
+        });
+
+        if (requests.length === 0) return;
+
+        // 5. Agrupar por día
+        const dailyTotals: Record<string, number> = {};
+        requests.forEach(r => {
+            dailyTotals[r.date] = (dailyTotals[r.date] || 0) + (r.hoursApproved || 0);
+        });
+
+        const dailyInput = Object.entries(dailyTotals)
+            .map(([date, hours]) => ({ date, hours }))
+            .sort((a, b) => a.date.localeCompare(b.date));
+        
+        // 6. Calcular desglose usando utility
+        const calculation = calculateOvertimeWithRounding(dailyInput, 0, overtimeMode);
+
+        const dailyAvailability = calculation.dailyBreakdown.reduce((acc, curr) => {
+            acc[curr.date] = { double: curr.doubleHours, triple: curr.tripleHours };
+            return acc;
+        }, {} as Record<string, { double: number, triple: number }>);
+
+        // 7. Actualizar documentos
+        for (const req of requests) {
+            let reqDouble = 0;
+            let reqTriple = 0;
+            let remaining = req.hoursApproved || 0;
+            
+            const avail = dailyAvailability[req.date];
+            if (avail) {
+                const takeDouble = Math.min(remaining, avail.double);
+                reqDouble += takeDouble;
+                avail.double -= takeDouble;
+                remaining -= takeDouble;
+
+                const takeTriple = Math.min(remaining, avail.triple);
+                reqTriple += takeTriple;
+                avail.triple -= takeTriple;
+                remaining -= takeTriple;
+            }
+
+            if (req.doubleHours !== reqDouble || req.tripleHours !== reqTriple) {
+                await updateDoc(doc(firestore, 'overtime_requests', req.id), {
+                    doubleHours: reqDouble,
+                    tripleHours: reqTriple,
+                    updatedAt: new Date().toISOString()
+                });
+            }
+        }
+    } catch (error) {
+        console.error('[Team] Error recalculating weekly overtime:', error);
     }
 }

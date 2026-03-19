@@ -520,7 +520,8 @@ export type OvertimeResultExtended = OvertimeResult & {
  */
 export function calculateOvertimeWithRounding(
     dailyOvertimeHours: { date: string; hours: number }[],
-    hourlyRate: number
+    hourlyRate: number,
+    overtimeMode: 'daily_limit' | 'weekly_only' = 'daily_limit'
 ): OvertimeResultExtended {
     let weeklyDoubleHoursUsed = 0;
     let totalDoubleHours = 0;
@@ -536,8 +537,8 @@ export function calculateOvertimeWithRounding(
         let dayDoubleHours = 0;
         let dayTripleHours = 0;
 
-        // Máximo 3 horas dobles por día
-        const maxDailyDouble = 3;
+        // Máximo 3 horas dobles por día si es limit_daily
+        const maxDailyDouble = overtimeMode === 'weekly_only' ? Infinity : 3;
         const remainingWeeklyDouble = 9 - weeklyDoubleHoursUsed;
         const availableDouble = Math.min(maxDailyDouble, remainingWeeklyDouble);
 
