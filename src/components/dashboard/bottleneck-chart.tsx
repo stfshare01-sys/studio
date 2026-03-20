@@ -6,6 +6,7 @@ import type { Task } from '@/lib/types';
 import { useMemo } from 'react';
 import { differenceInHours } from 'date-fns';
 import { Skeleton } from '../ui/skeleton';
+import { parseFirebaseDate } from '@/lib/utils';
 
 interface BottleneckChartProps {
   tasks: Task[] | null;
@@ -33,7 +34,7 @@ export function BottleneckChart({ tasks, isLoading }: BottleneckChartProps) {
 
     return Object.entries(tasksByName).map(([name, taskGroup]) => {
       const totalDuration = taskGroup.reduce((acc, task) => {
-        return acc + differenceInHours(new Date(task.completedAt!), new Date(task.createdAt));
+        return acc + differenceInHours(parseFirebaseDate(task.completedAt!), parseFirebaseDate(task.createdAt));
       }, 0);
       const avgDuration = totalDuration / taskGroup.length;
       return {

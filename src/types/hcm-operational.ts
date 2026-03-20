@@ -62,6 +62,8 @@ export type AttendanceRecord = {
     scheduledEnd?: string;        // HH:mm — hora programada de salida
     linkedIncidenceId?: string;
     importBatchId: string;
+    isRestDay?: boolean;
+    isRestDayWorked?: boolean;
     createdAt: string;
 };
 

@@ -19,6 +19,7 @@ import { ShieldAlert, Download, FileSpreadsheet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { usePermissions } from "@/hooks/use-permissions";
+import { parseFirebaseDate } from "@/lib/utils";
 
 const MAX_RECORDS = 1000; // Limit queries to prevent performance issues
 
@@ -114,12 +115,12 @@ function ReportsView() {
         const to = new Date(dateRange.to).getTime();
 
         const filteredRequests = requests?.filter(r => {
-            const createdAt = new Date(r.createdAt).getTime();
+            const createdAt = parseFirebaseDate(r.createdAt).getTime();
             return createdAt >= from && createdAt <= to;
         }) ?? [];
 
         const filteredTasks = tasks?.filter(t => {
-            const createdAt = new Date(t.createdAt).getTime();
+            const createdAt = parseFirebaseDate(t.createdAt).getTime();
             return createdAt >= from && createdAt <= to;
         }) ?? [];
 
@@ -142,8 +143,8 @@ function ReportsView() {
             r.id,
             `"${r.title.replace(/"/g, '""')}"`,
             r.status,
-            format(new Date(r.createdAt), 'yyyy-MM-dd HH:mm', { locale: es }),
-            format(new Date(r.updatedAt), 'yyyy-MM-dd HH:mm', { locale: es }),
+            format(parseFirebaseDate(r.createdAt), 'yyyy-MM-dd HH:mm', { locale: es }),
+            format(parseFirebaseDate(r.updatedAt), 'yyyy-MM-dd HH:mm', { locale: es }),
             r.submittedBy
         ]);
 
@@ -173,7 +174,7 @@ function ReportsView() {
             t.status,
             `"${t.requestTitle.replace(/"/g, '""')}"`,
             t.assigneeId || 'Sin asignar',
-            format(new Date(t.createdAt), 'yyyy-MM-dd HH:mm', { locale: es })
+            format(parseFirebaseDate(t.createdAt), 'yyyy-MM-dd HH:mm', { locale: es })
         ]);
 
         const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');

@@ -6,6 +6,7 @@ import { Line, LineChart, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContai
 import type { Request as RequestType } from '@/lib/types';
 import { eachDayOfInterval, format, startOfDay } from 'date-fns';
 import { DateRange } from 'react-day-picker';
+import { parseFirebaseDate } from '@/lib/utils';
 
 interface RequestVolumeChartProps {
   requests: RequestType[];
@@ -31,13 +32,13 @@ export default function RequestVolumeChart({ requests, dateRange }: RequestVolum
     }, {} as Record<string, ChartData>);
 
     requests.forEach(req => {
-        const createdDate = format(startOfDay(new Date(req.createdAt)), 'dd/MM');
+        const createdDate = format(startOfDay(parseFirebaseDate(req.createdAt)), 'dd/MM');
         if(dataByDate[createdDate]) {
             dataByDate[createdDate].Creadas++;
         }
         
         if (req.status === 'Completed' && req.completedAt) {
-            const completedDate = format(startOfDay(new Date(req.completedAt)), 'dd/MM');
+            const completedDate = format(startOfDay(parseFirebaseDate(req.completedAt)), 'dd/MM');
             if (dataByDate[completedDate]) {
                 dataByDate[completedDate].Completadas++;
             }

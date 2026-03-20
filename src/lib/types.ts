@@ -808,6 +808,9 @@ export type AttendanceRecord = {
   isValid: boolean;             // Validación de jornada según turno
   validationNotes?: string | null;     // Notas de validación (ej: "Excede jornada diurna")
 
+  // Días de descanso / festivos
+  isRestDay?: boolean;
+  isRestDayWorked?: boolean;
 
   // Incidencia relacionada (si aplica)
   linkedIncidenceId?: string;   // Si hay permiso/incapacidad que justifica

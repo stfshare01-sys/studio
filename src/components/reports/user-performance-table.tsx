@@ -4,6 +4,7 @@
 import React, { useMemo } from "react";
 import type { User, Task } from "@/lib/types";
 import { differenceInHours } from 'date-fns';
+import { parseFirebaseDate } from '@/lib/utils';
 import {
   Table,
   TableBody,
@@ -41,7 +42,7 @@ export function UserPerformanceTable({ users, tasks }: UserPerformanceTableProps
       }
 
       const totalDuration = completedTasks.reduce((acc, task) => {
-        return acc + differenceInHours(new Date(task.completedAt!), new Date(task.createdAt));
+        return acc + differenceInHours(parseFirebaseDate(task.completedAt!), parseFirebaseDate(task.createdAt));
       }, 0);
       
       const avgDuration = totalDuration / completedTasks.length;
