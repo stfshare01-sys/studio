@@ -2075,14 +2075,14 @@ function TeamManagementContent() {
                                                                             variant="ghost"
                                                                             size="sm"
                                                                             className="text-destructive hover:text-destructive/90 hover:bg-destructive/10"
-                                                                            disabled={isDateLocked(punch.date, activeLocks) || submitting}
+                                                                            disabled={isPeriodClosed || submitting}
                                                                             onClick={() => handleMarkMissingPunchAsFault(punch)}
                                                                         >
                                                                             Marcar Falta
                                                                         </Button>
                                                                         <Button
                                                                             size="sm"
-                                                                            disabled={isDateLocked(punch.date, activeLocks) || submitting}
+                                                                            disabled={isPeriodClosed || submitting}
                                                                             onClick={() => {
                                                                                 setJustifyMissingPunchDialog({
                                                                                     open: true,
