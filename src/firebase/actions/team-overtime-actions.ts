@@ -393,20 +393,32 @@ async function recalculateWeeklyOvertime(
             }
         }
 
-        // 3. Determinar el rango de la semana
-        const requestDate = new Date(requestDateStr);
+        // 3. Determinar el rango de la semana (evitando bugs de timezone local = UTC-6)
+        const [year, month, day] = requestDateStr.split('-').map(Number);
+        // Construimos a las 12 PM local para evitar saltos por horario de verano o medianoche
+        const requestDate = new Date(year, month - 1, day, 12, 0, 0); 
+        
         const dayOfWeek = requestDate.getDay();
         let diffToStart = requestDate.getDate() - dayOfWeek + resetDay;
         if (dayOfWeek < resetDay) {
             diffToStart -= 7;
         }
+        
         const weekStart = new Date(requestDate);
         weekStart.setDate(diffToStart);
         const weekEnd = new Date(weekStart);
         weekEnd.setDate(weekStart.getDate() + 6);
 
-        const startStr = weekStart.toISOString().split('T')[0];
-        const endStr = weekEnd.toISOString().split('T')[0];
+        // Formateador local sin la "T" que causaba desfases al usar toISOString() en UTC
+        const formatLocal = (dt: Date) => {
+            const yy = dt.getFullYear();
+            const mm = String(dt.getMonth() + 1).padStart(2, '0');
+            const dd = String(dt.getDate()).padStart(2, '0');
+            return `${yy}-${mm}-${dd}`;
+        };
+
+        const startStr = formatLocal(weekStart);
+        const endStr = formatLocal(weekEnd);
 
         // 4. Obtener solicitudes aprobadas/parciales en esa semana
         const requestsQuery = query(
