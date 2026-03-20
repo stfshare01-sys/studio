@@ -1,0 +1,13 @@
+[2026-03-20T17:38:52.344Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+Failed to authenticate, have you run firebase login?
+!  emulators: You are not currently authenticated so some features may not work correctly. Please run firebase login to authenticate the CLI. 
+[2026-03-20T17:38:53.106Z] openjdk version "17.0.18" 2026-01-20 LTS
+OpenJDK Runtime Environment Microsoft-13106358 (build 17.0.18+8-LTS)
+OpenJDK 64-Bit Server VM Microsoft-13106358 (build 17.0.18+8-LTS, mixed mode, sharing)
+
+[2026-03-20T17:38:53.137Z] Parsed Java major version: 17
+[2026-03-20T17:38:53.162Z] Could not find VSCode notification endpoint: FetchError: request to http://localhost:40001/vscode/notify failed, reason: . If you are not running the Firebase Data Connect VSCode extension, this is expected and not an issue.
+i  emulators: Shutting down emulators. {"metadata":{"emulator":{"name":"hub"},"message":"Shutting down emulators."}}
+[2026-03-20T17:38:53.170Z] Could not find VSCode notification endpoint: FetchError: request to http://localhost:40001/vscode/notify failed, reason: . If you are not running the Firebase Data Connect VSCode extension, this is expected and not an issue.
+
+Error: firebase-tools no longer supports Java version before 21. Please install a JDK at version 21 or above to get a compatible runtime.
