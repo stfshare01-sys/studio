@@ -186,6 +186,7 @@ export default function ConsolidacionAsistenciaPage() {
                     getDocs(query(
                         collection(firestore, 'missing_punches'),
                         where('isJustified', '==', false),
+                        where('resultedInAbsence', '==', false),
                         where('date', '>=', selectedPeriod.start),
                         where('date', '<=', selectedPeriod.end)
                     )),
