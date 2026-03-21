@@ -2118,8 +2118,8 @@ function TeamManagementContent() {
                                     <div>
                                         <CardTitle>Solicitudes de Horas Extras</CardTitle>
                                         <CardDescription>
-                                            Aprobadas: {overtimeStats.totalHoursApproved}h |
-                                            Pendientes: {overtimeStats.totalHoursPending}h
+                                            Aprobadas: {Number(overtimeStats.totalHoursApproved).toFixed(2)}h |
+                                            Pendientes: {Number(overtimeStats.totalHoursPending).toFixed(2)}h
                                         </CardDescription>
                                     </div>
                                     <div className="flex gap-2">
@@ -2187,7 +2187,7 @@ function TeamManagementContent() {
                                                             return <span className="text-muted-foreground">-</span>;
                                                         })()}
                                                     </TableCell>
-                                                    <TableCell>{request.hoursRequested}h</TableCell>
+                                                    <TableCell>{Number(request.hoursRequested).toFixed(2)}h</TableCell>
                                                     <TableCell className="max-w-xs truncate">{request.reason}</TableCell>
                                                     <TableCell>
                                                         <Badge variant={
@@ -2201,13 +2201,13 @@ function TeamManagementContent() {
                                                         </Badge>
                                                     </TableCell>
                                                     <TableCell>
-                                                        {request.hoursApproved !== undefined ? `${request.hoursApproved}h` : '-'}
+                                                        {request.hoursApproved !== undefined ? `${Number(request.hoursApproved).toFixed(2)}h` : '-'}
                                                     </TableCell>
                                                     <TableCell>
-                                                        {request.doubleHours !== undefined ? `${request.doubleHours}h` : '-'}
+                                                        {request.doubleHours !== undefined ? `${Number(request.doubleHours).toFixed(2)}h` : '-'}
                                                     </TableCell>
                                                     <TableCell>
-                                                        {request.tripleHours !== undefined ? `${request.tripleHours}h` : '-'}
+                                                        {request.tripleHours !== undefined ? `${Number(request.tripleHours).toFixed(2)}h` : '-'}
                                                     </TableCell>
                                                     <TableCell className="text-right">
                                                         {request.status === 'pending' && hasPermission(permissions, 'hcm_team_overtime', 'write') && (
