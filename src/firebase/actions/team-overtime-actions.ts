@@ -34,7 +34,7 @@ import {
 import { checkAttendanceTaskCompletion } from './task-completion-actions';
 import { getDirectReports } from './team-queries';
 import type { OvertimeRequest, Employee, Location, AttendanceRecord, AttendanceImportBatch } from '@/lib/types';
-import { calculateOvertimeWithRounding } from '@/lib/hcm-utils';
+import { calculateOvertimeWithRounding, roundOvertimeHours } from '@/lib/hcm-utils';
 
 // =========================================================================
 // HORAS EXTRAS
@@ -188,7 +188,8 @@ export async function approveOvertimeRequest(
         }
 
         // Determinar si es aprobación total o parcial
-        const finalHoursApproved = hoursApproved !== undefined ? hoursApproved : request.hoursRequested;
+        const rawHoursApproved = hoursApproved !== undefined ? hoursApproved : request.hoursRequested;
+        const finalHoursApproved = roundOvertimeHours(rawHoursApproved);
         const isPartial = finalHoursApproved < request.hoursRequested;
 
         // Simplemente actualizamos el documento con las horas aprobadas.
