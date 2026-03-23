@@ -9,9 +9,9 @@ const nextConfig: NextConfig = {
   // pero .idx.dev y .cloudworkstations.dev son comunes en Google Cloud
   allowedDevOrigins: [
     "localhost", 
-    ".cloudworkstations.dev",
-    ".idx.dev"
-  ] as string[],
+    "*.cloudworkstations.dev",
+    "*.idx.dev"
+  ],
   /* config options here */
   eslint: {
     // Warning: This allows production builds to successfully complete even if
