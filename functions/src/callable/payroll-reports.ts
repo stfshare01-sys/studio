@@ -250,6 +250,19 @@ export const generatePayrollReports = onCall<GeneratePayrollReportsRequest>(
                 tardinessMap.get(t.employeeId)!.set(t.date, true);
             }
 
+            // 1f. Fetch overtime requests
+            const overtimeSnap = await db.collection('overtime_requests')
+                .where('date', '>=', periodStart)
+                .where('date', '<=', periodEnd)
+                .where('status', 'in', ['approved', 'partial'])
+                .get();
+
+            const overtimeMap = new Map<string, any>();
+            for (const doc of overtimeSnap.docs) {
+                const req = doc.data();
+                overtimeMap.set(`${req.employeeId}_${req.date}`, req);
+            }
+
             // 1f. Fetch locations and shifts (cache to avoid N+1)
             const locationCache = new Map<string, Location>();
             const shiftCache = new Map<string, CustomShift>();
@@ -280,6 +293,9 @@ export const generatePayrollReports = onCall<GeneratePayrollReportsRequest>(
                 const empAttendance = attendanceMap.get(emp.id) || [];
                 const empIncidences = incidenceMap.get(emp.id) || [];
                 const empTardiness = tardinessMap.get(emp.id) || new Map<string, boolean>();
+                
+                // Track processed Sundays for PD to avoid duplicate counting
+                const processedSundays = new Set<string>();
 
                 // Determine employee's rest days from shift
                 const shift = emp.customShiftId ? shiftCache.get(emp.customShiftId) : null;
@@ -374,15 +390,29 @@ export const generatePayrollReports = onCall<GeneratePayrollReportsRequest>(
                     // Process attendance record
                     if (attendance) {
                         // File 1: Overtime (HE2/HE3) per day
-                        if (attendance.overtimeHours > 0) {
-                            // For day-level, we record the raw hours.
-                            // The overtimeType on the record tells us double vs triple
-                            if (attendance.overtimeType === 'triple') {
-                                dayData.he3Hours = attendance.overtimeHours;
-                                dayData.file1Codes.push(`${attendance.overtimeHours}HE3`);
-                            } else {
-                                dayData.he2Hours = attendance.overtimeHours;
-                                dayData.file1Codes.push(`${attendance.overtimeHours}HE2`);
+                        const otReq = overtimeMap.get(`${emp.id}_${date}`);
+                        if (otReq) {
+                            const double = otReq.doubleHours || 0;
+                            const triple = otReq.tripleHours || 0;
+                            if (double > 0) {
+                                dayData.he2Hours = double;
+                                dayData.file1Codes.push(`${double}HE2`);
+                            }
+                            if (triple > 0) {
+                                dayData.he3Hours = triple;
+                                dayData.file1Codes.push(`${triple}HE3`);
+                            }
+                        } else if (attendance.overtimeHours > 0) {
+                            // Backwards compatibility if no matching overtime_request
+                            const double = (attendance as any).overtimeDoubleHours || (attendance.overtimeType === 'double' ? attendance.overtimeHours : 0);
+                            const triple = (attendance as any).overtimeTripleHours || (attendance.overtimeType === 'triple' ? attendance.overtimeHours : 0);
+                            if (double > 0) {
+                                dayData.he2Hours = double;
+                                dayData.file1Codes.push(`${double}HE2`);
+                            }
+                            if (triple > 0) {
+                                dayData.he3Hours = triple;
+                                dayData.file1Codes.push(`${triple}HE3`);
                             }
                         }
 
@@ -393,13 +423,14 @@ export const generatePayrollReports = onCall<GeneratePayrollReportsRequest>(
 
                         // File 2: Determine status codes
                         if (isHoliday) {
-                            dayData.file2Codes.push('DFT');
+                            dayData.file2Codes.push('DDDL');
                         }
                         if (isRestDay) {
-                            dayData.file2Codes.push('DL');
+                            dayData.file2Codes.push('DDL');
                         }
-                        if (isSunday) {
+                        if (isSunday && !processedSundays.has(date)) {
                             dayData.file2Codes.push('PD');
+                            processedSundays.add(date);
                         }
 
                         // ASI only if no other File 2 codes exist

@@ -1,0 +1,17 @@
+﻿src/callable/hcm-operations.ts(10,53): error TS2307: Cannot find module 'firebase-functions/v2/https' or its corresponding type declarations.
+src/callable/hcm-operations.ts(614,12): error TS7006: Parameter 'request' implicitly has an 'any' type.
+src/callable/hcm-operations.ts(774,12): error TS7006: Parameter 'request' implicitly has an 'any' type.
+src/callable/hcm-operations.ts(1293,12): error TS7006: Parameter 'request' implicitly has an 'any' type.
+src/callable/payroll-reports.ts(12,53): error TS2307: Cannot find module 'firebase-functions/v2/https' or its corresponding type declarations.
+src/callable/payroll-reports.ts(15,27): error TS7016: Could not find a declaration file for module 'archiver'. 'C:/Users/manuel.flores/OneDrive - Stuffactory, S.A. de C.V/Escritorio/Portal Stuffactory/studio/node_modules/archiver/index.js' implicitly has an 'any' type.
+  Try `npm i --save-dev @types/archiver` if it exists or add a new declaration (.d.ts) file containing `declare module 'archiver';`
+src/scheduled/vacation-renewal.ts(16,28): error TS2307: Cannot find module 'firebase-functions/v2/scheduler' or its corresponding type declarations.
+src/triggers/hcm-triggers.ts(7,54): error TS2307: Cannot find module 'firebase-functions/v2/firestore' or its corresponding type declarations.
+src/triggers/hcm-triggers.ts(28,12): error TS7006: Parameter 'event' implicitly has an 'any' type.
+src/triggers/hcm-triggers.ts(152,87): error TS7006: Parameter 'event' implicitly has an 'any' type.
+src/triggers/notifications.ts(7,35): error TS2307: Cannot find module 'firebase-functions/v2/firestore' or its corresponding type declarations.
+src/triggers/notifications.ts(9,29): error TS2307: Cannot find module 'nodemailer' or its corresponding type declarations.
+src/triggers/notifications.ts(39,12): error TS7006: Parameter 'event' implicitly has an 'any' type.
+src/triggers/workflow-triggers.ts(2,35): error TS2307: Cannot find module 'firebase-functions/v2/firestore' or its corresponding type declarations.
+src/triggers/workflow-triggers.ts(55,74): error TS7006: Parameter 'event' implicitly has an 'any' type.
+src/utils/auth-middleware.ts(9,28): error TS2307: Cannot find module 'firebase-functions/v2/https' or its corresponding type declarations.

@@ -335,7 +335,7 @@ export type OvertimeRequest = {
 // =========================================================================
 
 export type IncidenceCode =
-    | 'FINJ' | 'ASI' | 'INC' | 'PSS' | 'PCS' | 'DFT' | 'DD' | 'DL'
+    | 'FINJ' | 'ASI' | 'INC' | 'PSS' | 'PCS' | 'DDDL' | 'DD' | 'DDL'
     | 'HE2' | 'HE3' | 'RET' | 'PD' | 'VAC' | 'PV' | 'BJ' | 'AE';
 
 export const INCIDENCE_CODE_MAP: Record<IncidenceType | 'attendance' | 'rest_day' | 'worked_rest_day' | 'holiday_worked' | 'tardiness' | 'termination', IncidenceCode> = {
@@ -349,8 +349,8 @@ export const INCIDENCE_CODE_MAP: Record<IncidenceType | 'attendance' | 'rest_day
     abandono_empleo: 'AE',
     attendance: 'ASI',
     rest_day: 'DD',
-    worked_rest_day: 'DL',
-    holiday_worked: 'DFT',
+    worked_rest_day: 'DDL',
+    holiday_worked: 'DDDL',
     tardiness: 'RET',
     termination: 'BJ'
 };

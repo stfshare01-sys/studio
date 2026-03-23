@@ -396,8 +396,8 @@ export default function ConsolidacionAsistenciaPage() {
                 description: "Obteniendo detalles completos del período...",
             });
 
-            // Fetch all needed data in parallel
-            const [attendanceSnap, incidencesSnap, employeesSnap, shiftsSnap, calendarsSnap] = await Promise.all([
+                // Fetch all needed data in parallel
+            const [attendanceSnap, incidencesSnap, employeesSnap, shiftsSnap, calendarsSnap, overtimeSnap] = await Promise.all([
                 getDocs(query(
                     collection(firestore, 'attendance'),
                     where('date', '>=', selectedPeriod.start),
@@ -413,6 +413,12 @@ export default function ConsolidacionAsistenciaPage() {
                 getDocs(query(
                     collection(firestore, 'holiday_calendars'),
                     where('year', '==', parseInt(selectedPeriod.start.substring(0, 4)))
+                )),
+                getDocs(query(
+                    collection(firestore, 'overtime_requests'),
+                    where('date', '>=', selectedPeriod.start),
+                    where('date', '<=', selectedPeriod.end),
+                    where('status', 'in', ['approved', 'partial'])
                 ))
             ]);
 
@@ -427,12 +433,22 @@ export default function ConsolidacionAsistenciaPage() {
             const shiftsMap: Record<string, any> = {};
             shiftsSnap.docs.forEach(d => { shiftsMap[d.id] = { id: d.id, ...d.data() }; });
 
+            // Build overtime map
+            const overtimeMap: Record<string, any> = {};
+            overtimeSnap.docs.forEach(d => {
+                const req = d.data();
+                overtimeMap[`${req.employeeId}_${req.date}`] = req;
+            });
+
             // Build holidays set
             const holidayDates = new Set<string>();
             calendarsSnap.docs.forEach(d => {
                 const cal = d.data();
                 (cal.holidays || []).forEach((h: any) => holidayDates.add(h.date));
             });
+
+            // Track processed Sundays to avoid duplicating PDs
+            const processedSundays = new Set<string>();
 
             // Generate lines
             const lines: string[] = [];
@@ -458,7 +474,13 @@ export default function ConsolidacionAsistenciaPage() {
                 lines.push(`${empNumber}|${date}|${NOMIPAQ_CODES.DIA_TRABAJADO}|`);
 
                 // HE2/HE3
-                if (att.overtimeHours > 0) {
+                const otReq = overtimeMap[`${att.employeeId}_${date}`];
+                if (otReq) {
+                    const double = otReq.doubleHours || 0;
+                    const triple = otReq.tripleHours || 0;
+                    if (double > 0) lines.push(`${empNumber}|${date}|${NOMIPAQ_CODES.HORAS_EXTRAS_DOBLES}|${double}`);
+                    if (triple > 0) lines.push(`${empNumber}|${date}|${NOMIPAQ_CODES.HORAS_EXTRAS_TRIPLES}|${triple}`);
+                } else if (att.overtimeHours > 0) {
                     const double = (att as any).overtimeDoubleHours || (att.overtimeType === 'double' ? att.overtimeHours : 0);
                     const triple = (att as any).overtimeTripleHours || (att.overtimeType === 'triple' ? att.overtimeHours : 0);
                     if (double > 0) lines.push(`${empNumber}|${date}|${NOMIPAQ_CODES.HORAS_EXTRAS_DOBLES}|${double}`);
@@ -477,7 +499,11 @@ export default function ConsolidacionAsistenciaPage() {
 
                 // PD - Prima Dominical
                 if (isSunday) {
-                    lines.push(`${empNumber}|${date}|${NOMIPAQ_CODES.PRIMA_DOMINICAL}|`);
+                    const sundayKey = `${att.employeeId}_${date}`;
+                    if (!processedSundays.has(sundayKey)) {
+                        lines.push(`${empNumber}|${date}|${NOMIPAQ_CODES.PRIMA_DOMINICAL}|`);
+                        processedSundays.add(sundayKey);
+                    }
                 }
             }
 

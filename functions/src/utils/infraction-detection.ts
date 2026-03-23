@@ -59,7 +59,7 @@ async function isCompanyBenefitDay(
  * y si el empleado genera horas extra (desde su puesto).
  * Retorna true si la infracción debe OMITIRSE.
  */
-async function shouldSkipInfractionForRestDay(
+export async function shouldSkipInfractionForRestDay(
     employee: Employee,
     dateStr: string,
     db: admin.firestore.Firestore

@@ -19,6 +19,7 @@ import {
     findAvailableApprover
 } from '../utils/hierarchy-validator';
 import { validateIncidencePolicy, IncidenceType, Incidence as PolicyIncidence } from '../utils/incidence-policy';
+import { shouldSkipInfractionForRestDay } from '../utils/infraction-detection';
 import type {
     PrenominaRecord,
     Employee,
@@ -202,6 +203,23 @@ export const consolidatePrenomina = onCall<ConsolidatePrenominaRequest>(
             for (const doc of unjustifiedEarlyDeparturesQuery.docs) {
                 const departure = doc.data();
 
+                // Re-verify if this day is STILL supposed to have an infraction, 
+                // in case the schedule changed to a rest day AFTER the infraction was generated.
+                const employeeDoc = await db.collection('employees').doc(departure.employeeId).get();
+                if (employeeDoc.exists) {
+                    const employeeData = { id: employeeDoc.id, ...employeeDoc.data() } as Employee;
+                    if (await shouldSkipInfractionForRestDay(employeeData, departure.date, db)) {
+                        console.log(`[HCM] Cancelling Early Departure for ${departure.employeeId} on ${departure.date} due to schedule change (now rest day).`);
+                        await doc.ref.update({
+                            isJustified: true,
+                            justificationStatus: 'approved',
+                            justificationReason: 'Anulado automáticamente por cambio de horario (ahora día de descanso)',
+                            updatedAt: nowISO,
+                        });
+                        continue; // Skip converting to Falta
+                    }
+                }
+
                 // 1. Mark infringement as resulted in absence
                 await doc.ref.update({
                     resultedInAbsence: true,
@@ -243,6 +261,23 @@ export const consolidatePrenomina = onCall<ConsolidatePrenominaRequest>(
 
             for (const doc of unjustifiedMissingPunchesQuery.docs) {
                 const punch = doc.data();
+
+                // Re-verify if this day is STILL supposed to have an infraction, 
+                // in case the schedule changed to a rest day AFTER the missing punch was generated.
+                const employeeDoc = await db.collection('employees').doc(punch.employeeId).get();
+                if (employeeDoc.exists) {
+                    const employeeData = { id: employeeDoc.id, ...employeeDoc.data() } as Employee;
+                    if (await shouldSkipInfractionForRestDay(employeeData, punch.date, db)) {
+                        console.log(`[HCM] Cancelling Missing Punch for ${punch.employeeId} on ${punch.date} due to schedule change (now rest day).`);
+                        await doc.ref.update({
+                            isJustified: true,
+                            justificationStatus: 'approved',
+                            justificationReason: 'Anulado automáticamente por cambio de horario (ahora día de descanso)',
+                            updatedAt: nowISO,
+                        });
+                        continue; // Skip converting to Falta
+                    }
+                }
 
                 // 1. Mark infringement as resulted in absence
                 await doc.ref.update({
