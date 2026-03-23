@@ -2,10 +2,7 @@ import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
   // Ignorar advertencias de Cloud Workstations en desarrollo
-  experimental: {
-    // Si la versión de Next lo acepta aquí:
-    serverComponentsExternalPackages: ['firebase-admin'],
-  },
+  serverExternalPackages: ['firebase-admin'],
   // La propiedad raíz que espera Next.js para evitar el error de preview
   // Se agregan los orígenes en la nube (la parte base de cloudworkstations)
   // o también se pueden usar comodines dependiendo de la versión exacta de Next
