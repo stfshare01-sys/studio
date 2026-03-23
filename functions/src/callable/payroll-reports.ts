@@ -392,8 +392,8 @@ export const generatePayrollReports = onCall<GeneratePayrollReportsRequest>(
                         // File 1: Overtime (HE2/HE3) per day
                         const otReq = overtimeMap.get(`${emp.id}_${date}`);
                         if (otReq) {
-                            const double = otReq.doubleHours || 0;
-                            const triple = otReq.tripleHours || 0;
+                            const double = Math.round((otReq.doubleHours || 0) * 2) / 2;
+                            const triple = Math.round((otReq.tripleHours || 0) * 2) / 2;
                             if (double > 0) {
                                 dayData.he2Hours = double;
                                 dayData.file1Codes.push(`${double}HE2`);
@@ -404,8 +404,10 @@ export const generatePayrollReports = onCall<GeneratePayrollReportsRequest>(
                             }
                         } else if (attendance.overtimeHours > 0) {
                             // Backwards compatibility if no matching overtime_request
-                            const double = (attendance as any).overtimeDoubleHours || (attendance.overtimeType === 'double' ? attendance.overtimeHours : 0);
-                            const triple = (attendance as any).overtimeTripleHours || (attendance.overtimeType === 'triple' ? attendance.overtimeHours : 0);
+                            const rawDouble = (attendance as any).overtimeDoubleHours || (attendance.overtimeType === 'double' ? attendance.overtimeHours : 0);
+                            const rawTriple = (attendance as any).overtimeTripleHours || (attendance.overtimeType === 'triple' ? attendance.overtimeHours : 0);
+                            const double = Math.round(rawDouble * 2) / 2;
+                            const triple = Math.round(rawTriple * 2) / 2;
                             if (double > 0) {
                                 dayData.he2Hours = double;
                                 dayData.file1Codes.push(`${double}HE2`);
@@ -531,8 +533,8 @@ export const generatePayrollReports = onCall<GeneratePayrollReportsRequest>(
                     row.push(cellValue);
 
                     // Count for summary columns
-                    if (dayData.file2Codes.includes('DFT')) countDFT++;
-                    if (dayData.file2Codes.includes('DL')) countDL++;
+                    if (dayData.file2Codes.includes('DDDL')) countDFT++;
+                    if (dayData.file2Codes.includes('DDL')) countDL++;
                     if (dayData.file2Codes.includes('PD')) countPD++;
                 }
 

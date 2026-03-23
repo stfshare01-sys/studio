@@ -25,49 +25,6 @@ import type {
     Incidence
 } from '../types/firestore-types';
 
-/**
- * Obtiene el día de reinicio de HE según configuración de ubicación
- * @returns Número del día (0-6, donde 0 = domingo)
- */
-async function getOvertimeResetDay(
-    db: admin.firestore.Firestore,
-    employee: any
-): Promise<number> {
-    const locationId = employee.locationId;
-
-    if (!locationId) {
-        console.warn(`[Prenomina] Employee ${employee.id} has no location, using default: Wednesday (3)`);
-        return 3; // Miércoles por defecto según regla de corte común
-    }
-
-    try {
-        const locationDoc = await db.collection('locations').doc(locationId).get();
-        if (!locationDoc.exists) {
-            console.warn(`[Prenomina] Location ${locationId} not found, using default: Wednesday (3)`);
-            return 3;
-        }
-
-        const location = locationDoc.data();
-        const overtimeResetDay = location?.overtimeResetDay || 'wednesday'; // Default fallback was sunday
-
-        switch (overtimeResetDay) {
-            case 'sunday':
-                return 0;
-            case 'wednesday':
-                return 3;
-            case 'saturday':
-                return 6;
-            case 'custom':
-                return location?.customOvertimeResetDay || 3;
-            default:
-                console.warn(`[Prenomina] Unknown overtimeResetDay: ${overtimeResetDay}, using Wednesday (3)`);
-                return 3;
-        }
-    } catch (error) {
-        console.error(`[Prenomina] Error fetching location ${locationId}:`, error);
-        return 0;
-    }
-}
 
 // Initialize Firebase Admin SDK
 if (!admin.apps.length) {
@@ -183,13 +140,32 @@ export const consolidatePrenomina = onCall<ConsolidatePrenominaRequest>(
             }
 
 
-            // 1b. Mark unjustified tardiness records (they stay as is, but log)
+            // 1b. Re-evaluate unjustified tardiness records for schedule changes
             const unjustifiedTardinessQuery = await db.collection('tardiness_records')
                 .where('isJustified', '==', false)
                 .where('date', '>=', periodStart)
                 .where('date', '<=', periodEnd)
                 .get();
-            console.log(`[HCM] Found ${unjustifiedTardinessQuery.size} unjustified tardiness records - will affect puntualidad`);
+
+            let cancelledTardinessCount = 0;
+            for (const doc of unjustifiedTardinessQuery.docs) {
+                const tardiness = doc.data();
+                const employeeDoc = await db.collection('employees').doc(tardiness.employeeId).get();
+                if (employeeDoc.exists) {
+                    const employeeData = { id: employeeDoc.id, ...employeeDoc.data() } as Employee;
+                    if (await shouldSkipInfractionForRestDay(employeeData, tardiness.date, db)) {
+                        console.log(`[HCM] Cancelling Tardiness for ${tardiness.employeeId} on ${tardiness.date} due to schedule change (now rest day).`);
+                        await doc.ref.update({
+                            isJustified: true,
+                            justificationStatus: 'approved',
+                            justificationReason: 'Anulado automáticamente por cambio de horario (ahora día de descanso)',
+                            updatedAt: nowISO,
+                        });
+                        cancelledTardinessCount++;
+                    }
+                }
+            }
+            console.log(`[HCM] Found ${unjustifiedTardinessQuery.size} unjustified tardiness records (${cancelledTardinessCount} cancelled by schedule change) - remaining affect puntualidad`);
 
             // 1c. Process unjustified early departures -> Mark as FALTA
             const unjustifiedEarlyDeparturesQuery = await db.collection('early_departures')
@@ -401,11 +377,33 @@ export const consolidatePrenomina = onCall<ConsolidatePrenominaRequest>(
                                 .map(d => d.data() as any)
                                 .filter(req => req.status === 'approved' || req.status === 'partial');
 
+                            // Agrupar horas extra aprobadas por semana (Lunes a Domingo) para el límite LFT de 9h semanales dobles
+                            const otHoursByWeek: Record<string, number> = {};
+                            for (const orq of overtimeRequests) {
+                                if (!orq.date || typeof orq.hoursRequested !== 'number') continue;
+                                
+                                // Calcular el lunes correspondiente a la fecha de la hora extra
+                                const d = new Date(orq.date);
+                                const day = d.getDay();
+                                const diff = d.getDate() - day + (day === 0 ? -6 : 1); 
+                                const monday = new Date(d.setDate(diff));
+                                const weekKey = monday.toISOString().split('T')[0];
+                                
+                                otHoursByWeek[weekKey] = (otHoursByWeek[weekKey] || 0) + orq.hoursRequested;
+                            }
+
                             let doubleHours = 0;
                             let tripleHours = 0;
-                            for (const orq of overtimeRequests) {
-                                doubleHours += (orq.doubleHours || 0);
-                                tripleHours += (orq.tripleHours || 0);
+
+                            for (const weekHours of Object.values(otHoursByWeek)) {
+                                // Aplicar redondeo a nivel semanal a medias horas (0.5)
+                                const roundedWeekHours = Math.round(weekHours * 2) / 2;
+                                if (roundedWeekHours <= 9) {
+                                    doubleHours += roundedWeekHours;
+                                } else {
+                                    doubleHours += 9;
+                                    tripleHours += (roundedWeekHours - 9);
+                                }
                             }
 
                             // Calculate all values using server-side LFT formulas
@@ -467,8 +465,7 @@ export const consolidatePrenomina = onCall<ConsolidatePrenominaRequest>(
                                 }
                             }
 
-                            // Count rest days worked (based on location config)
-                            const resetDay = await getOvertimeResetDay(db, employee);
+
 
                             const processedHolidays = new Set<string>();
                             const processedSundays = new Set<string>();
@@ -481,7 +478,8 @@ export const consolidatePrenomina = onCall<ConsolidatePrenominaRequest>(
                                     holidayDays++;
                                 }
 
-                                if (dayOfWeek === resetDay && !processedSundays.has(dateStr)) {
+                                // Prima Dominical: solo domingos trabajados (dayOfWeek === 0)
+                                if (dayOfWeek === 0 && !processedSundays.has(dateStr)) {
                                     processedSundays.add(dateStr);
                                     sundayDays++;
                                 }
@@ -527,8 +525,8 @@ export const consolidatePrenomina = onCall<ConsolidatePrenominaRequest>(
                                 periodEnd,
                                 periodType,
                                 daysWorked,
-                                overtimeDoubleHours: doubleHours,
-                                overtimeTripleHours: tripleHours,
+                                overtimeDoubleHours: Math.round(doubleHours * 2) / 2,
+                                overtimeTripleHours: Math.round(tripleHours * 2) / 2,
                                 sundayPremiumDays: sundayDays,
                                 holidayDays,
                                 absenceDays,

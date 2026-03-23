@@ -598,8 +598,8 @@ export const NOMIPAQ_CODES = {
 
     // Días especiales
     DIA_DESCANSO: 'DD',
-    DIA_DESCANSO_LABORADO: 'DL',
-    DIA_FESTIVO_TRABAJADO: 'DFT',
+    DIA_DESCANSO_LABORADO: 'DDL',
+    DIA_FESTIVO_TRABAJADO: 'DDDL',
     PRIMA_DOMINICAL: 'PD',
 
     // Otros
