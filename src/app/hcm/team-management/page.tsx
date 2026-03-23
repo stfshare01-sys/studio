@@ -1380,7 +1380,7 @@ function TeamManagementContent() {
                 {/* Header */}
                 <div className="flex items-center justify-between">
                     <div>
-                        <h1 className="text-3xl font-bold">Gestión de Equipo</h1>
+                        <h1 className="text-3xl font-bold">Gestión de Equipo (TEST)</h1>
                         <p className="text-muted-foreground">
                             Administra retardos, horas extras y turnos de tu equipo
                         </p>
