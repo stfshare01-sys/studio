@@ -394,11 +394,12 @@ export const consolidatePrenomina = onCall<ConsolidatePrenominaRequest>(
                             // Get approved overtime requests for the period
                             const overtimeQuery = db.collection('overtime_requests')
                                 .where('employeeId', '==', employee.id)
-                                .where('status', '==', 'approved')
                                 .where('date', '>=', periodStart)
                                 .where('date', '<=', periodEnd);
                             const overtimeSnap = await transaction.get(overtimeQuery);
-                            const overtimeRequests = overtimeSnap.docs.map(d => d.data() as any);
+                            const overtimeRequests = overtimeSnap.docs
+                                .map(d => d.data() as any)
+                                .filter(req => req.status === 'approved' || req.status === 'partial');
 
                             let doubleHours = 0;
                             let tripleHours = 0;
