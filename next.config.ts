@@ -10,6 +10,7 @@ const nextConfig: NextConfig = {
   allowedDevOrigins: [
     "localhost", 
     "*.cloudworkstations.dev",
+    "9003-firebase-studio-1767801041930.cluster-l2bgochoazbomqgfmlhuvdvgiy.cloudworkstations.dev",
     "*.idx.dev"
   ],
   /* config options here */
