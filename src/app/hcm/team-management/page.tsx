@@ -1290,6 +1290,37 @@ function TeamManagementContent() {
         return filterByShift(r.employeeId) && matchesEmployee && matchesDate;
     }).sort((a, b) => a.date.localeCompare(b.date));
 
+    const calculatedOvertimeStats = useMemo(() => {
+        let pending = 0;
+        let approved = 0;
+        let rejected = 0;
+        let partial = 0;
+        let totalHoursApproved = 0;
+        let totalHoursPending = 0;
+
+        filteredOvertime.forEach(req => {
+            switch (req.status) {
+                case 'pending':
+                    pending++;
+                    totalHoursPending += req.hoursRequested || 0;
+                    break;
+                case 'approved':
+                    approved++;
+                    totalHoursApproved += req.hoursApproved ?? req.hoursRequested ?? 0;
+                    break;
+                case 'rejected':
+                    rejected++;
+                    break;
+                case 'partial':
+                    partial++;
+                    totalHoursApproved += req.hoursApproved ?? 0;
+                    break;
+            }
+        });
+
+        return { pending, approved, rejected, partial, totalHoursApproved, totalHoursPending };
+    }, [filteredOvertime]);
+
     const filteredAssignments = shiftAssignments.filter(r => {
         const matchesEmployee = selectedEmployeeFilter === 'all' || r.employeeId === selectedEmployeeFilter;
         // Date Filter for assignments (overlap check)
@@ -1446,10 +1477,10 @@ function TeamManagementContent() {
                         <CardContent>
                             <div className="flex items-center justify-between">
                                 <div>
-                                    <span className="text-2xl font-bold">{overtimeStats.pending}</span>
-                                    <span className="text-sm text-muted-foreground ml-2">({overtimeStats.totalHoursPending}h)</span>
+                                    <span className="text-2xl font-bold">{calculatedOvertimeStats.pending}</span>
+                                    <span className="text-sm text-muted-foreground ml-2">({calculatedOvertimeStats.totalHoursPending}h)</span>
                                 </div>
-                                <Timer className={`h-5 w-5 ${overtimeStats.pending > 0 ? 'text-blue-500' : 'text-muted-foreground'}`} />
+                                <Timer className={`h-5 w-5 ${calculatedOvertimeStats.pending > 0 ? 'text-blue-500' : 'text-muted-foreground'}`} />
                             </div>
                         </CardContent>
                     </Card>
@@ -1460,7 +1491,7 @@ function TeamManagementContent() {
                         <CardContent>
                             <div className="flex items-center justify-between">
                                 <div>
-                                    <span className="text-2xl font-bold text-green-600">{overtimeStats.totalHoursApproved}</span>
+                                    <span className="text-2xl font-bold text-green-600">{calculatedOvertimeStats.totalHoursApproved}</span>
                                     <span className="text-sm text-muted-foreground ml-1">horas</span>
                                 </div>
                                 <Check className="h-5 w-5 text-green-500" />

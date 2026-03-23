@@ -421,17 +421,20 @@ async function recalculateWeeklyOvertime(
         const startStr = formatLocal(weekStart);
         const endStr = formatLocal(weekEnd);
 
-        // 4. Obtener solicitudes aprobadas/parciales en esa semana
+        // 4. Obtener solicitudes aprobadas/parciales en esa semana (filtrando en memoria para evitar errores de índice compuesto)
         const requestsQuery = query(
             collection(firestore, 'overtime_requests'),
-            where('employeeId', '==', employeeId),
-            where('status', 'in', ['approved', 'partial']),
-            where('date', '>=', startStr),
-            where('date', '<=', endStr),
-            orderBy('date', 'asc') // Simple index
+            where('employeeId', '==', employeeId)
         );
         const snapshot = await getDocs(requestsQuery);
-        const requests = snapshot.docs.map(d => ({ id: d.id, ...d.data() })) as OvertimeRequest[];
+        let requests = snapshot.docs.map(d => ({ id: d.id, ...d.data() })) as OvertimeRequest[];
+
+        // Filtrar en memoria por estado y rango de fechas
+        requests = requests.filter(req => 
+            (req.status === 'approved' || req.status === 'partial') &&
+            req.date >= startStr && 
+            req.date <= endStr
+        );
 
         // Agregamos un sort explícito adicional por createdAt para desempatar mismo día
         requests.sort((a, b) => {
