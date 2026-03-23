@@ -10,9 +10,7 @@
 import { onCall, HttpsError, CallableRequest } from 'firebase-functions/v2/https';
 import * as admin from 'firebase-admin';
 import { verifyRole, HCM_ROLES, MANAGER_ROLES, getUserData } from '../utils/auth-middleware';
-import {
-    calculateOvertime,
-} from '../utils/lft-calculations';
+// calculateOvertime no longer needed here
 import {
     canApproveForEmployee,
     ApprovalType,
@@ -393,13 +391,28 @@ export const consolidatePrenomina = onCall<ConsolidatePrenominaRequest>(
                             const incidencesSnap = await transaction.get(incidencesQuery);
                             const incidences = incidencesSnap.docs.map(d => d.data() as Incidence);
 
+                            // Get approved overtime requests for the period
+                            const overtimeQuery = db.collection('overtime_requests')
+                                .where('employeeId', '==', employee.id)
+                                .where('status', '==', 'approved')
+                                .where('date', '>=', periodStart)
+                                .where('date', '<=', periodEnd);
+                            const overtimeSnap = await transaction.get(overtimeQuery);
+                            const overtimeRequests = overtimeSnap.docs.map(d => d.data() as any);
+
+                            let doubleHours = 0;
+                            let tripleHours = 0;
+                            for (const orq of overtimeRequests) {
+                                doubleHours += (orq.doubleHours || 0);
+                                tripleHours += (orq.tripleHours || 0);
+                            }
+
                             // Calculate all values using server-side LFT formulas
 
                             // FILTER: Ignore voided attendance records (e.g. converted to absence)
                             const validAttendanceRecords = attendanceRecords.filter(a => !a.isVoid);
 
                             let daysWorked = validAttendanceRecords.length;
-                            let totalOvertimeHours = validAttendanceRecords.reduce((sum, a) => sum + a.overtimeHours, 0);
                             let absenceDays = 0;
                             let vacationDaysTaken = 0;
                             let sickLeaveDays = 0;
@@ -456,18 +469,21 @@ export const consolidatePrenomina = onCall<ConsolidatePrenominaRequest>(
                             // Count rest days worked (based on location config)
                             const resetDay = await getOvertimeResetDay(db, employee);
 
+                            const processedHolidays = new Set<string>();
+                            const processedSundays = new Set<string>();
                             for (const record of validAttendanceRecords) {
                                 const dayOfWeek = new Date(record.date).getDay();
                                 const dateStr = record.date;
 
-                                if (isHoliday(dateStr)) {
+                                if (isHoliday(dateStr) && !processedHolidays.has(dateStr)) {
+                                    processedHolidays.add(dateStr);
                                     holidayDays++;
-                                    // Holidays worked count as Sunday Premium for "Triple Pay" logic purposes in some systems, 
-                                    // but usually they are separate. LFT: Salary + 200%.
-                                    // Here we just count them.
                                 }
 
-                                if (dayOfWeek === resetDay) sundayDays++;
+                                if (dayOfWeek === resetDay && !processedSundays.has(dateStr)) {
+                                    processedSundays.add(dateStr);
+                                    sundayDays++;
+                                }
                             }
 
                             // Count company benefit days
@@ -498,9 +514,7 @@ export const consolidatePrenomina = onCall<ConsolidatePrenominaRequest>(
                                 }
                             }
 
-                            // Calculate overtime (HOURS ONLY - Rate 0)
-                            // We pass 0 as rate because we only care about doubleHours and tripleHours
-                            const overtimeCalc = calculateOvertime(totalOvertimeHours, 0);
+                            // We use doubleHours and tripleHours calculated from overtime_requests earlier
 
                             // Prepare prenomina record
                             const prenominaRef = db.collection('prenomina').doc();
@@ -512,8 +526,8 @@ export const consolidatePrenomina = onCall<ConsolidatePrenominaRequest>(
                                 periodEnd,
                                 periodType,
                                 daysWorked,
-                                overtimeDoubleHours: overtimeCalc.doubleHours,
-                                overtimeTripleHours: overtimeCalc.tripleHours,
+                                overtimeDoubleHours: doubleHours,
+                                overtimeTripleHours: tripleHours,
                                 sundayPremiumDays: sundayDays,
                                 holidayDays,
                                 absenceDays,
