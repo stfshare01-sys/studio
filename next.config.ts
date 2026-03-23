@@ -1,6 +1,20 @@
 import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
+  // Ignorar advertencias de Cloud Workstations en desarrollo
+  experimental: {
+    // Si la versión de Next lo acepta aquí:
+    serverComponentsExternalPackages: ['firebase-admin'],
+  },
+  // La propiedad raíz que espera Next.js para evitar el error de preview
+  // Se agregan los orígenes en la nube (la parte base de cloudworkstations)
+  // o también se pueden usar comodines dependiendo de la versión exacta de Next
+  // pero .idx.dev y .cloudworkstations.dev son comunes en Google Cloud
+  allowedDevOrigins: [
+    "localhost", 
+    ".cloudworkstations.dev",
+    ".idx.dev"
+  ] as string[],
   /* config options here */
   eslint: {
     // Warning: This allows production builds to successfully complete even if
