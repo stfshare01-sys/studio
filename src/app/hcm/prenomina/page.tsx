@@ -470,8 +470,13 @@ export default function ConsolidacionAsistenciaPage() {
 
                 if (att.isVoid) continue;
 
-                // ASI - Attendance
-                lines.push(`${empNumber}|${date}|${NOMIPAQ_CODES.DIA_TRABAJADO}|`);
+                const effectivelyWorked = !!att.checkIn || 
+                    ['present', 'tardiness', 'early_departure', 'missing_checkout'].includes((att as any).status);
+
+                if (effectivelyWorked) {
+                    // ASI - Attendance
+                    lines.push(`${empNumber}|${date}|${NOMIPAQ_CODES.DIA_TRABAJADO}|`);
+                }
 
                 // HE2/HE3
                 const otReq = overtimeMap[`${att.employeeId}_${date}`];
@@ -490,17 +495,17 @@ export default function ConsolidacionAsistenciaPage() {
                 }
 
                 // DL - Descanso Laborado
-                if (isRestDay) {
+                if (isRestDay && effectivelyWorked) {
                     lines.push(`${empNumber}|${date}|${NOMIPAQ_CODES.DIA_DESCANSO_LABORADO}|`);
                 }
 
                 // DFT - Día Festivo Trabajado
-                if (isHoliday) {
+                if (isHoliday && effectivelyWorked) {
                     lines.push(`${empNumber}|${date}|${NOMIPAQ_CODES.DIA_FESTIVO_TRABAJADO}|`);
                 }
 
                 // PD - Prima Dominical
-                if (isSunday) {
+                if (isSunday && effectivelyWorked) {
                     const sundayKey = `${att.employeeId}_${date}`;
                     if (!processedSundays.has(sundayKey)) {
                         lines.push(`${empNumber}|${date}|${NOMIPAQ_CODES.PRIMA_DOMINICAL}|`);

@@ -389,6 +389,9 @@ export const generatePayrollReports = onCall<GeneratePayrollReportsRequest>(
 
                     // Process attendance record
                     if (attendance) {
+                        const effectivelyWorked = !!attendance.checkIn || 
+                            ['present', 'tardiness', 'early_departure', 'missing_checkout'].includes((attendance as any).status);
+
                         // File 1: Overtime (HE2/HE3) per day
                         const otReq = overtimeMap.get(`${emp.id}_${date}`);
                         if (otReq) {
@@ -425,24 +428,35 @@ export const generatePayrollReports = onCall<GeneratePayrollReportsRequest>(
 
                         // File 2: Determine status codes
                         if (isHoliday) {
-                            dayData.file2Codes.push('DDDL');
+                            if (effectivelyWorked) {
+                                dayData.file2Codes.push('DDDL');
+                            }
                         }
                         if (isRestDay) {
-                            dayData.file2Codes.push('DDL');
+                            if (effectivelyWorked) {
+                                dayData.file2Codes.push('DDL');
+                            } else if (dayData.file2Codes.length === 0) {
+                                dayData.file2Codes.push('DESCANSO');
+                            }
                         }
-                        if (isSunday && !processedSundays.has(date)) {
+                        if (isSunday && effectivelyWorked && !processedSundays.has(date)) {
                             dayData.file2Codes.push('PD');
                             processedSundays.add(date);
                         }
 
                         // ASI only if no other File 2 codes exist
-                        if (dayData.file2Codes.length === 0) {
+                        if (dayData.file2Codes.length === 0 && effectivelyWorked) {
                             dayData.file2Codes.push('ASI');
                         }
                     } else {
                         // No attendance record - check if tardiness without attendance
                         if (empTardiness.has(date)) {
                             dayData.file1Codes.push('1RET');
+                        }
+                        
+                        // Fill in DESCANSO if it's a rest day without other marks
+                        if (isRestDay && dayData.file2Codes.length === 0) {
+                            dayData.file2Codes.push('DESCANSO');
                         }
                     }
 
@@ -508,7 +522,7 @@ export const generatePayrollReports = onCall<GeneratePayrollReportsRequest>(
             for (const date of dates) {
                 header2Row1.push(DAY_NAMES[getDayOfWeek(date)]);
             }
-            header2Row1.push('Prima Vacacional', 'Días Festivos Trabajados', 'Descanso Laborado', 'Prima Dominical', 'Comentarios');
+            header2Row1.push('Vacaciones', 'Faltas', 'Permisos sin goce', 'Permisos con goce', 'Prima Vacacional', 'Días Festivos Trabajados', 'Descanso Laborado', 'Prima Dominical', 'Comentarios');
             file2Data.push(header2Row1);
 
             // Header row 2: day numbers
@@ -516,7 +530,7 @@ export const generatePayrollReports = onCall<GeneratePayrollReportsRequest>(
             for (const date of dates) {
                 header2Row2.push(parseInt(date.substring(8, 10)));
             }
-            header2Row2.push('', '', '', '', '');
+            header2Row2.push('', '', '', '', '', '', '', '', '');
             file2Data.push(header2Row2);
 
             // Employee rows
@@ -526,6 +540,10 @@ export const generatePayrollReports = onCall<GeneratePayrollReportsRequest>(
                 let countDFT = 0;
                 let countDL = 0;
                 let countPD = 0;
+                let countVac = 0;
+                let countFaltas = 0;
+                let countPSS = 0;
+                let countPCS = 0;
 
                 for (const date of dates) {
                     const dayData = empDays.get(date)!;
@@ -536,6 +554,12 @@ export const generatePayrollReports = onCall<GeneratePayrollReportsRequest>(
                     if (dayData.file2Codes.includes('DDDL')) countDFT++;
                     if (dayData.file2Codes.includes('DDL')) countDL++;
                     if (dayData.file2Codes.includes('PD')) countPD++;
+                    if (dayData.file2Codes.includes('VAC')) countVac++;
+                    
+                    // Summarize occurrences dynamically by checking File 1 codes for the same day
+                    if (dayData.file1Codes.includes('1FINJ')) countFaltas++;
+                    if (dayData.file1Codes.includes('1PSS')) countPSS++;
+                    if (dayData.file1Codes.includes('1PCS')) countPCS++;
                 }
 
                 // Prima Vacacional: check if anniversary falls in range
@@ -548,6 +572,10 @@ export const generatePayrollReports = onCall<GeneratePayrollReportsRequest>(
                 }
 
                 row.push(
+                    countVac > 0 ? countVac : '',
+                    countFaltas > 0 ? countFaltas : '',
+                    countPSS > 0 ? countPSS : '',
+                    countPCS > 0 ? countPCS : '',
                     primaVacacional,
                     countDFT > 0 ? countDFT : '',
                     countDL > 0 ? countDL : '',
