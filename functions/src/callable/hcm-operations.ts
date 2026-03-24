@@ -377,33 +377,16 @@ export const consolidatePrenomina = onCall<ConsolidatePrenominaRequest>(
                                 .map(d => d.data() as any)
                                 .filter(req => req.status === 'approved' || req.status === 'partial');
 
-                            // Agrupar horas extra aprobadas por semana (Lunes a Domingo) para el límite LFT de 9h semanales dobles
-                            const otHoursByWeek: Record<string, number> = {};
-                            for (const orq of overtimeRequests) {
-                                if (!orq.date || typeof orq.hoursRequested !== 'number') continue;
-                                
-                                // Calcular el lunes correspondiente a la fecha de la hora extra
-                                const d = new Date(orq.date);
-                                const day = d.getDay();
-                                const diff = d.getDate() - day + (day === 0 ? -6 : 1); 
-                                const monday = new Date(d.setDate(diff));
-                                const weekKey = monday.toISOString().split('T')[0];
-                                
-                                otHoursByWeek[weekKey] = (otHoursByWeek[weekKey] || 0) + orq.hoursRequested;
-                            }
-
+                            // Sumar horas extra directamente de los registros aprobados/parciales
+                            // Los campos doubleHours y tripleHours ya están pre-calculados
+                            // con el tope semanal LFT de 9h al momento de la importación
                             let doubleHours = 0;
                             let tripleHours = 0;
 
-                            for (const weekHours of Object.values(otHoursByWeek)) {
-                                // Aplicar redondeo a nivel semanal a medias horas (0.5)
-                                const roundedWeekHours = Math.round(weekHours * 2) / 2;
-                                if (roundedWeekHours <= 9) {
-                                    doubleHours += roundedWeekHours;
-                                } else {
-                                    doubleHours += 9;
-                                    tripleHours += (roundedWeekHours - 9);
-                                }
+                            for (const orq of overtimeRequests) {
+                                if (!orq.date) continue;
+                                doubleHours += (typeof orq.doubleHours === 'number' ? orq.doubleHours : 0);
+                                tripleHours += (typeof orq.tripleHours === 'number' ? orq.tripleHours : 0);
                             }
 
                             // Calculate all values using server-side LFT formulas
