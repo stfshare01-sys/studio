@@ -382,6 +382,18 @@ export const generatePayrollReports = onCall<GeneratePayrollReportsRequest>(
                                 dayData.file1Codes.push('1PSS');
                                 dayData.file2Codes.push('PSS');
                                 break;
+                            default:
+                                // Cualquier otro tipo de permiso (adoption, marriage, etc.)
+                                // Se clasifica por la bandera isPaid, igual que en hcm-operations.ts
+                                if (inc.type !== 'vacation' && inc.type !== 'sick_leave' && inc.type !== 'maternity') {
+                                    if (inc.isPaid) {
+                                        dayData.file1Codes.push('1PCS');
+                                        dayData.file2Codes.push('PCS');
+                                    } else {
+                                        dayData.file1Codes.push('1PSS');
+                                        dayData.file2Codes.push('PSS');
+                                    }
+                                }
                         }
                     }
 
