@@ -133,11 +133,12 @@ export async function processAttendanceImport(
         const existingRecordsMap = new Set<string>();
         const existingTardinessMap = new Set<string>();
         const existingDeparturesMap = new Set<string>();
+        const existingIncidencesAutoMap = new Set<string>();
 
         if (minDate && maxDate) {
             console.log(`[HCM] Checking for duplicates between ${minDate} and ${maxDate}`);
 
-            const [existingSnap, existingTardinessSnap, existingDeparturesSnap] = await Promise.all([
+            const [existingSnap, existingTardinessSnap, existingDeparturesSnap, existingAutoIncidSnap] = await Promise.all([
                 getDocs(query(
                     collection(firestore, 'attendance'),
                     where('date', '>=', minDate),
@@ -150,6 +151,11 @@ export async function processAttendanceImport(
                 )),
                 getDocs(query(
                     collection(firestore, 'early_departures'),
+                    where('date', '>=', minDate),
+                    where('date', '<=', maxDate)
+                )),
+                getDocs(query(
+                    collection(firestore, 'incidences_auto'),
                     where('date', '>=', minDate),
                     where('date', '<=', maxDate)
                 ))
@@ -167,9 +173,14 @@ export async function processAttendanceImport(
                 const data = doc.data();
                 existingDeparturesMap.add(`${data.employeeId}_${data.date}`);
             });
-            console.log(`[HCM] Found ${existingRecordsMap.size} existing attendance, ${existingTardinessMap.size} tardiness, ${existingDeparturesMap.size} early departures in range`);
+            existingAutoIncidSnap.docs.forEach(doc => {
+                const data = doc.data();
+                if (data.type === 'worked_rest_day') {
+                    existingIncidencesAutoMap.add(`${data.employeeId}_${data.date}`);
+                }
+            });
+            console.log(`[HCM] Found ${existingRecordsMap.size} existing attendance, ${existingTardinessMap.size} tardiness, ${existingDeparturesMap.size} early departures, ${existingIncidencesAutoMap.size} auto incidences in range`);
         }
-
         // Get all unique employee IDs and fetch their shift types, location config, and time bank balances
         const employeeIds = [...new Set(rows.map(r => r.employeeId))];
         const employeeShifts: Record<string, {
@@ -909,21 +920,24 @@ export async function processAttendanceImport(
                 if (isRestDay && (row.checkIn || row.checkOut)) {
                     const isSunday = dayOfWeek === 0;
 
-                    await addDoc(collection(firestore, 'incidences_auto'), {
-                        employeeId: actualUid,
-                        employeeName: shiftConfig.fullName ?? actualUid,
-                        date: row.date,
-                        type: 'worked_rest_day',
-                        code: 'DL',
-                        hoursWorked,
-                        allowOvertime: shiftConfig.allowOvertime ?? false,
-                        isSunday,
-                        ...(isSunday && { sundayPremium: true, sundayCode: 'PD' }),
-                        attendanceRecordId: newAttendanceRef.id,
-                        importBatchId: batchId,
-                        status: 'auto_generated',
-                        createdAt: now
-                    });
+                    if (!existingIncidencesAutoMap.has(`${actualUid}_${row.date}`)) {
+                        await addDoc(collection(firestore, 'incidences_auto'), {
+                            employeeId: actualUid,
+                            employeeName: shiftConfig.fullName ?? actualUid,
+                            date: row.date,
+                            type: 'worked_rest_day',
+                            code: 'DL',
+                            hoursWorked,
+                            allowOvertime: shiftConfig.allowOvertime ?? false,
+                            isSunday,
+                            ...(isSunday && { sundayPremium: true, sundayCode: 'PD' }),
+                            attendanceRecordId: newAttendanceRef.id,
+                            importBatchId: batchId,
+                            status: 'auto_generated',
+                            createdAt: now
+                        });
+                        existingIncidencesAutoMap.add(`${actualUid}_${row.date}`);
+                    }
 
                     if (!shiftConfig.allowOvertime) {
                         continue;

@@ -11,8 +11,6 @@
 
 import { onCall, HttpsError, CallableRequest } from 'firebase-functions/v2/https';
 import * as admin from 'firebase-admin';
-import * as XLSX from 'xlsx';
-import * as archiver from 'archiver';
 import { verifyRole, HCM_ROLES } from '../utils/auth-middleware';
 import type {
     Employee,
@@ -162,6 +160,12 @@ export const generatePayrollReports = onCall<GeneratePayrollReportsRequest>(
         console.log(`[PayrollReports] Generating reports for ${periodStart} to ${periodEnd}`);
 
         try {
+            // Lazy load heavy dependencies to avoid Firebase function initialization timeout > 10s
+            const xlsxModule = await import('xlsx');
+            const XLSX = xlsxModule.default || xlsxModule;
+            const archiverModule = await import('archiver');
+            const archiver = archiverModule.default || archiverModule;
+
             // =====================================================
             // PHASE 1: FETCH ALL REQUIRED DATA
             // =====================================================
@@ -428,8 +432,11 @@ export const generatePayrollReports = onCall<GeneratePayrollReportsRequest>(
                         }
 
                         // File 1: Tardiness (RET)
+                        // Only add 1RET if there isn't already a full-day incidence (FINJ, PSS, PCS)
                         if (empTardiness.has(date)) {
-                            dayData.file1Codes.push('1RET');
+                            if (!dayData.file1Codes.some(code => code.includes('FINJ') || code.includes('PSS') || code.includes('PCS'))) {
+                                dayData.file1Codes.push('1RET');
+                            }
                         }
 
                         // File 2: Determine status codes
@@ -457,7 +464,9 @@ export const generatePayrollReports = onCall<GeneratePayrollReportsRequest>(
                     } else {
                         // No attendance record - check if tardiness without attendance
                         if (empTardiness.has(date)) {
-                            dayData.file1Codes.push('1RET');
+                            if (!dayData.file1Codes.some(code => code.includes('FINJ') || code.includes('PSS') || code.includes('PCS'))) {
+                                dayData.file1Codes.push('1RET');
+                            }
                         }
                         
                         // Fill in DESCANSO if it's a rest day without other marks
