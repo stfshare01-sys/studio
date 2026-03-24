@@ -475,14 +475,15 @@ export const consolidatePrenomina = onCall<ConsolidatePrenominaRequest>(
                             for (const record of validAttendanceRecords) {
                                 const dayOfWeek = new Date(record.date).getDay();
                                 const dateStr = record.date;
+                                const effectivelyWorked = (!!record.checkIn && record.checkIn.trim() !== '') || (typeof record.hoursWorked === 'number' && record.hoursWorked > 0);
 
-                                if (isHoliday(dateStr) && !processedHolidays.has(dateStr)) {
+                                if (isHoliday(dateStr) && effectivelyWorked && !processedHolidays.has(dateStr)) {
                                     processedHolidays.add(dateStr);
                                     holidayDays++;
                                 }
 
                                 // Prima Dominical: solo domingos trabajados (dayOfWeek === 0)
-                                if (dayOfWeek === 0 && !processedSundays.has(dateStr)) {
+                                if (dayOfWeek === 0 && effectivelyWorked && !processedSundays.has(dateStr)) {
                                     processedSundays.add(dateStr);
                                     sundayDays++;
                                 }
