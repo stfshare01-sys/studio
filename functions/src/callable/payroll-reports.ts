@@ -280,7 +280,7 @@ export const generatePayrollReports = onCall<GeneratePayrollReportsRequest>(
                     if (doc.exists) locationCache.set(locId, doc.data() as Location);
                 }),
                 ...uniqueShiftIds.map(async (shiftId) => {
-                    const doc = await db.collection('custom_shifts').doc(shiftId).get();
+                    const doc = await db.collection('shifts').doc(shiftId).get();
                     if (doc.exists) shiftCache.set(shiftId, { id: doc.id, ...doc.data() } as CustomShift);
                 }),
             ]);
@@ -365,7 +365,6 @@ export const generatePayrollReports = onCall<GeneratePayrollReportsRequest>(
                         switch (inc.type) {
                             case 'unjustified_absence':
                                 dayData.file1Codes.push('1FINJ');
-                                dayData.file2Codes.push('FINJ');
                                 break;
                             case 'personal_leave':
                             case 'paternity':
@@ -377,15 +376,12 @@ export const generatePayrollReports = onCall<GeneratePayrollReportsRequest>(
                             case 'maternity':
                                 if (inc.isPaid) {
                                     dayData.file1Codes.push('1PCS');
-                                    dayData.file2Codes.push('PCS');
                                 } else {
                                     dayData.file1Codes.push('1PSS');
-                                    dayData.file2Codes.push('PSS');
                                 }
                                 break;
                             case 'unpaid_leave':
                                 dayData.file1Codes.push('1PSS');
-                                dayData.file2Codes.push('PSS');
                                 break;
                         }
                     }
@@ -461,8 +457,9 @@ export const generatePayrollReports = onCall<GeneratePayrollReportsRequest>(
                             processedSundays.add(date);
                         }
 
-                        // ASI only if no other File 2 codes exist
-                        if (dayData.file2Codes.length === 0 && effectivelyWorked) {
+                        // ASI only if no other File 2 codes AND no file1 incidences
+                        const hasFile1Incidence = dayData.file1Codes.some(c => c.includes('FINJ') || c.includes('PSS') || c.includes('PCS'));
+                        if (dayData.file2Codes.length === 0 && effectivelyWorked && !hasFile1Incidence) {
                             dayData.file2Codes.push('ASI');
                         }
                     } else {
@@ -541,7 +538,7 @@ export const generatePayrollReports = onCall<GeneratePayrollReportsRequest>(
             for (const date of dates) {
                 header2Row1.push(DAY_NAMES[getDayOfWeek(date)]);
             }
-            header2Row1.push('Vacaciones', 'Faltas', 'Permisos sin goce', 'Permisos con goce', 'Prima Vacacional', 'Días Festivos Trabajados', 'Descanso Laborado', 'Prima Dominical', 'Comentarios');
+            header2Row1.push('Vacaciones', 'Prima Vacacional', 'Días Festivos Trabajados', 'Descanso Laborado', 'Prima Dominical', 'Comentarios');
             file2Data.push(header2Row1);
 
             // Header row 2: day numbers
@@ -549,7 +546,7 @@ export const generatePayrollReports = onCall<GeneratePayrollReportsRequest>(
             for (const date of dates) {
                 header2Row2.push(parseInt(date.substring(8, 10)));
             }
-            header2Row2.push('', '', '', '', '', '', '', '', '');
+            header2Row2.push('', '', '', '', '', '');
             file2Data.push(header2Row2);
 
             // Employee rows
@@ -560,25 +557,17 @@ export const generatePayrollReports = onCall<GeneratePayrollReportsRequest>(
                 let countDL = 0;
                 let countPD = 0;
                 let countVac = 0;
-                let countFaltas = 0;
-                let countPSS = 0;
-                let countPCS = 0;
 
                 for (const date of dates) {
                     const dayData = empDays.get(date)!;
                     const cellValue = dayData.file2Codes.join(', ');
                     row.push(cellValue);
 
-                    // Count for summary columns
+                    // Count for summary columns (solo códigos de File 2)
                     if (dayData.file2Codes.includes('DDDL')) countDFT++;
                     if (dayData.file2Codes.includes('DDL')) countDL++;
                     if (dayData.file2Codes.includes('PD')) countPD++;
                     if (dayData.file2Codes.includes('VAC')) countVac++;
-                    
-                    // Summarize occurrences dynamically by checking File 1 codes for the same day
-                    if (dayData.file1Codes.includes('1FINJ')) countFaltas++;
-                    if (dayData.file1Codes.includes('1PSS')) countPSS++;
-                    if (dayData.file1Codes.includes('1PCS')) countPCS++;
                 }
 
                 // Prima Vacacional: check if anniversary falls in range
@@ -592,9 +581,6 @@ export const generatePayrollReports = onCall<GeneratePayrollReportsRequest>(
 
                 row.push(
                     countVac > 0 ? countVac : '',
-                    countFaltas > 0 ? countFaltas : '',
-                    countPSS > 0 ? countPSS : '',
-                    countPCS > 0 ? countPCS : '',
                     primaVacacional,
                     countDFT > 0 ? countDFT : '',
                     countDL > 0 ? countDL : '',
