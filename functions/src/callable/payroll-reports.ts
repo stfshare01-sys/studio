@@ -179,9 +179,9 @@ export const generatePayrollReports = onCall<GeneratePayrollReportsRequest>(
                 db.collection('employees').where('status', '==', 'terminated').get(),
             ]);
 
-            const activeEmployees = activeSnap.docs.map(d => ({ id: d.id, ...d.data() } as Employee & { id: string; terminationDate?: string; hireDate: string; customShiftId?: string; locationId?: string }));
+            const activeEmployees = activeSnap.docs.map(d => ({ id: d.id, ...d.data() } as Employee & { id: string; terminationDate?: string; hireDate: string; customShiftId?: string; locationId?: string; employeeId?: string }));
             const terminatedEmployees = terminatedSnap.docs
-                .map(d => ({ id: d.id, ...d.data() } as Employee & { id: string; terminationDate?: string; hireDate: string; customShiftId?: string; locationId?: string }))
+                .map(d => ({ id: d.id, ...d.data() } as Employee & { id: string; terminationDate?: string; hireDate: string; customShiftId?: string; locationId?: string; employeeId?: string }))
                 .filter(emp => emp.terminationDate && emp.terminationDate >= periodStart);
 
             const allEmployees = [...activeEmployees, ...terminatedEmployees];
@@ -511,7 +511,7 @@ export const generatePayrollReports = onCall<GeneratePayrollReportsRequest>(
             // Employee rows
             for (const emp of allEmployees) {
                 const empDays = employeeDayData.get(emp.id)!;
-                const row: (string | number)[] = [emp.id, emp.fullName];
+                const row: (string | number)[] = [emp.employeeId || emp.id, emp.fullName];
                 let sumHE2 = 0;
                 let sumHE3 = 0;
 
@@ -552,7 +552,7 @@ export const generatePayrollReports = onCall<GeneratePayrollReportsRequest>(
             // Employee rows
             for (const emp of allEmployees) {
                 const empDays = employeeDayData.get(emp.id)!;
-                const row: (string | number)[] = [emp.id, emp.fullName];
+                const row: (string | number)[] = [emp.employeeId || emp.id, emp.fullName];
                 let countDFT = 0;
                 let countDL = 0;
                 let countPD = 0;

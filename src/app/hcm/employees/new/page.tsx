@@ -447,12 +447,12 @@ export default function NewEmployeePage() {
                                                 name="employeeId"
                                                 render={({ field }) => (
                                                     <FormItem>
-                                                        <FormLabel>ID Reloj Checador (ZKTeco)</FormLabel>
+                                                        <FormLabel>Numero Empleado (NomiPaQ)</FormLabel>
                                                         <FormControl>
                                                             <Input placeholder="Ej. 1004" {...field} />
                                                         </FormControl>
                                                         <FormDescription>
-                                                            Obligatorio si registra asistencia física
+                                                            ID numérico utilizado en el NomiPaQ (opcional)
                                                         </FormDescription>
                                                         <FormMessage />
                                                     </FormItem>

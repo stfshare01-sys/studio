@@ -392,7 +392,7 @@ export default function EditEmployeePage({ params }: { params: Promise<{ id: str
                                     />
                                 </div>
                                 <div className="space-y-2">
-                                    <Label htmlFor="employeeId">ID Reloj Checador (Opcional)</Label>
+                                    <Label htmlFor="employeeId">Numero Empleado (NomiPaQ)</Label>
                                     <Input
                                         id="employeeId"
                                         value={formData.employeeId || ''}
@@ -400,7 +400,7 @@ export default function EditEmployeePage({ params }: { params: Promise<{ id: str
                                         placeholder="Ej. 1004"
                                     />
                                     <p className="text-xs text-muted-foreground">
-                                        ID númérico utilizado en el reloj biométrico ZKTeco
+                                        ID numérico utilizado en el NomiPaQ (opcional)
                                     </p>
                                 </div>
                                 <div className="space-y-2">
