@@ -456,6 +456,9 @@ export const consolidatePrenomina = onCall<ConsolidatePrenominaRequest>(
                                     case 'unjustified_absence':
                                         absenceDays += inc.totalDays;
                                         break;
+                                    case 'unpaid_leave':
+                                        unpaidLeaveDays += inc.totalDays;
+                                        break;
                                     default:
                                         if (inc.isPaid) {
                                             paidLeaveDays += inc.totalDays;
