@@ -370,6 +370,11 @@ export const generatePayrollReports = onCall<GeneratePayrollReportsRequest>(
                             case 'personal_leave':
                             case 'paternity':
                             case 'bereavement':
+                            case 'adoption':
+                            case 'marriage':
+                            case 'civic_duty':
+                            case 'half_day_family':
+                            case 'maternity':
                                 if (inc.isPaid) {
                                     dayData.file1Codes.push('1PCS');
                                     dayData.file2Codes.push('PCS');
@@ -382,18 +387,6 @@ export const generatePayrollReports = onCall<GeneratePayrollReportsRequest>(
                                 dayData.file1Codes.push('1PSS');
                                 dayData.file2Codes.push('PSS');
                                 break;
-                            default:
-                                // Cualquier otro tipo de permiso (adoption, marriage, etc.)
-                                // Se clasifica por la bandera isPaid, igual que en hcm-operations.ts
-                                if (inc.type !== 'vacation' && inc.type !== 'sick_leave' && inc.type !== 'maternity') {
-                                    if (inc.isPaid) {
-                                        dayData.file1Codes.push('1PCS');
-                                        dayData.file2Codes.push('PCS');
-                                    } else {
-                                        dayData.file1Codes.push('1PSS');
-                                        dayData.file2Codes.push('PSS');
-                                    }
-                                }
                         }
                     }
 
@@ -404,7 +397,6 @@ export const generatePayrollReports = onCall<GeneratePayrollReportsRequest>(
                                 dayData.file2Codes.push('VAC');
                                 break;
                             case 'sick_leave':
-                            case 'maternity':
                                 dayData.file2Codes.push('INC');
                                 break;
                         }
