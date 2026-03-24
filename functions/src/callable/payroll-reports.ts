@@ -472,7 +472,7 @@ export const generatePayrollReports = onCall<GeneratePayrollReportsRequest>(
                         
                         // Fill in DESCANSO if it's a rest day without other marks
                         if (isRestDay && dayData.file2Codes.length === 0) {
-                            dayData.file2Codes.push('DESCANSO');
+                            dayData.file2Codes.push('DD');
                         }
                     }
 
