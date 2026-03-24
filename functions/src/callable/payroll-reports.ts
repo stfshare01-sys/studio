@@ -457,8 +457,8 @@ export const generatePayrollReports = onCall<GeneratePayrollReportsRequest>(
                             processedSundays.add(date);
                         }
 
-                        // ASI only if no other File 2 codes AND no file1 incidences
-                        const hasFile1Incidence = dayData.file1Codes.some(c => c.includes('FINJ') || c.includes('PSS') || c.includes('PCS'));
+                        // ASI only if no other File 2 codes AND no file1 incidences (including Overtime)
+                        const hasFile1Incidence = dayData.file1Codes.some(c => c.includes('FINJ') || c.includes('PSS') || c.includes('PCS') || c.includes('HE2') || c.includes('HE3'));
                         if (dayData.file2Codes.length === 0 && effectivelyWorked && !hasFile1Incidence) {
                             dayData.file2Codes.push('ASI');
                         }
