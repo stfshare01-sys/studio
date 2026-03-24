@@ -449,7 +449,7 @@ export const generatePayrollReports = onCall<GeneratePayrollReportsRequest>(
                             if (effectivelyWorked) {
                                 dayData.file2Codes.push('DDL');
                             } else if (dayData.file2Codes.length === 0) {
-                                dayData.file2Codes.push('DESCANSO');
+                                dayData.file2Codes.push('DD');
                             }
                         }
                         if (isSunday && effectivelyWorked && !processedSundays.has(date)) {
