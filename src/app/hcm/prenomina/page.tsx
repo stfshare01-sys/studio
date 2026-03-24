@@ -531,6 +531,9 @@ export default function ConsolidacionAsistenciaPage() {
                     case 'personal_leave': case 'paternity': case 'bereavement':
                         code = inc.isPaid ? NOMIPAQ_CODES.PERMISO_CON_SUELDO : NOMIPAQ_CODES.PERMISO_SIN_SUELDO;
                         break;
+                    case 'unpaid_leave':
+                        code = NOMIPAQ_CODES.PERMISO_SIN_SUELDO;
+                        break;
                     case 'unjustified_absence': code = NOMIPAQ_CODES.FALTA_INJUSTIFICADA; break;
                     case 'abandono_empleo': code = NOMIPAQ_CODES.ABANDONO_EMPLEO; break;
                 }

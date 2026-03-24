@@ -371,6 +371,9 @@ export const generatePayrollReports = onCall<GeneratePayrollReportsRequest>(
                                     dayData.file1Codes.push('1PSS');
                                 }
                                 break;
+                            case 'unpaid_leave':
+                                dayData.file1Codes.push('1PSS');
+                                break;
                         }
                     }
 
