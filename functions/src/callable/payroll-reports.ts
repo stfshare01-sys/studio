@@ -361,18 +361,22 @@ export const generatePayrollReports = onCall<GeneratePayrollReportsRequest>(
                         switch (inc.type) {
                             case 'unjustified_absence':
                                 dayData.file1Codes.push('1FINJ');
+                                dayData.file2Codes.push('FINJ');
                                 break;
                             case 'personal_leave':
                             case 'paternity':
                             case 'bereavement':
                                 if (inc.isPaid) {
                                     dayData.file1Codes.push('1PCS');
+                                    dayData.file2Codes.push('PCS');
                                 } else {
                                     dayData.file1Codes.push('1PSS');
+                                    dayData.file2Codes.push('PSS');
                                 }
                                 break;
                             case 'unpaid_leave':
                                 dayData.file1Codes.push('1PSS');
+                                dayData.file2Codes.push('PSS');
                                 break;
                         }
                     }
@@ -392,8 +396,7 @@ export const generatePayrollReports = onCall<GeneratePayrollReportsRequest>(
 
                     // Process attendance record
                     if (attendance) {
-                        const effectivelyWorked = !!attendance.checkIn || 
-                            ['present', 'tardiness', 'early_departure', 'missing_checkout'].includes((attendance as any).status);
+                        const effectivelyWorked = (!!attendance.checkIn && attendance.checkIn.trim() !== '') || (typeof attendance.hoursWorked === 'number' && attendance.hoursWorked > 0);
 
                         // File 1: Overtime (HE2/HE3) per day
                         const otReq = overtimeMap.get(`${emp.id}_${date}`);

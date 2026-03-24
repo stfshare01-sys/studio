@@ -473,16 +473,13 @@ export const consolidatePrenomina = onCall<ConsolidatePrenominaRequest>(
                                 const dayOfWeek = new Date(record.date).getDay();
                                 const dateStr = record.date;
 
-                                const effectivelyWorked = !!record.checkIn || 
-                                    ['present', 'tardiness', 'early_departure', 'missing_checkout'].includes((record as any).status);
-
-                                if (isHoliday(dateStr) && effectivelyWorked && !processedHolidays.has(dateStr)) {
+                                if (isHoliday(dateStr) && !processedHolidays.has(dateStr)) {
                                     processedHolidays.add(dateStr);
                                     holidayDays++;
                                 }
 
                                 // Prima Dominical: solo domingos trabajados (dayOfWeek === 0)
-                                if (dayOfWeek === 0 && effectivelyWorked && !processedSundays.has(dateStr)) {
+                                if (dayOfWeek === 0 && !processedSundays.has(dateStr)) {
                                     processedSundays.add(dateStr);
                                     sundayDays++;
                                 }
@@ -528,8 +525,8 @@ export const consolidatePrenomina = onCall<ConsolidatePrenominaRequest>(
                                 periodEnd,
                                 periodType,
                                 daysWorked,
-                                overtimeDoubleHours: Math.round(doubleHours * 2) / 2,
-                                overtimeTripleHours: Math.round(tripleHours * 2) / 2,
+                                overtimeDoubleHours: doubleHours,
+                                overtimeTripleHours: tripleHours,
                                 sundayPremiumDays: sundayDays,
                                 holidayDays,
                                 absenceDays,

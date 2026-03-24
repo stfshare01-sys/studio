@@ -470,8 +470,7 @@ export default function ConsolidacionAsistenciaPage() {
 
                 if (att.isVoid) continue;
 
-                const effectivelyWorked = !!att.checkIn || 
-                    ['present', 'tardiness', 'early_departure', 'missing_checkout'].includes((att as any).status);
+                const effectivelyWorked = (!!att.checkIn && att.checkIn.trim() !== '') || (typeof att.hoursWorked === 'number' && att.hoursWorked > 0);
 
                 if (effectivelyWorked) {
                     // ASI - Attendance
@@ -481,15 +480,13 @@ export default function ConsolidacionAsistenciaPage() {
                 // HE2/HE3
                 const otReq = overtimeMap[`${att.employeeId}_${date}`];
                 if (otReq) {
-                    const double = Math.round((otReq.doubleHours || 0) * 2) / 2;
-                    const triple = Math.round((otReq.tripleHours || 0) * 2) / 2;
+                    const double = otReq.doubleHours || 0;
+                    const triple = otReq.tripleHours || 0;
                     if (double > 0) lines.push(`${empNumber}|${date}|${NOMIPAQ_CODES.HORAS_EXTRAS_DOBLES}|${double}`);
                     if (triple > 0) lines.push(`${empNumber}|${date}|${NOMIPAQ_CODES.HORAS_EXTRAS_TRIPLES}|${triple}`);
                 } else if (att.overtimeHours > 0) {
-                    const rawDouble = (att as any).overtimeDoubleHours || (att.overtimeType === 'double' ? att.overtimeHours : 0);
-                    const rawTriple = (att as any).overtimeTripleHours || (att.overtimeType === 'triple' ? att.overtimeHours : 0);
-                    const double = Math.round(rawDouble * 2) / 2;
-                    const triple = Math.round(rawTriple * 2) / 2;
+                    const double = (att as any).overtimeDoubleHours || (att.overtimeType === 'double' ? att.overtimeHours : 0);
+                    const triple = (att as any).overtimeTripleHours || (att.overtimeType === 'triple' ? att.overtimeHours : 0);
                     if (double > 0) lines.push(`${empNumber}|${date}|${NOMIPAQ_CODES.HORAS_EXTRAS_DOBLES}|${double}`);
                     if (triple > 0) lines.push(`${empNumber}|${date}|${NOMIPAQ_CODES.HORAS_EXTRAS_TRIPLES}|${triple}`);
                 }
