@@ -526,6 +526,78 @@ export async function justifyMissingPunch(
         let generatedTardinessId: string | undefined;
         let generatedEarlyDepartureId: string | undefined;
 
+        // ─── Resolución del turno real desde Firestore ─────────────
+        // El frontend puede pasar el default 09:00-18:00 si no resolvió el turno.
+        // Aquí lo resolvemos directamente desde los datos del backend.
+        let resolvedEntry = scheduledEntryTime;
+        let resolvedExit = scheduledExitTime;
+
+        // 1. Leer del registro de asistencia (tiene el scheduledStart/End de la importación)
+        if (missingPunch.attendanceRecordId && missingPunch.attendanceRecordId !== '__pending__') {
+            try {
+                const attRef = doc(firestore, 'attendance', missingPunch.attendanceRecordId);
+                const attSnap = await getDoc(attRef);
+                if (attSnap.exists()) {
+                    const attData = attSnap.data();
+                    if (attData.scheduledStart) resolvedEntry = attData.scheduledStart;
+                    if (attData.scheduledEnd) resolvedExit = attData.scheduledEnd;
+                    console.log(`[HCM] justifyMissingPunch: shift from attendance record: ${resolvedEntry}-${resolvedExit}`);
+                }
+            } catch (attErr) {
+                console.warn('[HCM] Could not read attendance record for shift resolution:', attErr);
+            }
+        }
+
+        // 2. Si no se resolvió del attendance, leer del empleado → su turno en shifts
+        if (resolvedEntry === scheduledEntryTime && (resolvedEntry === '09:00' || resolvedEntry === '09:00:00')) {
+            try {
+                const empRef = doc(firestore, 'employees', missingPunch.employeeId);
+                const empSnap = await getDoc(empRef);
+                if (empSnap.exists()) {
+                    const empData = empSnap.data();
+                    const shiftId = empData.customShiftId || empData.shiftId;
+                    if (shiftId) {
+                        const shiftRef = doc(firestore, 'shifts', shiftId);
+                        const shiftSnap = await getDoc(shiftRef);
+                        if (shiftSnap.exists()) {
+                            const shiftData = shiftSnap.data();
+                            resolvedEntry = shiftData.startTime || resolvedEntry;
+                            resolvedExit = shiftData.endTime || resolvedExit;
+                            console.log(`[HCM] justifyMissingPunch: shift from employee record: ${resolvedEntry}-${resolvedExit}`);
+                        }
+                    }
+                }
+            } catch (empErr) {
+                console.warn('[HCM] Could not read employee shift for resolution:', empErr);
+            }
+        }
+
+        // 3. Obtener la tolerancia real de la sede del empleado (ignorar el hardcode 10 del frontend)
+        let realTolerance = toleranceMinutes;
+        try {
+            const empRef = doc(firestore, 'employees', missingPunch.employeeId);
+            const empSnap = await getDoc(empRef);
+            if (empSnap.exists()) {
+                const empData = empSnap.data();
+                const locationId = empData.locationId;
+                if (locationId) {
+                    const locRef = doc(firestore, 'locations', locationId);
+                    const locSnap = await getDoc(locRef);
+                    if (locSnap.exists() && typeof locSnap.data().toleranceMinutes === 'number') {
+                        realTolerance = locSnap.data().toleranceMinutes;
+                        console.log(`[HCM] justifyMissingPunch: using location tolerance = ${realTolerance}`);
+                    }
+                }
+            }
+        } catch (tolErr) {
+            console.warn('[HCM] Could not read location tolerance, using fallback:', tolErr);
+        }
+
+        // Usar los horarios resueltos
+        scheduledEntryTime = resolvedEntry;
+        scheduledExitTime = resolvedExit;
+        console.log(`[HCM] justifyMissingPunch: FINAL schedule: entry=${scheduledEntryTime}, exit=${scheduledExitTime}`);
+
         // Verificar si la hora proporcionada genera retardo
         if (providedEntryTime && (missingPunch.missingType === 'entry' || missingPunch.missingType === 'both')) {
             const [schedH, schedM] = scheduledEntryTime.split(':').map(Number);
@@ -536,17 +608,17 @@ export async function justifyMissingPunch(
 
             console.log(`[HCM] justifyMissingPunch: entry check for ${missingPunch.employeeName} on ${missingPunch.date}`);
             console.log(`[HCM]   scheduledEntry=${scheduledEntryTime}, providedEntry=${providedEntryTime}`);
-            console.log(`[HCM]   lateMinutes=${lateMinutes}, tolerance=${toleranceMinutes}, willCreateTardiness=${lateMinutes > toleranceMinutes}`);
+            console.log(`[HCM]   lateMinutes=${lateMinutes}, tolerance=${realTolerance}, willCreateTardiness=${lateMinutes > realTolerance}`);
 
-            if (lateMinutes > toleranceMinutes) {
-                // Generar registro de retardo — pasar tolerancia 0 porque ya la descontamos aquí
+            if (lateMinutes > realTolerance) {
+                // Generar registro de retardo
                 const tardinessResult = await recordTardiness(
                     missingPunch.employeeId,
                     missingPunch.date,
                     missingPunch.attendanceRecordId || missingPunchId,
                     scheduledEntryTime,
                     providedEntryTime,
-                    toleranceMinutes
+                    realTolerance
                 );
                 console.log(`[HCM]   recordTardiness result:`, tardinessResult);
                 if (tardinessResult.success && tardinessResult.tardinessId) {
