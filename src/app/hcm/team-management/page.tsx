@@ -479,7 +479,8 @@ function TeamManagementContent() {
                     monthlyStatsResult,
                     dailyStatsResult,
                     missingPunchesResult,
-                    shiftsResult
+                    shiftsResult,
+                    assignmentsResult
                 ] = await Promise.all([
                     getTeamTardiness(managerIdToUse, dateFilter),
                     getTeamEarlyDepartures(managerIdToUse, dateFilter),
@@ -487,7 +488,8 @@ function TeamManagementContent() {
                     getTeamMonthlyStats(managerIdToUse, ...dateFilter.split('-').map(Number) as [number, number]),
                     getTeamDailyStats(managerIdToUse, selectedDate),
                     getTeamMissingPunches(managerIdToUse, dateFilter),
-                    getAvailableShifts() // Load globally for the Dialog dropdowns
+                    getAvailableShifts(), // Load globally for the Dialog dropdowns
+                    getTeamShiftAssignments(managerIdToUse) // Needed for missing punch justification shift resolution
                 ]);
 
                 // Set all data states
@@ -512,6 +514,9 @@ function TeamManagementContent() {
                 }
                 if (shiftsResult.success && shiftsResult.shifts) {
                     setShifts(shiftsResult.shifts);
+                }
+                if (assignmentsResult.success && assignmentsResult.assignments) {
+                    setShiftAssignments(assignmentsResult.assignments);
                 }
 
             } catch (error) {
