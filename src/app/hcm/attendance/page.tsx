@@ -66,7 +66,8 @@ export default function AttendancePage() {
     const [dateFormatPreference, setDateFormatPreference] = useState<'dd/mm' | 'mm/dd'>('dd/mm');
 
     // Overtime mode: daily_limit (LFT 3h/día + 9h/semana) | weekly_only (solo 9h/semana)
-    const [overtimeMode, setOvertimeMode] = useState<OvertimeMode>('daily_limit');
+    const [overtimeMode, setOvertimeMode] = useState<OvertimeMode>('weekly_only');
+    const [isOvertimeModeConfirmed, setIsOvertimeModeConfirmed] = useState(false);
 
     // Fetch recent imports
     const importsQuery = useMemoFirebase(() => {
@@ -257,7 +258,7 @@ export default function AttendancePage() {
     // Handle file upload
     const handleFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
-        if (!file || !user) return;
+        if (!file || !user || !isOvertimeModeConfirmed) return;
 
         setIsUploading(true);
         setUploadProgress(10);
@@ -319,7 +320,7 @@ export default function AttendancePage() {
             // Reset file input
             event.target.value = '';
         }
-    }, [user, dateFormatPreference, overtimeMode]);
+    }, [user, dateFormatPreference, overtimeMode, isOvertimeModeConfirmed]);
 
     // Download template
     const downloadTemplate = () => {
@@ -395,42 +396,65 @@ export default function AttendancePage() {
                         </CardHeader>
                         <CardContent className="space-y-4">
                             {/* Overtime Mode Selector */}
-                            <div className="flex items-center gap-4 p-3 bg-muted/40 rounded-lg border">
-                                <Label htmlFor="overtime-mode" className="text-sm font-medium whitespace-nowrap">
-                                    Modo Horas Dobles:
-                                </Label>
-                                <Select
-                                    value={overtimeMode}
-                                    onValueChange={(val) => setOvertimeMode(val as OvertimeMode)}
-                                >
-                                    <SelectTrigger id="overtime-mode" className="w-[280px]">
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="daily_limit">
-                                            H2 con Límite por Día (3h/día + 9h/sem)
-                                        </SelectItem>
-                                        <SelectItem value="weekly_only">
-                                            H2 sin Límite por Día (solo 9h/sem)
-                                        </SelectItem>
-                                    </SelectContent>
-                                </Select>
+                            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 bg-muted/40 rounded-lg border">
+                                <div className="flex items-center gap-4 flex-1 w-full">
+                                    <Label htmlFor="overtime-mode" className="text-sm font-medium whitespace-nowrap">
+                                        Modo Horas Dobles:
+                                    </Label>
+                                    <Select
+                                        value={overtimeMode}
+                                        onValueChange={(val) => {
+                                            setOvertimeMode(val as OvertimeMode);
+                                            setIsOvertimeModeConfirmed(false); // require re-confirmation
+                                        }}
+                                        disabled={isOvertimeModeConfirmed}
+                                    >
+                                        <SelectTrigger id="overtime-mode" className="w-full sm:w-[320px]">
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="daily_limit">
+                                                H2 con Límite por Día (3h/día + 9h/sem)
+                                            </SelectItem>
+                                            <SelectItem value="weekly_only">
+                                                H2 sin Límite por Día (solo 9h/sem)
+                                            </SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="flex items-center w-full sm:w-auto mt-2 sm:mt-0">
+                                    {isOvertimeModeConfirmed ? (
+                                        <Button
+                                            variant="outline"
+                                            onClick={() => setIsOvertimeModeConfirmed(false)}
+                                            className="w-full sm:w-auto"
+                                        >
+                                            <RefreshCw className="h-4 w-4 mr-2" /> Cambiar Selección
+                                        </Button>
+                                    ) : (
+                                        <Button
+                                            onClick={() => setIsOvertimeModeConfirmed(true)}
+                                            className="bg-blue-600 hover:bg-blue-700 text-white w-full sm:w-auto"
+                                        >
+                                            <CheckCircle2 className="h-4 w-4 mr-2" /> Aceptar Modo
+                                        </Button>
+                                    )}
+                                </div>
                             </div>
 
                             {/* Upload Area */}
-                            <div className="border-2 border-dashed rounded-lg p-8 text-center">
+                            <div className={`border-2 border-dashed rounded-lg p-8 text-center transition-all ${!isOvertimeModeConfirmed ? 'opacity-50 bg-muted/20 grayscale' : 'hover:border-blue-500 hover:bg-blue-50/50'}`}>
                                 <input
                                     type="file"
                                     accept=".csv,.xlsx,.xls"
                                     onChange={handleFileUpload}
-                                    disabled={isUploading}
+                                    disabled={!isOvertimeModeConfirmed || isUploading}
                                     className="hidden"
                                     id="file-upload"
                                 />
-                                {/* Diagnostic: date format selector removed to verify deploy */}
                                 <Button
                                     onClick={() => document.getElementById('file-upload')?.click()}
-                                    disabled={isUploading}
+                                    disabled={!isOvertimeModeConfirmed || isUploading}
                                     className={`cursor-pointer w-full py-8 ${isUploading ? 'opacity-50' : ''}`}
                                 >
                                     <div className="flex flex-col items-center gap-2">
@@ -439,7 +463,12 @@ export default function AttendancePage() {
                                         </div>
                                         <div>
                                             <p className="font-medium">
-                                                {isUploading ? 'Procesando...' : 'Haz clic para seleccionar un archivo'}
+                                                {!isOvertimeModeConfirmed 
+                                                    ? 'Confirma el Modo de Horas Dobles arriba primero' 
+                                                    : isUploading 
+                                                        ? 'Procesando...' 
+                                                        : 'Haz clic para seleccionar y procesar un archivo'
+                                                }
                                             </p>
                                             <p className="text-sm text-muted-foreground">
                                                 CSV o Excel (máx. 10MB)
