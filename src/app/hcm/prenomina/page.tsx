@@ -164,7 +164,7 @@ export default function ConsolidacionAsistenciaPage() {
             if (!firestore || !selectedPeriod.start) return;
             setLoadingPending(true);
             try {
-                const [tardinessSnap, departuresSnap, overtimeSnap, missingSnap, reviewsSnap] = await Promise.all([
+                const [tardinessSnap, departuresSnap, overtimeSnap, missingSnap, reviewsSnap, employeesSnap] = await Promise.all([
                     getDocs(query(
                         collection(firestore, 'tardiness_records'),
                         where('justificationStatus', '==', 'pending'),
@@ -194,14 +194,25 @@ export default function ConsolidacionAsistenciaPage() {
                         collection(firestore, 'manager_review_status'),
                         where('periodStart', '>=', selectedPeriod.start),
                         where('periodEnd', '<=', selectedPeriod.end)
-                    ))
+                    )),
+                    getDocs(collection(firestore, 'employees'))
                 ]);
 
+                // Filter out terminated employees from pending counts
+                const activeEmpIds = new Set();
+                employeesSnap.docs.forEach(doc => {
+                    if (doc.data().status !== 'terminated') {
+                        activeEmpIds.add(doc.id);
+                    }
+                });
+
+                const countValid = (snap: any) => snap.docs.filter((d: any) => activeEmpIds.has(d.data().employeeId)).length;
+
                 setPendingCounts({
-                    tardiness: tardinessSnap.size,
-                    departures: departuresSnap.size,
-                    overtime: overtimeSnap.size,
-                    missingPunches: missingSnap.size
+                    tardiness: countValid(tardinessSnap),
+                    departures: countValid(departuresSnap),
+                    overtime: countValid(overtimeSnap),
+                    missingPunches: countValid(missingSnap)
                 });
 
                 setManagerReviews(reviewsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
