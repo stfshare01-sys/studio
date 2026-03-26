@@ -586,7 +586,7 @@ export async function processAttendanceImport(
                 // -------------------------------------------------------------
                 let rawOvertimeHours = 0;
 
-                if (shiftConfig.allowOvertime && scheduledStart && scheduledEnd) {
+                if (scheduledStart && scheduledEnd) {
                     let earlyArrivalOt = 0;
                     let lateDepartureOt = 0;
 
