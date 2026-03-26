@@ -302,6 +302,20 @@ export const consolidatePrenomina = onCall<ConsolidatePrenominaRequest>(
                 console.log(`[HCM] Deleted ${existingPrenominaQuery.size} existing prenomina records for deduplication`);
             }
 
+            // Fetch all attendance records for the period (non-voided) FIRST to identify terminated employees who worked
+            const attendanceSnap = await db.collection('attendance')
+                .where('date', '>=', periodStart)
+                .where('date', '<=', periodEnd)
+                .select('employeeId', 'isVoid')
+                .get();
+
+            const empsWithAttendance = new Set<string>();
+            attendanceSnap.docs.forEach(d => {
+                if (!d.data().isVoid) {
+                    empsWithAttendance.add(d.data().employeeId);
+                }
+            });
+
             // Get employees to process
             const [activeSnap, terminatedSnap] = await Promise.all([
                 db.collection('employees').where('status', '==', 'active').get(),
@@ -311,7 +325,7 @@ export const consolidatePrenomina = onCall<ConsolidatePrenominaRequest>(
             const activeEmployees = activeSnap.docs.map(d => ({ id: d.id, ...d.data() } as Employee));
             const terminatedEmployees = terminatedSnap.docs
                 .map(d => ({ id: d.id, ...d.data() } as Employee))
-                .filter(emp => emp.terminationDate && emp.terminationDate >= periodStart);
+                .filter(emp => (emp.terminationDate && emp.terminationDate >= periodStart) || empsWithAttendance.has(emp.id));
 
             let employees = [...activeEmployees, ...terminatedEmployees];
 

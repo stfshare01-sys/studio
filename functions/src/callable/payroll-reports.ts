@@ -173,7 +173,26 @@ export const generatePayrollReports = onCall<GeneratePayrollReportsRequest>(
             const dates = getDateRange(periodStart, periodEnd);
             const year = parseInt(periodStart.substring(0, 4));
 
-            // 1a. Get employees: active + terminated within range
+            // 1a. Fetch all attendance records for the period (non-voided) FIRST to identify terminated employees who worked
+            const attendanceSnap = await db.collection('attendance')
+                .where('date', '>=', periodStart)
+                .where('date', '<=', periodEnd)
+                .get();
+            const allAttendance = attendanceSnap.docs
+                .map(d => ({ id: d.id, ...d.data() } as AttendanceRecord))
+                .filter(a => !a.isVoid);
+
+            // Index by employeeId+date and keep track of employees with attendance
+            const attendanceMap = new Map<string, AttendanceRecord[]>();
+            const empsWithAttendance = new Set<string>();
+            for (const a of allAttendance) {
+                const key = a.employeeId;
+                empsWithAttendance.add(key);
+                if (!attendanceMap.has(key)) attendanceMap.set(key, []);
+                attendanceMap.get(key)!.push(a);
+            }
+
+            // 1b. Get employees: active + terminated within range or having attendance
             const [activeSnap, terminatedSnap] = await Promise.all([
                 db.collection('employees').where('status', '==', 'active').get(),
                 db.collection('employees').where('status', '==', 'terminated').get(),
@@ -182,7 +201,7 @@ export const generatePayrollReports = onCall<GeneratePayrollReportsRequest>(
             const activeEmployees = activeSnap.docs.map(d => ({ id: d.id, ...d.data() } as Employee & { id: string; terminationDate?: string; hireDate: string; customShiftId?: string; locationId?: string; employeeId?: string }));
             const terminatedEmployees = terminatedSnap.docs
                 .map(d => ({ id: d.id, ...d.data() } as Employee & { id: string; terminationDate?: string; hireDate: string; customShiftId?: string; locationId?: string; employeeId?: string }))
-                .filter(emp => emp.terminationDate && emp.terminationDate >= periodStart);
+                .filter(emp => (emp.terminationDate && emp.terminationDate >= periodStart) || empsWithAttendance.has(emp.id));
 
             const allEmployees = [...activeEmployees, ...terminatedEmployees];
 
@@ -204,22 +223,7 @@ export const generatePayrollReports = onCall<GeneratePayrollReportsRequest>(
                 holidaysByCalendarId[doc.id] = holidayDates;
             });
 
-            // 1c. Fetch all attendance records for the period (non-voided)
-            const attendanceSnap = await db.collection('attendance')
-                .where('date', '>=', periodStart)
-                .where('date', '<=', periodEnd)
-                .get();
-            const allAttendance = attendanceSnap.docs
-                .map(d => ({ id: d.id, ...d.data() } as AttendanceRecord))
-                .filter(a => !a.isVoid);
-
-            // Index by employeeId+date
-            const attendanceMap = new Map<string, AttendanceRecord[]>();
-            for (const a of allAttendance) {
-                const key = a.employeeId;
-                if (!attendanceMap.has(key)) attendanceMap.set(key, []);
-                attendanceMap.get(key)!.push(a);
-            }
+            // 1c. (Attendance records already fetched in 1a)
 
             // 1d. Fetch all approved incidences overlapping with the period
             const incidencesSnap = await db.collection('incidences')

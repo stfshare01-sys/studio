@@ -262,7 +262,9 @@ export async function processAttendanceImport(
                     restDays: [],
                     realUid: actualEmpUid,
                     directManagerId: extEmp.directManagerId || null,
-                    overtimeResetDay: locationCache[empData.locationId || '']?.overtimeResetDay || 'sunday'
+                    overtimeResetDay: locationCache[empData.locationId || '']?.overtimeResetDay || 'sunday',
+                    status: empData.status,
+                    terminationDate: empData.terminationDate
                 } as any;
 
                 if (empData.locationId && !locationCache[empData.locationId]) {
