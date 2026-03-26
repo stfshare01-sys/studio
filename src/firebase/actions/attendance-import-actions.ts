@@ -198,6 +198,8 @@ export async function processAttendanceImport(
             workDays: number[];
             restDays: number[];
             realUid: string;
+            status?: string;
+            terminationDate?: string;
         }> = {};
         const employeeTimeBankBalances: Record<string, number> = {};
 
@@ -459,6 +461,14 @@ export async function processAttendanceImport(
 
                 let shiftConfig = employeeShifts[row.employeeId];
                 const actualUid = shiftConfig.realUid;
+
+                // SKIP IF TERMINATED AND DATE IS STRICTLY AFTER TERMINATION
+                if (shiftConfig.status === 'terminated' && shiftConfig.terminationDate) {
+                    if (row.date > shiftConfig.terminationDate) {
+                        skippedCount++;
+                        continue;
+                    }
+                }
 
                 // DUPLICATE CHECK
                 if (existingRecordsMap.has(`${actualUid}_${row.date}`)) {
