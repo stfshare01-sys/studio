@@ -336,8 +336,9 @@ export const generatePayrollReports = onCall<GeneratePayrollReportsRequest>(
                     const isAfterTermination = isTerminated && date > emp.terminationDate!;
                     const isTerminationDay = isTerminated && date === emp.terminationDate;
 
-                    // After termination: leave cells empty
+                    // After termination: leave cells with a hyphen
                     if (isAfterTermination) {
+                        dayData.file2Codes.push('-');
                         empDays.set(date, dayData);
                         continue;
                     }
@@ -510,6 +511,9 @@ export const generatePayrollReports = onCall<GeneratePayrollReportsRequest>(
 
             // Employee rows
             for (const emp of allEmployees) {
+                // EXCLUDE terminated employees from File 1
+                if (emp.status === 'terminated') continue;
+
                 const empDays = employeeDayData.get(emp.id)!;
                 const row: (string | number)[] = [emp.employeeId || emp.id, emp.fullName];
                 let sumHE2 = 0;

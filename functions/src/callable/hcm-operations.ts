@@ -303,12 +303,21 @@ export const consolidatePrenomina = onCall<ConsolidatePrenominaRequest>(
             }
 
             // Get employees to process
-            let employeesQuery = db.collection('employees').where('status', '==', 'active');
-            const employeesSnap = await employeesQuery.get();
+            const [activeSnap, terminatedSnap] = await Promise.all([
+                db.collection('employees').where('status', '==', 'active').get(),
+                db.collection('employees').where('status', '==', 'terminated').get(),
+            ]);
 
-            const employees = employeesSnap.docs
+            const activeEmployees = activeSnap.docs.map(d => ({ id: d.id, ...d.data() } as Employee));
+            const terminatedEmployees = terminatedSnap.docs
                 .map(d => ({ id: d.id, ...d.data() } as Employee))
-                .filter(emp => !employeeIds || employeeIds.length === 0 || employeeIds.includes(emp.id));
+                .filter(emp => emp.terminationDate && emp.terminationDate >= periodStart);
+
+            let employees = [...activeEmployees, ...terminatedEmployees];
+
+            if (employeeIds && employeeIds.length > 0) {
+                employees = employees.filter(emp => employeeIds.includes(emp.id));
+            }
 
             if (employees.length === 0) {
                 return { success: true, recordIds: [], processedCount: 0, skippedCount: 0, errors: [] };
