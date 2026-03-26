@@ -496,7 +496,21 @@ export async function accumulateHiddenPositiveHours(params: {
         const hourBank = hourBankResult.hourBank;
         const newHiddenPositive = (hourBank.hiddenPositiveMinutes || 0) + params.minutes;
 
-        // Crear movimiento (interno, para auditoría)
+        // ------------------------------------------------------------------
+        // COMPENSACIÓN BIDIRECCIONAL: si ya hay deuda, descontar automáticamente
+        // ------------------------------------------------------------------
+        let finalHiddenPositive = newHiddenPositive;
+        let finalBalance = hourBank.balanceMinutes;
+        let autoCompensated = 0;
+
+        if (finalBalance > 0 && finalHiddenPositive > 0) {
+            autoCompensated = Math.min(finalBalance, finalHiddenPositive);
+            finalBalance -= autoCompensated;
+            finalHiddenPositive -= autoCompensated;
+            console.log(`[accumulateHiddenPositiveHours] Auto-compensación: ${autoCompensated}min de deuda existente compensada. Deuda: ${hourBank.balanceMinutes} → ${finalBalance}min, Oculta: ${newHiddenPositive} → ${finalHiddenPositive}min`);
+        }
+
+        // Crear movimiento de acumulación (interno, para auditoría)
         const movement: Omit<HourBankMovement, 'id'> = {
             hourBankId: hourBank.id,
             employeeId: params.employeeId,
@@ -511,14 +525,32 @@ export async function accumulateHiddenPositiveHours(params: {
 
         await addDoc(collection(firestore, 'hourBankMovements'), movement);
 
-        // Actualizar bolsa
+        // Si hubo compensación automática, registrar movimiento de auditoría
+        if (autoCompensated > 0) {
+            const compensationMovement: Omit<HourBankMovement, 'id'> = {
+                hourBankId: hourBank.id,
+                employeeId: params.employeeId,
+                date: params.date,
+                type: 'hidden_positive_compensation',
+                minutes: -autoCompensated,
+                reason: `Compensación automática retroactiva: ${autoCompensated}min de bolsa oculta aplicados a deuda existente`,
+                createdById: 'SISTEMA',
+                createdByName: 'Sistema',
+                createdAt: now,
+            };
+            await addDoc(collection(firestore, 'hourBankMovements'), compensationMovement);
+        }
+
+        // Actualizar bolsa con valores finales (incluye compensación)
         await updateDoc(doc(firestore, 'hourBanks', hourBank.id), {
-            hiddenPositiveMinutes: newHiddenPositive,
+            hiddenPositiveMinutes: finalHiddenPositive,
+            balanceMinutes: finalBalance,
+            totalCompensated: hourBank.totalCompensated + autoCompensated,
             lastMovementDate: now,
             updatedAt: now,
         });
 
-        return { success: true, newHiddenBalance: newHiddenPositive };
+        return { success: true, newHiddenBalance: finalHiddenPositive };
     } catch (error) {
         console.error('[accumulateHiddenPositiveHours] Error:', error);
         return { success: false, error: 'Error al acumular horas ocultas' };
