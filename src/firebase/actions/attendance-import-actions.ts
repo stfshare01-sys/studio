@@ -44,6 +44,7 @@ import { batchAutoJustify } from './auto-justification-actions';
 import { notifyRole, createNotification } from './notification-actions';
 import { recordMissingPunch } from './tardiness-actions';
 import { updateTimeBank } from './time-bank-actions';
+import { accumulateHiddenPositiveHours } from './hour-bank-actions';
 
 // =========================================================================
 // ATTENDANCE IMPORT
@@ -525,6 +526,24 @@ export async function processAttendanceImport(
                     isRestDay = true;
                 }
 
+                // -------------------------------------------------------------
+                // OFFICE LOCATION: Ignorar marcajes en días de descanso
+                // Si la ubicación es "Oficina" y es día de descanso,
+                // solo procesar si hay un turno asignado explícitamente.
+                // -------------------------------------------------------------
+                if (isRestDay && shiftConfig.locationId && locationCache[shiftConfig.locationId]?.isOfficeLocation) {
+                    // Verificar si hay un turno asignado explícitamente para esta fecha
+                    const hasExplicitAssignment = (employeeAssignments[actualUid] || []).some(sa =>
+                        sa.startDate <= row.date && (!sa.endDate || sa.endDate >= row.date)
+                    );
+                    if (!hasExplicitAssignment) {
+                        // Ignorar marcaje — es un marcaje accidental en día de descanso en oficina
+                        console.log(`[HCM] Oficina: Ignorando marcaje de ${shiftConfig.fullName} en día de descanso ${row.date} (sin turno asignado)`);
+                        skippedCount++;
+                        continue;
+                    }
+                }
+
                 let scheduledStart = shiftConfig.startTime || '';
                 let scheduledEnd = shiftConfig.endTime || '';
                 let scheduledBreak = shiftConfig.breakMinutes || 0;
@@ -911,6 +930,28 @@ export async function processAttendanceImport(
                         console.log(`[HCM] Overtime request: ${shiftConfig.fullName} | ${row.date} | ${payableOvertimeHours}h → ${doubleHours}h dobles + ${tripleHours}h triples | week accum: ${accum.doubleUsed}/9`);
                     } catch (otError) {
                         console.error(`[HCM] Error creating overtime request for ${actualUid}:`, otError);
+                    }
+                }
+
+                // -------------------------------------------------------------
+                // BOLSA OCULTA: Horas de más para empleados sin HE
+                // Si el empleado NO genera HE pero trabajó de más,
+                // acumular en la bolsa oculta para futuras compensaciones.
+                // -------------------------------------------------------------
+                if (!shiftConfig.allowOvertime && rawOvertimeHours > 0 && !isRestDay) {
+                    const extraMinutes = Math.round(rawOvertimeHours * 60);
+                    if (extraMinutes > 0) {
+                        try {
+                            await accumulateHiddenPositiveHours({
+                                employeeId: actualUid,
+                                date: row.date,
+                                minutes: extraMinutes,
+                                reason: `Horas de más sin HE (${row.date}): ${rawOvertimeHours}h acumuladas en bolsa oculta`,
+                            });
+                            console.log(`[HCM] Bolsa oculta: +${extraMinutes}min para ${shiftConfig.fullName} (${row.date})`);
+                        } catch (hiddenError) {
+                            console.error(`[HCM] Error acumulando bolsa oculta para ${actualUid}:`, hiddenError);
+                        }
                     }
                 }
 

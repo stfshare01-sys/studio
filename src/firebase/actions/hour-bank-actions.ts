@@ -58,6 +58,7 @@ export async function getHourBank(
         const newHourBank: Omit<HourBank, 'id'> = {
             employeeId,
             balanceMinutes: 0,
+            hiddenPositiveMinutes: 0,
             totalDebtAccumulated: 0,
             totalCompensated: 0,
             createdAt: now,
@@ -179,15 +180,30 @@ export async function addDebtToHourBank(params: {
         }
 
         const hourBank = hourBankResult.hourBank;
-        const newBalance = hourBank.balanceMinutes + params.minutes;
 
-        // Crear movimiento
+        // ------------------------------------------------------------------
+        // COMPENSACIÓN AUTOMÁTICA CON BOLSA OCULTA POSITIVA
+        // Si el empleado tiene horas a favor "ocultas", se descuentan primero.
+        // ------------------------------------------------------------------
+        const hiddenPositive = hourBank.hiddenPositiveMinutes || 0;
+        let effectiveDebtMinutes = params.minutes; // lo que realmente se suma como deuda
+        let minutesCompensatedFromHidden = 0;
+
+        if (hiddenPositive > 0 && effectiveDebtMinutes > 0) {
+            minutesCompensatedFromHidden = Math.min(hiddenPositive, effectiveDebtMinutes);
+            effectiveDebtMinutes -= minutesCompensatedFromHidden;
+        }
+
+        const newBalance = hourBank.balanceMinutes + effectiveDebtMinutes;
+        const newHiddenPositive = hiddenPositive - minutesCompensatedFromHidden;
+
+        // Crear movimiento de deuda (el monto original)
         const movement: Omit<HourBankMovement, 'id'> = {
             hourBankId: hourBank.id,
             employeeId: params.employeeId,
             date: params.date,
             type: params.type,
-            minutes: params.minutes, // Positivo = agrega deuda
+            minutes: params.minutes, // Positivo = registra la deuda total
             reason: params.reason,
             sourceRecordId: params.sourceRecordId,
             sourceRecordType: params.type,
@@ -198,10 +214,30 @@ export async function addDebtToHourBank(params: {
 
         const movementRef = await addDoc(collection(firestore, 'hourBankMovements'), movement);
 
+        // Si hubo compensación oculta, crear un movimiento separado
+        if (minutesCompensatedFromHidden > 0) {
+            const compensationMovement: Omit<HourBankMovement, 'id'> = {
+                hourBankId: hourBank.id,
+                employeeId: params.employeeId,
+                date: params.date,
+                type: 'hidden_positive_compensation',
+                minutes: -minutesCompensatedFromHidden,
+                reason: `Compensación automática: ${minutesCompensatedFromHidden} min de bolsa oculta aplicados`,
+                sourceRecordId: params.sourceRecordId,
+                sourceRecordType: params.type,
+                createdById: 'SISTEMA',
+                createdByName: 'Sistema',
+                createdAt: now,
+            };
+            await addDoc(collection(firestore, 'hourBankMovements'), compensationMovement);
+        }
+
         // Actualizar bolsa de horas
         await updateDoc(doc(firestore, 'hourBanks', hourBank.id), {
             balanceMinutes: newBalance,
+            hiddenPositiveMinutes: newHiddenPositive,
             totalDebtAccumulated: hourBank.totalDebtAccumulated + params.minutes,
+            totalCompensated: hourBank.totalCompensated + minutesCompensatedFromHidden,
             lastMovementDate: now,
             updatedAt: now,
         });
@@ -424,9 +460,117 @@ export function formatHourBankBalance(balanceMinutes: number): {
     const isDebt = balanceMinutes > 0;
     const text = formatMinutesToReadable(balanceMinutes);
 
+    // La bolsa oculta NUNCA muestra saldos positivos (crédito).
+    // Solo se muestra deuda (números rojos) o "Sin saldo".
     return {
-        text: isDebt ? `Debe: ${text}` : balanceMinutes < 0 ? `Crédito: ${text.substring(1)}` : 'Sin saldo',
+        text: isDebt ? `Debe: ${text}` : 'Sin saldo',
         isDebt,
-        colorClass: isDebt ? 'text-red-600' : balanceMinutes < 0 ? 'text-green-600' : 'text-gray-500',
+        colorClass: isDebt ? 'text-red-600' : 'text-gray-500',
     };
+}
+
+// =========================================================================
+// BOLSA OCULTA - ACUMULACIÓN Y RESET
+// =========================================================================
+
+/**
+ * Acumula minutos positivos "ocultos" en la bolsa de horas.
+ * Se usa cuando un empleado SIN derecho a HE trabaja de más.
+ * Estos minutos NO se muestran en la UI.
+ */
+export async function accumulateHiddenPositiveHours(params: {
+    employeeId: string;
+    date: string;
+    minutes: number;
+    reason: string;
+}): Promise<{ success: boolean; newHiddenBalance?: number; error?: string }> {
+    try {
+        const { firestore } = initializeFirebase();
+        const now = new Date().toISOString();
+
+        const hourBankResult = await getHourBank(params.employeeId);
+        if (!hourBankResult.success || !hourBankResult.hourBank) {
+            return { success: false, error: 'No se pudo obtener bolsa de horas' };
+        }
+
+        const hourBank = hourBankResult.hourBank;
+        const newHiddenPositive = (hourBank.hiddenPositiveMinutes || 0) + params.minutes;
+
+        // Crear movimiento (interno, para auditoría)
+        const movement: Omit<HourBankMovement, 'id'> = {
+            hourBankId: hourBank.id,
+            employeeId: params.employeeId,
+            date: params.date,
+            type: 'hidden_positive_accumulation',
+            minutes: params.minutes,
+            reason: params.reason,
+            createdById: 'SISTEMA',
+            createdByName: 'Sistema',
+            createdAt: now,
+        };
+
+        await addDoc(collection(firestore, 'hourBankMovements'), movement);
+
+        // Actualizar bolsa
+        await updateDoc(doc(firestore, 'hourBanks', hourBank.id), {
+            hiddenPositiveMinutes: newHiddenPositive,
+            lastMovementDate: now,
+            updatedAt: now,
+        });
+
+        return { success: true, newHiddenBalance: newHiddenPositive };
+    } catch (error) {
+        console.error('[accumulateHiddenPositiveHours] Error:', error);
+        return { success: false, error: 'Error al acumular horas ocultas' };
+    }
+}
+
+/**
+ * Resetea la bolsa oculta positiva a 0 para un empleado.
+ * Se invoca al cerrar/consolidar el periodo.
+ * Las deudas (balanceMinutes > 0) se MANTIENEN.
+ */
+export async function resetHiddenPositiveBalance(
+    employeeId: string
+): Promise<{ success: boolean; previousHidden?: number; error?: string }> {
+    try {
+        const { firestore } = initializeFirebase();
+        const now = new Date().toISOString();
+
+        const hourBankResult = await getHourBank(employeeId);
+        if (!hourBankResult.success || !hourBankResult.hourBank) {
+            return { success: false, error: 'No se pudo obtener bolsa de horas' };
+        }
+
+        const hourBank = hourBankResult.hourBank;
+        const previousHidden = hourBank.hiddenPositiveMinutes || 0;
+
+        if (previousHidden > 0) {
+            // Registrar movimiento de reset (para auditoría)
+            const movement: Omit<HourBankMovement, 'id'> = {
+                hourBankId: hourBank.id,
+                employeeId,
+                date: now.split('T')[0],
+                type: 'hidden_positive_compensation',
+                minutes: -previousHidden,
+                reason: `Reset de bolsa oculta al cerrar periodo (${previousHidden} min expirados)`,
+                createdById: 'SISTEMA',
+                createdByName: 'Sistema',
+                createdAt: now,
+            };
+            await addDoc(collection(firestore, 'hourBankMovements'), movement);
+
+            // Resetear solo las horas ocultas, mantener deudas intactas
+            await updateDoc(doc(firestore, 'hourBanks', hourBank.id), {
+                hiddenPositiveMinutes: 0,
+                lastMovementDate: now,
+                updatedAt: now,
+            });
+        }
+
+        return { success: true, previousHidden };
+    } catch (error) {
+        console.error('[resetHiddenPositiveBalance] Error:', error);
+        return { success: false, error: 'Error al resetear bolsa oculta' };
+    }
 }

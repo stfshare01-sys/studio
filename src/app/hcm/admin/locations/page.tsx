@@ -70,6 +70,7 @@ const initialFormState = {
     overtimeResetDay: 'sunday' as 'sunday' | 'saturday' | 'custom',
     toleranceMinutes: 10,
     useVirtualCheckIn: false,
+    isOfficeLocation: false,
     companyBenefitDays: '',
 };
 
@@ -105,6 +106,7 @@ export default function LocationsAdminPage() {
                 overtimeResetDay: location.overtimeResetDay,
                 toleranceMinutes: location.toleranceMinutes,
                 useVirtualCheckIn: location.useVirtualCheckIn || false,
+                isOfficeLocation: location.isOfficeLocation || false,
                 companyBenefitDays: location.companyBenefitDays?.join(', ') || '',
             });
         } else {
@@ -142,6 +144,7 @@ export default function LocationsAdminPage() {
                 overtimeResetDay: formData.overtimeResetDay,
                 toleranceMinutes: formData.toleranceMinutes,
                 useVirtualCheckIn: formData.useVirtualCheckIn,
+                isOfficeLocation: formData.isOfficeLocation,
                 isActive: true,
                 updatedAt: now,
             };
@@ -439,6 +442,13 @@ export default function LocationsAdminPage() {
                                         onCheckedChange={(v) => setFormData(prev => ({ ...prev, useVirtualCheckIn: v }))}
                                     />
                                     <Label>Habilitar check-in virtual (Home Office)</Label>
+                                </div>
+                                <div className="flex items-center space-x-2">
+                                    <Switch
+                                        checked={formData.isOfficeLocation}
+                                        onCheckedChange={(v) => setFormData(prev => ({ ...prev, isOfficeLocation: v }))}
+                                    />
+                                    <Label>Ubicación Oficina (Descarta marcajes en días de descanso)</Label>
                                 </div>
                             </div>
 

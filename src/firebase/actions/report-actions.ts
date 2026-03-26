@@ -4,6 +4,7 @@ import { doc, collection, addDoc, updateDoc, getDocs, query, where, limit } from
 import { initializeFirebase } from '@/firebase';
 import { callConsolidatePrenomina, CloudFunctionError } from '../callable-functions';
 import type { PayrollPeriodLock, HolidayCalendar } from '@/lib/types';
+import { resetHiddenPositiveBalance } from './hour-bank-actions';
 
 // =========================================================================
 // PRENOMINA CONSOLIDATION (OPERATIONAL REPORT)
@@ -92,6 +93,29 @@ export async function lockPayrollPeriod(
         if (exportFormat !== undefined) lockData.exportFormat = exportFormat;
 
         const lockRef = await addDoc(collection(firestore, 'payroll_period_locks'), lockData);
+
+        // -----------------------------------------------------------------
+        // BOLSA OCULTA: Reset de horas positivas al cerrar periodo
+        // Las deudas (balanceMinutes > 0) se MANTIENEN, solo se eliminan
+        // las horas a favor que no se usaron en el periodo.
+        // -----------------------------------------------------------------
+        try {
+            const hourBanksSnap = await getDocs(
+                query(collection(firestore, 'hourBanks'), where('hiddenPositiveMinutes', '>', 0))
+            );
+            let resetCount = 0;
+            for (const hbDoc of hourBanksSnap.docs) {
+                const empId = hbDoc.data().employeeId as string;
+                await resetHiddenPositiveBalance(empId);
+                resetCount++;
+            }
+            if (resetCount > 0) {
+                console.log(`[HCM] Bolsa oculta: Reset de ${resetCount} empleados al cerrar periodo ${periodStart} - ${periodEnd}`);
+            }
+        } catch (resetError) {
+            // No debe bloquear el cierre de periodo
+            console.error('[HCM] Error reseteando bolsas ocultas (no bloquea cierre):', resetError);
+        }
 
         console.log(`[HCM] Locked payroll period ${periodStart} - ${periodEnd}`);
         return { success: true, lockId: lockRef.id };

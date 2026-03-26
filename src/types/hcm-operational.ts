@@ -162,6 +162,11 @@ export type HourBank = {
     // Negativo = empresa debe tiempo al empleado (crédito)
     balanceMinutes: number;
 
+    // Bolsa oculta: horas trabajadas de más (solo para empleados sin HE)
+    // Este valor NUNCA se muestra en la UI. Se usa internamente para compensar deuda.
+    // Se resetea a 0 al cerrar/consolidar el periodo.
+    hiddenPositiveMinutes: number;
+
     // Estadísticas
     totalDebtAccumulated: number;   // Total acumulado de deuda
     totalCompensated: number;       // Total compensado con HE
@@ -185,7 +190,9 @@ export type HourBankMovement = {
     | 'tardiness'
     | 'early_departure'
     | 'overtime_compensation'
-    | 'manual_adjustment';
+    | 'manual_adjustment'
+    | 'hidden_positive_accumulation'   // Acumulación de horas ocultas (extra no pagada)
+    | 'hidden_positive_compensation';  // Compensación automática de deuda con horas ocultas
 
     minutes: number; // Positivo = agrega deuda, Negativo = reduce deuda
     reason: string;
