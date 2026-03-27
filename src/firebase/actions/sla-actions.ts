@@ -66,6 +66,12 @@ export async function runGlobalSLAProcessing(
         let processedDepartures = 0;
         let processedOvertime = 0;
 
+        // 1b. Obtener IDs de empleados dados de baja para excluirlos del SLA
+        const terminatedSnap = await getDocs(
+            query(collection(firestore, 'employees'), where('status', '==', 'terminated'))
+        );
+        const terminatedEmpIds = new Set(terminatedSnap.docs.map(d => d.id));
+
         // 2. Procesar Retardos Pendientes
         // Buscamos retardos que no tengan justificationStatus definido o sea 'pending' (si existiera)
         // En el esquema actual, isJustified es boolean. Asumimos !isJustified y sin justificar en 'justificationStatus'
@@ -81,6 +87,9 @@ export async function runGlobalSLAProcessing(
 
         for (const docSnapshot of tardinessDocs.docs) {
             const record = docSnapshot.data() as TardinessRecord;
+
+            // Empleados dados de baja → transparente, no procesamos su retardo
+            if (terminatedEmpIds.has(record.employeeId)) continue;
 
             // Regla: Si ha pasado > 24 horas y sigue pendiente, se marca injustificado
             // O simplemente procesamos todo lo pendiente al momento del corte manual
@@ -106,6 +115,10 @@ export async function runGlobalSLAProcessing(
 
         for (const docSnapshot of departureDocs.docs) {
             const record = docSnapshot.data() as EarlyDeparture;
+
+            // Empleados dados de baja → transparente
+            if (terminatedEmpIds.has(record.employeeId)) continue;
+
             const recordRef = doc(firestore, 'early_departures', docSnapshot.id);
 
             batch.update(recordRef, {
@@ -140,6 +153,9 @@ export async function runGlobalSLAProcessing(
 
         // Procesar cada empleado
         for (const employeeId of Object.keys(overtimeByEmployee)) {
+            // Empleados dados de baja → transparente
+            if (terminatedEmpIds.has(employeeId)) continue;
+
             // Leer bolsa de horas actual
             const hbRef = doc(firestore, 'hour_banks', employeeId);
             const hbSnap = await getDoc(hbRef);
