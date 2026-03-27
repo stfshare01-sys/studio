@@ -198,10 +198,11 @@ export default function ConsolidacionAsistenciaPage() {
                     getDocs(collection(firestore, 'employees'))
                 ]);
 
-                // Filter out terminated employees from pending counts
+                // Filter out terminated/disabled employees from pending counts
                 const activeEmpIds = new Set();
                 employeesSnap.docs.forEach(doc => {
-                    if (doc.data().status !== 'terminated') {
+                    const status = doc.data().status;
+                    if (status !== 'terminated' && status !== 'disabled') {
                         activeEmpIds.add(doc.id);
                     }
                 });

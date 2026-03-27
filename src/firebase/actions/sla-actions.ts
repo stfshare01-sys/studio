@@ -68,7 +68,7 @@ export async function runGlobalSLAProcessing(
 
         // 1b. Obtener IDs de empleados dados de baja para excluirlos del SLA
         const terminatedSnap = await getDocs(
-            query(collection(firestore, 'employees'), where('status', '==', 'terminated'))
+            query(collection(firestore, 'employees'), where('status', 'in', ['terminated', 'disabled']))
         );
         const terminatedEmpIds = new Set(terminatedSnap.docs.map(d => d.id));
 

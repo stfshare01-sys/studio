@@ -192,15 +192,17 @@ export const generatePayrollReports = onCall<GeneratePayrollReportsRequest>(
                 attendanceMap.get(key)!.push(a);
             }
 
-            // 1b. Get employees: active + terminated within range or having attendance
-            const [activeSnap, terminatedSnap] = await Promise.all([
+            // 1b. Get employees: active + terminated/disabled within range or having attendance
+            const [activeSnap, terminatedSnap, disabledSnap] = await Promise.all([
                 db.collection('employees').where('status', '==', 'active').get(),
                 db.collection('employees').where('status', '==', 'terminated').get(),
+                db.collection('employees').where('status', '==', 'disabled').get(),
             ]);
 
-            const activeEmployees = activeSnap.docs.map(d => ({ id: d.id, ...d.data() } as Employee & { id: string; terminationDate?: string; hireDate: string; customShiftId?: string; locationId?: string; employeeId?: string }));
-            const terminatedEmployees = terminatedSnap.docs
-                .map(d => ({ id: d.id, ...d.data() } as Employee & { id: string; terminationDate?: string; hireDate: string; customShiftId?: string; locationId?: string; employeeId?: string }))
+            type EmpRow = Employee & { id: string; terminationDate?: string; hireDate: string; customShiftId?: string; locationId?: string; employeeId?: string };
+            const activeEmployees = activeSnap.docs.map(d => ({ id: d.id, ...d.data() } as EmpRow));
+            const terminatedEmployees = [...terminatedSnap.docs, ...disabledSnap.docs]
+                .map(d => ({ id: d.id, ...d.data() } as EmpRow))
                 .filter(emp => (emp.terminationDate && emp.terminationDate >= periodStart) || empsWithAttendance.has(emp.id));
 
             const allEmployees = [...activeEmployees, ...terminatedEmployees];
@@ -336,7 +338,7 @@ export const generatePayrollReports = onCall<GeneratePayrollReportsRequest>(
                         he3Hours: 0,
                     };
 
-                    const isTerminated = emp.status === 'terminated' && emp.terminationDate;
+                    const isTerminated = (emp.status === 'terminated' || emp.status === 'disabled') && emp.terminationDate;
                     const isAfterTermination = isTerminated && date > emp.terminationDate!;
                     const isTerminationDay = isTerminated && date === emp.terminationDate;
 
@@ -515,8 +517,8 @@ export const generatePayrollReports = onCall<GeneratePayrollReportsRequest>(
 
             // Employee rows
             for (const emp of allEmployees) {
-                // EXCLUDE terminated employees from File 1
-                if (emp.status === 'terminated') continue;
+                // EXCLUDE terminated/disabled employees from File 1
+                if (emp.status === 'terminated' || emp.status === 'disabled') continue;
 
                 const empDays = employeeDayData.get(emp.id)!;
                 const row: (string | number)[] = [emp.employeeId || emp.id, emp.fullName];
