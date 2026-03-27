@@ -24,7 +24,7 @@ export interface Employee {
     terminationDate?: string;
     customShiftId?: string;
     shiftAssignments?: EmployeeShiftAssignment[];
-    status: 'active' | 'on_leave' | 'terminated';
+    status: 'active' | 'on_leave' | 'terminated' | 'disabled';
     managerId?: string;
     rfc_curp?: string;
     nss?: string;
