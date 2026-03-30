@@ -520,6 +520,9 @@ export default function NewEmployeePage() {
                                                                     mode="single"
                                                                     selected={field.value}
                                                                     onSelect={field.onChange}
+                                                                    captionLayout="dropdown-years"
+                                                                    startMonth={new Date(1940, 0)}
+                                                                    endMonth={new Date(2050, 11)}
                                                                     disabled={(date) =>
                                                                         date > new Date() || date < new Date("1900-01-01")
                                                                     }
