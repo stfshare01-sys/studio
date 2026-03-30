@@ -54,6 +54,28 @@ export async function recordTardiness(
         const { firestore } = initializeFirebase();
         const now = new Date().toISOString();
 
+        // Verificar si el empleado está exento de asistencia
+        let isExempt = false;
+        try {
+            const empDoc = await getDoc(doc(firestore, 'employees', employeeId));
+            if (empDoc.exists()) {
+                const empData = empDoc.data();
+                if (empData.positionId) {
+                    const posDoc = await getDoc(doc(firestore, 'positions', empData.positionId));
+                    if (posDoc.exists() && posDoc.data().isExemptFromAttendance) {
+                        isExempt = true;
+                    }
+                }
+            }
+        } catch (err) {
+            console.warn('[HCM] Error checking exemption for tardiness:', err);
+        }
+
+        if (isExempt) {
+            console.log(`[HCM] Skipping tardiness for ${employeeId} (Position is exempt)`);
+            return { success: true };
+        }
+
         const [schedH, schedM] = scheduledTime.split(':').map(Number);
         const [actH, actM] = actualTime.split(':').map(Number);
         // Restar tolerancia del retardo: solo cuentan los minutos DESPUÉS de la tolerancia
@@ -309,6 +331,28 @@ export async function recordEarlyDeparture(
     try {
         const { firestore } = initializeFirebase();
         const now = new Date().toISOString();
+
+        // Verificar si el empleado está exento de asistencia
+        let isExempt = false;
+        try {
+            const empDoc = await getDoc(doc(firestore, 'employees', employeeId));
+            if (empDoc.exists()) {
+                const empData = empDoc.data();
+                if (empData.positionId) {
+                    const posDoc = await getDoc(doc(firestore, 'positions', empData.positionId));
+                    if (posDoc.exists() && posDoc.data().isExemptFromAttendance) {
+                        isExempt = true;
+                    }
+                }
+            }
+        } catch (err) {
+            console.warn('[HCM] Error checking exemption for early departure:', err);
+        }
+
+        if (isExempt) {
+            console.log(`[HCM] Skipping early departure for ${employeeName} (Position is exempt)`);
+            return { success: true };
+        }
 
         // Calcular minutos de salida anticipada
         const [schedH, schedM] = scheduledTime.split(':').map(Number);
