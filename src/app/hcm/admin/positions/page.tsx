@@ -64,6 +64,7 @@ const initialFormState = {
     canApproveOvertime: false,
     canApproveIncidences: false,
     allowTimeBank: false,
+    isExemptFromAttendance: false,
 };
 
 export default function PositionsAdminPage() {
@@ -114,6 +115,7 @@ export default function PositionsAdminPage() {
                 canApproveOvertime: position.canApproveOvertime || false,
                 canApproveIncidences: position.canApproveIncidences || false,
                 allowTimeBank: position.allowTimeBank || false,
+                isExemptFromAttendance: position.isExemptFromAttendance || false,
             });
         } else {
             setIsEditing(false);
@@ -150,6 +152,7 @@ export default function PositionsAdminPage() {
                 canApproveOvertime: formData.canApproveOvertime,
                 canApproveIncidences: formData.canApproveIncidences,
                 allowTimeBank: formData.allowTimeBank,
+                isExemptFromAttendance: formData.isExemptFromAttendance,
                 isActive: true,
                 updatedAt: now,
             };
@@ -295,13 +298,16 @@ export default function PositionsAdminPage() {
                                                         {position.generatesOvertime && (
                                                             <Badge className="bg-green-100 text-green-800 text-[10px]">HE</Badge>
                                                         )}
+                                                        {position.isExemptFromAttendance && (
+                                                            <Badge className="bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300 text-[10px]">Exento Asist.</Badge>
+                                                        )}
                                                         {position.canApproveOvertime && (
                                                             <Badge className="bg-orange-100 text-orange-800 text-[10px]">Aprueba HE</Badge>
                                                         )}
                                                         {position.canApproveIncidences && (
                                                             <Badge className="bg-blue-100 text-blue-800 text-[10px]">Aprueba INC</Badge>
                                                         )}
-                                                        {!position.generatesOvertime && !position.canApproveOvertime && !position.canApproveIncidences && '-'}
+                                                        {!position.generatesOvertime && !position.isExemptFromAttendance && !position.canApproveOvertime && !position.canApproveIncidences && '-'}
                                                     </div>
                                                 </TableCell>
                                                 <TableCell>
@@ -462,6 +468,18 @@ export default function PositionsAdminPage() {
                                             />
                                             <Label htmlFor="generatesOvertime">
                                                 Genera Horas Extras
+                                            </Label>
+                                        </div>
+                                        <div className="flex items-center space-x-2">
+                                            <Checkbox
+                                                id="isExemptFromAttendance"
+                                                checked={formData.isExemptFromAttendance}
+                                                onCheckedChange={(checked) =>
+                                                    setFormData(prev => ({ ...prev, isExemptFromAttendance: !!checked }))
+                                                }
+                                            />
+                                            <Label htmlFor="isExemptFromAttendance">
+                                                Exento de control de asistencia (Directivos)
                                             </Label>
                                         </div>
                                         <div className="flex items-center space-x-2">

@@ -1197,6 +1197,9 @@ export type Position = {
   overtimePreApprovalRequired?: boolean; // Si requiere pre-autorización para HE
   allowTimeBank?: boolean;        // Permitir uso de bolsa de horas
 
+  // Control de asistencia
+  isExemptFromAttendance?: boolean; // Exento de usar reloj checador (Directivos)
+
   // Límites de aprobación
   approvalLimits?: ApprovalLimits; // Límites máximos que puede aprobar sin escalar
 

@@ -124,18 +124,26 @@ export async function shouldSkipInfractionForRestDay(
 
     if (!isRestDay) return false; // No es descanso, no omitir
 
-    // 4. Verificar si el puesto genera horas extra
+    // 4. Verificar si el puesto genera horas extra o está exento de asistencia
     let allowOvertime = true; // Default: sí genera
+    let isExempt = false;
+    
     if (employee.positionId) {
         try {
             const posDoc = await db.collection('positions').doc(employee.positionId).get();
             if (posDoc.exists) {
                 const posData = posDoc.data()!;
                 allowOvertime = posData.generatesOvertime ?? posData.canEarnOvertime ?? true;
+                isExempt = posData.isExemptFromAttendance ?? false;
             }
         } catch (err) {
             console.warn('[Infraction] Error fetching position for overtime check:', err);
         }
+    }
+
+    if (isExempt) {
+        console.log(`[Infraction] Skipping infraction on ${dateStr} for ${employee.fullName} (Position is exempt)`);
+        return true;
     }
 
     // Si es día de descanso Y NO genera horas extra → omitir infracción

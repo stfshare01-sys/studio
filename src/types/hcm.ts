@@ -133,6 +133,9 @@ export type Position = {
     canApproveEarlyDepartures?: boolean; // Puede justificar salidas tempranas de subordinados
     canApproveMissingPunches?: boolean;  // Puede justificar marcajes faltantes de subordinados
 
+    // Control de asistencia
+    isExemptFromAttendance?: boolean; // Exento de usar reloj checador (Directivos)
+
     // Límites de aprobación
     approvalLimits?: ApprovalLimits;
 
