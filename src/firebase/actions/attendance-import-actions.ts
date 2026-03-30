@@ -198,6 +198,7 @@ export async function processAttendanceImport(
             workDays: number[];
             restDays: number[];
             realUid: string;
+            isExempt: boolean;
             status?: string;
             terminationDate?: string;
         }> = {};
@@ -258,6 +259,9 @@ export async function processAttendanceImport(
                     allowOvertime: extEmp.positionId && positionCache[extEmp.positionId]
                         ? (positionCache[extEmp.positionId].generatesOvertime ?? positionCache[extEmp.positionId].canEarnOvertime ?? true)
                         : true,
+                    isExempt: extEmp.positionId && positionCache[extEmp.positionId]
+                        ? !!positionCache[extEmp.positionId].isExemptFromAttendance
+                        : false,
                     workDays: [],
                     restDays: [],
                     realUid: actualEmpUid,
@@ -702,7 +706,7 @@ export async function processAttendanceImport(
 
                 // Detectar retardo pre-emptivamente
                 let preCreatedTardinessId: string | undefined;
-                if (row.checkIn && (!isRestDay || shiftConfig.allowOvertime) && scheduledStart) {
+                if (!shiftConfig.isExempt && row.checkIn && (!isRestDay || shiftConfig.allowOvertime) && scheduledStart) {
                     const checkInDate = new Date(`2000-01-01T${row.checkIn}`);
                     const scheduledStartDate = new Date(`2000-01-01T${scheduledStart}`);
                     const toleranceDate = new Date(scheduledStartDate.getTime() + shiftConfig.toleranceMinutes * 60000);
@@ -748,7 +752,7 @@ export async function processAttendanceImport(
                 // Detectar salida temprana pre-emptivamente
                 let preCreatedEarlyId: string | undefined;
 
-                if (row.checkOut && scheduledEnd && !isCompanyBenefitDate && !isRestDay) {
+                if (!shiftConfig.isExempt && row.checkOut && scheduledEnd && !isCompanyBenefitDate && !isRestDay) {
                     const [actH, actM] = row.checkOut.split(':').map(Number);
                     const [schedH, schedM] = scheduledEnd.split(':').map(Number);
                     
@@ -831,7 +835,7 @@ export async function processAttendanceImport(
                 // MISSING PUNCHES DETECTION
                 // Solo crear si NO hay un permiso aprobado que cubra la fecha.
                 // -------------------------------------------------------------
-                if (!row.checkIn || !row.checkOut) {
+                if (!shiftConfig.isExempt && (!row.checkIn || !row.checkOut)) {
                     const empIncidences = approvedIncidencesMap[actualUid] || [];
                     const coveringIncidence = empIncidences.find(inc =>
                         inc.startDate <= row.date && inc.endDate >= row.date
