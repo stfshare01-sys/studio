@@ -443,6 +443,28 @@ export async function recordMissingPunch(
         const { firestore } = initializeFirebase();
         const now = new Date().toISOString();
 
+        // Verificar si el empleado está exento de asistencia
+        let isExempt = false;
+        try {
+            const empDoc = await getDoc(doc(firestore, 'employees', employeeId));
+            if (empDoc.exists()) {
+                const empData = empDoc.data();
+                if (empData.positionId) {
+                    const posDoc = await getDoc(doc(firestore, 'positions', empData.positionId));
+                    if (posDoc.exists() && posDoc.data().isExemptFromAttendance) {
+                        isExempt = true;
+                    }
+                }
+            }
+        } catch (err) {
+            console.warn('[HCM] Error checking exemption for missing punch:', err);
+        }
+
+        if (isExempt) {
+            console.log(`[HCM] Skipping missing punch for ${employeeName} (Position is exempt)`);
+            return { success: true }; // Ignorarlo silenciosamente
+        }
+
         // Verificar que no exista ya un registro para esta fecha y empleado
         const existingQuery = query(
             collection(firestore, 'missing_punches'),

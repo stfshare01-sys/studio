@@ -64,6 +64,19 @@ export async function shouldSkipInfractionForRestDay(
     dateStr: string,
     db: admin.firestore.Firestore
 ): Promise<boolean> {
+    // 0. EXENCIÓN DE ASISTENCIA: Verificar si el puesto está exento antes de evaluar descansos
+    if (employee.positionId) {
+        try {
+            const posDoc = await db.collection('positions').doc(employee.positionId).get();
+            if (posDoc.exists && posDoc.data()?.isExemptFromAttendance) {
+                console.log(`[Infraction] Skipping infraction on ${dateStr} for ${employee.fullName} (Position is exempt)`);
+                return true;
+            }
+        } catch (err) {
+            console.warn('[Infraction] Error fetching position for exemption check:', err);
+        }
+    }
+
     // 1. Determinar el shiftId activo
     let shiftId = employee.customShiftId;
 
@@ -124,9 +137,8 @@ export async function shouldSkipInfractionForRestDay(
 
     if (!isRestDay) return false; // No es descanso, no omitir
 
-    // 4. Verificar si el puesto genera horas extra o está exento de asistencia
+    // 4. Verificar si el puesto genera horas extra
     let allowOvertime = true; // Default: sí genera
-    let isExempt = false;
     
     if (employee.positionId) {
         try {
@@ -134,16 +146,10 @@ export async function shouldSkipInfractionForRestDay(
             if (posDoc.exists) {
                 const posData = posDoc.data()!;
                 allowOvertime = posData.generatesOvertime ?? posData.canEarnOvertime ?? true;
-                isExempt = posData.isExemptFromAttendance ?? false;
             }
         } catch (err) {
             console.warn('[Infraction] Error fetching position for overtime check:', err);
         }
-    }
-
-    if (isExempt) {
-        console.log(`[Infraction] Skipping infraction on ${dateStr} for ${employee.fullName} (Position is exempt)`);
-        return true;
     }
 
     // Si es día de descanso Y NO genera horas extra → omitir infracción
