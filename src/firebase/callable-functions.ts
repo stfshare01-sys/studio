@@ -32,16 +32,19 @@ interface ConsolidatePrenominaResponse {
     errors: { employeeId: string; message: string }[];
 }
 
-interface EmployeeImportRow {
+export interface EmployeeImportRow {
+    employeeNumber: string;       // ID NomiPAQ del empleado
     fullName: string;
     email: string;
-    department: string;
-    positionTitle: string;
-    employmentType: 'full_time' | 'part_time' | 'contractor';
-    shiftType: 'diurnal' | 'nocturnal' | 'mixed';
-    hireDate: string;
-    salaryDaily: string;
-    managerEmail?: string;
+    hireDate: string;             // YYYY-MM-DD
+    employmentType: 'full_time' | 'part_time' | 'contractor' | 'intern';
+    positionCode: string;         // Código del puesto (debe existir en catálogo)
+    shiftCode: string;            // Código del turno (debe existir en catálogo)
+    locationCode: string;         // Código de ubicación (debe existir en catálogo)
+    managerNumber?: string;       // Número NomiPAQ del jefe directo
+    rfc?: string;
+    curp?: string;
+    nss?: string;
 }
 
 interface ProcessEmployeeImportRequest {
@@ -263,5 +266,4 @@ export type {
     ApproveIncidenceResponse,
     GeneratePayrollReportsRequest,
     GeneratePayrollReportsResponse,
-    EmployeeImportRow
 };

@@ -125,18 +125,18 @@ export default function ImportEmployeesPage() {
                 row[key.trim()] = values[index]?.trim().replace(/"/g, '') || '';
             });
             return row as EmployeeImportRow;
-        }).filter(row => row.email);
+        }).filter(row => row.employeeNumber && row.email);
     };
 
     const downloadTemplate = () => {
-        const templateHeader = "fullName,email,department,positionTitle,employmentType,shiftType,hireDate,salaryDaily,managerEmail";
-        const templateExample = "Juan Perez,juan.perez@example.com,Ventas,Ejecutivo de Ventas,full_time,diurnal,2023-01-15,500.00,manager@example.com";
+        const templateHeader = "employeeNumber,fullName,email,hireDate,employmentType,positionCode,shiftCode,locationCode,managerNumber,rfc,curp,nss";
+        const templateExample = "1004,Juan Perez,juan.perez@stuffactory.com,2023-01-15,full_time,EJV-001,TM-01,CEDIS-GDL,0001,PELJ900115AB1,PELJ900115HJCRPN09,12345678901";
         const csvContent = `${templateHeader}\n${templateExample}`;
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = 'plantilla_empleados.csv';
+        a.download = 'plantilla_empleados_nomipaq.csv';
         a.click();
         URL.revokeObjectURL(url);
     };
@@ -172,16 +172,23 @@ export default function ImportEmployeesPage() {
                     <div>
                         <h1 className="text-2xl font-bold tracking-tight">Importar Empleados</h1>
                         <p className="text-muted-foreground">
-                            Carga masiva de nuevos empleados desde un archivo CSV.
+                            Carga masiva de nuevos empleados usando códigos NomiPAQ.
                         </p>
                     </div>
                 </header>
                 <main className="flex-1 p-4 pt-0 sm:p-6 sm:pt-0 space-y-6">
+                    <Alert className="bg-blue-50 border-blue-200">
+                        <AlertTriangle className="h-4 w-4 text-blue-600" />
+                        <AlertTitle className="text-blue-800">Requisito previo</AlertTitle>
+                        <AlertDescription className="text-blue-700">
+                            Los catálogos de <strong>Puestos</strong>, <strong>Turnos</strong> y <strong>Ubicaciones</strong> deben estar cargados en el sistema antes de usar esta funcionalidad. Los códigos del CSV deben coincidir exactamente con los del catálogo.
+                        </AlertDescription>
+                    </Alert>
                     <Card>
                         <CardHeader>
                             <CardTitle>Cargar Archivo CSV</CardTitle>
                             <CardDescription>
-                                Seleccione un archivo CSV para iniciar la carga masiva de empleados.
+                                Seleccione un archivo CSV con los códigos NomiPAQ de puesto, turno, ubicación y jefe directo.
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">

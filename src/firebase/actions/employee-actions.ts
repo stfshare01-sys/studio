@@ -186,20 +186,6 @@ export async function deactivateEmployee(
 // EMPLOYEE IMPORT
 // =========================================================================
 
-interface EmployeeImportRow {
-    fullName: string;
-    email: string;
-    department: string;
-    positionTitle: string;
-    employmentType: Employee['employmentType'];
-    shiftType: ShiftType;
-    hireDate: string;
-    salaryDaily: string;
-    // NOTE: salaryDaily retained in interface for compatibility with UI form,
-    // but should be ignored or strictly passed to secure backend without client processing.
-    managerEmail?: string;
-}
-
 interface ProcessEmployeeImportResult {
     success: boolean;
     batchId?: string;
@@ -210,35 +196,25 @@ interface ProcessEmployeeImportResult {
 }
 
 /**
- * Processes bulk employee import with validation.
+ * Processes bulk employee import with NomiPAQ codes.
+ * Delegates to Cloud Function which performs Two-Pass processing:
+ *   Pass 1: Create employees resolving position/shift/location by code
+ *   Pass 2: Link manager hierarchy by employeeNumber
  */
 export async function processEmployeeImport(
-    rows: EmployeeImportRow[],
-    uploadedById: string,
-    uploadedByName: string,
+    rows: CFEmployeeImportRow[],
     filename: string
 ): Promise<ProcessEmployeeImportResult> {
     try {
-        // Convert to Cloud Function format with type validation
-        const validEmploymentTypes = ['full_time', 'part_time', 'contractor'] as const;
-        const cfRows: CFEmployeeImportRow[] = rows.map(row => {
-            // Map employment type - default to full_time for unsupported types
-            const empType = validEmploymentTypes.includes(row.employmentType as any)
-                ? row.employmentType as 'full_time' | 'part_time' | 'contractor'
-                : 'full_time';
+        const validEmploymentTypes = ['full_time', 'part_time', 'contractor', 'intern'] as const;
 
-            return {
-                fullName: row.fullName,
-                email: row.email,
-                department: row.department,
-                positionTitle: row.positionTitle,
-                employmentType: empType,
-                shiftType: row.shiftType || 'diurnal',
-                hireDate: row.hireDate,
-                salaryDaily: row.salaryDaily, // Passing through to backend, not using here
-                managerEmail: row.managerEmail
-            };
-        });
+        // Validate employment types before sending to backend
+        const cfRows: CFEmployeeImportRow[] = rows.map(row => ({
+            ...row,
+            employmentType: validEmploymentTypes.includes(row.employmentType as typeof validEmploymentTypes[number])
+                ? row.employmentType
+                : 'full_time',
+        }));
 
         const result = await callProcessEmployeeImport({
             rows: cfRows,
@@ -263,6 +239,7 @@ export async function processEmployeeImport(
         return { success: false, errors: [{ row: 0, message: 'Error general en la importación de empleados' }] };
     }
 }
+
 
 
 /**

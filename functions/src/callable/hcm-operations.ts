@@ -598,19 +598,22 @@ export const consolidatePrenomina = onCall<ConsolidatePrenominaRequest>(
 );
 
 // =========================================================================
-// PROCESS EMPLOYEE IMPORT - TRANSACTIONAL
+// PROCESS EMPLOYEE IMPORT - TWO-PASS WITH NOMIPAQ CODES
 // =========================================================================
 
 interface EmployeeImportRow {
+    employeeNumber: string;       // ID NomiPAQ del empleado
     fullName: string;
     email: string;
-    department: string;
-    positionTitle: string;
-    employmentType: 'full_time' | 'part_time' | 'contractor';
-    shiftType: 'diurnal' | 'nocturnal' | 'mixed';
-    hireDate: string;
-    // salaryDaily REMOVED
-    managerEmail?: string;
+    hireDate: string;             // YYYY-MM-DD
+    employmentType: 'full_time' | 'part_time' | 'contractor' | 'intern';
+    positionCode: string;         // Código del puesto (debe existir en catálogo)
+    shiftCode: string;            // Código del turno (debe existir en catálogo)
+    locationCode: string;         // Código de ubicación (debe existir en catálogo)
+    managerNumber?: string;       // Número NomiPAQ del jefe directo
+    rfc?: string;
+    curp?: string;
+    nss?: string;
 }
 
 interface ProcessEmployeeImportRequest {
@@ -628,8 +631,15 @@ interface ProcessEmployeeImportResponse {
 }
 
 /**
- * Processes bulk employee import with validation and automatic compensation creation.
- * 
+ * Processes bulk employee import with Two-Pass logic.
+ *
+ * Phase 0: Preload catalogs (positions, shifts, locations, existing employees)
+ * Pass 1:  Create employees resolving codes → Firestore IDs (no hierarchy)
+ * Pass 2:  Link manager hierarchy using employeeNumber references
+ *
+ * This solves the chicken-and-egg problem where a manager may appear
+ * after their subordinates in the CSV.
+ *
  * @requires Role: Admin or HRManager
  */
 export const processEmployeeImport = onCall<ProcessEmployeeImportRequest>(
@@ -648,85 +658,221 @@ export const processEmployeeImport = onCall<ProcessEmployeeImportRequest>(
         const errors: { row: number; message: string }[] = [];
         let successCount = 0;
 
-        // Create batch record
         const batchRef = db.collection('employee_imports').doc();
         const batchId = batchRef.id;
 
         try {
-            await db.runTransaction(async (transaction) => {
-                // Check for existing emails in batch
-                const existingEmails = new Set<string>();
-                for (const row of rows) {
-                    if (row.email) {
-                        const emailQuery = db.collection('employees').where('email', '==', row.email).limit(1);
-                        const emailSnap = await transaction.get(emailQuery);
-                        if (!emailSnap.empty) {
-                            existingEmails.add(row.email);
-                        }
-                    }
-                }
+            // ==============================================================
+            // PHASE 0: Preload catalogs into Maps (single read each)
+            // ==============================================================
+            const [positionsSnap, shiftsSnap, locationsSnap, existingEmpsSnap] = await Promise.all([
+                db.collection('positions').where('isActive', '==', true).get(),
+                db.collection('shifts').where('isActive', '==', true).get(),
+                db.collection('locations').where('isActive', '==', true).get(),
+                db.collection('employees').where('status', '==', 'active').get(),
+            ]);
 
-                for (let i = 0; i < rows.length; i++) {
-                    const row = rows[i];
-                    const rowNum = i + 2;
-
-                    try {
-                        // Validate required fields
-                        if (!row.fullName || !row.email || !row.department || !row.positionTitle || !row.hireDate) {
-                            throw new Error('Faltan campos obligatorios');
-                        }
-
-                        // salaryDaily validation removed
-
-                        if (existingEmails.has(row.email)) {
-                            throw new Error(`Email ${row.email} ya existe`);
-                        }
-
-                        // Create employee document
-                        const employeeRef = db.collection('employees').doc();
-                        const hireDateISO = new Date(row.hireDate).toISOString();
-                        // const yearsOfService = calculateYearsOfService(hireDateISO);
-                        // const vacationDays = calculateVacationDays(yearsOfService);
-                        // SDI calculations removed
-
-                        transaction.set(employeeRef, {
-                            email: row.email,
-                            fullName: row.fullName,
-                            department: row.department,
-                            positionTitle: row.positionTitle,
-                            employmentType: row.employmentType || 'full_time',
-                            shiftType: row.shiftType || 'diurnal',
-                            hireDate: hireDateISO,
-                            status: 'active',
-                            onboardingStatus: 'pending',
-                            createdAt: nowISO,
-                            updatedAt: nowISO
-                        });
-
-                        // Compensation creation removed - Operational Only
-
-                        successCount++;
-
-                    } catch (rowError: any) {
-                        errors.push({ row: rowNum, message: rowError.message });
-                    }
-                }
-
-                // Create batch record
-                transaction.set(batchRef, {
-                    filename,
-                    fileSize: 0,
-                    mimeType: 'text/csv',
-                    uploadedById: request.auth?.uid,
-                    uploadedByName: userData?.fullName || 'Unknown',
-                    uploadedAt: nowISO,
-                    recordCount: rows.length,
-                    successCount,
-                    errorCount: errors.length,
-                    status: errors.length === 0 ? 'completed' : (successCount === 0 ? 'failed' : 'partial'),
-                    errors: errors.slice(0, 50)
-                });
+            // Map<code, docData> for catalog resolution
+            const positionsByCode = new Map<string, FirebaseFirestore.DocumentData & { id: string }>();
+            positionsSnap.forEach(doc => {
+                const data = doc.data();
+                if (data.code) positionsByCode.set(data.code.trim(), { ...data, id: doc.id });
             });
+
+            const shiftsByCode = new Map<string, FirebaseFirestore.DocumentData & { id: string }>();
+            shiftsSnap.forEach(doc => {
+                const data = doc.data();
+                if (data.code) shiftsByCode.set(data.code.trim(), { ...data, id: doc.id });
+            });
+
+            const locationsByCode = new Map<string, FirebaseFirestore.DocumentData & { id: string }>();
+            locationsSnap.forEach(doc => {
+                const data = doc.data();
+                if (data.code) locationsByCode.set(data.code.trim(), { ...data, id: doc.id });
+            });
+
+            // Map<employeeNumber, firestoreDocId> — existing employees
+            const existingByNumber = new Map<string, string>();
+            const existingEmails = new Set<string>();
+            existingEmpsSnap.forEach(doc => {
+                const data = doc.data();
+                if (data.employeeId) existingByNumber.set(String(data.employeeId).trim(), doc.id);
+                if (data.email) existingEmails.add(data.email);
+            });
+
+            // Also check for duplicate employeeNumbers within the CSV itself
+            const csvNumberSet = new Set<string>();
+
+            // Map<employeeNumber, newFirestoreDocId> — created in Pass 1
+            const newByNumber = new Map<string, string>();
+
+            // Track rows that need manager linking in Pass 2
+            const pendingManagerLinks: { docId: string; managerNumber: string; rowNum: number }[] = [];
+
+            // ==============================================================
+            // PASS 1: Create employees (no hierarchy)
+            // ==============================================================
+            const writeBatch = db.batch();
+
+            for (let i = 0; i < rows.length; i++) {
+                const row = rows[i];
+                const rowNum = i + 2; // +2 because row 1 is header
+
+                try {
+                    // --- Validate required fields ---
+                    if (!row.employeeNumber?.trim()) throw new Error('Falta el número de empleado (employeeNumber)');
+                    if (!row.fullName?.trim()) throw new Error('Falta el nombre completo (fullName)');
+                    if (!row.email?.trim()) throw new Error('Falta el email');
+                    if (!row.hireDate?.trim()) throw new Error('Falta la fecha de ingreso (hireDate)');
+                    if (!row.positionCode?.trim()) throw new Error('Falta el código de puesto (positionCode)');
+                    if (!row.shiftCode?.trim()) throw new Error('Falta el código de turno (shiftCode)');
+                    if (!row.locationCode?.trim()) throw new Error('Falta el código de ubicación (locationCode)');
+
+                    const empNum = row.employeeNumber.trim();
+
+                    // Check duplicate employeeNumber in CSV
+                    if (csvNumberSet.has(empNum)) {
+                        throw new Error(`Número de empleado ${empNum} duplicado en el archivo`);
+                    }
+                    csvNumberSet.add(empNum);
+
+                    // Check if employeeNumber already exists in DB
+                    if (existingByNumber.has(empNum)) {
+                        throw new Error(`Número de empleado ${empNum} ya existe en el sistema`);
+                    }
+
+                    // Check duplicate email
+                    if (existingEmails.has(row.email.trim())) {
+                        throw new Error(`Email ${row.email} ya existe en el sistema`);
+                    }
+
+                    // --- Resolve codes → Firestore IDs ---
+                    const position = positionsByCode.get(row.positionCode.trim());
+                    if (!position) {
+                        throw new Error(`Puesto con código "${row.positionCode}" no existe en el catálogo`);
+                    }
+
+                    const shift = shiftsByCode.get(row.shiftCode.trim());
+                    if (!shift) {
+                        throw new Error(`Turno con código "${row.shiftCode}" no existe en el catálogo`);
+                    }
+
+                    const location = locationsByCode.get(row.locationCode.trim());
+                    if (!location) {
+                        throw new Error(`Ubicación con código "${row.locationCode}" no existe en el catálogo`);
+                    }
+
+                    // --- Build employee document ---
+                    const employeeRef = db.collection('employees').doc();
+                    const hireDateISO = new Date(row.hireDate).toISOString();
+
+                    const employeeData: Record<string, unknown> = {
+                        email: row.email.trim(),
+                        fullName: row.fullName.trim(),
+                        employeeId: empNum, // NomiPAQ number stored as employeeId
+                        department: position.department || '',
+                        departmentId: position.departmentId || '',
+                        positionTitle: position.name || '',
+                        positionId: position.id,
+                        employmentType: row.employmentType || 'full_time',
+                        shiftType: shift.type || 'diurnal',
+                        customShiftId: shift.id,
+                        locationId: location.id,
+                        hireDate: hireDateISO,
+                        role: 'Member',
+                        status: 'active',
+                        onboardingStatus: 'pending',
+                        tardinessCountCurrent: 0,
+                        showInPrenomina: true,
+                        createdAt: nowISO,
+                        updatedAt: nowISO,
+                    };
+
+                    // Optional fiscal fields
+                    if (row.rfc?.trim()) employeeData.rfc_curp = row.rfc.trim();
+                    if (row.curp?.trim()) {
+                        // Append CURP to rfc_curp if RFC already present
+                        employeeData.rfc_curp = employeeData.rfc_curp
+                            ? `${employeeData.rfc_curp} / ${row.curp.trim()}`
+                            : row.curp.trim();
+                    }
+                    if (row.nss?.trim()) employeeData.nss = row.nss.trim();
+
+                    writeBatch.set(employeeRef, employeeData);
+
+                    // Track for Pass 2
+                    newByNumber.set(empNum, employeeRef.id);
+                    existingEmails.add(row.email.trim()); // Prevent duplicates within same batch
+
+                    // Queue manager linking if provided
+                    if (row.managerNumber?.trim()) {
+                        pendingManagerLinks.push({
+                            docId: employeeRef.id,
+                            managerNumber: row.managerNumber.trim(),
+                            rowNum,
+                        });
+                    }
+
+                    successCount++;
+                } catch (rowError: any) {
+                    errors.push({ row: rowNum, message: rowError.message });
+                }
+            }
+
+            // Commit Pass 1 (all employee creations)
+            if (successCount > 0) {
+                await writeBatch.commit();
+            }
+
+            // ==============================================================
+            // PASS 2: Link manager hierarchy
+            // ==============================================================
+            if (pendingManagerLinks.length > 0) {
+                const managerBatch = db.batch();
+                let managerLinksCount = 0;
+
+                for (const link of pendingManagerLinks) {
+                    // Search in new employees first, then existing
+                    const managerId = newByNumber.get(link.managerNumber)
+                        ?? existingByNumber.get(link.managerNumber);
+
+                    if (managerId) {
+                        const empRef = db.collection('employees').doc(link.docId);
+                        managerBatch.update(empRef, { directManagerId: managerId });
+                        managerLinksCount++;
+                    } else {
+                        errors.push({
+                            row: link.rowNum,
+                            message: `⚠️ Jefe con número "${link.managerNumber}" no encontrado (el empleado se creó sin jefe asignado)`,
+                        });
+                    }
+                }
+
+                if (managerLinksCount > 0) {
+                    await managerBatch.commit();
+                }
+
+                console.log(`[HCM Import] Pass 2: ${managerLinksCount}/${pendingManagerLinks.length} jefes enlazados`);
+            }
+
+            // ==============================================================
+            // Save batch record
+            // ==============================================================
+            await batchRef.set({
+                filename,
+                fileSize: 0,
+                mimeType: 'text/csv',
+                uploadedById: request.auth?.uid,
+                uploadedByName: userData?.fullName || 'Unknown',
+                uploadedAt: nowISO,
+                recordCount: rows.length,
+                successCount,
+                errorCount: errors.length,
+                status: errors.length === 0 ? 'completed' : (successCount === 0 ? 'failed' : 'partial'),
+                errors: errors.slice(0, 50),
+            });
+
+            console.log(`[HCM Import] Completed: ${successCount} created, ${errors.length} errors, batch=${batchId}`);
 
             return {
                 success: errors.length === 0,
@@ -734,9 +880,8 @@ export const processEmployeeImport = onCall<ProcessEmployeeImportRequest>(
                 recordCount: rows.length,
                 successCount,
                 errorCount: errors.length,
-                errors
+                errors,
             };
-
         } catch (error: any) {
             console.error('[HCM] Error processing employee import:', error);
             throw new HttpsError('internal', `Error en importación: ${error.message}`);
