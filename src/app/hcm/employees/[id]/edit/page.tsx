@@ -120,6 +120,7 @@ export default function EditEmployeePage({ params }: { params: Promise<{ id: str
                 locationId: employee.locationId,
                 allowTimeForTime: employee.allowTimeForTime || false,
                 employeeId: employee.employeeId,
+                legalEntity: employee.legalEntity,
             });
         }
     }, [employee]);
@@ -421,6 +422,26 @@ export default function EditEmployeePage({ params }: { params: Promise<{ id: str
                                             ))}
                                         </SelectContent>
                                     </Select>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Razón Social (Opcional)</Label>
+                                    <Select
+                                        value={formData.legalEntity || 'none'}
+                                        onValueChange={(v) => handleInputChange('legalEntity', v === 'none' ? undefined : v)}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Seleccionar empresa" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="none">Sin especificar</SelectItem>
+                                            <SelectItem value="STFLatin America">STFLatin America</SelectItem>
+                                            <SelectItem value="Stuffactory">Stuffactory</SelectItem>
+                                            <SelectItem value="Derechos de Autor">Derechos de Autor</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                    <p className="text-xs text-muted-foreground">
+                                        Útil para filtros de reportes y exportación
+                                    </p>
                                 </div>
 
                             </div>
