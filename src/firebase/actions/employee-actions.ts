@@ -29,6 +29,7 @@ interface CreateEmployeePayload {
     locationId?: string; // Added locationId
     allowTimeForTime?: boolean;
     employeeId?: string; // ZKTeco / Biometric ID
+    legalEntity?: string;
 }
 
 /**
@@ -70,6 +71,7 @@ export async function createEmployee(
         if (payload.allowTimeForTime !== undefined) employeeData.allowTimeForTime = payload.allowTimeForTime;
         if (payload.shiftId) employeeData.customShiftId = payload.shiftId;
         if (payload.employeeId) employeeData.employeeId = payload.employeeId;
+        if (payload.legalEntity) employeeData.legalEntity = payload.legalEntity;
 
         await setDoc(employeeRef, employeeData, {});
 

@@ -62,6 +62,7 @@ const employeeSchema = z.object({
     nss: z.string().length(11, 'NSS debe tener 11 dígitos').optional().or(z.literal('')),
     allowTimeForTime: z.boolean().optional(),
     employeeId: z.string().optional().or(z.literal('')), // Attendance System ID
+    legalEntity: z.string().optional(),
 });
 
 type EmployeeFormValues = z.infer<typeof employeeSchema>;
@@ -127,6 +128,7 @@ export default function NewEmployeePage() {
             nss: '',
             allowTimeForTime: false,
             employeeId: '',
+            legalEntity: '',
         },
     });
 
@@ -196,6 +198,7 @@ export default function NewEmployeePage() {
                 nss: data.nss || undefined,
                 allowTimeForTime: data.allowTimeForTime || false,
                 employeeId: data.employeeId || undefined,
+                legalEntity: data.legalEntity || undefined,
             });
 
             if (result.success) {
@@ -487,6 +490,36 @@ export default function NewEmployeePage() {
                                                         </Select>
                                                         <FormDescription>
                                                             El jefe directo aparecerá en el organigrama
+                                                        </FormDescription>
+                                                        <FormMessage />
+                                                    </FormItem>
+                                                )}
+                                            />
+
+                                            <FormField
+                                                control={form.control}
+                                                name="legalEntity"
+                                                render={({ field }) => (
+                                                    <FormItem>
+                                                        <FormLabel>Razón Social (Opcional)</FormLabel>
+                                                        <Select 
+                                                            onValueChange={(value) => field.onChange(value === '_none' ? '' : value)} 
+                                                            defaultValue={field.value || '_none'}
+                                                        >
+                                                            <FormControl>
+                                                                <SelectTrigger>
+                                                                    <SelectValue placeholder="Seleccionar empresa" />
+                                                                </SelectTrigger>
+                                                            </FormControl>
+                                                            <SelectContent>
+                                                                <SelectItem value="_none">Sin especificar</SelectItem>
+                                                                <SelectItem value="STFLatin America">STFLatin America</SelectItem>
+                                                                <SelectItem value="Stuffactory">Stuffactory</SelectItem>
+                                                                <SelectItem value="Derechos de Autor">Derechos de Autor</SelectItem>
+                                                            </SelectContent>
+                                                        </Select>
+                                                        <FormDescription>
+                                                            Útil para filtros de reportes y exportación
                                                         </FormDescription>
                                                         <FormMessage />
                                                     </FormItem>

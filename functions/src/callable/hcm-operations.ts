@@ -797,6 +797,7 @@ export const processEmployeeImport = onCall<ProcessEmployeeImportRequest>(
                             : row.curp.trim();
                     }
                     if (row.nss?.trim()) employeeData.nss = row.nss.trim();
+                    if (row.legalEntity?.trim()) employeeData.legalEntity = row.legalEntity.trim();
 
                     writeBatch.set(employeeRef, employeeData);
 

@@ -45,6 +45,7 @@ export interface EmployeeImportRow {
     rfc?: string;
     curp?: string;
     nss?: string;
+    legalEntity?: string;         // STFLatin America, Stuffactory, etc.
 }
 
 interface ProcessEmployeeImportRequest {

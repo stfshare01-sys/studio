@@ -99,6 +99,7 @@ export type User = {
   customRoleId?: string;       // If role is custom, stores the role document ID
   status: UserStatus;
   managerId?: string; // ID of the user's manager
+  legalEntity?: string; // Razón Social (STFLatin America, Stuffactory, Derechos de Autor)
 };
 
 // Represents a step within a template, before it becomes a live task

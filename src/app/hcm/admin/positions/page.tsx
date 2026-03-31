@@ -217,6 +217,7 @@ export default function PositionsAdminPage() {
             4: 'Supervisor',
             5: 'Analista',
             6: 'Operativo',
+            7: 'Auxiliar Administrativo',
         };
         return labels[level] || `Nivel ${level}`;
     };
@@ -418,6 +419,7 @@ export default function PositionsAdminPage() {
                                                 <SelectItem value="4">4 - Supervisor</SelectItem>
                                                 <SelectItem value="5">5 - Analista</SelectItem>
                                                 <SelectItem value="6">6 - Operativo</SelectItem>
+                                                <SelectItem value="7">7 - Auxiliar Administrativo</SelectItem>
                                             </SelectContent>
                                         </Select>
                                     </div>
