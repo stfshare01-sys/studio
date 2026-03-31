@@ -614,6 +614,7 @@ interface EmployeeImportRow {
     rfc?: string;
     curp?: string;
     nss?: string;
+    legalEntity?: string;
 }
 
 interface ProcessEmployeeImportRequest {
