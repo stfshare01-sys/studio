@@ -513,7 +513,7 @@ export default function NewEmployeePage() {
                                                             </FormControl>
                                                             <SelectContent>
                                                                 <SelectItem value="_none">Sin especificar</SelectItem>
-                                                                <SelectItem value="STFLatin America">STFLatin America</SelectItem>
+                                                                <SelectItem value="STF Latin America">STF Latin America</SelectItem>
                                                                 <SelectItem value="Stuffactory">Stuffactory</SelectItem>
                                                                 <SelectItem value="Derechos de Autor">Derechos de Autor</SelectItem>
                                                             </SelectContent>

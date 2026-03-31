@@ -434,7 +434,7 @@ export default function EditEmployeePage({ params }: { params: Promise<{ id: str
                                         </SelectTrigger>
                                         <SelectContent>
                                             <SelectItem value="none">Sin especificar</SelectItem>
-                                            <SelectItem value="STFLatin America">STFLatin America</SelectItem>
+                                            <SelectItem value="STF Latin America">STF Latin America</SelectItem>
                                             <SelectItem value="Stuffactory">Stuffactory</SelectItem>
                                             <SelectItem value="Derechos de Autor">Derechos de Autor</SelectItem>
                                         </SelectContent>
