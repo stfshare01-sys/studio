@@ -1143,6 +1143,7 @@ export type Location = {
   // Configuración de asistencia
   toleranceMinutes: number;       // Tolerancia de entrada en minutos (default: 10)
   useVirtualCheckIn?: boolean;    // Usar check-in virtual (Home Office)
+  isOfficeLocation?: boolean;     // Es ubicación de oficina central (ignora marcajes en días de descanso)
 
   // Estado
   isActive: boolean;
