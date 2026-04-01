@@ -7,9 +7,7 @@ import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { format } from 'date-fns';
-import { es } from 'date-fns/locale';
-import { Calendar as CalendarIcon, Loader2, ArrowLeft, Save, Clock } from 'lucide-react';
+import { Loader2, ArrowLeft, Save, Clock } from 'lucide-react';
 import Link from 'next/link';
 
 import { Button } from '@/components/ui/button';
@@ -32,12 +30,7 @@ import {
 } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import {
-    Popover,
-    PopoverContent,
-    PopoverTrigger,
-} from '@/components/ui/popover';
-import { Calendar } from '@/components/ui/calendar';
+
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { createEmployee } from '@/firebase/actions/employee-actions';
@@ -530,39 +523,22 @@ export default function NewEmployeePage() {
                                                 control={form.control}
                                                 name="hireDate"
                                                 render={({ field }) => (
-                                                    <FormItem className="flex flex-col">
+                                                    <FormItem>
                                                         <FormLabel>Fecha de Ingreso</FormLabel>
-                                                        <Popover>
-                                                            <PopoverTrigger asChild>
-                                                                <FormControl>
-                                                                    <Button
-                                                                        variant={"outline"}
-                                                                        className={`w-full pl-3 text-left font-normal ${!field.value ? "text-muted-foreground" : ""}`}
-                                                                    >
-                                                                        {field.value ? (
-                                                                            format(field.value, "PPP", { locale: es })
-                                                                        ) : (
-                                                                            <span>Seleccionar fecha</span>
-                                                                        )}
-                                                                        <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                                                                    </Button>
-                                                                </FormControl>
-                                                            </PopoverTrigger>
-                                                            <PopoverContent className="w-auto p-0" align="start">
-                                                                <Calendar
-                                                                    mode="single"
-                                                                    selected={field.value}
-                                                                    onSelect={field.onChange}
-                                                                    captionLayout="dropdown-years"
-                                                                    startMonth={new Date(1940, 0)}
-                                                                    endMonth={new Date(2050, 11)}
-                                                                    disabled={(date) =>
-                                                                        date > new Date() || date < new Date("1900-01-01")
-                                                                    }
-                                                                    initialFocus
-                                                                />
-                                                            </PopoverContent>
-                                                        </Popover>
+                                                        <FormControl>
+                                                            <Input
+                                                                type="date"
+                                                                value={field.value instanceof Date
+                                                                    ? field.value.toISOString().split('T')[0]
+                                                                    : field.value || ''}
+                                                                onChange={(e) => {
+                                                                    const dateValue = e.target.value
+                                                                        ? new Date(e.target.value + 'T12:00:00')
+                                                                        : undefined;
+                                                                    field.onChange(dateValue);
+                                                                }}
+                                                            />
+                                                        </FormControl>
                                                         <FormMessage />
                                                     </FormItem>
                                                 )}
