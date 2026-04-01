@@ -500,20 +500,39 @@ export async function bulkLoadVacationBalances(
                     continue;
                 }
 
-                // Buscar empleado por número de NomiPAQ (campo employeeId), NO por document ID
+                // Buscar empleado por número de NomiPAQ
+                // El campo puede ser 'employeeId' (alta manual) o 'employeeNumber' (importación masiva)
                 // Firestore es estricto con tipos: "72529" (string) != 72529 (number)
-                // Intentamos primero como string, luego como número
+                const idValue = balanceLoad.employeeId;
+                const numValue = !isNaN(Number(idValue)) ? Number(idValue) : null;
+
+                // Intentar por employeeId (string), employeeId (number), employeeNumber (string), employeeNumber (number)
                 let employeeSnap = await getDocs(query(
                     collection(firestore, 'employees'),
-                    where('employeeId', '==', balanceLoad.employeeId),
+                    where('employeeId', '==', idValue),
                     limit(1)
                 ));
 
-                // Si no se encontró como string, intentar como número
-                if (employeeSnap.empty && !isNaN(Number(balanceLoad.employeeId))) {
+                if (employeeSnap.empty && numValue !== null) {
                     employeeSnap = await getDocs(query(
                         collection(firestore, 'employees'),
-                        where('employeeId', '==', Number(balanceLoad.employeeId)),
+                        where('employeeId', '==', numValue),
+                        limit(1)
+                    ));
+                }
+
+                if (employeeSnap.empty) {
+                    employeeSnap = await getDocs(query(
+                        collection(firestore, 'employees'),
+                        where('employeeNumber', '==', idValue),
+                        limit(1)
+                    ));
+                }
+
+                if (employeeSnap.empty && numValue !== null) {
+                    employeeSnap = await getDocs(query(
+                        collection(firestore, 'employees'),
+                        where('employeeNumber', '==', numValue),
                         limit(1)
                     ));
                 }
