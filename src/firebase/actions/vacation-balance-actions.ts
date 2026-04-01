@@ -501,12 +501,22 @@ export async function bulkLoadVacationBalances(
                 }
 
                 // Buscar empleado por número de NomiPAQ (campo employeeId), NO por document ID
-                const employeeQuery = query(
+                // Firestore es estricto con tipos: "72529" (string) != 72529 (number)
+                // Intentamos primero como string, luego como número
+                let employeeSnap = await getDocs(query(
                     collection(firestore, 'employees'),
                     where('employeeId', '==', balanceLoad.employeeId),
                     limit(1)
-                );
-                const employeeSnap = await getDocs(employeeQuery);
+                ));
+
+                // Si no se encontró como string, intentar como número
+                if (employeeSnap.empty && !isNaN(Number(balanceLoad.employeeId))) {
+                    employeeSnap = await getDocs(query(
+                        collection(firestore, 'employees'),
+                        where('employeeId', '==', Number(balanceLoad.employeeId)),
+                        limit(1)
+                    ));
+                }
 
                 if (employeeSnap.empty) {
                     errors.push({ employeeId: balanceLoad.employeeId, error: 'Empleado no encontrado.' });
