@@ -500,16 +500,22 @@ export async function bulkLoadVacationBalances(
                     continue;
                 }
 
-                // Verificar que el empleado existe
-                const employeeRef = doc(firestore, 'employees', balanceLoad.employeeId);
-                const employeeSnap = await getDoc(employeeRef);
+                // Buscar empleado por número de NomiPAQ (campo employeeId), NO por document ID
+                const employeeQuery = query(
+                    collection(firestore, 'employees'),
+                    where('employeeId', '==', balanceLoad.employeeId),
+                    limit(1)
+                );
+                const employeeSnap = await getDocs(employeeQuery);
 
-                if (!employeeSnap.exists()) {
+                if (employeeSnap.empty) {
                     errors.push({ employeeId: balanceLoad.employeeId, error: 'Empleado no encontrado.' });
                     continue;
                 }
 
-                const employee = employeeSnap.data() as Employee;
+                const employeeDoc = employeeSnap.docs[0];
+                const firestoreEmployeeId = employeeDoc.id; // ID real del documento en Firestore
+                const employee = employeeDoc.data() as Employee;
 
                 // Calcular días disponibles
                 const daysAvailable = balanceLoad.daysEntitled - daysTaken - daysScheduled;
@@ -525,7 +531,7 @@ export async function bulkLoadVacationBalances(
                 // Verificar si ya existe un balance
                 const existingBalanceQuery = query(
                     collection(firestore, 'vacation_balances'),
-                    where('employeeId', '==', balanceLoad.employeeId),
+                    where('employeeId', '==', firestoreEmployeeId),
                     orderBy('periodStart', 'desc'),
                     limit(1)
                 );
@@ -559,7 +565,7 @@ export async function bulkLoadVacationBalances(
                 } else {
                     // Crear nuevo balance
                     const newBalance: Omit<VacationBalance, 'id'> = {
-                        employeeId: balanceLoad.employeeId,
+                        employeeId: firestoreEmployeeId,
                         periodStart: employee.hireDate,
                         periodEnd: nextAnniversary.toISOString(),
                         daysEntitled: balanceLoad.daysEntitled,
@@ -580,7 +586,7 @@ export async function bulkLoadVacationBalances(
 
                 // Registrar en auditoría
                 await addDoc(collection(firestore, 'vacation_adjustments'), {
-                    employeeId: balanceLoad.employeeId,
+                    employeeId: firestoreEmployeeId,
                     employeeName: employee.fullName || balanceLoad.employeeId,
                     adjustmentDays: balanceLoad.daysEntitled,
                     previousBalance: 0,
