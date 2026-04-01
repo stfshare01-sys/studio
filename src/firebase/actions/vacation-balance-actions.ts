@@ -538,7 +538,10 @@ export async function bulkLoadVacationBalances(
                 }
 
                 if (employeeSnap.empty) {
-                    errors.push({ employeeId: balanceLoad.employeeId, error: 'Empleado no encontrado.' });
+                    errors.push({ 
+                        employeeId: balanceLoad.employeeId, 
+                        error: `Empleado no encontrado. id buscado: "${idValue}" (tipo: ${typeof idValue})` 
+                    });
                     continue;
                 }
 
