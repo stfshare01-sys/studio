@@ -471,8 +471,13 @@ export async function bulkLoadVacationBalances(
         // Procesar cada balance
         for (const balanceLoad of balances) {
             try {
+                // Convertir explícitamente a string y limpiar espacios, previene errores si el Excel lo lee como número
+                if (balanceLoad.employeeId !== undefined && balanceLoad.employeeId !== null) {
+                    balanceLoad.employeeId = String(balanceLoad.employeeId).trim();
+                }
+
                 // Validaciones básicas
-                if (!balanceLoad.employeeId || !balanceLoad.employeeId.trim()) {
+                if (!balanceLoad.employeeId) {
                     errors.push({ employeeId: 'UNKNOWN', error: 'ID de empleado vacío.' });
                     continue;
                 }
