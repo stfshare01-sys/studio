@@ -247,9 +247,15 @@ export default function VacationManagementPage() {
 
             if (result.success) {
                 toast({ title: `Carga completada: ${result.successCount} exitosos, ${result.errorCount} errores` });
-                setBulkData([]);
-                setBulkErrors(result.errors);
-                setShowBulkPreview(false);
+                
+                // Si hubo errores, mantener la vista para que el usuario pueda leerlos
+                if (result.errorCount && result.errorCount > 0) {
+                    setBulkErrors(result.errors);
+                } else {
+                    setBulkData([]);
+                    setBulkErrors([]);
+                    setShowBulkPreview(false);
+                }
             } else {
                 toast({ title: 'Error en la carga masiva', variant: 'destructive' });
                 setBulkErrors(result.errors);
