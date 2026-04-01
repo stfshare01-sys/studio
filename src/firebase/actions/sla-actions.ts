@@ -56,7 +56,7 @@ export async function runGlobalSLAProcessing(
     try {
         // 1. Verificar Permisos
         const { firestore } = initializeFirebase();
-        const permissions = await getUserPermissions(firestore, userRole, customRoleId);
+        const { permissions } = await getUserPermissions(firestore, userRole, customRoleId);
         if (!hasPermission(permissions, 'hcm_sla_processing', 'write')) {
             return { success: false, error: "No tienes permisos para ejecutar el procesamiento de SLA." };
         }

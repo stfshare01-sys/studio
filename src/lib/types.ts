@@ -72,6 +72,7 @@ export type Role = {
   isSystemRole: boolean;       // true for Admin, Member, Designer, etc. (Pre-defined immutable roles)
   systemLevel: SystemRole;     // The underlying security level (Admin, HRManager, etc.) for rules.
   permissions: ModulePermission[];
+  hierarchyDepth?: number;     // 1=directos, 2=gerencial, undefined=infinito
   createdAt: string;
   updatedAt: string;
   createdById?: string;

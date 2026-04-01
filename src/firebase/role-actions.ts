@@ -338,6 +338,7 @@ export async function createRole(
     name: string;
     description?: string;
     permissions: ModulePermission[];
+    hierarchyDepth?: number;
     createdById: string;
     systemLevel?: SystemRole; // Optional override, otherwise calculated
   }
@@ -360,7 +361,7 @@ export async function createRole(
   // Calculate system level automatically if not provided
   const systemLevel = data.systemLevel || calculateSystemLevel(data.permissions);
 
-  await setDoc(roleRef, {
+  const rolePayload: any = {
     name: data.name,
     description: data.description || '',
     isSystemRole: false,
@@ -369,7 +370,13 @@ export async function createRole(
     createdAt: now,
     updatedAt: now,
     createdById: data.createdById,
-  });
+  };
+
+  if (data.hierarchyDepth !== undefined) {
+    rolePayload.hierarchyDepth = data.hierarchyDepth;
+  }
+
+  await setDoc(roleRef, rolePayload);
 
   return id;
 }
@@ -385,6 +392,7 @@ export async function updateRole(
     name: string;
     description: string;
     permissions: ModulePermission[];
+    hierarchyDepth?: number;
     systemLevel: SystemRole;
   }>,
   isAdminUser: boolean = false
@@ -451,6 +459,10 @@ export async function updateRole(
     updatePayload.systemLevel = systemLevel;
   }
 
+  if (data.hierarchyDepth !== undefined) {
+    updatePayload.hierarchyDepth = data.hierarchyDepth;
+  }
+
   await updateDoc(roleRef, updatePayload);
 }
 
@@ -500,12 +512,12 @@ export async function getUserPermissions(
   firestore: Firestore,
   userRole: string,
   customRoleId?: string
-): Promise<ModulePermission[]> {
+): Promise<{ permissions: ModulePermission[], hierarchyDepth?: number }> {
   // If there's a custom role ID, fetch it first
   if (customRoleId) {
     const role = await getRoleById(firestore, customRoleId);
     if (role) {
-      return role.permissions;
+      return { permissions: role.permissions, hierarchyDepth: role.hierarchyDepth };
     }
   }
 
@@ -517,17 +529,17 @@ export async function getUserPermissions(
       if (roleDoc.exists()) {
         const data = roleDoc.data() as Role;
         if (data.permissions?.length > 0) {
-          return data.permissions;
+          return { permissions: data.permissions, hierarchyDepth: data.hierarchyDepth };
         }
       }
     } catch {
       // Fallback to hardcoded defaults if Firestore read fails
     }
-    return SYSTEM_ROLES[userRole];
+    return { permissions: SYSTEM_ROLES[userRole] };
   }
 
   // Default to Member permissions if role not found
-  return SYSTEM_ROLES.Member;
+  return { permissions: SYSTEM_ROLES.Member };
 }
 
 /**

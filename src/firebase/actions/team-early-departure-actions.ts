@@ -31,7 +31,7 @@ import { initializeFirebase } from '@/firebase';
 import { notifyEarlyDepartureJustified } from './notification-actions';
 import { addDebtToHourBank } from './hour-bank-actions';
 import { checkAttendanceTaskCompletion } from './task-completion-actions';
-import { getDirectReports } from './team-queries';
+import { getDirectReports, getHierarchicalReports } from './team-queries';
 import type { EarlyDeparture } from '@/lib/types';
 
 // =========================================================================
@@ -239,13 +239,17 @@ export async function markEarlyDepartureUnjustified(
  */
 export async function getTeamEarlyDepartures(
     managerId: string,
-    dateFilter?: string
+    dateFilter?: string,
+    hierarchyDepth?: number
 ): Promise<{ success: boolean; records?: EarlyDeparture[]; error?: string }> {
     try {
         const { firestore } = initializeFirebase();
 
         // Obtener subordinados
-        const subordinatesResult = await getDirectReports(managerId);
+        const subordinatesResult = hierarchyDepth === undefined || hierarchyDepth > 1
+            ? await getHierarchicalReports(managerId, hierarchyDepth === undefined ? 10 : hierarchyDepth)
+            : await getDirectReports(managerId);
+
         if (!subordinatesResult.success || !subordinatesResult.employees?.length) {
             return { success: true, records: [] };
         }

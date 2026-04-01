@@ -20,7 +20,7 @@ import {
     where
 } from 'firebase/firestore';
 import { initializeFirebase } from '@/firebase';
-import { getDirectReports } from './team-queries';
+import { getDirectReports, getHierarchicalReports } from './team-queries';
 import type {
     TardinessRecord,
     OvertimeRequest,
@@ -39,13 +39,17 @@ import type {
 export async function getTeamMonthlyStats(
     managerId: string,
     year?: number,
-    month?: number
+    month?: number,
+    hierarchyDepth?: number
 ): Promise<{ success: boolean; stats?: EmployeeMonthlyStats[]; error?: string }> {
     try {
         const { firestore } = initializeFirebase();
 
         // Obtener subordinados
-        const subordinatesResult = await getDirectReports(managerId);
+        const subordinatesResult = hierarchyDepth === undefined || hierarchyDepth > 1
+            ? await getHierarchicalReports(managerId, hierarchyDepth === undefined ? 10 : hierarchyDepth)
+            : await getDirectReports(managerId);
+
         if (!subordinatesResult.success || !subordinatesResult.employees?.length) {
             return { success: true, stats: [] };
         }
@@ -136,13 +140,17 @@ export async function getTeamMonthlyStats(
  */
 export async function getTeamDailyStats(
     managerId: string,
-    date: string
+    date: string,
+    hierarchyDepth?: number
 ): Promise<{ success: boolean; stats?: TeamDailyStats[]; error?: string }> {
     try {
         const { firestore } = initializeFirebase();
 
         // Obtener subordinados
-        const subordinatesResult = await getDirectReports(managerId);
+        const subordinatesResult = hierarchyDepth === undefined || hierarchyDepth > 1
+            ? await getHierarchicalReports(managerId, hierarchyDepth === undefined ? 10 : hierarchyDepth)
+            : await getDirectReports(managerId);
+
         if (!subordinatesResult.success || !subordinatesResult.employees?.length) {
             return { success: true, stats: [] };
         }

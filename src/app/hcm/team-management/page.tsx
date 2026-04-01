@@ -59,6 +59,7 @@ import {
 
 import {
     getDirectReports,
+    getHierarchicalReports,
     hasDirectReports,
     getTeamTardiness,
     getTeamEarlyDepartures,
@@ -128,7 +129,7 @@ function TeamManagementContent() {
     const searchParams = useSearchParams();
     const lastUrlSync = useRef<{ batchId: string | null; tab: string | null }>({ batchId: null, tab: null });
     const { user, isUserLoading, firestore } = useFirebase();
-    const { permissions, isLoading: loadingPermissions } = usePermissions();
+    const { permissions, hierarchyDepth, isLoading: loadingPermissions } = usePermissions();
     const { toast } = useToast();
     const [activeTab, setActiveTab] = useState('overview');
 
@@ -325,39 +326,41 @@ function TeamManagementContent() {
             switch (tab) {
                 case 'overview':
                     const [year, month] = dateFilter.split('-').map(Number);
-                    const statsResult = await getTeamMonthlyStats(managerToUse, year, month);
+                    const statsResult = await getTeamMonthlyStats(managerToUse, year, month, hierarchyDepth);
                     if (statsResult.success && statsResult.stats) {
                         setMonthlyStats(statsResult.stats);
                     }
-                    const dailyResult = await getTeamDailyStats(managerToUse, selectedDate);
+                    const dailyResult = await getTeamDailyStats(managerToUse, selectedDate, hierarchyDepth);
                     if (dailyResult.success && dailyResult.stats) {
                         setDailyStats(dailyResult.stats);
                     }
                     break;
 
                 case 'tardiness':
-                    const tardinessResult = await getTeamTardiness(managerToUse, dateFilter);
+                    const tardinessResult = await getTeamTardiness(managerToUse, dateFilter, hierarchyDepth);
                     if (tardinessResult.success && tardinessResult.records) {
                         setTardiness(tardinessResult.records);
                     }
                     break;
 
                 case 'early-departures':
-                    const departuresResult = await getTeamEarlyDepartures(managerToUse, dateFilter);
+                    const departuresResult = await getTeamEarlyDepartures(managerToUse, dateFilter, hierarchyDepth);
                     if (departuresResult.success && departuresResult.records) {
                         setEarlyDepartures(departuresResult.records);
                     }
                     break;
 
                 case 'overtime':
-                    const otResult = await getTeamOvertimeRequests(managerToUse, 'all'); // 'all' to get all for stats
+                    const otResult = await getTeamOvertimeRequests(managerToUse, 'all', hierarchyDepth); // 'all' to get all for stats
                     if (otResult.success) {
                         setOvertimeRequests(otResult.requests || []);
                         if (otResult.stats) setOvertimeStats(otResult.stats);
                     }
-                    // Also fetch hour banks for debt display (may fail if no permission)
                     try {
-                        const empsResult = await getDirectReports(managerToUse);
+                        const fnEmployees = hierarchyDepth === undefined || hierarchyDepth > 1 
+                            ? (mId: string) => getHierarchicalReports(mId, hierarchyDepth === undefined ? 10 : hierarchyDepth)
+                            : getDirectReports;
+                        const empsResult = await fnEmployees(managerToUse);
                         if (empsResult.success && empsResult.employees) {
                             const employeeIds = empsResult.employees.map(e => e.id).filter(Boolean);
                             if (employeeIds.length > 0) {
@@ -379,7 +382,7 @@ function TeamManagementContent() {
                 case 'shifts':
                     if (!hasPermission(permissions, 'hcm_team_shifts', 'read')) break;
                     // We use getTeamShiftAssignments for the team view
-                    const assignmentsResult = await getTeamShiftAssignments(managerToUse);
+                    const assignmentsResult = await getTeamShiftAssignments(managerToUse, hierarchyDepth);
                     if (assignmentsResult.success && assignmentsResult.assignments) {
                         setShiftAssignments(assignmentsResult.assignments);
                     }
@@ -394,7 +397,10 @@ function TeamManagementContent() {
                     // Seguridad delegada a Firestore rules (isManagerOrHR)
                     // No usamos hasPermission aquí porque bloquea a usuarios con permisos válidos en Firestore
                     try {
-                        const empResult = await getDirectReports(managerToUse);
+                        const fnEmployees = hierarchyDepth === undefined || hierarchyDepth > 1 
+                            ? (mId: string) => getHierarchicalReports(mId, hierarchyDepth === undefined ? 10 : hierarchyDepth)
+                            : getDirectReports;
+                        const empResult = await fnEmployees(managerToUse);
                         if (empResult.success && empResult.employees) {
                             setEmployees(empResult.employees);
                             if (empResult.employees.length > 0) {
@@ -417,7 +423,7 @@ function TeamManagementContent() {
                     break;
 
                 case 'missing-punches':
-                    const punchesResult = await getTeamMissingPunches(managerToUse, dateFilter);
+                    const punchesResult = await getTeamMissingPunches(managerToUse, dateFilter, hierarchyDepth);
                     if (punchesResult.success && punchesResult.records) {
                         setMissingPunches(punchesResult.records);
                     }
@@ -459,7 +465,10 @@ function TeamManagementContent() {
                 }
 
                 // Load initial employees
-                const empResult = await getDirectReports(managerIdToUse);
+                const fnEmployees = hierarchyDepth === undefined || hierarchyDepth > 1 
+                    ? (mId: string) => getHierarchicalReports(mId, hierarchyDepth === undefined ? 10 : hierarchyDepth)
+                    : getDirectReports;
+                const empResult = await fnEmployees(managerIdToUse);
                 if (empResult.success && empResult.employees) {
                     setEmployees(empResult.employees);
                     setHasSubordinates(empResult.employees.length > 0);
@@ -482,14 +491,14 @@ function TeamManagementContent() {
                     shiftsResult,
                     assignmentsResult
                 ] = await Promise.all([
-                    getTeamTardiness(managerIdToUse, dateFilter),
-                    getTeamEarlyDepartures(managerIdToUse, dateFilter),
-                    getTeamOvertimeRequests(managerIdToUse, 'all'),
-                    getTeamMonthlyStats(managerIdToUse, ...dateFilter.split('-').map(Number) as [number, number]),
-                    getTeamDailyStats(managerIdToUse, selectedDate),
-                    getTeamMissingPunches(managerIdToUse, dateFilter),
+                    getTeamTardiness(managerIdToUse, dateFilter, hierarchyDepth),
+                    getTeamEarlyDepartures(managerIdToUse, dateFilter, hierarchyDepth),
+                    getTeamOvertimeRequests(managerIdToUse, 'all', hierarchyDepth),
+                    getTeamMonthlyStats(managerIdToUse, ...dateFilter.split('-').map(Number) as [number, number], hierarchyDepth),
+                    getTeamDailyStats(managerIdToUse, selectedDate, hierarchyDepth),
+                    getTeamMissingPunches(managerIdToUse, dateFilter, hierarchyDepth),
                     getAvailableShifts(), // Load globally for the Dialog dropdowns
-                    getTeamShiftAssignments(managerIdToUse) // Needed for missing punch justification shift resolution
+                    getTeamShiftAssignments(managerIdToUse, hierarchyDepth) // Needed for missing punch justification shift resolution
                 ]);
 
                 // Set all data states
@@ -590,7 +599,10 @@ function TeamManagementContent() {
                 setLoadingData(true);
                 try {
                     // Reload employees for the new manager
-                    const empResult = await getDirectReports(selectedManagerId);
+                    const fnEmployees = hierarchyDepth === undefined || hierarchyDepth > 1 
+                        ? (mId: string) => getHierarchicalReports(mId, hierarchyDepth === undefined ? 10 : hierarchyDepth)
+                        : getDirectReports;
+                    const empResult = await fnEmployees(selectedManagerId);
                     if (empResult.success && empResult.employees) {
                         setEmployees(empResult.employees);
                         setHasSubordinates(empResult.employees.length > 0);
@@ -619,12 +631,12 @@ function TeamManagementContent() {
                         dailyStatsResult,
                         missingPunchesResult
                     ] = await Promise.all([
-                        getTeamTardiness(selectedManagerId, dateFilter),
-                        getTeamEarlyDepartures(selectedManagerId, dateFilter),
-                        getTeamOvertimeRequests(selectedManagerId, 'all'),
-                        getTeamMonthlyStats(selectedManagerId, parsedYear, parsedMonth),
-                        getTeamDailyStats(selectedManagerId, selectedDate),
-                        getTeamMissingPunches(selectedManagerId, dateFilter)
+                        getTeamTardiness(selectedManagerId, dateFilter, hierarchyDepth),
+                        getTeamEarlyDepartures(selectedManagerId, dateFilter, hierarchyDepth),
+                        getTeamOvertimeRequests(selectedManagerId, 'all', hierarchyDepth),
+                        getTeamMonthlyStats(selectedManagerId, parsedYear, parsedMonth, hierarchyDepth),
+                        getTeamDailyStats(selectedManagerId, selectedDate, hierarchyDepth),
+                        getTeamMissingPunches(selectedManagerId, dateFilter, hierarchyDepth)
                     ]);
 
                     if (tardinessResult.success && tardinessResult.records) {

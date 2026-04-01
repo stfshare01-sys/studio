@@ -170,7 +170,7 @@ type RoleDialogProps = {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
   role?: Role | null;
-  onSave: (data: { name: string; description: string; permissions: ModulePermission[]; systemLevel?: SystemRole }) => Promise<void>;
+  onSave: (data: { name: string; description: string; permissions: ModulePermission[]; systemLevel?: SystemRole; hierarchyDepth?: number }) => Promise<void>;
   isSaving: boolean;
   isAdmin?: boolean;
 };
@@ -178,6 +178,7 @@ type RoleDialogProps = {
 function RoleDialog({ isOpen, onOpenChange, role, onSave, isSaving, isAdmin = false }: RoleDialogProps) {
   const [name, setName] = useState(role?.name || "");
   const [description, setDescription] = useState(role?.description || "");
+  const [hierarchyDepth, setHierarchyDepth] = useState<number | 'infinite'>(role?.hierarchyDepth ?? 'infinite');
   const [permissions, setPermissions] = useState<Record<AppModule, PermissionLevel>>(() => {
     const initial: Record<string, PermissionLevel> = {};
     Object.keys(MODULE_INFO).forEach((moduleId) => {
@@ -196,6 +197,7 @@ function RoleDialog({ isOpen, onOpenChange, role, onSave, isSaving, isAdmin = fa
   useEffect(() => {
     setName(role?.name || "");
     setDescription(role?.description || "");
+    setHierarchyDepth(role?.hierarchyDepth ?? 'infinite');
     const initial: Record<string, PermissionLevel> = {};
     Object.keys(MODULE_INFO).forEach((moduleId) => {
       const existing = role?.permissions.find((p) => p.module === moduleId);
@@ -227,7 +229,8 @@ function RoleDialog({ isOpen, onOpenChange, role, onSave, isSaving, isAdmin = fa
       name,
       description,
       permissions: permissionsList,
-      systemLevel: manualOverride || detectedLevel
+      systemLevel: manualOverride || detectedLevel,
+      hierarchyDepth: hierarchyDepth === 'infinite' ? undefined : hierarchyDepth
     });
   };
 
@@ -279,6 +282,32 @@ function RoleDialog({ isOpen, onOpenChange, role, onSave, isSaving, isAdmin = fa
                 placeholder="Describe las responsabilidades de este rol..."
                 disabled={!canEdit}
               />
+            </div>
+
+            <div className="space-y-2 pt-2 border-t border-border/50">
+              <Label htmlFor="hierarchyDepth" className="flex items-center gap-2">
+                <Users className="h-4 w-4 text-blue-500" />
+                Alcance Jerárquico
+                <Badge variant="outline" className="text-[10px] h-5 ml-1 bg-blue-50 text-blue-700 border-blue-200">HCM</Badge>
+              </Label>
+              <p className="text-xs text-muted-foreground mb-2">
+                Define qué tan profundo en la estructura organizacional este rol puede ver y gestionar personal subordinado.
+              </p>
+              <Select
+                value={hierarchyDepth.toString()}
+                onValueChange={(v) => setHierarchyDepth(v === 'infinite' ? 'infinite' : parseInt(v))}
+                disabled={!canEdit}
+              >
+                <SelectTrigger id="hierarchyDepth" className="w-full">
+                  <SelectValue placeholder="Selecciona el alcance jerárquico" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1">Nivel 1 (Solo reportes directos directos)</SelectItem>
+                  <SelectItem value="2">Nivel 2 (Reportes directos + sus reportes)</SelectItem>
+                  <SelectItem value="3">Nivel 3 (3 Niveles por debajo)</SelectItem>
+                  <SelectItem value="infinite">Global (Toda la cadena de mando sin límite)</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
@@ -580,6 +609,7 @@ export default function RolesPage() {
                     <TableRow>
                       <TableHead>Rol</TableHead>
                       <TableHead>Nivel de Sistema</TableHead>
+                      <TableHead>Jerarquía</TableHead>
                       <TableHead>Descripción</TableHead>
                       <TableHead>Permisos</TableHead>
                       <TableHead>Tipo</TableHead>
@@ -603,6 +633,11 @@ export default function RolesPage() {
                           </TableCell>
                           <TableCell>
                             <Badge variant="outline">{role.systemLevel || 'Member'}</Badge>
+                          </TableCell>
+                          <TableCell>
+                            <span className="text-sm font-medium text-muted-foreground">
+                              {role.hierarchyDepth === undefined ? 'Global' : `Nivel ${role.hierarchyDepth}`}
+                            </span>
                           </TableCell>
                           <TableCell className="text-muted-foreground max-w-xs truncate">
                             {role.description}

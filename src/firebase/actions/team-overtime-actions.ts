@@ -32,7 +32,7 @@ import {
     notifyOvertimeRejected
 } from './notification-actions';
 import { checkAttendanceTaskCompletion } from './task-completion-actions';
-import { getDirectReports } from './team-queries';
+import { getDirectReports, getHierarchicalReports } from './team-queries';
 import type { OvertimeRequest, Employee, Location, AttendanceRecord, AttendanceImportBatch } from '@/lib/types';
 import { calculateOvertimeWithRounding, roundOvertimeHours } from '@/lib/hcm-utils';
 
@@ -54,13 +54,17 @@ interface OvertimeStats {
  */
 export async function getTeamOvertimeRequests(
     managerId: string,
-    statusFilter?: 'pending' | 'approved' | 'rejected' | 'partial' | 'all'
+    statusFilter?: 'pending' | 'approved' | 'rejected' | 'partial' | 'all',
+    hierarchyDepth?: number
 ): Promise<{ success: boolean; requests?: OvertimeRequest[]; stats?: OvertimeStats; error?: string }> {
     try {
         const { firestore } = initializeFirebase();
 
         // Obtener subordinados
-        const subordinatesResult = await getDirectReports(managerId);
+        const subordinatesResult = hierarchyDepth === undefined || hierarchyDepth > 1
+            ? await getHierarchicalReports(managerId, hierarchyDepth === undefined ? 10 : hierarchyDepth)
+            : await getDirectReports(managerId);
+
         if (!subordinatesResult.success || !subordinatesResult.employees?.length) {
             return { success: true, requests: [], stats: { pending: 0, approved: 0, rejected: 0, partial: 0, totalHoursApproved: 0, totalHoursPending: 0 } };
         }

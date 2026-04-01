@@ -24,7 +24,7 @@ import {
     limit
 } from 'firebase/firestore';
 import { initializeFirebase } from '@/firebase';
-import { getDirectReports } from './team-queries';
+import { getDirectReports, getHierarchicalReports } from './team-queries';
 import type { TardinessRecord, AttendanceImportBatch } from '@/lib/types';
 
 // =========================================================================
@@ -68,13 +68,16 @@ export async function getAttendanceImportBatches(
  */
 export async function getTeamTardiness(
     managerId: string,
-    dateFilter?: string // YYYY-MM-DD o YYYY-MM para mes completo
+    dateFilter?: string, // YYYY-MM-DD o YYYY-MM para mes completo
+    hierarchyDepth?: number
 ): Promise<{ success: boolean; records?: TardinessRecord[]; error?: string }> {
     try {
         const { firestore } = initializeFirebase();
 
-        // Primero obtener subordinados
-        const subordinatesResult = await getDirectReports(managerId);
+        // Primero obtener subordinados (directos o jerárquicos)
+        const subordinatesResult = hierarchyDepth === undefined || hierarchyDepth > 1
+            ? await getHierarchicalReports(managerId, hierarchyDepth === undefined ? 10 : hierarchyDepth)
+            : await getDirectReports(managerId);
         if (!subordinatesResult.success || !subordinatesResult.employees?.length) {
             return { success: true, records: [] };
         }
@@ -154,12 +157,15 @@ export async function getTeamTardiness(
 
 export async function getTeamMissingPunches(
     managerId: string,
-    dateFilter?: string
+    dateFilter?: string,
+    hierarchyDepth?: number
 ): Promise<{ success: boolean; records?: any[]; error?: string }> {
     try {
         const { firestore } = initializeFirebase();
 
-        const subordinatesResult = await getDirectReports(managerId);
+        const subordinatesResult = hierarchyDepth === undefined || hierarchyDepth > 1
+            ? await getHierarchicalReports(managerId, hierarchyDepth === undefined ? 10 : hierarchyDepth)
+            : await getDirectReports(managerId);
         if (!subordinatesResult.success || !subordinatesResult.employees?.length) {
             return { success: true, records: [] };
         }

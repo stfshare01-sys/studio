@@ -37,7 +37,7 @@ import {
     notifyShiftAssigned,
     notifyScheduleChanged
 } from './notification-actions';
-import { getDirectReports } from './team-queries';
+import { getDirectReports, getHierarchicalReports } from './team-queries';
 import type { ShiftAssignment, ScheduleChange, CustomShift } from '@/lib/types';
 
 // =========================================================================
@@ -226,12 +226,16 @@ export async function cancelShiftAssignment(
  * Obtiene las asignaciones de turno activas del equipo
  */
 export async function getTeamShiftAssignments(
-    managerId: string
+    managerId: string,
+    hierarchyDepth?: number
 ): Promise<{ success: boolean; assignments?: ShiftAssignment[]; error?: string }> {
     try {
         const { firestore } = initializeFirebase();
 
-        const subordinatesResult = await getDirectReports(managerId);
+        const subordinatesResult = hierarchyDepth === undefined || hierarchyDepth > 1
+            ? await getHierarchicalReports(managerId, hierarchyDepth === undefined ? 10 : hierarchyDepth)
+            : await getDirectReports(managerId);
+
         if (!subordinatesResult.success || !subordinatesResult.employees?.length) {
             return { success: true, assignments: [] };
         }
@@ -419,12 +423,16 @@ export async function cancelScheduleChange(
  * Obtiene los cambios de horario activos del equipo
  */
 export async function getTeamScheduleChanges(
-    managerId: string
+    managerId: string,
+    hierarchyDepth?: number
 ): Promise<{ success: boolean; changes?: ScheduleChange[]; error?: string }> {
     try {
         const { firestore } = initializeFirebase();
 
-        const subordinatesResult = await getDirectReports(managerId);
+        const subordinatesResult = hierarchyDepth === undefined || hierarchyDepth > 1
+            ? await getHierarchicalReports(managerId, hierarchyDepth === undefined ? 10 : hierarchyDepth)
+            : await getDirectReports(managerId);
+
         if (!subordinatesResult.success || !subordinatesResult.employees?.length) {
             return { success: true, changes: [] };
         }

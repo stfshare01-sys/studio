@@ -13,6 +13,7 @@ import {
 
 export type UsePermissionsReturn = {
   permissions: ModulePermission[];
+  hierarchyDepth?: number;
   isLoading: boolean;
   hasPermission: (module: AppModule, level?: 'read' | 'write') => boolean;
   getLevel: (module: AppModule) => PermissionLevel;
@@ -29,6 +30,7 @@ export function usePermissions(): UsePermissionsReturn {
   const { user, isUserLoading } = useUser();
   const firestore = useFirestore();
   const [permissions, setPermissions] = useState<ModulePermission[]>([]);
+  const [hierarchyDepth, setHierarchyDepth] = useState<number | undefined>(undefined);
   const [isLoading, setIsLoading] = useState(true);
 
   // Check if user is Admin (special case - full access)
@@ -43,6 +45,7 @@ export function usePermissions(): UsePermissionsReturn {
 
       if (!user || !firestore) {
         setPermissions([]);
+        setHierarchyDepth(undefined);
         setIsLoading(false);
         return;
       }
@@ -50,16 +53,18 @@ export function usePermissions(): UsePermissionsReturn {
       try {
         const userRole = user.role || 'Member';
         // Always call getUserPermissions — it checks Firestore for admin overrides
-        const userPermissions = await getUserPermissions(
+        const result = await getUserPermissions(
           firestore,
           userRole,
           user.customRoleId || undefined
         );
-        setPermissions(userPermissions);
+        setPermissions(result.permissions);
+        setHierarchyDepth(result.hierarchyDepth);
       } catch (error) {
         console.error('Error loading permissions:', error);
         // Default to Member permissions on error
         setPermissions(SYSTEM_ROLES.Member);
+        setHierarchyDepth(undefined);
       } finally {
         setIsLoading(false);
       }
@@ -109,6 +114,7 @@ export function usePermissions(): UsePermissionsReturn {
 
   return {
     permissions,
+    hierarchyDepth,
     isLoading: isLoading || isUserLoading,
     hasPermission,
     getLevel,
