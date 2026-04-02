@@ -10,6 +10,7 @@ import {
   where,
   Firestore,
   serverTimestamp,
+  deleteField,
 } from "firebase/firestore";
 import type { Role, ModulePermission, AppModule, PermissionLevel, SystemRole } from "@/lib/types";
 import { calculateSystemLevel } from "@/lib/permissions-config";
@@ -280,7 +281,11 @@ export async function getAllRoles(firestore: Firestore): Promise<Role[]> {
     const fsVersion = firestoreRolesMap.get(sr.id);
     if (fsVersion) {
       // Use Firestore permissions but keep system role metadata
-      return { ...sr, permissions: fsVersion.permissions };
+      return { 
+        ...sr, 
+        permissions: fsVersion.permissions,
+        hierarchyDepth: fsVersion.hierarchyDepth
+      };
     }
     return sr;
   });
@@ -305,15 +310,24 @@ export async function getRoleById(firestore: Firestore, roleId: string): Promise
   ) as SystemRole | undefined;
 
   if (systemRoleName) {
+    const roleRef = doc(firestore, 'roles', systemRoleName.toLowerCase());
+    const snapshot = await getDoc(roleRef);
+    let overrides: Partial<Role> = {};
+
+    if (snapshot.exists()) {
+      overrides = snapshot.data() as Partial<Role>;
+    }
+
     return {
       id: systemRoleName.toLowerCase(),
       name: systemRoleName,
       description: getSystemRoleDescription(systemRoleName),
       isSystemRole: true,
       systemLevel: systemRoleName, // System level for system role is itself
-      permissions: SYSTEM_ROLES[systemRoleName],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      permissions: overrides.permissions || SYSTEM_ROLES[systemRoleName],
+      hierarchyDepth: overrides.hierarchyDepth,
+      createdAt: overrides.createdAt || new Date().toISOString(),
+      updatedAt: overrides.updatedAt || new Date().toISOString(),
     };
   }
 
@@ -413,7 +427,7 @@ export async function updateRole(
 
     if (!snapshot.exists()) {
       // Create the system role document with updated data
-      await setDoc(roleRef, {
+      const payload: any = {
         name: systemRoleName,
         description: getSystemRoleDescription(systemRoleName as SystemRole),
         isSystemRole: true,
@@ -422,12 +436,20 @@ export async function updateRole(
         permissions: data.permissions || SYSTEM_ROLES[systemRoleName as SystemRole],
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-      });
+      };
+      if (data.hierarchyDepth !== undefined) {
+        payload.hierarchyDepth = data.hierarchyDepth;
+      }
+      await setDoc(roleRef, payload);
     } else {
-      await updateDoc(roleRef, {
+      const updatePayload: any = {
         ...data,
         updatedAt: new Date().toISOString(),
-      });
+      };
+      if (data.hierarchyDepth === undefined && 'hierarchyDepth' in data) {
+        updatePayload.hierarchyDepth = deleteField();
+      }
+      await updateDoc(roleRef, updatePayload);
     }
     return;
   }
@@ -459,7 +481,9 @@ export async function updateRole(
     updatePayload.systemLevel = systemLevel;
   }
 
-  if (data.hierarchyDepth !== undefined) {
+  if (data.hierarchyDepth === undefined && 'hierarchyDepth' in data) {
+    updatePayload.hierarchyDepth = deleteField();
+  } else if (data.hierarchyDepth !== undefined) {
     updatePayload.hierarchyDepth = data.hierarchyDepth;
   }
 
