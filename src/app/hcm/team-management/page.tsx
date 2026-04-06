@@ -451,6 +451,15 @@ function TeamManagementContent() {
         const loadInitial = async () => {
             setLoadingData(true);
 
+            // Limpiar datos stale para evitar mostrar estadísticas viejas mientras carga
+            setMonthlyStats([]);
+            setDailyStats([]);
+            setTardiness([]);
+            setEarlyDepartures([]);
+            setOvertimeRequests([]);
+            setMissingPunches([]);
+            setHourBanks([]);
+
             // Set manager ID immediately to user's ID
             const managerIdToUse = user.uid;
             setSelectedManagerId(managerIdToUse);
@@ -597,6 +606,16 @@ function TeamManagementContent() {
         if (managerChanged) {
             const reloadAll = async () => {
                 setLoadingData(true);
+
+                // Limpiar datos stale para evitar mostrar estadísticas de otro manager/rol
+                setMonthlyStats([]);
+                setDailyStats([]);
+                setTardiness([]);
+                setEarlyDepartures([]);
+                setOvertimeRequests([]);
+                setMissingPunches([]);
+                setHourBanks([]);
+
                 try {
                     // Reload employees for the new manager
                     const fnEmployees = hierarchyDepth === undefined || hierarchyDepth > 1 

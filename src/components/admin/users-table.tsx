@@ -40,10 +40,22 @@ import { usePaginatedCollection } from "@/firebase/hooks/use-paginated-collectio
 
 function EditUserDialog({ user, allUsers, roles, isOpen, onOpenChange }: { user: User | null, allUsers: User[], roles: Role[], isOpen: boolean, onOpenChange: (open: boolean) => void }) {
     const { toast } = useToast();
+
+    // Resolver el nombre visible del rol (custom o sistema)
+    const resolveDisplayRole = (u: User | null): string => {
+        if (!u) return 'Member';
+        // Si tiene customRoleId, buscar el nombre del rol personalizado
+        if (u.customRoleId) {
+            const customRole = roles.find(r => r.id === u.customRoleId);
+            if (customRole) return customRole.name;
+        }
+        return u.role || 'Member';
+    };
+
     const [formData, setFormData] = useState({
         fullName: user?.fullName || '',
         department: user?.department || '',
-        role: user?.role || 'Member',
+        role: resolveDisplayRole(user),
         managerId: user?.managerId || '',
     });
 
@@ -52,11 +64,11 @@ function EditUserDialog({ user, allUsers, roles, isOpen, onOpenChange }: { user:
             setFormData({
                 fullName: user.fullName,
                 department: user.department,
-                role: user.role || 'Member',
+                role: resolveDisplayRole(user),
                 managerId: user.managerId || '',
             });
         }
-    }, [user]);
+    }, [user, roles]);
 
     if (!user) return null;
 
@@ -365,8 +377,17 @@ export function UsersTable() {
                                                 <Badge variant={(user.status || 'active') === 'active' ? 'secondary' : 'outline'} className={cn((user.status || 'active') === 'active' ? 'bg-green-100 text-green-800' : 'text-muted-foreground')}>
                                                     {(user.status || 'active') === 'active' ? 'Activo' : 'Deshabilitado'}
                                                 </Badge>
-                                                {user.role === 'Admin' && <Badge variant={'destructive'}>Admin</Badge>}
-                                                {user.role === 'Designer' && <Badge className="bg-blue-100 text-blue-800" variant={'secondary'}>Diseñador</Badge>}
+                                                {(() => {
+                                                    // Mostrar rol personalizado si existe, sino el rol base
+                                                    if (user.customRoleId) {
+                                                        const customRole = roles.find(r => r.id === user.customRoleId);
+                                                        return <Badge className="bg-purple-100 text-purple-800" variant={'secondary'}>{customRole?.name || user.role}</Badge>;
+                                                    }
+                                                    if (user.role === 'Admin') return <Badge variant={'destructive'}>Admin</Badge>;
+                                                    if (user.role === 'Designer') return <Badge className="bg-blue-100 text-blue-800" variant={'secondary'}>Diseñador</Badge>;
+                                                    if (user.role && user.role !== 'Member') return <Badge variant={'outline'}>{user.role}</Badge>;
+                                                    return null;
+                                                })()}
                                             </div>
                                         </TableCell>
                                         <TableCell className="text-right">
