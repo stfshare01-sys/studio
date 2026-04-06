@@ -12,6 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { usePermissions } from '@/hooks/use-permissions';
 import { Textarea } from '@/components/ui/textarea';
 import {
     Table,
@@ -114,12 +115,14 @@ export default function IncidencesPage() {
     // Reload trigger — incremented after creating/approving incidences to refresh employee lists
     const [teamReloadKey, setTeamReloadKey] = useState(0);
 
+    const { hierarchyDepth } = usePermissions();
+
     useEffect(() => {
         if (!user?.uid) return;
 
         if (isManagerOnly) {
-            // Use hierarchical reports so "jefe del jefe" can see subordinates' team
-            getHierarchicalReports(user.uid).then(res => {
+            // Use hierarchical reports, passing the specific hierarchyDepth to respect role limits
+            getHierarchicalReports(user.uid, hierarchyDepth === undefined ? 10 : hierarchyDepth).then(res => {
                 if (res.success && res.employees) {
                     // Safety net: filter out any non-active employees (e.g. recently terminated)
                     const active = res.employees.filter(e => e.status === 'active');
@@ -136,7 +139,7 @@ export default function IncidencesPage() {
                 }
             });
         }
-    }, [isManagerOnly, hasHRPermissions, user?.uid, teamReloadKey]);
+    }, [isManagerOnly, hasHRPermissions, user?.uid, teamReloadKey, hierarchyDepth]);
 
     const incidencesQuery = useMemoFirebase(() => {
         if (!firestore || isUserLoading || !user) return null;

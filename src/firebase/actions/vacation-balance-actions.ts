@@ -69,39 +69,8 @@ export async function getVacationBalance(
             return { success: true, balance };
         }
 
-        // Create new balance if none exists
-        const yearsOfService = calculateYearsOfService(employee.hireDate);
-        const daysEntitled = calculateVacationDays(yearsOfService);
-        const periodStart = employee.hireDate;
-        const nextAnniversary = getNextAnniversaryDate(employee.hireDate);
-        const now = new Date().toISOString();
-
-        const newBalance: Omit<VacationBalance, 'id'> = {
-            employeeId,
-            periodStart,
-            periodEnd: nextAnniversary.toISOString(),
-            daysEntitled,
-            yearsOfService,
-            daysTaken: 0,
-            daysScheduled: 0,
-            daysAvailable: daysEntitled,
-            daysCarriedOver: 0,
-            daysPending: 0,
-            vacationPremiumPaid: false,
-            movements: [{
-                id: `mov_init_${Date.now()}`,
-                date: now,
-                type: 'reset',
-                days: daysEntitled,
-                description: `Balance inicial - Año ${yearsOfService} de servicio`,
-            }],
-            lastUpdated: now,
-            createdAt: now,
-        };
-
-        const balanceRef = await addDoc(collection(firestore, 'vacation_balances'), newBalance);
-
-        return { success: true, balance: { id: balanceRef.id, ...newBalance } };
+        // Return undefined if no balance exists (do not auto-create)
+        return { success: true, balance: undefined };
     } catch (error) {
         console.error('[HCM] Error getting vacation balance:', error);
         return { success: false, error: 'Error obteniendo saldo de vacaciones.' };

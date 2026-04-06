@@ -488,42 +488,19 @@ function TeamManagementContent() {
 
                 await loadImportBatches();
 
-                // Load ALL data needed for header counters in parallel
-                // This ensures the header badges show correct values immediately
+                // Load ONLY the overview data and basic shifts to optimize initial load
+                // Other tabs will be loaded on demand when clicked
                 const [
-                    tardinessResult,
-                    departuresResult,
-                    overtimeResult,
                     monthlyStatsResult,
                     dailyStatsResult,
-                    missingPunchesResult,
-                    shiftsResult,
-                    assignmentsResult
+                    shiftsResult
                 ] = await Promise.all([
-                    getTeamTardiness(managerIdToUse, dateFilter, hierarchyDepth),
-                    getTeamEarlyDepartures(managerIdToUse, dateFilter, hierarchyDepth),
-                    getTeamOvertimeRequests(managerIdToUse, 'all', hierarchyDepth),
-                    getTeamMonthlyStats(managerIdToUse, ...dateFilter.split('-').map(Number) as [number, number], hierarchyDepth),
+                    getTeamMonthlyStats(managerIdToUse, ...(dateFilter !== 'all' ? dateFilter.split('-').map(Number) as [number, number] : [new Date().getFullYear(), new Date().getMonth() + 1]), hierarchyDepth),
                     getTeamDailyStats(managerIdToUse, selectedDate, hierarchyDepth),
-                    getTeamMissingPunches(managerIdToUse, dateFilter, hierarchyDepth),
-                    getAvailableShifts(), // Load globally for the Dialog dropdowns
-                    getTeamShiftAssignments(managerIdToUse, hierarchyDepth) // Needed for missing punch justification shift resolution
+                    getAvailableShifts() // Load globally for the Dialog dropdowns
                 ]);
 
-                // Set all data states
-                if (tardinessResult.success && tardinessResult.records) {
-                    setTardiness(tardinessResult.records);
-                }
-                if (departuresResult.success && departuresResult.records) {
-                    setEarlyDepartures(departuresResult.records);
-                }
-                if (missingPunchesResult.success && missingPunchesResult.records) {
-                    setMissingPunches(missingPunchesResult.records);
-                }
-                if (overtimeResult.success) {
-                    setOvertimeRequests(overtimeResult.requests || []);
-                    if (overtimeResult.stats) setOvertimeStats(overtimeResult.stats);
-                }
+                // Set initial overview data states
                 if (monthlyStatsResult.success && monthlyStatsResult.stats) {
                     setMonthlyStats(monthlyStatsResult.stats);
                 }
@@ -533,8 +510,10 @@ function TeamManagementContent() {
                 if (shiftsResult.success && shiftsResult.shifts) {
                     setShifts(shiftsResult.shifts);
                 }
-                if (assignmentsResult.success && assignmentsResult.assignments) {
-                    setShiftAssignments(assignmentsResult.assignments);
+
+                // If activeTab is not overview, load it
+                if (activeTab !== 'overview') {
+                    await loadTabData(activeTab, managerIdToUse);
                 }
 
             } catch (error) {
@@ -642,40 +621,25 @@ function TeamManagementContent() {
                         parsedMonth = parts[1];
                     }
 
+                    // Reload ONLY the overview data initially
                     const [
-                        tardinessResult,
-                        departuresResult,
-                        overtimeResult,
                         monthlyStatsResult,
-                        dailyStatsResult,
-                        missingPunchesResult
+                        dailyStatsResult
                     ] = await Promise.all([
-                        getTeamTardiness(selectedManagerId, dateFilter, hierarchyDepth),
-                        getTeamEarlyDepartures(selectedManagerId, dateFilter, hierarchyDepth),
-                        getTeamOvertimeRequests(selectedManagerId, 'all', hierarchyDepth),
                         getTeamMonthlyStats(selectedManagerId, parsedYear, parsedMonth, hierarchyDepth),
-                        getTeamDailyStats(selectedManagerId, selectedDate, hierarchyDepth),
-                        getTeamMissingPunches(selectedManagerId, dateFilter, hierarchyDepth)
+                        getTeamDailyStats(selectedManagerId, selectedDate, hierarchyDepth)
                     ]);
 
-                    if (tardinessResult.success && tardinessResult.records) {
-                        setTardiness(tardinessResult.records);
-                    }
-                    if (departuresResult.success && departuresResult.records) {
-                        setEarlyDepartures(departuresResult.records);
-                    }
-                    if (overtimeResult.success) {
-                        setOvertimeRequests(overtimeResult.requests || []);
-                        if (overtimeResult.stats) setOvertimeStats(overtimeResult.stats);
-                    }
                     if (monthlyStatsResult.success && monthlyStatsResult.stats) {
                         setMonthlyStats(monthlyStatsResult.stats);
                     }
                     if (dailyStatsResult.success && dailyStatsResult.stats) {
                         setDailyStats(dailyStatsResult.stats);
                     }
-                    if (missingPunchesResult.success && missingPunchesResult.records) {
-                        setMissingPunches(missingPunchesResult.records);
+
+                    // If activeTab is not overview, load it
+                    if (activeTab !== 'overview') {
+                        await loadTabData(activeTab, selectedManagerId);
                     }
                 } catch (error) {
                     console.error('Error reloading data for manager switch:', error);
