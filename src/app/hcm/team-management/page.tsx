@@ -434,19 +434,19 @@ function TeamManagementContent() {
         } finally {
             setRefreshing(false);
         }
-    }, [user?.id, selectedManagerId, dateFilter, selectedDate]);
+    }, [user?.id, selectedManagerId, dateFilter, selectedDate, hierarchyDepth, permissions]);
 
     // Flag to track if initial load has been done
     const [initialLoadDone, setInitialLoadDone] = useState(false);
 
     // Initial data load and manager setup - runs ONCE when user is available
     useEffect(() => {
-        // Skip if already loaded or no user
-        if (initialLoadDone || !user) {
+        // Skip if already loaded, no user, or STILL loading permissions
+        if (initialLoadDone || !user || loadingPermissions) {
             return;
         }
 
-        console.log('🚀 Initial useEffect triggered (first time only)', { user: user?.uid });
+        console.log('🚀 Initial useEffect triggered (first time only)', { user: user?.uid, hierarchyDepth });
 
         const loadInitial = async () => {
             setLoadingData(true);
@@ -538,7 +538,7 @@ function TeamManagementContent() {
 
         loadInitial();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [user, permissions]); // Only depend on user and permissions, NOT selectedManagerId
+    }, [initialLoadDone, user, loadingPermissions]);
 
     // Handle batch selection
     useEffect(() => {
@@ -669,7 +669,7 @@ function TeamManagementContent() {
             // Normal reload: just reload current tab data
             loadTabData(activeTab);
         }
-    }, [activeTab, selectedDate, dateFilter, selectedManagerId, initialLoadDone]); // Removed loadingData and loadTabData from deps
+    }, [activeTab, selectedDate, dateFilter, selectedManagerId, initialLoadDone, hierarchyDepth]); // Removed loadingData and loadTabData from deps
 
     // Handlers
     const handleViewHourBankHistory = async (employee: Employee) => {
