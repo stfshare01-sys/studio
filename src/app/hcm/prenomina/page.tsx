@@ -77,6 +77,9 @@ export default function ConsolidacionAsistenciaPage() {
     const [customStart, setCustomStart] = useState('');
     const [customEnd, setCustomEnd] = useState('');
 
+    // Step 11: Legal Entity selector for exports
+    const [selectedLegalEntity, setSelectedLegalEntity] = useState('all');
+
     const selectedPeriod = useMemo(() => {
         if (periodType === 'custom' && customStart && customEnd) {
             return { start: customStart, end: customEnd };
@@ -440,7 +443,14 @@ export default function ConsolidacionAsistenciaPage() {
                 .filter((inc: any) => inc.endDate >= selectedPeriod.start);
 
             const employeesMap: Record<string, any> = {};
-            employeesSnap.docs.forEach(d => { employeesMap[d.id] = { id: d.id, ...d.data() }; });
+            employeesSnap.docs.forEach(d => { 
+                const empData = d.data();
+                // Filter by legal entity if selected
+                if (selectedLegalEntity !== 'all' && empData.legalEntity !== selectedLegalEntity) {
+                    return; // Skip this employee
+                }
+                employeesMap[d.id] = { id: d.id, ...empData }; 
+            });
 
             const shiftsMap: Record<string, any> = {};
             shiftsSnap.docs.forEach(d => { shiftsMap[d.id] = { id: d.id, ...d.data() }; });
@@ -607,7 +617,8 @@ export default function ConsolidacionAsistenciaPage() {
 
             const result = await callGeneratePayrollReports({
                 periodStart: selectedPeriod.start,
-                periodEnd: selectedPeriod.end
+                periodEnd: selectedPeriod.end,
+                legalEntity: selectedLegalEntity !== 'all' ? selectedLegalEntity : undefined
             });
 
             if (result.success && result.downloadUrl) {
@@ -687,6 +698,23 @@ export default function ConsolidacionAsistenciaPage() {
 
                     {/* Period selector in header */}
                     <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex flex-col gap-1.5 mr-2">
+                            <Label htmlFor="legal-entity-selector" className="text-[10px] font-bold uppercase text-gray-400">Razón Social</Label>
+                            <Select
+                                value={selectedLegalEntity}
+                                onValueChange={setSelectedLegalEntity}
+                            >
+                                <SelectTrigger id="legal-entity-selector" className="h-9 w-[180px] border-blue-200">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">Todas</SelectItem>
+                                    <SelectItem value="STF Latin America">STF Latin America</SelectItem>
+                                    <SelectItem value="Stuffactory">Stuffactory</SelectItem>
+                                    <SelectItem value="Derechos de Autor">Derechos de Autor</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
                         <div className="flex flex-col gap-1.5 mr-2">
                             <Label htmlFor="period-type" className="text-[10px] font-bold uppercase text-gray-400">Tipo</Label>
                             <Select

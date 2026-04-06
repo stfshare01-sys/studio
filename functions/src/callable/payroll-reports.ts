@@ -26,6 +26,7 @@ import type {
 interface GeneratePayrollReportsRequest {
     periodStart: string; // YYYY-MM-DD
     periodEnd: string;   // YYYY-MM-DD
+    legalEntity?: string;
 }
 
 interface GeneratePayrollReportsResponse {
@@ -151,7 +152,7 @@ export const generatePayrollReports = onCall<GeneratePayrollReportsRequest>(
     async (request: CallableRequest<GeneratePayrollReportsRequest>): Promise<GeneratePayrollReportsResponse> => {
         await verifyRole(request.auth?.uid, HCM_ROLES, 'generar reportes de nómina');
 
-        const { periodStart, periodEnd } = request.data;
+        const { periodStart, periodEnd, legalEntity } = request.data;
 
         if (!periodStart || !periodEnd) {
             throw new HttpsError('invalid-argument', 'Se requiere periodStart y periodEnd.');
@@ -205,7 +206,10 @@ export const generatePayrollReports = onCall<GeneratePayrollReportsRequest>(
                 .map(d => ({ id: d.id, ...d.data() } as EmpRow))
                 .filter(emp => (emp.terminationDate && emp.terminationDate >= periodStart) || empsWithAttendance.has(emp.id));
 
-            const allEmployees = [...activeEmployees, ...terminatedEmployees];
+            const allEmployees = [...activeEmployees, ...terminatedEmployees].filter(emp => {
+                if (legalEntity && emp.legalEntity !== legalEntity) return false;
+                return true;
+            });
 
             if (allEmployees.length === 0) {
                 throw new HttpsError('not-found', 'No se encontraron empleados para el periodo.');

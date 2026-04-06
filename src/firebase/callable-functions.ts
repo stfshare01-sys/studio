@@ -222,6 +222,7 @@ export async function callNotifyNewIncidence(
 interface GeneratePayrollReportsRequest {
     periodStart: string;
     periodEnd: string;
+    legalEntity?: string;
 }
 
 interface GeneratePayrollReportsResponse {

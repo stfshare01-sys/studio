@@ -23,6 +23,7 @@ export interface Employee {
     hireDate: string;
     terminationDate?: string;
     customShiftId?: string;
+    legalEntity?: string;
     shiftAssignments?: EmployeeShiftAssignment[];
     status: 'active' | 'on_leave' | 'terminated' | 'disabled';
     managerId?: string;
