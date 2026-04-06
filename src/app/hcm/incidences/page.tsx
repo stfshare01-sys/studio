@@ -122,7 +122,7 @@ export default function IncidencesPage() {
 
         if (isManagerOnly) {
             // Use hierarchical reports, passing the specific hierarchyDepth to respect role limits
-            getHierarchicalReports(user.uid, hierarchyDepth === undefined ? 10 : hierarchyDepth).then(res => {
+            getHierarchicalReports(user.uid, hierarchyDepth).then(res => {
                 if (res.success && res.employees) {
                     // Safety net: filter out any non-active employees (e.g. recently terminated)
                     const active = res.employees.filter(e => e.status === 'active');
