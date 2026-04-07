@@ -1768,7 +1768,7 @@ function TeamManagementContent() {
                                             type="month"
                                             value={selectedMonth}
                                             onChange={(e) => setSelectedMonth(e.target.value)}
-                                            className="w-44"
+                                            className="w-52"
                                         />
                                         <Button variant="outline" size="icon" onClick={() => {
                                             const [y, m] = selectedMonth.split('-').map(Number);
