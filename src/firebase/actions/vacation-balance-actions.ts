@@ -323,22 +323,68 @@ export async function adjustVacationBalance(
 
         // Obtener o crear balance actual
         const balanceResult = await getVacationBalance(employeeId);
-        if (!balanceResult.success || !balanceResult.balance) {
+        
+        // Return original getVacationBalance errors if they aren't just "no balance"
+        if (!balanceResult.success) {
             return { success: false, error: balanceResult.error };
         }
 
-        const currentBalance = balanceResult.balance;
-        const balanceRef = doc(firestore, 'vacation_balances', currentBalance.id);
+        let currentBalance = balanceResult.balance;
+        let isNewBalance = false;
+        let balanceRef;
+        let newDaysEntitled: number;
+        let newDaysTaken: number = 0;
+        let newDaysScheduled: number = 0;
+        
+        let movements = [];
 
-        // Calcular nuevos valores
-        const newDaysEntitled = currentBalance.daysEntitled + adjustmentDays;
-        const newDaysAvailable = newDaysEntitled - currentBalance.daysTaken - currentBalance.daysScheduled;
+        if (!currentBalance) {
+            // No existe saldo, crearemos uno inicial
+            isNewBalance = true;
+            
+            // Calculamos lo que correspondería por LFT según su antigüedad
+            const yearsOfService = calculateYearsOfService(employee.hireDate);
+            const nextAnniversary = getNextAnniversaryDate(employee.hireDate);
+            const lftDays = calculateVacationDays(yearsOfService);
+            
+            // Al crear el saldo inicial con 'adjustVacationBalance', el adjustmentDays
+            // es literalmente el número de días disponibles con los que se registrará el balance
+            newDaysEntitled = adjustmentDays; 
+            
+            currentBalance = {
+                id: '', // temporalmente vacío, se sobreescribe después de crear
+                employeeId,
+                periodStart: employee.hireDate, // podemos usar su fecha de inicio para el periodo base
+                periodEnd: nextAnniversary.toISOString(),
+                daysEntitled: newDaysEntitled,
+                yearsOfService,
+                daysTaken: 0,
+                daysScheduled: 0,
+                daysAvailable: adjustmentDays,
+                daysCarriedOver: 0,
+                daysPending: 0,
+                vacationPremiumPaid: false,
+                movements: [],
+                lastUpdated: now,
+                createdAt: now
+            };
+        } else {
+            balanceRef = doc(firestore, 'vacation_balances', currentBalance.id);
+            newDaysEntitled = currentBalance.daysEntitled + adjustmentDays;
+            newDaysTaken = currentBalance.daysTaken;
+            newDaysScheduled = currentBalance.daysScheduled;
+            movements = [...currentBalance.movements];
+        }
+
+        const newDaysAvailable = newDaysEntitled - newDaysTaken - newDaysScheduled;
 
         // Validar que no resulte en saldo negativo
         if (newDaysAvailable < 0) {
             return {
                 success: false,
-                error: `El ajuste resultaría en un saldo negativo (${newDaysAvailable} días). Ajuste máximo permitido: ${currentBalance.daysAvailable} días.`
+                error: isNewBalance 
+                    ? `El saldo inicial no puede ser negativo (${newDaysAvailable} días).` 
+                    : `El ajuste resultaría en un saldo negativo (${newDaysAvailable} días). Ajuste máximo permitido: ${currentBalance.daysAvailable} días.`
             };
         }
 
@@ -352,13 +398,31 @@ export async function adjustVacationBalance(
             approvedById: adjustedById,
         };
 
-        // Actualizar balance
-        await updateDoc(balanceRef, {
-            daysEntitled: newDaysEntitled,
-            daysAvailable: newDaysAvailable,
-            movements: [...currentBalance.movements, movement].slice(-100),
-            lastUpdated: now,
-        });
+        // Guardar o actualizar balance
+        if (isNewBalance) {
+            // Remover el 'id' temporal vacío para que Firestore lo asigne automáticamente
+            const { id, ...balanceDataToSave } = currentBalance;
+            
+            const newBalanceDataToInsert = {
+                ...balanceDataToSave,
+                daysEntitled: newDaysEntitled,
+                daysAvailable: newDaysAvailable,
+                movements: [movement],
+                lastUpdated: now,
+                createdAt: now
+            };
+            
+            const addedDocRef = await addDoc(collection(firestore, 'vacation_balances'), newBalanceDataToInsert);
+            currentBalance.id = addedDocRef.id; // Actualizar el id local
+        } else {
+            // Actualizar balance
+            await updateDoc(balanceRef as any, {
+                daysEntitled: newDaysEntitled,
+                daysAvailable: newDaysAvailable,
+                movements: [...currentBalance.movements, movement].slice(-100),
+                lastUpdated: now,
+            });
+        }
 
         // Registrar en auditoría
         await addDoc(collection(firestore, 'vacation_adjustments'), {
