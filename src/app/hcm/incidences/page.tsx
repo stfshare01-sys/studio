@@ -115,10 +115,10 @@ export default function IncidencesPage() {
     // Reload trigger — incremented after creating/approving incidences to refresh employee lists
     const [teamReloadKey, setTeamReloadKey] = useState(0);
 
-    const { hierarchyDepth } = usePermissions();
+    const { hierarchyDepth, isLoading: isLoadingPermissions } = usePermissions();
 
     useEffect(() => {
-        if (!user?.uid) return;
+        if (!user?.uid || isLoadingPermissions) return;
 
         if (isManagerOnly) {
             // Use hierarchical reports, passing the specific hierarchyDepth to respect role limits
@@ -139,7 +139,7 @@ export default function IncidencesPage() {
                 }
             });
         }
-    }, [isManagerOnly, hasHRPermissions, user?.uid, teamReloadKey, hierarchyDepth]);
+    }, [isManagerOnly, hasHRPermissions, user?.uid, teamReloadKey, hierarchyDepth, isLoadingPermissions]);
 
     const incidencesQuery = useMemoFirebase(() => {
         if (!firestore || isUserLoading || !user) return null;
