@@ -77,7 +77,24 @@ export async function createIncidence(
         }
 
         const managerId = employeeData.directManagerId;
-        const isAutoApproved = payload.submitterId && (payload.submitterId === managerId);
+        
+        let isAutoApproved = Boolean(payload.submitterId && payload.submitterId === managerId);
+
+        // Si no es el manager directo, verificar si el submitter es RH o Admin
+        if (!isAutoApproved && payload.submitterId) {
+            try {
+                const submitterRef = doc(firestore, 'users', payload.submitterId);
+                const submitterSnap = await getDoc(submitterRef);
+                if (submitterSnap.exists()) {
+                    const sRole = submitterSnap.data().role;
+                    if (sRole === 'Admin' || sRole === 'HRManager') {
+                        isAutoApproved = true;
+                    }
+                }
+            } catch (err) {
+                console.warn('[HCM] Fallo al verificar rol del submitter para auto-aprobación:', err);
+            }
+        }
 
         console.log('[HCM] createIncidence IDs →', {
             employeeId: payload.employeeId,
