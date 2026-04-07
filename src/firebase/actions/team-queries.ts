@@ -77,6 +77,11 @@ export async function getHierarchicalReports(
     maxDepth: number = 3
 ): Promise<{ success: boolean; employees?: Employee[]; error?: string }> {
     try {
+        // Caso especial: "all" → delegar a getDirectReports que ya maneja la vista global
+        if (managerId === 'all') {
+            return getDirectReports('all');
+        }
+
         const { firestore } = initializeFirebase();
         const allEmployees = new Map<string, Employee>();
         let currentManagerIds = [managerId];

@@ -6,7 +6,9 @@
  * Estadísticas mensuales y diarias del equipo de trabajo.
  * Agrega datos de retardos, salidas, horas extra e incidencias.
  *
- * Extraído de team-actions.ts como parte de la segmentación de módulos.
+ * Optimización: Usa queries batch con operador `in` de Firestore
+ * para consultar hasta 30 empleados por query en paralelo.
+ * Antes: N×6 queries secuenciales. Ahora: ~12 queries paralelas.
  *
  * Funciones exportadas:
  *  - getTeamMonthlyStats
@@ -17,7 +19,8 @@ import {
     collection,
     getDocs,
     query,
-    where
+    where,
+    type QueryConstraint
 } from 'firebase/firestore';
 import { initializeFirebase } from '@/firebase';
 import { getDirectReports, getHierarchicalReports } from './team-queries';
@@ -30,11 +33,62 @@ import type {
 } from '@/lib/types';
 
 // =========================================================================
+// HELPERS INTERNOS
+// =========================================================================
+
+const FIRESTORE_IN_LIMIT = 30;
+
+/** Divide un array en sub-arrays de tamaño `size` */
+function chunkArray<T>(arr: T[], size: number): T[][] {
+    const chunks: T[][] = [];
+    for (let i = 0; i < arr.length; i += size) {
+        chunks.push(arr.slice(i, i + size));
+    }
+    return chunks;
+}
+
+/**
+ * Ejecuta queries batch usando el operador `in` de Firestore.
+ * Devuelve un Map<employeeId, docData[]> con los resultados agrupados.
+ */
+async function batchQueryByEmployee(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    firestore: any,
+    collectionName: string,
+    idChunks: string[][],
+    constraints: QueryConstraint[]
+): Promise<Map<string, any[]>> {
+    const resultMap = new Map<string, any[]>();
+
+    const snapshots = await Promise.all(
+        idChunks.map(chunk =>
+            getDocs(query(
+                collection(firestore, collectionName),
+                where('employeeId', 'in', chunk),
+                ...constraints
+            ))
+        )
+    );
+
+    for (const snap of snapshots) {
+        for (const d of snap.docs) {
+            const data = d.data();
+            const empId = data.employeeId as string;
+            const existing = resultMap.get(empId);
+            if (existing) existing.push(data);
+            else resultMap.set(empId, [data]);
+        }
+    }
+
+    return resultMap;
+}
+
+// =========================================================================
 // ESTADÍSTICAS DEL EQUIPO
 // =========================================================================
 
 /**
- * Obtiene estadísticas mensuales del equipo
+ * Obtiene estadísticas mensuales del equipo (batch optimizado).
  */
 export async function getTeamMonthlyStats(
     managerId: string,
@@ -45,7 +99,6 @@ export async function getTeamMonthlyStats(
     try {
         const { firestore } = initializeFirebase();
 
-        // Obtener subordinados
         const subordinatesResult = hierarchyDepth === undefined || hierarchyDepth > 1
             ? await getHierarchicalReports(managerId, hierarchyDepth === undefined ? 10 : hierarchyDepth)
             : await getDirectReports(managerId);
@@ -55,7 +108,6 @@ export async function getTeamMonthlyStats(
         }
 
         const isAll = !year || !month || isNaN(year) || isNaN(month);
-
         let dateStart = '';
         let dateEnd = '';
 
@@ -65,45 +117,31 @@ export async function getTeamMonthlyStats(
             dateEnd = `${year}-${month!.toString().padStart(2, '0')}-${lastDay.toString().padStart(2, '0')}`;
         }
 
-        const stats: EmployeeMonthlyStats[] = [];
+        const employeeIds = subordinatesResult.employees.map(e => e.id);
+        const chunks = chunkArray(employeeIds, FIRESTORE_IN_LIMIT);
 
-        for (const employee of subordinatesResult.employees) {
-            // Obtener retardos
-            const tardinessQuery = query(
-                collection(firestore, 'tardiness_records'),
-                where('employeeId', '==', employee.id),
-                ...(!isAll ? [where('date', '>=', dateStart), where('date', '<=', dateEnd)] : [])
-            );
-            const tardinessSnap = await getDocs(tardinessQuery);
-            const tardinessRecords = tardinessSnap.docs.map(d => d.data() as TardinessRecord);
+        const dateRange: QueryConstraint[] = !isAll
+            ? [where('date', '>=', dateStart), where('date', '<=', dateEnd)]
+            : [];
+        const incidenceDateRange: QueryConstraint[] = !isAll
+            ? [where('startDate', '>=', dateStart), where('startDate', '<=', dateEnd)]
+            : [];
 
-            // Obtener salidas tempranas
-            const departuresQuery = query(
-                collection(firestore, 'early_departures'),
-                where('employeeId', '==', employee.id),
-                ...(!isAll ? [where('date', '>=', dateStart), where('date', '<=', dateEnd)] : [])
-            );
-            const departuresSnap = await getDocs(departuresQuery);
-            const departureRecords = departuresSnap.docs.map(d => d.data() as EarlyDeparture);
+        // 4 batch queries en paralelo (antes: N×4 secuenciales)
+        const [tardinessMap, departureMap, overtimeMap, incidenceMap] = await Promise.all([
+            batchQueryByEmployee(firestore, 'tardiness_records', chunks, dateRange),
+            batchQueryByEmployee(firestore, 'early_departures', chunks, dateRange),
+            batchQueryByEmployee(firestore, 'overtime_requests', chunks, dateRange),
+            batchQueryByEmployee(firestore, 'incidences', chunks, incidenceDateRange),
+        ]);
 
-            // Obtener horas extras
-            const overtimeQuery = query(
-                collection(firestore, 'overtime_requests'),
-                where('employeeId', '==', employee.id),
-                ...(!isAll ? [where('date', '>=', dateStart), where('date', '<=', dateEnd)] : [])
-            );
-            const overtimeSnap = await getDocs(overtimeQuery);
-            const overtimeRecords = overtimeSnap.docs.map(d => d.data() as OvertimeRequest);
+        const stats: EmployeeMonthlyStats[] = subordinatesResult.employees.map(employee => {
+            const tardinessRecords = (tardinessMap.get(employee.id) || []) as TardinessRecord[];
+            const departureRecords = (departureMap.get(employee.id) || []) as EarlyDeparture[];
+            const overtimeRecords = (overtimeMap.get(employee.id) || []) as OvertimeRequest[];
+            const incidenceDocs = incidenceMap.get(employee.id) || [];
 
-            // Obtener incidencias
-            const incidencesQuery = query(
-                collection(firestore, 'incidences'),
-                where('employeeId', '==', employee.id),
-                ...(!isAll ? [where('startDate', '>=', dateStart), where('startDate', '<=', dateEnd)] : [])
-            );
-            const incidencesSnap = await getDocs(incidencesQuery);
-
-            const employeeStats: EmployeeMonthlyStats = {
+            return {
                 employeeId: employee.id,
                 employeeName: employee.fullName,
                 positionTitle: employee.positionTitle,
@@ -121,12 +159,10 @@ export async function getTeamMonthlyStats(
                 overtimeHoursRejected: overtimeRecords.filter(r => r.status === 'rejected')
                     .reduce((sum, r) => sum + r.hoursRequested, 0),
                 overtimeRequestsPending: overtimeRecords.filter(r => r.status === 'pending').length,
-                pendingIncidences: incidencesSnap.docs.filter(d => d.data().status === 'pending').length,
-                approvedIncidences: incidencesSnap.docs.filter(d => d.data().status === 'approved').length
+                pendingIncidences: incidenceDocs.filter((d: any) => d.status === 'pending').length,
+                approvedIncidences: incidenceDocs.filter((d: any) => d.status === 'approved').length
             };
-
-            stats.push(employeeStats);
-        }
+        });
 
         return { success: true, stats };
     } catch (error) {
@@ -136,7 +172,10 @@ export async function getTeamMonthlyStats(
 }
 
 /**
- * Obtiene estadísticas del día para el equipo
+ * Obtiene estadísticas del día para el equipo (batch optimizado).
+ *
+ * Antes: 6 queries secuenciales × N empleados = N×6 round-trips.
+ * Ahora: ceil(N/30) × 6 queries en paralelo ≈ 12 queries para 50 empleados.
  */
 export async function getTeamDailyStats(
     managerId: string,
@@ -146,7 +185,6 @@ export async function getTeamDailyStats(
     try {
         const { firestore } = initializeFirebase();
 
-        // Obtener subordinados
         const subordinatesResult = hierarchyDepth === undefined || hierarchyDepth > 1
             ? await getHierarchicalReports(managerId, hierarchyDepth === undefined ? 10 : hierarchyDepth)
             : await getDirectReports(managerId);
@@ -155,65 +193,39 @@ export async function getTeamDailyStats(
             return { success: true, stats: [] };
         }
 
-        const stats: TeamDailyStats[] = [];
+        const employeeIds = subordinatesResult.employees.map(e => e.id);
+        const chunks = chunkArray(employeeIds, FIRESTORE_IN_LIMIT);
+        const dateEq: QueryConstraint[] = [where('date', '==', date)];
 
-        for (const employee of subordinatesResult.employees) {
-            // Obtener asistencia del día (entrada/salida/descanso)
-            const attendanceQuery = query(
-                collection(firestore, 'attendance'),
-                where('employeeId', '==', employee.id),
-                where('date', '==', date)
-            );
-            const attendanceSnap = await getDocs(attendanceQuery);
-            const attendance = attendanceSnap.docs[0]?.data();
-
-            // Obtener retardo del día
-            const tardinessQuery = query(
-                collection(firestore, 'tardiness_records'),
-                where('employeeId', '==', employee.id),
-                where('date', '==', date)
-            );
-            const tardinessSnap = await getDocs(tardinessQuery);
-            const tardiness = tardinessSnap.docs[0]?.data() as TardinessRecord | undefined;
-
-            // Obtener salida temprana del día
-            const departureQuery = query(
-                collection(firestore, 'early_departures'),
-                where('employeeId', '==', employee.id),
-                where('date', '==', date)
-            );
-            const departureSnap = await getDocs(departureQuery);
-            const departure = departureSnap.docs[0]?.data() as EarlyDeparture | undefined;
-
-            // Obtener solicitud de HE del día
-            const overtimeQuery = query(
-                collection(firestore, 'overtime_requests'),
-                where('employeeId', '==', employee.id),
-                where('date', '==', date)
-            );
-            const overtimeSnap = await getDocs(overtimeQuery);
-            const overtime = overtimeSnap.docs[0]?.data() as OvertimeRequest | undefined;
-
-            // Obtener incidencia del día
-            const incidenceQuery = query(
-                collection(firestore, 'incidences'),
-                where('employeeId', '==', employee.id),
+        // 6 batch queries en paralelo (antes: N×6 secuenciales)
+        const [
+            attendanceMap,
+            tardinessMap,
+            departureMap,
+            overtimeMap,
+            incidenceMap,
+            missingPunchMap
+        ] = await Promise.all([
+            batchQueryByEmployee(firestore, 'attendance', chunks, dateEq),
+            batchQueryByEmployee(firestore, 'tardiness_records', chunks, dateEq),
+            batchQueryByEmployee(firestore, 'early_departures', chunks, dateEq),
+            batchQueryByEmployee(firestore, 'overtime_requests', chunks, dateEq),
+            batchQueryByEmployee(firestore, 'incidences', chunks, [
                 where('startDate', '<=', date),
                 where('endDate', '>=', date)
-            );
-            const incidenceSnap = await getDocs(incidenceQuery);
-            const incidence = incidenceSnap.docs[0]?.data();
+            ]),
+            batchQueryByEmployee(firestore, 'missing_punches', chunks, dateEq),
+        ]);
 
-            // Obtener marcaje faltante del día
-            const missingPunchQuery = query(
-                collection(firestore, 'missing_punches'),
-                where('employeeId', '==', employee.id),
-                where('date', '==', date)
-            );
-            const missingPunchSnap = await getDocs(missingPunchQuery);
-            const missingPunch = missingPunchSnap.docs[0]?.data();
+        const stats: TeamDailyStats[] = subordinatesResult.employees.map(employee => {
+            const attendance = (attendanceMap.get(employee.id) ?? [])[0];
+            const tardiness = (tardinessMap.get(employee.id) ?? [])[0] as TardinessRecord | undefined;
+            const departure = (departureMap.get(employee.id) ?? [])[0] as EarlyDeparture | undefined;
+            const overtime = (overtimeMap.get(employee.id) ?? [])[0] as OvertimeRequest | undefined;
+            const incidence = (incidenceMap.get(employee.id) ?? [])[0];
+            const missingPunch = (missingPunchMap.get(employee.id) ?? [])[0];
 
-            const dayStat: TeamDailyStats = {
+            return {
                 date,
                 employeeId: employee.id,
                 employeeName: employee.fullName,
@@ -234,9 +246,7 @@ export async function getTeamDailyStats(
                 missingPunchType: missingPunch?.missingType,
                 missingPunchJustified: missingPunch?.isJustified
             };
-
-            stats.push(dayStat);
-        }
+        });
 
         return { success: true, stats };
     } catch (error) {
