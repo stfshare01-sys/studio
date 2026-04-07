@@ -129,12 +129,7 @@ export async function runGlobalSLAProcessing(
             processedDepartures++;
         }
 
-        // 4. Procesar Horas Extras - Compensación de Deuda
-        // Aquí es más complejo, necesitamos leer la bolsa de horas de cada empleado
-        // Para hacerlo en batch de manera segura, lo ideal sería transacciones individuales,
-        // pero para un proceso masivo manual, haremos lecturas primero y luego batch updates.
-        // Riesgo de race condition bajo, ya que es un proceso administrativo controlado.
-
+        // 4. Procesar Horas Extras - Compensación de Deuda y Rechazo del Sobrante
         const overtimeRef = collection(firestore, 'overtime_requests');
         const overtimeConstraints: any[] = [where('status', '==', 'pending')];
         if (periodStart) overtimeConstraints.push(where('date', '>=', periodStart));
@@ -151,12 +146,9 @@ export async function runGlobalSLAProcessing(
             overtimeByEmployee[data.employeeId].push({ id: d.id, data });
         });
 
-        // Procesar cada empleado
         for (const employeeId of Object.keys(overtimeByEmployee)) {
-            // Empleados dados de baja → transparente
             if (terminatedEmpIds.has(employeeId)) continue;
 
-            // Leer bolsa de horas actual
             const hbRef = doc(firestore, 'hour_banks', employeeId);
             const hbSnap = await getDoc(hbRef);
 
@@ -166,112 +158,51 @@ export async function runGlobalSLAProcessing(
                 currentDebt = hb.balanceMinutes < 0 ? Math.abs(hb.balanceMinutes) : 0;
             }
 
-            const recipientRef = doc(firestore, 'employees', employeeId); // Para verificar existencia si es necesario
-
             for (const { id: reqId, data: req } of overtimeByEmployee[employeeId]) {
                 const minutesRequested = req.hoursRequested * 60;
                 let minutesToCompensate = 0;
-                let minutesToPay = minutesRequested;
-                let newStatus: 'approved' | 'partial' = 'approved';
+                let newStatus: 'approved' | 'partial' | 'rejected' = 'rejected';
+                let reason = 'Rechazo automático por SLA (no autorizada). No hay deuda pendiente.';
 
                 if (currentDebt > 0) {
                     if (currentDebt >= minutesRequested) {
-                        // Toda la solicitud se va a deuda
                         minutesToCompensate = minutesRequested;
-                        minutesToPay = 0;
                         currentDebt -= minutesRequested;
-                        newStatus = 'approved'; // Se aprueba pero se usa para deuda (técnicamente "approved" como movimiento validado)
-                        // O podríamos marcarlo como 'compensated' si existiera el estatus. 
-                        // Mantendremos 'approved' pero con 0 horas a pagar y log en movements.
+                        newStatus = 'approved'; 
+                        reason = `Consumida por deuda: Se compensaron ${minutesToCompensate} min de deuda pendiente.`;
                     } else {
-                        // Parcial
                         minutesToCompensate = currentDebt;
-                        minutesToPay = minutesRequested - currentDebt;
                         currentDebt = 0;
-                        newStatus = 'partial'; // Parcialmente pagada, resto a deuda
+                        newStatus = 'partial'; 
+                        reason = `Compensación parcial: Se usaron ${minutesToCompensate} min para pagar deuda. Resto rechazado.`;
                     }
                 }
 
-                // Actualizar solicitud
                 const reqRef = doc(firestore, 'overtime_requests', reqId);
-                const hoursApproved = minutesToPay / 60;
-
-                // Calculate start and end of the week for the request date
-                const reqDateObj = new Date(req.date + 'T00:00:00'); // Assuming YYYY-MM-DD
-                const dayOfWeek = reqDateObj.getDay(); // 0 is Sunday
-                const diffToMonday = reqDateObj.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1);
-                const startOfWeekObj = new Date(reqDateObj.setDate(diffToMonday));
-                const endOfWeekObj = new Date(startOfWeekObj);
-                endOfWeekObj.setDate(endOfWeekObj.getDate() + 6);
-
-                const startOfWeekStr = startOfWeekObj.toISOString().split('T')[0];
-                const endOfWeekStr = endOfWeekObj.toISOString().split('T')[0];
-
-                // Fetch previous overtime requests for this employee in the same week
-                const employeeWeeklyOvertimeQuery = query(
-                    collection(firestore, 'overtime_requests'),
-                    where('employeeId', '==', employeeId),
-                    where('date', '>=', startOfWeekStr),
-                    where('date', '<=', endOfWeekStr),
-                    where('status', 'in', ['approved', 'partial'])
-                );
-
-                const weeklyOvertimeDocs = await getDocs(employeeWeeklyOvertimeQuery);
-                let previousApprovedHoursThisWeek = 0;
-                weeklyOvertimeDocs.forEach(d => {
-                    // Do not count the current request if it's already in the DB and we are processing it
-                    // Though here we process 'pending' so it shouldn't match 'approved', but just in case:
-                    if (d.id !== reqId) {
-                        const pastReq = d.data() as OvertimeRequest;
-                        previousApprovedHoursThisWeek += (pastReq.hoursApproved || 0);
-                    }
-                });
-
-                // Calcular dobles/triples reales según LFT (tope 9 horas a la semana)
-                let doubleHours = 0;
-                let tripleHours = 0;
-
-                if (previousApprovedHoursThisWeek + hoursApproved <= 9) {
-                    doubleHours = hoursApproved;
-                } else if (previousApprovedHoursThisWeek >= 9) {
-                    tripleHours = hoursApproved;
-                } else {
-                    doubleHours = 9 - previousApprovedHoursThisWeek;
-                    tripleHours = hoursApproved - doubleHours;
-                }
-
                 batch.update(reqRef, {
                     status: newStatus,
-                    hoursApproved: hoursApproved,
-                    doubleHours: doubleHours,
-                    tripleHours: tripleHours,
+                    hoursApproved: 0, // 0 horas a nómina, todo se anula o se va a bolsa
+                    doubleHours: 0,
+                    tripleHours: 0,
                     approvedById: currentUserId,
                     approvedByName: 'SLA Automático',
                     approvedAt: new Date().toISOString(),
-                    rejectionReason: minutesToCompensate > 0 ? `Compensación automática de ${minutesToCompensate} min de deuda.` : '',
+                    rejectionReason: reason,
                     updatedAt: serverTimestamp()
                 });
 
-                // Actualizar bolsa de horas (incrementar positivo)
-                // Nota: Si se compensó deuda, la bolsa sube (dismuye deuda negativa)
-                // Si se paga, no afecta bolsa (se paga en nómina), A MENOS que la política sea "Todo a bolsa".
-                // Asumiremos: Lo compensado sube el saldo. Lo pagado NO entra a bolsa.
-
                 if (minutesToCompensate > 0) {
-                    // Movimiento de compensación
                     const movementRef = doc(collection(firestore, 'hour_bank_movements'));
                     batch.set(movementRef, {
                         employeeId,
                         amountMinutes: minutesToCompensate,
                         type: 'overtime_compensation',
-                        description: `Compensación automática por horas extras del ${req.date}`,
+                        description: `Compensación automática por tiempo extra del ${req.date}`,
                         referenceId: reqId,
                         createdAt: serverTimestamp(),
                         createdBy: currentUserId
                     });
 
-                    // Actualizar saldo (batch increment funciona atómicamente sobre el campo)
-                    // Usamos set con merge true para asegurar que el documento exista o update si estamos seguros
                     if (hbSnap.exists()) {
                         batch.update(hbRef, {
                             balanceMinutes: increment(minutesToCompensate),
@@ -279,7 +210,6 @@ export async function runGlobalSLAProcessing(
                             updatedAt: serverTimestamp()
                         });
                     } else {
-                        // Crear si no existe (raro si tiene deuda, pero posible)
                         batch.set(hbRef, {
                             id: employeeId,
                             employeeId,
