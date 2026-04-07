@@ -1757,12 +1757,26 @@ function TeamManagementContent() {
                                             onChange={(e) => setSearchTerm(e.target.value)}
                                             className="w-48"
                                         />
+                                        <Button variant="outline" size="icon" onClick={() => {
+                                            const [y, m] = selectedMonth.split('-').map(Number);
+                                            const d = new Date(y, m - 2, 1);
+                                            setSelectedMonth(`${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}`);
+                                        }}>
+                                            <ChevronLeft className="h-4 w-4" />
+                                        </Button>
                                         <Input
                                             type="month"
                                             value={selectedMonth}
                                             onChange={(e) => setSelectedMonth(e.target.value)}
-                                            className="w-40"
+                                            className="w-44"
                                         />
+                                        <Button variant="outline" size="icon" onClick={() => {
+                                            const [y, m] = selectedMonth.split('-').map(Number);
+                                            const d = new Date(y, m, 1);
+                                            setSelectedMonth(`${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}`);
+                                        }}>
+                                            <ChevronRight className="h-4 w-4" />
+                                        </Button>
                                     </div>
                                 </div>
                             </CardHeader>
