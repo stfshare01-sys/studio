@@ -654,6 +654,25 @@ function TeamManagementContent() {
         }
     }, [activeTab, selectedDate, dateFilter, selectedManagerId, initialLoadDone, hierarchyDepth]); // Removed loadingData and loadTabData from deps
 
+    // Recargar estadísticas mensuales cuando se cambia el mes (independiente de dateFilter)
+    const prevSelectedMonthRef = useRef(selectedMonth);
+    useEffect(() => {
+        // Solo recargar si el mes realmente cambió (no en la carga inicial)
+        if (prevSelectedMonthRef.current === selectedMonth) return;
+        prevSelectedMonthRef.current = selectedMonth;
+        if (!initialLoadDone || !user?.id || !selectedManagerId) return;
+
+        const [year, month] = selectedMonth.split('-').map(Number);
+        if (!year || !month) return;
+
+        (async () => {
+            const result = await getTeamMonthlyStats(selectedManagerId, year, month, hierarchyDepth);
+            if (result.success && result.stats) {
+                setMonthlyStats(result.stats);
+            }
+        })();
+    }, [selectedMonth, initialLoadDone, selectedManagerId, hierarchyDepth, user?.id]);
+
     // Handlers
     const handleViewHourBankHistory = async (employee: Employee) => {
         setHourBankDialog({ open: true, employee });
