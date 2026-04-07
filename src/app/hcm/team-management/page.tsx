@@ -1605,6 +1605,19 @@ function TeamManagementContent() {
                                 <div className="flex items-center justify-between">
                                     <CardTitle>Vista Diaria</CardTitle>
                                     <div className="flex items-center gap-2">
+                                        <Select value={selectedEmployeeFilter} onValueChange={setSelectedEmployeeFilter}>
+                                            <SelectTrigger className="w-[220px]">
+                                                <SelectValue placeholder="Todos los empleados" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="all">Todos los empleados</SelectItem>
+                                                {employees.map(emp => (
+                                                    <SelectItem key={emp.id} value={emp.id}>
+                                                        {emp.fullName}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
                                         <Button variant="outline" size="icon" onClick={() => changeDate(-1)}>
                                             <ChevronLeft className="h-4 w-4" />
                                         </Button>
@@ -1635,14 +1648,14 @@ function TeamManagementContent() {
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
-                                        {dailyStats.length === 0 ? (
+                                        {dailyStats.filter(s => selectedEmployeeFilter === 'all' || s.employeeId === selectedEmployeeFilter).length === 0 ? (
                                             <TableRow>
                                                 <TableCell colSpan={8} className="text-center text-muted-foreground">
                                                     Sin registros para este día
                                                 </TableCell>
                                             </TableRow>
                                         ) : (
-                                            dailyStats.map((stat) => (
+                                            dailyStats.filter(s => selectedEmployeeFilter === 'all' || s.employeeId === selectedEmployeeFilter).map((stat) => (
                                                 <TableRow key={stat.employeeId}>
                                                     <TableCell className="font-medium">{stat.employeeName}</TableCell>
                                                     <TableCell>
