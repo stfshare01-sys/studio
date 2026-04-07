@@ -29,8 +29,9 @@ interface NewIncidenceFormProps {
 }
 
 export function NewIncidenceForm({ userId, targetUserId, onSuccess, onCancel, className }: NewIncidenceFormProps) {
-    const { firestore } = useFirebase();
+    const { firestore, user } = useFirebase();
     const { toast } = useToast();
+    const hasHRPermissions = ['Admin', 'HRManager'].includes(user?.role || '');
     const effectiveTargetUserId = targetUserId || userId;
 
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -354,8 +355,7 @@ export function NewIncidenceForm({ userId, targetUserId, onSuccess, onCancel, cl
                     </SelectTrigger>
                     <SelectContent>
                         <SelectItem value="vacation">Vacaciones</SelectItem>
-                        <SelectItem value="sick_leave">Incapacidad</SelectItem>
-                        <SelectItem value="personal_leave">Permiso Personal</SelectItem>
+                        {hasHRPermissions && <SelectItem value="sick_leave">Incapacidad</SelectItem>}
                         <SelectItem value="bereavement">Duelo</SelectItem>
                         <SelectItem value="maternity">Maternidad</SelectItem>
                         <SelectItem value="paternity">Paternidad</SelectItem>

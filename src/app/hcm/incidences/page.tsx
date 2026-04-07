@@ -485,8 +485,7 @@ export default function IncidencesPage() {
                                 <SelectContent>
                                     <SelectItem value="all">Todos los tipos</SelectItem>
                                     <SelectItem value="vacation">Vacaciones</SelectItem>
-                                    <SelectItem value="sick_leave">Incapacidad</SelectItem>
-                                    <SelectItem value="personal_leave">Permiso Personal</SelectItem>
+                                    {hasHRPermissions && <SelectItem value="sick_leave">Incapacidad</SelectItem>}
                                     <SelectItem value="maternity">Maternidad</SelectItem>
                                     <SelectItem value="paternity">Paternidad</SelectItem>
                                     <SelectItem value="bereavement">Duelo</SelectItem>
