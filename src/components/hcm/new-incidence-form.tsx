@@ -63,6 +63,10 @@ export function NewIncidenceForm({ userId, targetUserId, onSuccess, onCancel, cl
 
         const loadEmployeeData = async () => {
             setIsLoadingEmployeeData(true);
+            // Clear previous state to prevent leaking data between employees
+            setVacationBalance(null);
+            setCurrentEmployee(null);
+
             try {
                 // Load employee data
                 const empResult = await getEmployeeByUserId(effectiveTargetUserId);
@@ -73,6 +77,8 @@ export function NewIncidenceForm({ userId, targetUserId, onSuccess, onCancel, cl
                     const balanceResult = await getVacationBalance(empResult.employee.id);
                     if (balanceResult.success && balanceResult.balance) {
                         setVacationBalance(balanceResult.balance);
+                    } else {
+                        setVacationBalance(null);
                     }
                 }
             } catch (error) {
