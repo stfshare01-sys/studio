@@ -50,6 +50,7 @@ export async function runGlobalSLAProcessing(
         processedTardiness: number;
         processedDepartures: number;
         processedOvertime: number;
+        processedMissingPunches: number;
     };
     error?: string;
 }> {
@@ -65,6 +66,7 @@ export async function runGlobalSLAProcessing(
         let processedTardiness = 0;
         let processedDepartures = 0;
         let processedOvertime = 0;
+        let processedMissingPunches = 0;
 
         // 1b. Obtener IDs de empleados dados de baja para excluirlos del SLA
         const terminatedSnap = await getDocs(
@@ -149,13 +151,13 @@ export async function runGlobalSLAProcessing(
         for (const employeeId of Object.keys(overtimeByEmployee)) {
             if (terminatedEmpIds.has(employeeId)) continue;
 
-            const hbRef = doc(firestore, 'hour_banks', employeeId);
+            const hbRef = doc(firestore, 'hourBanks', employeeId);
             const hbSnap = await getDoc(hbRef);
 
             let currentDebt = 0;
             if (hbSnap.exists()) {
                 const hb = hbSnap.data() as HourBank;
-                currentDebt = hb.balanceMinutes < 0 ? Math.abs(hb.balanceMinutes) : 0;
+                currentDebt = hb.balanceMinutes > 0 ? hb.balanceMinutes : 0;
             }
 
             for (const { id: reqId, data: req } of overtimeByEmployee[employeeId]) {
@@ -192,38 +194,58 @@ export async function runGlobalSLAProcessing(
                 });
 
                 if (minutesToCompensate > 0) {
-                    const movementRef = doc(collection(firestore, 'hour_bank_movements'));
+                    const movementRef = doc(collection(firestore, 'hourBankMovements'));
                     batch.set(movementRef, {
+                        hourBankId: employeeId,
                         employeeId,
-                        amountMinutes: minutesToCompensate,
+                        date: req.date,
+                        minutes: -minutesToCompensate, // Negativo para reducir deuda
                         type: 'overtime_compensation',
-                        description: `Compensación automática por tiempo extra del ${req.date}`,
-                        referenceId: reqId,
-                        createdAt: serverTimestamp(),
-                        createdBy: currentUserId
+                        reason: `Compensación automática por tiempo extra del ${req.date}`,
+                        sourceRecordId: reqId,
+                        sourceRecordType: 'overtime',
+                        createdById: currentUserId,
+                        createdByName: 'SLA Automático',
+                        createdAt: new Date().toISOString()
                     });
 
                     if (hbSnap.exists()) {
                         batch.update(hbRef, {
-                            balanceMinutes: increment(minutesToCompensate),
+                            balanceMinutes: increment(-minutesToCompensate),
                             totalCompensated: increment(minutesToCompensate),
                             updatedAt: serverTimestamp()
-                        });
-                    } else {
-                        batch.set(hbRef, {
-                            id: employeeId,
-                            employeeId,
-                            balanceMinutes: minutesToCompensate,
-                            totalCompensated: minutesToCompensate,
-                            totalDebtAccumulated: 0,
-                            updatedAt: serverTimestamp(),
-                            createdAt: serverTimestamp()
                         });
                     }
                 }
 
                 processedOvertime++;
             }
+        }
+
+        // 5. Procesar Marcajes Faltantes (Missing Punches)
+        const missingRef = collection(firestore, 'missing_punches');
+        const missingConstraints: any[] = [
+            where('isJustified', '==', false),
+            where('resultedInAbsence', '==', false)
+        ];
+        if (periodStart) missingConstraints.push(where('date', '>=', periodStart));
+        if (periodEnd) missingConstraints.push(where('date', '<=', periodEnd));
+        const missingQuery = query(missingRef, ...missingConstraints);
+
+        const missingDocs = await getDocs(missingQuery);
+
+        for (const docSnapshot of missingDocs.docs) {
+            const record = docSnapshot.data() as any;
+
+            if (terminatedEmpIds.has(record.employeeId)) continue;
+
+            const recordRef = doc(firestore, 'missing_punches', docSnapshot.id);
+
+            batch.update(recordRef, {
+                resultedInAbsence: true,
+                updatedAt: serverTimestamp()
+            });
+            processedMissingPunches++;
         }
 
         await batch.commit();
@@ -233,7 +255,8 @@ export async function runGlobalSLAProcessing(
             stats: {
                 processedTardiness,
                 processedDepartures,
-                processedOvertime
+                processedOvertime,
+                processedMissingPunches
             }
         };
     } catch (error) {
