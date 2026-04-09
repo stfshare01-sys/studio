@@ -129,9 +129,9 @@ export default function OrgChartPage() {
                             </div>
                         </div>
                     ) : employees && employees.length > 0 ? (
-                        <div className="flex xl:flex-row flex-col h-full overflow-hidden">
+                        <div className="flex h-full relative overflow-hidden">
                             {/* Org Chart Area */}
-                            <div className="flex-1 relative min-w-0">
+                            <div className="flex-1 relative">
                                 <div className="absolute bottom-4 right-4 flex gap-2 z-50 shadow-lg bg-background/50 backdrop-blur rounded-lg p-1">
                                     <Button variant="ghost" size="icon" onClick={handleZoomIn} title="Acercar">
                                         <ZoomIn className="h-4 w-4" />
@@ -166,9 +166,9 @@ export default function OrgChartPage() {
                                 </div>
                             </div>
 
-                            {/* Employee Detail Panel */}
+                            {/* Employee Detail Panel - Floating */}
                             {selectedEmployee && (
-                                <div className="w-80 flex-shrink-0 border-l bg-muted/5 p-4 overflow-y-auto animate-in slide-in-from-right duration-300 z-40 shadow-sm">
+                                <div className="absolute top-0 right-0 h-full w-80 bg-background/95 backdrop-blur-md p-4 overflow-y-auto animate-in slide-in-from-right duration-300 z-50 shadow-2xl border-l">
                                     <EmployeeDetailPanel
                                         employee={selectedEmployee}
                                         onClose={() => setSelectedEmployee(null)}
