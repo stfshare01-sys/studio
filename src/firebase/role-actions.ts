@@ -155,6 +155,9 @@ export const SYSTEM_ROLES: Record<SystemRole, ModulePermission[]> = {
     { module: 'hcm_prenomina_close', level: 'write' },
     { module: 'hcm_prenomina_export', level: 'write' },
     { module: 'hcm_sla_processing', level: 'write' },
+    // Vacation & Holiday management for HR
+    { module: 'hcm_admin_vacation', level: 'write' },
+    { module: 'hcm_admin_holidays', level: 'write' },
   ],
   Manager: [
     { module: 'dashboard', level: 'read' },
