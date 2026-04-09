@@ -129,40 +129,38 @@ export default function OrgChartPage() {
                             </div>
                         </div>
                     ) : employees && employees.length > 0 ? (
-                        <div className="flex h-full relative overflow-hidden">
+                        <div className="w-full h-full relative overflow-hidden">
                             {/* Org Chart Area */}
-                            <div className="flex-1 relative">
-                                <div className="absolute bottom-4 right-4 flex gap-2 z-50 shadow-lg bg-background/50 backdrop-blur rounded-lg p-1">
-                                    <Button variant="ghost" size="icon" onClick={handleZoomIn} title="Acercar">
-                                        <ZoomIn className="h-4 w-4" />
-                                    </Button>
-                                    <Button variant="ghost" size="icon" onClick={handleZoomOut} title="Alejar">
-                                        <ZoomOut className="h-4 w-4" />
-                                    </Button>
-                                    <Button variant="ghost" size="icon" onClick={handleReset} title="Restablecer">
-                                        <Maximize2 className="h-4 w-4" />
-                                    </Button>
-                                </div>
+                            <div className="absolute bottom-4 right-4 flex gap-2 z-50 shadow-lg bg-background/50 backdrop-blur rounded-lg p-1">
+                                <Button variant="ghost" size="icon" onClick={handleZoomIn} title="Acercar">
+                                    <ZoomIn className="h-4 w-4" />
+                                </Button>
+                                <Button variant="ghost" size="icon" onClick={handleZoomOut} title="Alejar">
+                                    <ZoomOut className="h-4 w-4" />
+                                </Button>
+                                <Button variant="ghost" size="icon" onClick={handleReset} title="Restablecer">
+                                    <Maximize2 className="h-4 w-4" />
+                                </Button>
+                            </div>
 
+                            <div
+                                className={`w-full h-full overflow-hidden ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+                                onMouseDown={handleMouseDown}
+                                onMouseMove={handleMouseMove}
+                                onMouseUp={handleMouseUp}
+                                onMouseLeave={handleMouseUp}
+                                ref={containerRef}
+                            >
                                 <div
-                                    className={`w-full h-full overflow-hidden ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
-                                    onMouseDown={handleMouseDown}
-                                    onMouseMove={handleMouseMove}
-                                    onMouseUp={handleMouseUp}
-                                    onMouseLeave={handleMouseUp}
-                                    ref={containerRef}
+                                    className="w-full h-full flex items-center justify-center p-12 transition-transform duration-75 origin-center"
+                                    style={{
+                                        transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`
+                                    }}
                                 >
-                                    <div
-                                        className="w-full h-full flex items-center justify-center p-12 transition-transform duration-75 origin-center"
-                                        style={{
-                                            transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`
-                                        }}
-                                    >
-                                        <OrgChartTree
-                                            employees={employees}
-                                            onEmployeeClick={handleEmployeeClick}
-                                        />
-                                    </div>
+                                    <OrgChartTree
+                                        employees={employees}
+                                        onEmployeeClick={handleEmployeeClick}
+                                    />
                                 </div>
                             </div>
 
