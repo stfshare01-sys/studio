@@ -305,6 +305,18 @@ service cloud.firestore {
                     (isManagerOrHR() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['customShiftId', 'updatedAt']));
       // Admin solo puede borrar si ya está inactivo (Soft delete enforce)
       allow delete: if hasRole('Admin') && resource.data.status == 'inactive';
+
+      /**
+       * @description Employee movement history (promotions, transfers, position changes)
+       * Read: HR Managers and Admins
+       * Write: HR Managers and Admins only
+       * @path /employees/{employeeId}/movements/{movementId}
+       */
+      match /movements/{movementId} {
+        allow read: if isManagerOrHR();
+        allow create, update: if isHRManager();
+        allow delete: if false; // Historial inmutable
+      }
     }
 
     /**
