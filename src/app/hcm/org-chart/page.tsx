@@ -154,9 +154,10 @@ export default function OrgChartPage() {
                                 ref={containerRef}
                             >
                                 <div
-                                    className="w-full h-full flex items-center justify-center p-12 transition-transform duration-75 origin-center"
+                                    className="inline-flex p-12 transition-transform duration-75"
                                     style={{
-                                        transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`
+                                        transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`,
+                                        transformOrigin: '0 0'
                                     }}
                                 >
                                     <OrgChartTree
