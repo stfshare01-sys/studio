@@ -168,7 +168,7 @@ export default function OrgChartPage() {
 
                             {/* Employee Detail Panel - Floating */}
                             {selectedEmployee && (
-                                <div className="absolute top-0 right-0 h-full w-80 bg-background/95 backdrop-blur-md p-4 overflow-y-auto animate-in slide-in-from-right duration-300 z-50 shadow-2xl border-l">
+                                <div className="fixed top-0 right-0 h-screen w-80 bg-background/95 backdrop-blur-md p-4 overflow-y-auto animate-in slide-in-from-right duration-300 z-[60] shadow-2xl border-l">
                                     <EmployeeDetailPanel
                                         employee={selectedEmployee}
                                         onClose={() => setSelectedEmployee(null)}
