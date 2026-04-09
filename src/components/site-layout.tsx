@@ -249,7 +249,7 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
             <NotificationCenter />
           </div>
         </div>
-        <div className="main-content-area overflow-auto">
+        <div className="main-content-area overflow-y-auto overflow-x-hidden">
           {children}
         </div>
       </SidebarInset>
