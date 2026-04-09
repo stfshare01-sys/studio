@@ -393,7 +393,9 @@ export default function IncidencesPage() {
 
     // Check if cancellable (Approved and Future/Present)
     // Note: Backend has strict check, frontend can be looser or match backend
-    const isCancellable = selectedIncidence?.status === 'approved' && (hasHRPermissions || isManagerOnly);
+    const isCancellable = selectedIncidence?.status === 'approved' && 
+                          (hasHRPermissions || isManagerOnly) && 
+                          selectedIncidence?.type !== 'unjustified_absence';
 
     return (
         <SiteLayout>
@@ -546,7 +548,7 @@ export default function IncidencesPage() {
                                                 <TableRow key={incidence.id}>
                                                     <TableCell>
                                                         <div>
-                                                            <div className="font-medium">{incidence.employeeName}</div>
+                                                            <div className="font-medium">{incidence.employeeName || teamEmployees.find(e => e.id === incidence.employeeId)?.fullName || 'Falta Automática (Sistema)'}</div>
                                                         </div>
                                                     </TableCell>
                                                     <TableCell>
