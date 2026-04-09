@@ -238,7 +238,7 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
           </div>
         </SidebarFooter>
       </Sidebar>
-      <SidebarInset>
+      <SidebarInset className="overflow-x-hidden min-w-0">
         <div className="flex items-center justify-between p-2 border-b md:border-b-0">
           <div className="md:hidden">
             <SidebarTrigger />
