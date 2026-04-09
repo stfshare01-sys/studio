@@ -220,7 +220,6 @@ export default function LoginPage() {
   return (
     <main className="flex min-h-screen flex-col items-center justify-center bg-muted/40 p-4">
       <div className="absolute top-8 left-8 flex items-center gap-2">
-        <Logo className="size-6" />
         <h2 className="text-xl font-bold tracking-tight">STUFFACTORY</h2>
       </div>
       <Card className="w-full max-w-sm">

@@ -181,9 +181,6 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
       <Sidebar>
         <SidebarHeader className="p-4">
           <div className="flex items-center gap-2">
-            <Button variant="ghost" size="icon" className="shrink-0" asChild>
-              <Link href="/"><Logo className="size-5" /></Link>
-            </Button>
             <h2 className="text-lg font-bold tracking-tight">STUFFACTORY</h2>
           </div>
         </SidebarHeader>

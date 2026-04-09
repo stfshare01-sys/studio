@@ -179,9 +179,11 @@ export const consolidatePrenomina = onCall<ConsolidatePrenominaRequest>(
 
                 // Re-verify if this day is STILL supposed to have an infraction, 
                 // in case the schedule changed to a rest day AFTER the infraction was generated.
+                let currentEmployeeName = 'Empleado Desconocido';
                 const employeeDoc = await db.collection('employees').doc(departure.employeeId).get();
                 if (employeeDoc.exists) {
                     const employeeData = { id: employeeDoc.id, ...employeeDoc.data() } as Employee;
+                    currentEmployeeName = employeeData.fullName || 'Empleado Desconocido';
                     if (await shouldSkipInfractionForRestDay(employeeData, departure.date, db)) {
                         console.log(`[HCM] Cancelling Early Departure for ${departure.employeeId} on ${departure.date} due to schedule change (now rest day).`);
                         await doc.ref.update({
@@ -213,6 +215,7 @@ export const consolidatePrenomina = onCall<ConsolidatePrenominaRequest>(
                 // 3. Create incidence for visibility
                 await db.collection('incidences').add({
                     employeeId: departure.employeeId,
+                    employeeName: currentEmployeeName,
                     type: 'unjustified_absence',
                     startDate: departure.date,
                     endDate: departure.date,
@@ -238,9 +241,11 @@ export const consolidatePrenomina = onCall<ConsolidatePrenominaRequest>(
 
                 // Re-verify if this day is STILL supposed to have an infraction, 
                 // in case the schedule changed to a rest day AFTER the missing punch was generated.
+                let currentEmployeeName = 'Empleado Desconocido';
                 const employeeDoc = await db.collection('employees').doc(punch.employeeId).get();
                 if (employeeDoc.exists) {
                     const employeeData = { id: employeeDoc.id, ...employeeDoc.data() } as Employee;
+                    currentEmployeeName = employeeData.fullName || 'Empleado Desconocido';
                     if (await shouldSkipInfractionForRestDay(employeeData, punch.date, db)) {
                         console.log(`[HCM] Cancelling Missing Punch for ${punch.employeeId} on ${punch.date} due to schedule change (now rest day).`);
                         await doc.ref.update({
@@ -272,6 +277,7 @@ export const consolidatePrenomina = onCall<ConsolidatePrenominaRequest>(
                 // 3. Create incidence for visibility
                 await db.collection('incidences').add({
                     employeeId: punch.employeeId,
+                    employeeName: currentEmployeeName,
                     type: 'unjustified_absence',
                     startDate: punch.date,
                     endDate: punch.date,

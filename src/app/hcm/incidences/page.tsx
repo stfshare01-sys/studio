@@ -547,7 +547,6 @@ export default function IncidencesPage() {
                                                     <TableCell>
                                                         <div>
                                                             <div className="font-medium">{incidence.employeeName}</div>
-                                                            <div className="text-xs text-muted-foreground">{incidence.employeeId}</div>
                                                         </div>
                                                     </TableCell>
                                                     <TableCell>
@@ -748,7 +747,7 @@ export default function IncidencesPage() {
                                             <SelectItem value={user?.uid || 'self'}>Yo mismo</SelectItem>
                                             {teamEmployees.map(emp => (
                                                 <SelectItem key={emp.id} value={emp.id}>
-                                                    {emp.fullName} — {emp.positionId || 'Sin puesto'}
+                                                    {emp.fullName} — {emp.positionTitle || 'Sin puesto'}
                                                 </SelectItem>
                                             ))}
                                         </SelectContent>
