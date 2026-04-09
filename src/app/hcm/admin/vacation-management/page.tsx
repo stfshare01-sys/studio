@@ -25,7 +25,7 @@ import * as XLSX from 'xlsx';
 
 export default function VacationManagementPage() {
     const { firestore, user } = useFirebase();
-    const { hasPermission } = usePermissions();
+    const { hasPermission, isLoading: isLoadingPermissions } = usePermissions();
     const { toast } = useToast();
     const [loading, setLoading] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
@@ -44,10 +44,10 @@ export default function VacationManagementPage() {
     const canManageVacations = hasPermission('hcm_employees', 'write') || hasPermission('admin_users', 'write') || hasPermission('hcm_admin_vacation', 'write');
 
     useEffect(() => {
-        if (!canManageVacations) {
+        if (!isLoadingPermissions && !canManageVacations) {
             toast({ title: 'No tienes permisos para gestionar vacaciones', variant: 'destructive' });
         }
-    }, [canManageVacations, toast]);
+    }, [canManageVacations, isLoadingPermissions, toast]);
 
     // Search employee
     const handleSearchEmployee = async () => {
@@ -267,6 +267,14 @@ export default function VacationManagementPage() {
             setLoading(false);
         }
     };
+
+    if (isLoadingPermissions) {
+        return (
+            <div className="container mx-auto p-6 flex justify-center items-center h-64">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+            </div>
+        );
+    }
 
     if (!canManageVacations) {
         return (
