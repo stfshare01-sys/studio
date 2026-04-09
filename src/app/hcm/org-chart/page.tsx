@@ -99,8 +99,8 @@ export default function OrgChartPage() {
 
     return (
         <SiteLayout>
-            <div className="flex flex-col h-[calc(100vh-65px)]">
-                <header className="flex items-center justify-between p-4 px-6 border-b bg-background/95 backdrop-blur z-10 shadow-sm">
+            <div className="flex flex-col h-[calc(100vh-65px)] w-full max-w-full overflow-hidden min-w-0">
+                <header className="flex-shrink-0 flex items-center justify-between p-4 px-6 border-b bg-background/95 backdrop-blur z-10 shadow-sm relative">
                     <div className="flex items-center gap-4">
                         <Button variant="ghost" size="icon" asChild>
                             <Link href="/hcm">
@@ -121,7 +121,7 @@ export default function OrgChartPage() {
                     )}
                 </header>
 
-                <main className="flex-1 relative bg-slate-50/80 dark:bg-slate-900/30 overflow-hidden">
+                <main className="flex-1 relative bg-slate-50/80 dark:bg-slate-900/30 overflow-hidden min-w-0 w-full flex flex-col">
                     {isLoading ? (
                         <div className="flex items-center justify-center h-full">
                             <div className="space-y-4 text-center">
