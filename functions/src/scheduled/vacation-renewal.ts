@@ -146,11 +146,12 @@ async function renewVacationBalance(
             const unusedDays = currentBalance.daysAvailable;
 
             // Aplicar límite de carry-over si existe
-            if (maxCarryOverDays !== undefined && maxCarryOverDays >= 0) {
+            if (maxCarryOverDays !== undefined && maxCarryOverDays > 0) {
                 daysCarriedOver = Math.min(unusedDays, maxCarryOverDays);
             } else {
-                // Sin límite, arrastrar todos los días no tomados
-                daysCarriedOver = unusedDays;
+                // Default: NO arrastrar días. Los días no tomados se pierden.
+                // Para habilitar arrastre, configurar maxVacationCarryOverDays en la ubicación.
+                daysCarriedOver = 0;
             }
 
             console.log(`[Vacation Renewal] Employee ${employeeId}: Carrying over ${daysCarriedOver} days (had ${unusedDays} unused)`);
