@@ -30,6 +30,7 @@ interface CreateEmployeePayload {
     allowTimeForTime?: boolean;
     employeeId?: string; // ZKTeco / Biometric ID
     legalEntity?: string;
+    avatarUrl?: string; // URL of the uploaded profile photo
 }
 
 /**
@@ -63,6 +64,7 @@ export async function createEmployee(
         // Only add optional fields if they have values
         if (payload.managerId) employeeData.directManagerId = payload.managerId;
         if (payload.positionId) employeeData.positionId = payload.positionId;
+        if (payload.avatarUrl) employeeData.avatarUrl = payload.avatarUrl;
         if (payload.rfc_curp) employeeData.rfc_curp = payload.rfc_curp;
         if (payload.nss) employeeData.nss = payload.nss;
         if (payload.clabe) employeeData.clabe = payload.clabe;
@@ -75,11 +77,13 @@ export async function createEmployee(
 
         await setDoc(employeeRef, employeeData, {});
 
-        // Sync managerId to the user record for Org Chart visibility
-        if (payload.managerId) {
-            updateDocumentNonBlocking(doc(firestore, 'users', userId), {
-                managerId: payload.managerId
-            });
+        // Sync managerId and avatarUrl to the user record for Org Chart visibility
+        const userUpdates: Record<string, any> = {};
+        if (payload.managerId) userUpdates.managerId = payload.managerId;
+        if (payload.avatarUrl) userUpdates.avatarUrl = payload.avatarUrl;
+        
+        if (Object.keys(userUpdates).length > 0) {
+            updateDocumentNonBlocking(doc(firestore, 'users', userId), userUpdates);
         }
 
         console.log(`[HCM] Created employee record for ${userId}`);

@@ -9,6 +9,8 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Loader2, ArrowLeft, Save, Clock } from 'lucide-react';
 import Link from 'next/link';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { AvatarUpload } from '@/components/ui/avatar-upload';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -56,6 +58,7 @@ const employeeSchema = z.object({
     allowTimeForTime: z.boolean().optional(),
     employeeId: z.string().optional().or(z.literal('')), // Attendance System ID
     legalEntity: z.string().optional(),
+    avatarFile: z.any().optional(), // Archivo para la foto de perfil
 });
 
 type EmployeeFormValues = z.infer<typeof employeeSchema>;
@@ -165,13 +168,28 @@ export default function NewEmployeePage() {
                 }
             } catch (userError) {
                 console.error("Error creating system user:", userError);
-                // Optional: Decide whether to block employee creation. 
-                // Given the requirement "generate a new user", we should probably block or warn.
-                // We'll throw to stop.
                 throw new Error("Error al crear la cuenta de usuario: " + (userError as Error).message);
             }
 
-            // 2. Create Employee Record using the User ID
+            // 2. Subir avatar si existe
+            let avatarUrl: string | undefined = undefined;
+            if (data.avatarFile) {
+                try {
+                    const { storage } = initializeFirebase();
+                    // Usamos el ID del usuario como nombre de archivo para estructurarlo
+                    const avatarRef = ref(storage, `employees/${userId}/avatar`);
+                    await uploadBytes(avatarRef, data.avatarFile);
+                    avatarUrl = await getDownloadURL(avatarRef);
+                } catch (uploadError) {
+                    console.error("Error subiendo foto de perfil:", uploadError);
+                    toast({
+                        title: "Aviso",
+                        description: "El empleado se creó en sistema, pero no se pudo subir la foto.",
+                    });
+                }
+            }
+
+            // 3. Create Employee Record using the User ID
             const result = await createEmployee(userId, {
                 fullName: data.fullName,
                 email: data.email,
@@ -192,6 +210,7 @@ export default function NewEmployeePage() {
                 allowTimeForTime: data.allowTimeForTime || false,
                 employeeId: data.employeeId || undefined,
                 legalEntity: data.legalEntity || undefined,
+                avatarUrl: avatarUrl,
             });
 
             if (result.success) {
@@ -265,6 +284,24 @@ export default function NewEmployeePage() {
                                             <CardDescription>Datos básicos del empleado y su posición</CardDescription>
                                         </CardHeader>
                                         <CardContent className="grid gap-6 md:grid-cols-2">
+                                            <div className="md:col-span-2 flex justify-center py-4">
+                                                <FormField
+                                                    control={form.control}
+                                                    name="avatarFile"
+                                                    render={({ field }) => (
+                                                        <FormItem>
+                                                            <FormControl>
+                                                                <AvatarUpload 
+                                                                    value={field.value} 
+                                                                    onChange={field.onChange} 
+                                                                />
+                                                            </FormControl>
+                                                            <FormMessage />
+                                                        </FormItem>
+                                                    )}
+                                                />
+                                            </div>
+
                                             <FormField
                                                 control={form.control}
                                                 name="fullName"

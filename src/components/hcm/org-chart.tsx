@@ -125,7 +125,7 @@ export function EmployeeDetailPanel({ employee, onClose }: EmployeeDetailPanelPr
 // --- Org Chart Node ---
 
 export function OrgChartNode({ node, depth = 0, onEmployeeClick }: OrgChartNodeProps) {
-    const [isExpanded, setIsExpanded] = useState(true);
+    const [isExpanded, setIsExpanded] = useState(depth < 1);
     const hasChildren = node.children && node.children.length > 0;
 
     const getInitials = (name: string) => {
