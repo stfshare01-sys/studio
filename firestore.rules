@@ -132,6 +132,10 @@ service cloud.firestore {
       // Users can update their own profile, Admins can update any
       allow update: if isOwner(userId);
       allow update: if hasRole('Admin');
+      // HRManager can sync employee data (avatar, name, department) but NOT change role
+      allow update: if hasAnyRole(['HRManager']) &&
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['fullName', 'email', 'department', 'avatarUrl', 'managerId', 'status', 'updatedAt']);
       // Only admins can delete users
       allow delete: if hasRole('Admin');
 
