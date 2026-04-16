@@ -37,7 +37,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { createEmployee } from '@/firebase/actions/employee-actions';
 import { createNewUser } from '@/firebase/admin-actions';
-import { useFirebase, useMemoFirebase } from '@/firebase/provider';
+import { useFirebase, useMemoFirebase, initializeFirebase } from '@/firebase';
 import { useCollection } from '@/firebase/firestore/use-collection';
 import { collection, query, where } from 'firebase/firestore';
 import type { Department, Position, CustomShift, Employee, Location } from '@/lib/types';

@@ -9,6 +9,10 @@ import { useFirebase, useMemoFirebase } from '@/firebase/provider';
 import { useDoc } from '@/firebase/firestore/use-doc';
 import { useCollection } from '@/firebase/firestore/use-collection';
 import { doc, collection, query, where, updateDoc, deleteField } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { initializeFirebase } from '@/firebase';
+import { AvatarUpload } from '@/components/ui/avatar-upload';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { format } from 'date-fns';
 
 import { Button } from '@/components/ui/button';
@@ -51,6 +55,7 @@ export default function EditEmployeePage({ params }: { params: Promise<{ id: str
     const [isSaving, setIsSaving] = useState(false);
     const [formData, setFormData] = useState<Partial<Employee>>({});
     const [hasChanges, setHasChanges] = useState(false);
+    const [avatarFile, setAvatarFile] = useState<File | null>(null);
 
     // Fetch Employee Details
     const employeeRef = useMemoFirebase(() => {
@@ -137,15 +142,32 @@ export default function EditEmployeePage({ params }: { params: Promise<{ id: str
         try {
             const employeeDocRef = doc(firestore, 'employees', employeeId);
 
+            // Upload avatar if a new file was selected
+            let newAvatarUrl: string | undefined = undefined;
+            if (avatarFile) {
+                try {
+                    const { storage } = initializeFirebase();
+                    const avatarRef = ref(storage, `employees/${employeeId}/avatar`);
+                    await uploadBytes(avatarRef, avatarFile);
+                    newAvatarUrl = await getDownloadURL(avatarRef);
+                } catch (uploadError) {
+                    console.error('Error subiendo foto:', uploadError);
+                }
+            }
+
             // Build update object, handling undefined values properly for Firestore
             const updateData: Record<string, any> = {
                 updatedAt: new Date().toISOString()
             };
 
+            // Add avatar URL if uploaded
+            if (newAvatarUrl) {
+                updateData.avatarUrl = newAvatarUrl;
+            }
+
             // Add all form fields, converting undefined to deleteField()
             Object.entries(formData).forEach(([key, value]) => {
                 if (value === undefined) {
-                    // Use deleteField() to remove the field from Firestore
                     updateData[key] = deleteField();
                 } else {
                     updateData[key] = value;
@@ -155,8 +177,8 @@ export default function EditEmployeePage({ params }: { params: Promise<{ id: str
             await updateDoc(employeeDocRef, updateData);
 
             // Sync key fields to the users collection (for workflows, requests, etc.)
-            // The employee's uid links to their users document
-            const employeeUid = employee?.userId;
+            // In this system, employee doc ID === user doc ID
+            const employeeUid = (employee as any)?.userId || employeeId;
             if (employeeUid) {
                 const userDocRef = doc(firestore, 'users', employeeUid);
                 const userSyncData: Record<string, any> = {
@@ -165,6 +187,7 @@ export default function EditEmployeePage({ params }: { params: Promise<{ id: str
                 if (formData.fullName !== undefined) userSyncData.fullName = formData.fullName;
                 if (formData.email !== undefined) userSyncData.email = formData.email;
                 if (formData.department !== undefined) userSyncData.department = formData.department;
+                if (newAvatarUrl) userSyncData.avatarUrl = newAvatarUrl;
                 // Sync directManagerId → managerId in users collection
                 if (formData.directManagerId !== undefined) {
                     userSyncData.managerId = formData.directManagerId || deleteField();
@@ -268,6 +291,40 @@ export default function EditEmployeePage({ params }: { params: Promise<{ id: str
                             <CardDescription>Datos basicos del empleado</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
+                            <div className="flex justify-center py-4">
+                                <div className="flex flex-col items-center gap-3">
+                                    {/* Show current avatar or upload widget */}
+                                    {!avatarFile && employee?.avatarUrl ? (
+                                        <div className="relative group cursor-pointer">
+                                            <Avatar className="h-24 w-24 border-2">
+                                                <AvatarImage src={employee.avatarUrl} alt={employee.fullName} className="object-cover" />
+                                                <AvatarFallback className="text-xl">{employee.fullName?.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}</AvatarFallback>
+                                            </Avatar>
+                                            <div className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <span className="text-white text-xs font-medium">Cambiar</span>
+                                            </div>
+                                            <input
+                                                type="file"
+                                                accept="image/*"
+                                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                                onChange={(e) => {
+                                                    const file = e.target.files?.[0] ?? null;
+                                                    setAvatarFile(file);
+                                                    setHasChanges(true);
+                                                }}
+                                            />
+                                        </div>
+                                    ) : (
+                                        <AvatarUpload
+                                            value={avatarFile}
+                                            onChange={(file) => {
+                                                setAvatarFile(file);
+                                                setHasChanges(true);
+                                            }}
+                                        />
+                                    )}
+                                </div>
+                            </div>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div className="space-y-2">
                                     <Label htmlFor="fullName">Nombre Completo</Label>
