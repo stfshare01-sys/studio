@@ -46,6 +46,7 @@ export interface EmployeeImportRow {
     curp?: string;
     nss?: string;
     legalEntity?: string;         // STFLatin America, Stuffactory, etc.
+    allowTimeForTime?: string;    // SI/NO o true/false — Permitir tiempo por tiempo
 }
 
 interface ProcessEmployeeImportRequest {

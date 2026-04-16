@@ -621,6 +621,7 @@ interface EmployeeImportRow {
     curp?: string;
     nss?: string;
     legalEntity?: string;
+    allowTimeForTime?: string;    // SI/NO o true/false — Permitir tiempo por tiempo
 }
 
 interface ProcessEmployeeImportRequest {
@@ -805,6 +806,10 @@ export const processEmployeeImport = onCall<ProcessEmployeeImportRequest>(
                     }
                     if (row.nss?.trim()) employeeData.nss = row.nss.trim();
                     if (row.legalEntity?.trim()) employeeData.legalEntity = row.legalEntity.trim();
+
+                    // Tiempo por tiempo: acepta SI/true/1 como verdadero
+                    const tftValue = row.allowTimeForTime?.trim().toLowerCase();
+                    employeeData.allowTimeForTime = ['si', 'sí', 'true', '1', 'yes'].includes(tftValue ?? '');
 
                     writeBatch.set(employeeRef, employeeData);
 
