@@ -622,6 +622,7 @@ interface EmployeeImportRow {
     nss?: string;
     legalEntity?: string;
     allowTimeForTime?: string;    // SI/NO o true/false — Permitir tiempo por tiempo
+    costCenter?: string;          // Centro de costos contable
 }
 
 interface ProcessEmployeeImportRequest {
@@ -796,20 +797,18 @@ export const processEmployeeImport = onCall<ProcessEmployeeImportRequest>(
                         updatedAt: nowISO,
                     };
 
-                    // Optional fiscal fields
-                    if (row.rfc?.trim()) employeeData.rfc_curp = row.rfc.trim();
-                    if (row.curp?.trim()) {
-                        // Append CURP to rfc_curp if RFC already present
-                        employeeData.rfc_curp = employeeData.rfc_curp
-                            ? `${employeeData.rfc_curp} / ${row.curp.trim()}`
-                            : row.curp.trim();
-                    }
+                    // Optional fiscal fields — campos separados
+                    if (row.rfc?.trim()) employeeData.rfc = row.rfc.trim();
+                    if (row.curp?.trim()) employeeData.curp = row.curp.trim();
                     if (row.nss?.trim()) employeeData.nss = row.nss.trim();
                     if (row.legalEntity?.trim()) employeeData.legalEntity = row.legalEntity.trim();
 
                     // Tiempo por tiempo: acepta SI/true/1 como verdadero
                     const tftValue = row.allowTimeForTime?.trim().toLowerCase();
                     employeeData.allowTimeForTime = ['si', 'sí', 'true', '1', 'yes'].includes(tftValue ?? '');
+
+                    // Centro de costos
+                    if (row.costCenter?.trim()) employeeData.costCenter = row.costCenter.trim();
 
                     writeBatch.set(employeeRef, employeeData);
 

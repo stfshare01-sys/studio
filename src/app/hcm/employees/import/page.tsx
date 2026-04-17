@@ -129,8 +129,8 @@ export default function ImportEmployeesPage() {
     };
 
     const downloadTemplate = () => {
-        const templateHeader = "employeeNumber,fullName,email,hireDate,employmentType,positionCode,shiftCode,locationCode,managerNumber,rfc,curp,nss,legalEntity,allowTimeForTime";
-        const templateExample = "1004,Juan Perez,juan.perez@stuffactory.com,2023-01-15,full_time,EJV-001,TM-01,CEDIS-GDL,0001,PELJ900115AB1,PELJ900115HJCRPN09,12345678901,STF Latin America,SI";
+        const templateHeader = "employeeNumber,fullName,email,hireDate,employmentType,positionCode,shiftCode,locationCode,managerNumber,rfc,curp,nss,legalEntity,allowTimeForTime,costCenter";
+        const templateExample = "1004,Juan Perez,juan.perez@stuffactory.com,2023-01-15,full_time,EJV-001,TM-01,CEDIS-GDL,0001,PELJ900115AB1,PELJ900115HJCRPN09,12345678901,STF Latin America,SI,CC-OPERACIONES";
         const csvContent = `${templateHeader}\n${templateExample}`;
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);

@@ -31,7 +31,9 @@ export type OnboardingObjective = {
  */
 export type Employee = User & {
     // Datos fiscales y legales (LFT compliance)
-    rfc_curp?: string;           // RFC con homoclave + CURP
+    rfc_curp?: string;           // RFC con homoclave (legacy, mantener por retrocompatibilidad)
+    rfc?: string;                // RFC con homoclave (13 caracteres)
+    curp?: string;               // CURP (18 caracteres)
     nss?: string;                // Número de Seguridad Social (IMSS)
 
     // Datos laborales

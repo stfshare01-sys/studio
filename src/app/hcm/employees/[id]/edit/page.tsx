@@ -118,9 +118,9 @@ export default function EditEmployeePage({ params }: { params: Promise<{ id: str
                 customShiftId: employee.customShiftId,
                 hireDate: employee.hireDate?.split('T')[0] || '',
                 directManagerId: employee.directManagerId,
-                rfc_curp: employee.rfc_curp,
+                rfc: employee.rfc || '',
+                curp: employee.curp || '',
                 nss: employee.nss,
-                clabe: employee.clabe,
                 costCenter: employee.costCenter,
                 locationId: employee.locationId,
                 allowTimeForTime: employee.allowTimeForTime || false,
@@ -553,41 +553,42 @@ export default function EditEmployeePage({ params }: { params: Promise<{ id: str
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2">
                                 <CreditCard className="h-5 w-5" />
-                                Informacion Fiscal y Bancaria
+                                Informacion Fiscal
                             </CardTitle>
-                            <CardDescription>Datos fiscales y de pago (sensibles)</CardDescription>
+                            <CardDescription>Datos fiscales del empleado (sensibles)</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                 <div className="space-y-2">
-                                    <Label htmlFor="rfc_curp">RFC / CURP</Label>
+                                    <Label htmlFor="rfc">RFC</Label>
                                     <Input
-                                        id="rfc_curp"
-                                        value={formData.rfc_curp || ''}
-                                        onChange={(e) => handleInputChange('rfc_curp', e.target.value.toUpperCase())}
-                                        placeholder="RFC con homoclave"
+                                        id="rfc"
+                                        value={(formData as any).rfc || ''}
+                                        onChange={(e) => handleInputChange('rfc' as any, e.target.value.toUpperCase())}
+                                        placeholder="13 caracteres con homoclave"
+                                        maxLength={13}
                                         className="font-mono uppercase"
                                     />
                                 </div>
                                 <div className="space-y-2">
-                                    <Label htmlFor="nss">Numero de Seguridad Social (NSS)</Label>
+                                    <Label htmlFor="curp">CURP</Label>
+                                    <Input
+                                        id="curp"
+                                        value={(formData as any).curp || ''}
+                                        onChange={(e) => handleInputChange('curp' as any, e.target.value.toUpperCase())}
+                                        placeholder="18 caracteres"
+                                        maxLength={18}
+                                        className="font-mono uppercase"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="nss">NSS (Seguridad Social)</Label>
                                     <Input
                                         id="nss"
                                         value={formData.nss || ''}
                                         onChange={(e) => handleInputChange('nss', e.target.value)}
                                         placeholder="11 digitos"
                                         maxLength={11}
-                                        className="font-mono"
-                                    />
-                                </div>
-                                <div className="space-y-2 md:col-span-2">
-                                    <Label htmlFor="clabe">CLABE Interbancaria</Label>
-                                    <Input
-                                        id="clabe"
-                                        value={formData.clabe || ''}
-                                        onChange={(e) => handleInputChange('clabe', e.target.value)}
-                                        placeholder="18 digitos"
-                                        maxLength={18}
                                         className="font-mono"
                                     />
                                 </div>

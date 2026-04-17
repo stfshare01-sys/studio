@@ -47,6 +47,7 @@ export interface EmployeeImportRow {
     nss?: string;
     legalEntity?: string;         // STFLatin America, Stuffactory, etc.
     allowTimeForTime?: string;    // SI/NO o true/false — Permitir tiempo por tiempo
+    costCenter?: string;          // Centro de costos contable
 }
 
 interface ProcessEmployeeImportRequest {
