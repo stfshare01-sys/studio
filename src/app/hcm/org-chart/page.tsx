@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useRef, useMemo } from "react";
+import React, { useState, useRef, useMemo, useEffect, useCallback } from "react";
 import SiteLayout from "@/components/site-layout";
 import { useFirestore, useCollection, useMemoFirebase } from "@/firebase";
 import { collection, query, where, orderBy } from "firebase/firestore";
@@ -64,13 +64,38 @@ export default function OrgChartPage() {
     const [position, setPosition] = useState({ x: 0, y: 0 });
     const [isDragging, setIsDragging] = useState(false);
     const [startPos, setStartPos] = useState({ x: 0, y: 0 });
+    const [hasCentered, setHasCentered] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
+    const contentRef = useRef<HTMLDivElement>(null);
+
+    // Auto-center the org chart when data loads
+    const centerOrgChart = useCallback(() => {
+        if (!containerRef.current) return;
+        const container = containerRef.current;
+        const containerWidth = container.clientWidth;
+        // Center horizontally: offset the content to the middle of the container
+        const initialX = containerWidth / 2 - 200; // 200px offset for root node approximate center
+        const initialY = 20; // Small top padding
+        setScale(0.75);
+        setPosition({ x: initialX, y: initialY });
+    }, []);
+
+    // Center on initial load
+    useEffect(() => {
+        if (employees && employees.length > 0 && !hasCentered && containerRef.current) {
+            // Small delay to ensure DOM is rendered
+            const timer = setTimeout(() => {
+                centerOrgChart();
+                setHasCentered(true);
+            }, 100);
+            return () => clearTimeout(timer);
+        }
+    }, [employees, hasCentered, centerOrgChart]);
 
     const handleZoomIn = () => setScale(prev => Math.min(prev + 0.1, 2));
     const handleZoomOut = () => setScale(prev => Math.max(prev - 0.1, 0.4));
     const handleReset = () => {
-        setScale(0.8);
-        setPosition({ x: 0, y: 0 });
+        centerOrgChart();
     };
 
     const handleMouseDown = (e: React.MouseEvent) => {
