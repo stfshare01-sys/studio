@@ -219,7 +219,7 @@ export default function HCMPage() {
                                         {isLoading ? '...' : totalEmployees}
                                     </div>
                                     <p className="text-xs text-muted-foreground">
-                                        {onboardingEmployees > 0 && `${onboardingEmployees} en onboarding`}
+                                        {
                                     </p>
                                 </CardContent>
                             </Card>
@@ -285,10 +285,7 @@ export default function HCMPage() {
                     <Tabs defaultValue="overview" className="space-y-4">
                         <TabsList>
                             <TabsTrigger value="overview">Resumen</TabsTrigger>
-                            {hasHRPermissions && (
-                                <TabsTrigger value="onboarding">Onboarding</TabsTrigger>
-                            )}
-                        </TabsList>
+                            </TabsList>
 
                         <TabsContent value="overview" className="space-y-4">
                             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 bento-grid">
@@ -493,58 +490,7 @@ export default function HCMPage() {
                             </div>
                         </TabsContent>
 
-                        {hasHRPermissions && (
-                            <TabsContent value="onboarding" className="space-y-4">
-                                <Card className="bento-item">
-                                    <CardHeader>
-                                        <CardTitle>Empleados en Onboarding</CardTitle>
-                                        <CardDescription>
-                                            Seguimiento del proceso de integración
-                                        </CardDescription>
-                                    </CardHeader>
-                                    <CardContent>
-                                        {employeesLoading ? (
-                                            <p className="text-sm text-muted-foreground">Cargando...</p>
-                                        ) : employees?.filter(e => e.onboardingStatus && e.onboardingStatus !== 'completed').length ? (
-                                            <div className="space-y-3">
-                                                {employees
-                                                    .filter(e => e.onboardingStatus && e.onboardingStatus !== 'completed')
-                                                    .map((employee) => (
-                                                        <div
-                                                            key={employee.id}
-                                                            className="flex items-center justify-between p-3 border rounded-lg"
-                                                        >
-                                                            <div>
-                                                                <p className="font-medium">{employee.fullName}</p>
-                                                                <p className="text-sm text-muted-foreground">
-                                                                    {employee.positionTitle} • {employee.department}
-                                                                </p>
-                                                            </div>
-                                                            <div className="text-right">
-                                                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${employee.onboardingStatus === 'day_0' ? 'bg-blue-100 text-blue-800' :
-                                                                    employee.onboardingStatus === 'day_30' ? 'bg-yellow-100 text-yellow-800' :
-                                                                        employee.onboardingStatus === 'day_60' ? 'bg-orange-100 text-orange-800' :
-                                                                            'bg-green-100 text-green-800'
-                                                                    }`}>
-                                                                    {employee.onboardingStatus === 'day_0' ? 'Día 0' :
-                                                                        employee.onboardingStatus === 'day_30' ? 'Día 30' :
-                                                                            employee.onboardingStatus === 'day_60' ? 'Día 60' :
-                                                                                employee.onboardingStatus === 'day_90' ? 'Día 90' :
-                                                                                    employee.onboardingStatus}
-                                                                </span>
-                                                            </div>
-                                                        </div>
-                                                    ))}
-                                            </div>
-                                        ) : (
-                                            <p className="text-sm text-muted-foreground">
-                                                No hay empleados en proceso de onboarding
-                                            </p>
-                                        )}
-                                    </CardContent>
-                                </Card>
-                            </TabsContent>
-                        )}
+
                     </Tabs>
                 </main>
             </div >

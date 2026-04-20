@@ -313,15 +313,7 @@ export default function EmployeesPage() {
                                                             <Badge variant="secondary">
                                                                 Inactivo
                                                             </Badge>
-                                                        )}
-                                                        {employee.onboardingStatus && employee.onboardingStatus !== 'completed' && (
-                                                            <Badge variant="outline" className="ml-1">
-                                                                {employee.onboardingStatus === 'day_0' ? 'Onboarding' :
-                                                                    employee.onboardingStatus === 'day_30' ? 'Día 30' :
-                                                                        employee.onboardingStatus === 'day_60' ? 'Día 60' :
-                                                                            'Día 90'}
-                                                            </Badge>
-                                                        )}
+                                                        )
                                                     </TableCell>
                                                     <TableCell className="text-right">
                                                         <DropdownMenu>

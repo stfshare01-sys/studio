@@ -340,52 +340,78 @@ export const renewVacationBalancesDaily = onSchedule(
 );
 
 /**
- * Función auxiliar para renovación manual (callable desde admin)
- * Útil para corregir o forzar renovaciones
+ * Cloud Function Callable — Renovación manual de vacaciones
+ * Permite a un admin/HR forzar la renovación de un empleado específico
+ * sin esperar al scheduler de las 3 AM.
+ *
+ * Uso: httpsCallable(functions, 'triggerVacationRenewal')({ employeeId: 'xxx' })
  */
-export async function manualVacationRenewal(
-    employeeId: string
-): Promise<{ success: boolean; message: string }> {
-    try {
-        const employeeDoc = await db.collection('employees').doc(employeeId).get();
+import { onCall, HttpsError } from 'firebase-functions/v2/https';
 
-        if (!employeeDoc.exists) {
-            return { success: false, message: 'Empleado no encontrado' };
+export const triggerVacationRenewal = onCall(
+    { memory: '256MiB' },
+    async (request) => {
+        // Verificar autenticación
+        if (!request.auth) {
+            throw new HttpsError('unauthenticated', 'Debes iniciar sesión');
         }
 
-        const employee = employeeDoc.data()!;
+        const { employeeId } = request.data as { employeeId?: string };
 
-        if (!employee.hireDate) {
-            return { success: false, message: 'El empleado no tiene fecha de ingreso' };
+        if (!employeeId) {
+            throw new HttpsError('invalid-argument', 'Se requiere employeeId');
         }
 
-        // Obtener configuración de carry-over
-        let maxCarryOverDays: number | undefined;
-        if (employee.locationId) {
-            const locationDoc = await db.collection('locations').doc(employee.locationId).get();
-            if (locationDoc.exists) {
-                maxCarryOverDays = locationDoc.data()?.maxVacationCarryOverDays;
+        // Verificar que el usuario tiene permisos (Admin o HRManager)
+        const callerDoc = await db.collection('users').doc(request.auth.uid).get();
+        const callerRole = callerDoc.data()?.role;
+        if (!['Admin', 'HRManager'].includes(callerRole)) {
+            throw new HttpsError('permission-denied', 'Solo Admin o HRManager pueden ejecutar esta acción');
+        }
+
+        try {
+            const employeeDoc = await db.collection('employees').doc(employeeId).get();
+
+            if (!employeeDoc.exists) {
+                throw new HttpsError('not-found', 'Empleado no encontrado');
             }
+
+            const employee = employeeDoc.data()!;
+
+            if (!employee.hireDate) {
+                throw new HttpsError('failed-precondition', 'El empleado no tiene fecha de ingreso');
+            }
+
+            // Obtener configuración de carry-over
+            let maxCarryOverDays: number | undefined;
+            if (employee.locationId) {
+                const locationDoc = await db.collection('locations').doc(employee.locationId).get();
+                if (locationDoc.exists) {
+                    maxCarryOverDays = locationDoc.data()?.maxVacationCarryOverDays;
+                }
+            }
+
+            const result = await renewVacationBalance(
+                employeeId,
+                employee.fullName || 'Unknown',
+                employee.hireDate,
+                maxCarryOverDays
+            );
+
+            if (result.success) {
+                return {
+                    success: true,
+                    message: `Vacaciones renovadas para ${employee.fullName}. Nuevo saldo: ${result.newBalance?.daysAvailable} días`,
+                    newBalance: result.newBalance,
+                };
+            } else {
+                throw new HttpsError('internal', result.error || 'Error desconocido');
+            }
+        } catch (error) {
+            if (error instanceof HttpsError) throw error;
+            console.error('[Manual Renewal] Error:', error);
+            throw new HttpsError('internal', String(error));
         }
-
-        const result = await renewVacationBalance(
-            employeeId,
-            employee.fullName || 'Unknown',
-            employee.hireDate,
-            maxCarryOverDays
-        );
-
-        if (result.success) {
-            return {
-                success: true,
-                message: `Vacaciones renovadas. Nuevo saldo: ${result.newBalance?.daysAvailable} días`
-            };
-        } else {
-            return { success: false, message: result.error || 'Error desconocido' };
-        }
-
-    } catch (error) {
-        console.error('[Manual Renewal] Error:', error);
-        return { success: false, message: String(error) };
     }
-}
+);
+

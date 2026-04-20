@@ -30,7 +30,7 @@ export { onIncidenceUpdate, onAttendanceCreated } from './triggers/hcm-triggers'
 export { onTaskComplete } from './triggers/workflow-triggers';
 
 // Scheduled Functions - Vacation Renewal
-export { renewVacationBalancesDaily } from './scheduled/vacation-renewal';
+export { renewVacationBalancesDaily, triggerVacationRenewal } from './scheduled/vacation-renewal';
 
 // Notification Triggers
 export { onNotificationCreated } from './triggers/notifications';
