@@ -219,7 +219,7 @@ export default function HCMPage() {
                                         {isLoading ? '...' : totalEmployees}
                                     </div>
                                     <p className="text-xs text-muted-foreground">
-                                        {
+                                        Personal en nómina
                                     </p>
                                 </CardContent>
                             </Card>
