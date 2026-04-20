@@ -190,7 +190,7 @@ async function renewVacationBalance(
             daysScheduled: 0,
             daysAvailable: totalAvailable,
             daysCarriedOver,
-            maxCarryOverDays: maxCarryOverDays,
+            maxCarryOverDays: maxCarryOverDays ?? 0,
             daysPending: 0,
             vacationPremiumPaid: false,
             movements,
