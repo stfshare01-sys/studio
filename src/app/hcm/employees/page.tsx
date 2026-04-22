@@ -313,7 +313,7 @@ export default function EmployeesPage() {
                                                             <Badge variant="secondary">
                                                                 Inactivo
                                                             </Badge>
-                                                        )
+                                                        )}
                                                     </TableCell>
                                                     <TableCell className="text-right">
                                                         <DropdownMenu>
