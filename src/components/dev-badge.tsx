@@ -9,11 +9,11 @@ export function DevBadge() {
   if (!isDevelopment) return null;
 
   return (
-    <div className="fixed top-2 left-1/2 -translate-x-1/2 z-[9999] animate-pulse pointer-events-none">
-      <div className="bg-red-600 text-white px-4 py-2 rounded-full font-bold text-sm shadow-xl border-2 border-red-800 flex items-center gap-2">
-        <span className="relative flex h-3 w-3">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-          <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+    <div className="fixed top-0 left-1/2 -translate-x-1/2 z-[9999] pointer-events-none">
+      <div className="bg-red-600 text-white px-6 py-1.5 rounded-b-lg font-bold text-xs sm:text-sm shadow-xl flex items-center gap-2 tracking-wider">
+        <span className="relative flex h-2 w-2">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-200 opacity-75"></span>
+          <span className="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
         </span>
         CLON (ENTORNO DE PRUEBAS)
       </div>

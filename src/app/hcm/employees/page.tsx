@@ -304,12 +304,13 @@ export default function EmployeesPage() {
                                                         </div>
                                                     </TableCell>
                                                     <TableCell>
-                                                        {employee.status === 'active' ? (
+                                                        {employee.status === 'active' && (
                                                             <Badge variant="default" className="bg-green-100 text-green-800 hover:bg-green-100">
                                                                 <BadgeCheck className="mr-1 h-3 w-3" />
                                                                 Activo
                                                             </Badge>
-                                                        ) : (
+                                                        )}
+                                                        {employee.status !== 'active' && (
                                                             <Badge variant="secondary">
                                                                 Inactivo
                                                             </Badge>
