@@ -144,7 +144,8 @@ export default function EmployeesPage() {
         XLSX.utils.book_append_sheet(workbook, worksheet, 'Empleados');
 
         // Generate download
-        XLSX.writeFile(workbook, `Directorio_Empleados_${new Date().toISOString().split('T')[0]}.xlsx`);
+        const today = new Date().toISOString().split('T')[0];
+        XLSX.writeFile(workbook, `Directorio_Empleados_${today}.xlsx`);
     };
 
     return (
