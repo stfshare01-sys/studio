@@ -86,7 +86,8 @@ export function NotificationCenter() {
   const getTypeIcon = (type: string) => {
     switch (type) {
       case "success": return "✅";
-      case "warning": return "⚠️";
+      case "warning":
+      case "new_incidence": return "⚠️";
       case "task": return "📋";
       default: return "ℹ️";
     }

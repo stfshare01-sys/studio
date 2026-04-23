@@ -1496,7 +1496,7 @@ export const notifyNewIncidence = onCall<NotifyNewIncidenceRequest>(
                     db.collection('users').doc(hrDoc.id).collection('notifications').add({
                         title: 'Nueva Solicitud de Incidencia (Sin Manager Directo)',
                         message: `${employeeName} ha solicitado ${type} del ${startDate} al ${endDate}. Requiere atención de RH.`,
-                        type: 'warning',
+                        type: 'new_incidence',
                         read: false,
                         createdAt: nowISO,
                         link: '/hcm/incidences',
@@ -1533,7 +1533,7 @@ export const notifyNewIncidence = onCall<NotifyNewIncidenceRequest>(
                     ? 'Solicitud de Incidencia Escalada'
                     : 'Nueva Solicitud de Incidencia',
                 message: notificationMessage,
-                type: 'warning',
+                type: 'new_incidence',
                 read: false,
                 createdAt: nowISO,
                 link: '/hcm/incidences',
