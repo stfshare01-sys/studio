@@ -144,8 +144,7 @@ export default function EmployeesPage() {
         XLSX.utils.book_append_sheet(workbook, worksheet, 'Empleados');
 
         // Generate download
-        const today = new Date().toISOString().split('T')[0];
-        XLSX.writeFile(workbook, `Directorio_Empleados_${today}.xlsx`);
+        XLSX.writeFile(workbook, `Directorio_Empleados_${new Date().toISOString().split('T')[0]}.xlsx`);
     };
 
     return (
@@ -314,7 +313,7 @@ export default function EmployeesPage() {
                                                             <Badge variant="secondary">
                                                                 Inactivo
                                                             </Badge>
-                                                        )
+                                                        )}
                                                     </TableCell>
                                                     <TableCell className="text-right">
                                                         <DropdownMenu>
