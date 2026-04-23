@@ -367,7 +367,7 @@ export default function LoginPage() {
             </Button>
           </CardFooter>
         </form>
-        <div className="hidden pb-4 text-center text-sm">
+        <div className="flex flex-col items-center justify-center pb-4 text-center text-sm">
           {isSigningIn ? '¿No tienes una cuenta?' : '¿Ya tienes una cuenta?'}
           <Button
             variant="link"
