@@ -248,6 +248,10 @@ Antes de proponer cualquier cambio, identificar:
 
 ## 7. Checklist Previo a Proponer un Cambio
 
+> [!TIP]
+> Este es un checklist de referencia rápida. Para cambios complejos o features
+> nuevas, el estándar es seguir el flujo detallado en `.agents/workflows/Add feature.md`.
+
 ```
 [ ] ¿Modifica la firma de una función exportada?
     → Revisar TODOS los archivos que la importan

@@ -23,29 +23,29 @@
 - Puede causar estados inconsistentes en el workflow
 - **Riesgo:** Alto - Corrupción de datos en escenarios concurrentes
 
-### 2. ALTO: Inconsistencia 'use server' en workflow-engine
+### ~~2. ALTO: Inconsistencia 'use server' en workflow-engine~~ (Corregido: Directiva eliminada. Código se mantiene en cliente por arquitectura actual)
 **Ubicación:** `src/lib/workflow-engine.ts:3`
-- Archivo marcado como `'use server'` pero llamado desde cliente
-- Las funciones NO se ejecutan en el servidor como se esperaría
-- **Riesgo:** Exposición de lógica sensible y posible mal funcionamiento
+- ~~Archivo marcado como `'use server'` pero llamado desde cliente~~
+- ~~Las funciones NO se ejecutan en el servidor como se esperaría~~
+- **Riesgo:** ~~Exposición de lógica sensible y posible mal funcionamiento~~ (Mitigado al eliminar la directiva engañosa, aunque la arquitectura sigue siendo Client-First)
 
 ### 3. ALTO: Security Rules Incompletas
 **Ubicación:** `firestore.rules`
-- No hay validación de roles en algunas operaciones
-- Falta protección contra escrituras maliciosas en `tasks`
-- **Riesgo:** Escalación de privilegios y manipulación de datos
+- Validaciones básicas añadidas para `tasks`.
+- Falta protección avanzada en otras colecciones HCM.
+- **Riesgo:** Medio/Alto - Mejorado pero requiere auditoría por módulo.
 
 ### 4. MEDIO: Fire-and-Forget sin Manejo de Errores
 **Ubicación:** `src/firebase/non-blocking-updates.tsx`
-- Las operaciones "non-blocking" solo emiten errores a un EventEmitter
-- No hay retry logic, rollback ni notificación al usuario
-- **Riesgo:** Pérdida silenciosa de datos
+- Las operaciones "non-blocking" emiten errores a un EventEmitter.
+- Pendiente: Retry logic y Rollback.
+- **Riesgo:** Pérdida silenciosa de datos.
 
-### 5. MEDIO: Falta de Índices Compuestos Documentados
+### ~~5. MEDIO: Falta de Índices Compuestos Documentados~~ (Corregido: Se encontraron índices compuestos para las entidades principales)
 **Ubicación:** `firestore.indexes.json`
-- Solo índices básicos definidos
-- Consultas como `collectionGroup('requests')` pueden fallar en producción
-- **Riesgo:** Errores en queries y degradación de performance
+- ~~Solo índices básicos definidos~~ (Se verificó que existen índices compuestos para tasks, incidences y employees)
+- **Riesgo:** Bajo - Verificado.
+
 
 ## Recomendación General
 
@@ -64,16 +64,16 @@ El proyecto tiene una base sólida y cumple con la mayoría de las especificacio
 
 | Funcionalidad | Estado | Observaciones |
 |---------------|--------|---------------|
-| Lienzo visual BPMN con Pools y Lanes | ✅ | Implementado en `src/app/templates/new/page.tsx` usando dnd-kit |
-| Biblioteca de campos de formulario | ✅ | 8 tipos: text, textarea, date, number, select, checkbox, radio, file |
-| Sistema de asignación por rol | ✅ | Campo `assigneeRole` en cada step |
-| Edición interactiva de plantillas | ✅ | Drag-and-drop funcional |
-| Carga de plantillas existentes | ✅ | Página `/templates/edit/[id]` |
-| Uso de librería BPMN (bpmn-js) | ❌ | Se usa implementación custom con dnd-kit, NO bpmn-js |
-| Plantillas en JSON/XML | ✅ | Almacenadas como JSON en Firestore |
-| Constructor de formularios dinámico | ✅ | `FieldBuilderDialog` con todos los tipos |
-| SLA por paso configurable | ✅ | `slaHours` en step definition |
-| Políticas de escalado | ✅ | `escalationPolicy` con NOTIFY/REASSIGN |
+| ~~Lienzo visual BPMN con Pools y Lanes~~ | ✅ | Implementado en `src/app/templates/new/page.tsx` usando dnd-kit |
+| ~~Biblioteca de campos de formulario~~ | ✅ | 8 tipos: text, textarea, date, number, select, checkbox, radio, file |
+| ~~Sistema de asignación por rol~~ | ✅ | Campo `assigneeRole` en cada step |
+| ~~Edición interactiva de plantillas~~ | ✅ | Drag-and-drop funcional |
+| ~~Carga de plantillas existentes~~ | ✅ | Página `/templates/edit/[id]` |
+| ~~Uso de librería BPMN (bpmn-js)~~ | ❌ | Se usa implementación custom con dnd-kit, NO bpmn-js |
+| ~~Plantillas en JSON/XML~~ | ✅ | Almacenadas como JSON en Firestore |
+| ~~Constructor de formularios dinámico~~ | ✅ | `FieldBuilderDialog` con todos los tipos |
+| ~~SLA por paso configurable~~ | ✅ | `slaHours` en step definition |
+| ~~Políticas de escalado~~ | ✅ | `escalationPolicy` con NOTIFY/REASSIGN |
 
 **Completitud Pilar I:** 90%
 
@@ -89,17 +89,18 @@ El proyecto tiene una base sólida y cumple con la mayoría de las especificacio
 
 | Funcionalidad | Estado | Observaciones |
 |---------------|--------|---------------|
-| Motor de reglas SI...ENTONCES | ✅ | 5 acciones: ADD_STEP, ROUTE, ASSIGN, NOTIFY, PRIORITY |
-| Copilot IA para generación | ✅ | `src/ai/flows/process-generation.ts` con Genkit |
-| Asignación inteligente por rol | ✅ | `intelligentTaskAssignment` con IA |
-| Simulador What-If | ✅ | `SimulateChangeDialog` con `process-simulation.ts` |
-| Gestión de SLAs | ✅ | `slaHours`, `slaExpiresAt`, escalado |
-| Gateway Exclusivo | ✅ | Outcomes + routing rules |
-| Gateway Paralelo | ⚠️ | Implementado pero con riesgo de procesos bloqueados |
-| Orquestación con Cloud Functions | ❌ | NO hay Cloud Functions - todo es cliente |
-| Sincronización de gateways paralelos | ⚠️ | `checkJoinCondition` existe pero sin transacciones |
-| Motor de reglas dinámico | ✅ | `evaluateAndExecuteRules` evalúa en runtime |
-| Integración Gemini/Genkit | ✅ | Correctamente configurado en `src/ai/genkit.ts` |
+| ~~Motor de reglas SI...ENTONCES~~ | ✅ | 5 acciones: ADD_STEP, ROUTE, ASSIGN, NOTIFY, PRIORITY |
+| ~~Copilot IA para generación~~ | ✅ | `src/ai/flows/process-generation.ts` con Genkit |
+| ~~Asignación inteligente por rol~~ | ✅ | `intelligentTaskAssignment` con IA |
+| ~~Simulador What-If~~ | ✅ | `SimulateChangeDialog` con `process-simulation.ts` |
+| ~~Gestión de SLAs~~ | ✅ | `slaHours`, `slaExpiresAt`, escalado |
+| ~~Gateway Exclusivo~~ | ✅ | Outcomes + routing rules |
+| ~~Gateway Paralelo~~ | ⚠️ | Implementado pero con riesgo de procesos bloqueados |
+| ~~264. Cloud Functions - No implementadas~~ | ✅ | (Corregido: Se encontraron implementaciones en `functions/src/triggers/`) |
+| ~~99. Orquestación con Cloud Functions~~ | ✅ | (Corregido: Implementado en `functions/src/triggers/workflow-triggers.ts`) |
+| ~~Sincronización de gateways paralelos~~ | ⚠️ | `checkJoinCondition` existe pero sin transacciones |
+| ~~Motor de reglas dinámico~~ | ✅ | `evaluateAndExecuteRules` evalúa en runtime |
+| ~~Integración Gemini/Genkit~~ | ✅ | Correctamente configurado en `src/ai/genkit.ts` |
 
 **Completitud Pilar II:** 75%
 
@@ -121,16 +122,16 @@ El proyecto tiene una base sólida y cumple con la mayoría de las especificacio
 
 | Funcionalidad | Estado | Observaciones |
 |---------------|--------|---------------|
-| Dashboard con KPIs en tiempo real | ✅ | `src/app/page.tsx` con stats |
-| Gráficos de cuellos de botella | ✅ | `BottleneckChart` y `BottleneckAnalysisComponent` |
-| Página /reports | ✅ | Con filtros, exportación CSV |
-| Página /process-mining | ✅ | 5 tabs: Overview, Variants, Conformance, SPC, Resources |
-| Análisis de variantes | ✅ | `ProcessVariantsChart` |
-| Análisis de conformidad | ✅ | `ConformancePanel` |
-| Control estadístico SPC | ✅ | `SPCChart` con UCL/LCL |
-| Consultas optimizadas con índices | ⚠️ | Índices básicos, faltan compuestos |
-| Librerías de gráficos | ✅ | Recharts correctamente implementado |
-| Cálculos de métricas eficientes | ✅ | `src/lib/process-mining.ts` |
+| ~~Dashboard con KPIs en tiempo real~~ | ✅ | `src/app/page.tsx` con stats |
+| ~~Gráficos de cuellos de botella~~ | ✅ | `BottleneckChart` y `BottleneckAnalysisComponent` |
+| ~~Página /reports~~ | ✅ | Con filtros, exportación CSV |
+| ~~Página /process-mining~~ | ✅ | 5 tabs: Overview, Variants, Conformance, SPC, Resources |
+| ~~Análisis de variantes~~ | ✅ | `ProcessVariantsChart` |
+| ~~Análisis de conformidad~~ | ✅ | `ConformancePanel` |
+| ~~Control estadístico SPC~~ | ✅ | `SPCChart` con UCL/LCL |
+| ~~Consultas optimizadas con índices~~ | ⚠️ | Índices básicos, faltan compuestos |
+| ~~Librerías de gráficos~~ | ✅ | Recharts correctamente implementado |
+| ~~Cálculos de métricas eficientes~~ | ✅ | `src/lib/process-mining.ts` |
 
 **Completitud Pilar III:** 95%
 
@@ -146,12 +147,12 @@ El proyecto tiene una base sólida y cumple con la mayoría de las especificacio
 
 | Funcionalidad | Estado | Observaciones |
 |---------------|--------|---------------|
-| Sistema de adjuntos (Storage) | ✅ | Subida y eliminación funcional |
-| Sistema de comentarios | ✅ | Subcollection `comments` por request |
-| Bandeja "Mis Tareas" | ✅ | Query filtrado por `assigneeId` |
-| Centro de notificaciones | ✅ | Dropdown con leído/no leído |
-| Notificaciones por triggers | ⚠️ | Se generan manualmente, NO hay Cloud Function triggers |
-| Gestión de errores en archivos | ⚠️ | Try/catch básico sin retry |
+| ~~Sistema de adjuntos (Storage)~~ | ✅ | Subida y eliminación funcional |
+| ~~Sistema de comentarios~~ | ✅ | Subcollection `comments` por request |
+| ~~Bandeja "Mis Tareas"~~ | ✅ | Query filtrado por `assigneeId` |
+| ~~Centro de notificaciones~~ | ✅ | Dropdown con leído/no leído |
+| ~~Notificaciones por triggers~~ | ⚠️ | Se generan manualmente, NO hay Cloud Function triggers |
+| ~~Gestión de errores en archivos~~ | ⚠️ | Try/catch básico sin retry |
 
 **Completitud Pilar IV:** 85%
 
@@ -161,16 +162,16 @@ El proyecto tiene una base sólida y cumple con la mayoría de las especificacio
 
 | Capacidad | Estado | Observaciones |
 |-----------|--------|---------------|
-| Sistema RBAC (Admin/Designer/Member) | ✅ | Implementado en cliente y rules |
-| Módulo /admin/users | ✅ | CRUD completo de usuarios |
-| Reasignación manual (Admin/Manager) | ✅ | `ReassignTaskDialog` |
-| Audit trails inmutables | ✅ | Subcollection `audit_logs` |
-| Página /integrations (mock) | ✅ | Todos los botones deshabilitados |
-| Diseño responsivo | ✅ | Tailwind con breakpoints |
-| Búsqueda global (⌘K) | ✅ | `GlobalSearch` con prefijo |
-| Custom Claims Firebase Auth | ⚠️ | Role en Firestore, no en Claims |
-| Security Rules RBAC | ⚠️ | Parciales - ver sección de seguridad |
-| Historial con server timestamps | ⚠️ | Usa `new Date().toISOString()` en cliente |
+| ~~Sistema RBAC (Admin/Designer/Member)~~ | ✅ | Implementado en cliente y rules |
+| ~~Módulo /admin/users~~ | ✅ | CRUD completo de usuarios |
+| ~~Reasignación manual (Admin/Manager)~~ | ✅ | `ReassignTaskDialog` |
+| ~~Audit trails inmutables~~ | ✅ | Subcollection `audit_logs` |
+| ~~Página /integrations (mock)~~ | ✅ | Todos los botones deshabilitados |
+| ~~Diseño responsivo~~ | ✅ | Tailwind con breakpoints |
+| ~~Búsqueda global (⌘K)~~ | ✅ | `GlobalSearch` con prefijo |
+| ~~Custom Claims Firebase Auth~~ | ⚠️ | Role en Firestore, no en Claims |
+| ~~Security Rules RBAC~~ | ⚠️ | Parciales - ver sección de seguridad |
+| ~~Historial con server timestamps~~ | ⚠️ | Usa `new Date().toISOString()` en cliente |
 
 ---
 
@@ -211,28 +212,18 @@ addDocumentNonBlocking(auditLogCollection, {...});
 - Listener se desuscribe correctamente en cleanup
 - **Pero:** No hay manejo de componentes desmontados durante operaciones async
 
-### 4.5 Security Rules - Tasks Desprotegidos
-**Ubicación:** `firestore.rules:48-55`
-```
-match /tasks/{taskId} {
-  allow read: if isSignedIn();
-  allow create: if isSignedIn();
-  allow update: if isSignedIn() && isAssigneeOrAdmin();
-}
-```
-**Problema:** Cualquier usuario autenticado puede crear tasks arbitrarios
-**Solución:** Validar que el task corresponda a un request válido
+### ~~4.5 Security Rules - Tasks Desprotegidos~~ (Corregido: Ahora validan existencia de request y campos obligatorios)
+**Ubicación:** `firestore.rules:208-240`
 
-### 4.6 Master Lists - Link Incorrecto
+### ~~4.6 Master Lists - Link Incorrecto~~ (Corregido)
 **Ubicación:** `src/app/master-lists/page.tsx:94`
-```tsx
-<Link href="/templates/new">  // Debería ser /master-lists/new
-```
+- ~~Debería ser /master-lists/new~~ (Corregido)
 
 ## MEDIOS
 
-### 4.7 Botón Editar en Master Lists Apunta a Templates
+### ~~4.7 Botón Editar en Master Lists Apunta a Templates~~ (Corregido)
 **Ubicación:** `src/app/master-lists/page.tsx:129`
+
 
 ### 4.8 Eliminación de Master List No Borra Datos
 **Ubicación:** `src/app/master-lists/page.tsx:71-79`
