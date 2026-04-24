@@ -66,7 +66,6 @@ export const onNotificationCreated = onDocumentCreated(
                 console.warn('⚠️ SMTP_PASSWORD environment variable is NOT SET. Emails will fail to send. Please set it in functions/.env');
             }
 
-            const subjectInfo = notificationData.title || 'Nueva Notificación de Recursos Humanos';
             const linkParam = notificationData.link ? `https://nexus.stuffactory.mx${notificationData.link}` : 'https://nexus.stuffactory.mx';
 
             // Extract metadata if available to make emails legible
@@ -89,21 +88,29 @@ export const onNotificationCreated = onDocumentCreated(
             // Use the dictionary if there's an incidenceType in metadata, otherwise use the title/message as is
             let displayTitle = notificationData.title;
             let displayMessage = notificationData.message;
+            let emailSubject = notificationData.title || 'Nueva Notificación de Recursos Humanos';
 
             if (meta.incidenceType) {
                 const readableName = typeNames[meta.incidenceType] || meta.incidenceType;
+                const isVacation = meta.incidenceType === 'vacation';
+                const subjectPrefix = isVacation ? 'Solicitud de vacaciones' : 'Solicitud de permiso';
 
                 // If it's the approval/rejection notification we just created
                 if (notificationData.type === 'incidence_approved') {
+                    emailSubject = `${subjectPrefix} aprobada`;
+                    displayTitle = emailSubject;
                     displayMessage = `Tu solicitud de <b>${readableName}</b> ha sido aprobada por ${meta.approverName || 'tu mánager'}.`;
                 } else if (notificationData.type === 'incidence_rejected') {
+                    emailSubject = `${subjectPrefix} rechazada`;
+                    displayTitle = emailSubject;
                     displayMessage = `Tu solicitud de <b>${readableName}</b> ha sido rechazada por ${meta.approverName || 'tu mánager'}.`;
                     if (meta.rejectionReason) {
                         displayMessage += `<br/><br/><b>Motivo:</b> ${meta.rejectionReason}`;
                     }
                 } else if (notificationData.type === 'new_incidence') {
                     // This comes from the manager notifications 
-                    displayTitle = `Nueva solicitud de ${readableName}`;
+                    emailSubject = `Nueva ${subjectPrefix.toLowerCase()}`;
+                    displayTitle = emailSubject;
                     displayMessage = `El colaborador(a) ha solicitado un ${readableName}. Ingresa al sistema para revisarla y aprobarla.`;
                 }
             }
@@ -133,7 +140,7 @@ export const onNotificationCreated = onDocumentCreated(
             const mailOptions = {
                 from: '"STUFFACTORY" <stfshare01@stuffactory.mx>',
                 to: recipientEmail,
-                subject: subjectInfo,
+                subject: emailSubject,
                 html: htmlBody,
             };
 
