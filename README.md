@@ -43,9 +43,10 @@ Repositorio centralizado de políticas, manuales, procedimientos y formatos con 
 - Categorías: Política, Manual, Procedimiento, Formato, Otro
 - Control de visibilidad aditivo: toda la empresa, por departamento o por usuario específico
 - Previsualización de PDF en navegador; descarga directa de Word
+- **Biblioteca AI (Bot RAG)**: Asistente que responde dudas sobre el contenido de los documentos usando Gemini y búsqueda semántica (Vector Search), respetando estrictamente los permisos de acceso del usuario.
 
 **Ruta:** `/biblioteca`  
-**Colección Firestore:** `org_documents`  
+**Colecciones Firestore:** `org_documents`, `doc_chunks`
 **Storage:** `org_documents/{timestamp}_{filename}`
 
 ---

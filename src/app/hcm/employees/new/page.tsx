@@ -59,9 +59,20 @@ const employeeSchema = z.object({
     employeeId: z.string().optional().or(z.literal('')), // Attendance System ID
     legalEntity: z.string().optional(),
     avatarFile: z.any().optional(), // Archivo para la foto de perfil
+    homeOfficeDays: z.array(z.number()).optional(),
 });
 
 type EmployeeFormValues = z.infer<typeof employeeSchema>;
+
+const DAYS_OF_WEEK = [
+    { label: 'Domingo', value: 0 },
+    { label: 'Lunes', value: 1 },
+    { label: 'Martes', value: 2 },
+    { label: 'Miércoles', value: 3 },
+    { label: 'Jueves', value: 4 },
+    { label: 'Viernes', value: 5 },
+    { label: 'Sábado', value: 6 },
+];
 
 export default function NewEmployeePage() {
     const router = useRouter();
@@ -125,6 +136,7 @@ export default function NewEmployeePage() {
             allowTimeForTime: false,
             employeeId: '',
             legalEntity: '',
+            homeOfficeDays: [],
         },
     });
 
@@ -211,6 +223,7 @@ export default function NewEmployeePage() {
                 employeeId: data.employeeId || undefined,
                 legalEntity: data.legalEntity || undefined,
                 avatarUrl: avatarUrl,
+                homeOfficeDays: data.homeOfficeDays || [],
             });
 
             if (result.success) {
@@ -649,6 +662,57 @@ export default function NewEmployeePage() {
                                                                 Permite compensar tiempo extra trabajado en la bolsa de horas (solo RH puede modificar)
                                                             </FormDescription>
                                                         </div>
+                                                    </FormItem>
+                                                )}
+                                            />
+
+                                            <FormField
+                                                control={form.control}
+                                                name="homeOfficeDays"
+                                                render={() => (
+                                                    <FormItem className="md:col-span-2">
+                                                        <div className="mb-4">
+                                                            <FormLabel className="text-base">Días de Home Office Fijos</FormLabel>
+                                                            <FormDescription>
+                                                                Selecciona los días en que el empleado hace home office de manera regular.
+                                                            </FormDescription>
+                                                        </div>
+                                                        <div className="flex flex-wrap gap-4">
+                                                            {DAYS_OF_WEEK.map((day) => (
+                                                                <FormField
+                                                                    key={day.value}
+                                                                    control={form.control}
+                                                                    name="homeOfficeDays"
+                                                                    render={({ field }) => {
+                                                                        return (
+                                                                            <FormItem
+                                                                                key={day.value}
+                                                                                className="flex flex-row items-center space-x-2 space-y-0"
+                                                                            >
+                                                                                <FormControl>
+                                                                                    <Checkbox
+                                                                                        checked={field.value?.includes(day.value)}
+                                                                                        onCheckedChange={(checked) => {
+                                                                                            return checked
+                                                                                                ? field.onChange([...(field.value || []), day.value])
+                                                                                                : field.onChange(
+                                                                                                    field.value?.filter(
+                                                                                                        (value) => value !== day.value
+                                                                                                    )
+                                                                                                )
+                                                                                        }}
+                                                                                    />
+                                                                                </FormControl>
+                                                                                <FormLabel className="font-normal cursor-pointer">
+                                                                                    {day.label}
+                                                                                </FormLabel>
+                                                                            </FormItem>
+                                                                        )
+                                                                    }}
+                                                                />
+                                                            ))}
+                                                        </div>
+                                                        <FormMessage />
                                                     </FormItem>
                                                 )}
                                             />

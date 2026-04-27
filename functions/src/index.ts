@@ -34,3 +34,6 @@ export { renewVacationBalancesDaily, triggerVacationRenewal } from './scheduled/
 
 // Notification Triggers
 export { onNotificationCreated } from './triggers/notifications';
+
+// Biblioteca RAG — Indexación de documentos organizacionales
+export { onOrgDocumentCreated } from './triggers/onOrgDocumentCreated';

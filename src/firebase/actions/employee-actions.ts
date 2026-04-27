@@ -31,6 +31,7 @@ interface CreateEmployeePayload {
     employeeId?: string; // ZKTeco / Biometric ID
     legalEntity?: string;
     avatarUrl?: string; // URL of the uploaded profile photo
+    homeOfficeDays?: number[]; // [0,1,2,3,4,5,6]
 }
 
 /**
@@ -74,6 +75,7 @@ export async function createEmployee(
         if (payload.shiftId) employeeData.customShiftId = payload.shiftId;
         if (payload.employeeId) employeeData.employeeId = payload.employeeId;
         if (payload.legalEntity) employeeData.legalEntity = payload.legalEntity;
+        if (payload.homeOfficeDays) employeeData.homeOfficeDays = payload.homeOfficeDays;
 
         await setDoc(employeeRef, employeeData, {});
 

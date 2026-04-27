@@ -744,6 +744,34 @@
           "order": "DESCENDING"
         }
       ]
+    },
+    // --- doc_chunks ---
+    {
+      "collectionGroup": "doc_chunks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "documentCategory",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "indexedAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "doc_chunks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "embedding",
+          "vectorConfig": {
+            "dimension": 768,
+            "flat": {}
+          }
+        }
+      ]
     }
   ],
   "fieldOverrides": [

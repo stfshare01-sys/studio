@@ -52,3 +52,59 @@ export type CreateOrgDocumentPayload = Omit<OrgDocument, 'id'>;
 export type UpdateOrgDocumentPayload = Partial<
   Pick<OrgDocument, 'title' | 'description' | 'category' | 'visibleToDepartments' | 'visibleToUserIds'>
 > & { updatedAt: string };
+
+// ─────────────────────────────────────────────────────────────────
+// RAG — Chunks de texto para el bot de Biblioteca
+// ─────────────────────────────────────────────────────────────────
+
+/** Estado del proceso de indexación del documento */
+export type IndexingStatus = 'pending' | 'processing' | 'indexed' | 'error';
+
+/**
+ * Fragmento de texto extraído de un OrgDocument.
+ * Almacenado en `/doc_chunks/{chunkId}`.
+ *
+ * Los arrays de acceso son copia exacta del documento padre
+ * para aplicar el mismo control aditivo en las búsquedas del bot.
+ */
+export interface DocChunk {
+  id: string;
+  /** ID del documento padre en org_documents */
+  documentId: string;
+  /** Título del documento padre (para incluir en la respuesta del bot) */
+  documentTitle: string;
+  /** Categoría del padre (para filtrar por tipo en el bot) */
+  documentCategory: DocumentCategory;
+  /** Posición del chunk dentro del documento (0-indexed) */
+  chunkIndex: number;
+  /** Texto plano del fragmento — lo que el LLM leerá */
+  content: string;
+  /**
+   * Embedding vectorial generado por text-embedding-004.
+   * Firestore Vector Search usa este campo para búsqueda semántica.
+   */
+  embedding: number[];
+  /** Copias del control de acceso del padre — se filtran antes de buscar */
+  visibleToDepartments: string[];
+  visibleToUserIds: string[];
+  /** YYYY-MM-DD — fecha en que se indexó este chunk */
+  indexedAt: string;
+}
+
+/** Resultado de una búsqueda semántica — chunk + score de similitud */
+export interface ChunkSearchResult {
+  chunk: DocChunk;
+  /** Score de similitud coseno (0-1) — mayor es más relevante */
+  score: number;
+}
+
+/**
+ * Estado de indexación guardado en el documento padre `org_documents`.
+ * Se añade al documento existente después de procesarlo.
+ */
+export interface OrgDocumentIndexingState {
+  indexingStatus: IndexingStatus;
+  indexedChunks?: number;
+  indexingError?: string;
+  indexedAt?: string;
+}

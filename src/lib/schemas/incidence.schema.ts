@@ -16,7 +16,6 @@ export const incidenceTypeSchema = z.enum([
     'unpaid_leave',
     'civic_duty',
     'half_day_family',
-    'home_office',
     'unjustified_absence',
     'abandono_empleo'
 ], {

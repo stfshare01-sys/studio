@@ -84,7 +84,8 @@ service cloud.firestore {
       return path[0] == 'audit_logs' ||
              path[0] == 'prenomina_audit' ||
              path[0] == 'compensation' ||
-             path[0] == 'vacation_balances';
+             path[0] == 'vacation_balances' ||
+             path[0] == 'doc_chunks';
     }
 
     // ============================================
@@ -914,6 +915,32 @@ service cloud.firestore {
 
       // Solo Admins pueden eliminar documentos
       allow delete: if hasRole('Admin');
+    }
+    
+    /**
+     * @description Text chunks for RAG bot.
+     * Read: Same as org_documents (inherited from parent).
+     * Write: Backend only (no client access).
+     */
+    match /doc_chunks/{chunkId} {
+      function isUnrestricted() {
+        return resource.data.visibleToDepartments.size() == 0
+          && resource.data.visibleToUserIds.size() == 0;
+      }
+      function isInAllowedDepartment() {
+        return resource.data.visibleToDepartments.size() > 0
+          && get(/databases/$(database)/documents/employees/$(request.auth.uid)).data.department
+            in resource.data.visibleToDepartments;
+      }
+      function isExplicitlyAllowed() {
+        return resource.data.visibleToUserIds.size() > 0
+          && request.auth.uid in resource.data.visibleToUserIds;
+      }
+
+      allow get, list: if isSignedIn()
+        && (isUnrestricted() || isInAllowedDepartment() || isExplicitlyAllowed());
+      
+      allow write: if false; // Only backend (Admin SDK)
     }
 
     // -------------------------------------------------------------------------

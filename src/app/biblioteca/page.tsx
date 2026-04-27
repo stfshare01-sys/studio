@@ -8,6 +8,7 @@ import { getAllOrgDocuments } from '@/modules/documents/documents-queries';
 import { deleteOrgDocument } from '@/modules/documents/documents-mutations';
 import { DocumentCard } from './components/DocumentCard';
 import { DocumentUploadModal } from './components/DocumentUploadModal';
+import { BibliotecaChat } from './components/BibliotecaChat';
 import type { OrgDocument, DocumentCategory } from '@/modules/documents/documents.types';
 
 const TABS: { value: 'all' | DocumentCategory; label: string; icon: any }[] = [
@@ -194,6 +195,8 @@ export default function BibliotecaPage() {
         onClose={() => setUploadOpen(false)}
         onSuccess={handleUploadSuccess}
       />
+
+      <BibliotecaChat />
     </div>
   );
 }

@@ -16,6 +16,7 @@
         "node": "20"
     },
     "dependencies": {
+        "adm-zip": "^0.5.12",
         "archiver": "^6.0.0",
         "date-fns": "^4.1.0",
         "firebase-admin": "^13.6.0",

@@ -69,7 +69,6 @@ const initialFormState = {
     state: '',
     overtimeResetDay: 'sunday' as 'sunday' | 'saturday' | 'custom',
     toleranceMinutes: 10,
-    useVirtualCheckIn: false,
     isOfficeLocation: false,
     companyBenefitDays: '',
 };
@@ -105,7 +104,6 @@ export default function LocationsAdminPage() {
                 state: location.state || '',
                 overtimeResetDay: location.overtimeResetDay,
                 toleranceMinutes: location.toleranceMinutes,
-                useVirtualCheckIn: location.useVirtualCheckIn || false,
                 isOfficeLocation: location.isOfficeLocation || false,
                 companyBenefitDays: location.companyBenefitDays?.join(', ') || '',
             });
@@ -143,7 +141,6 @@ export default function LocationsAdminPage() {
                 type: formData.type,
                 overtimeResetDay: formData.overtimeResetDay,
                 toleranceMinutes: formData.toleranceMinutes,
-                useVirtualCheckIn: formData.useVirtualCheckIn,
                 isOfficeLocation: formData.isOfficeLocation,
                 isActive: true,
                 updatedAt: now,
@@ -249,7 +246,6 @@ export default function LocationsAdminPage() {
                                         <TableHead>Ciudad</TableHead>
                                         <TableHead>Reinicio HE</TableHead>
                                         <TableHead className="text-center">Tolerancia</TableHead>
-                                        <TableHead className="text-center">Home Office</TableHead>
                                         <TableHead>Estado</TableHead>
                                         <TableHead className="text-right">Acciones</TableHead>
                                     </TableRow>
@@ -281,13 +277,6 @@ export default function LocationsAdminPage() {
                                                 </TableCell>
                                                 <TableCell className="text-center">
                                                     {location.toleranceMinutes} min
-                                                </TableCell>
-                                                <TableCell className="text-center">
-                                                    {location.useVirtualCheckIn ? (
-                                                        <Badge className="bg-green-100 text-green-800">Si</Badge>
-                                                    ) : (
-                                                        <Badge variant="secondary">No</Badge>
-                                                    )}
                                                 </TableCell>
                                                 <TableCell>
                                                     <Switch
@@ -436,13 +425,6 @@ export default function LocationsAdminPage() {
                                     </p>
                                 </div>
 
-                                <div className="flex items-center space-x-2">
-                                    <Switch
-                                        checked={formData.useVirtualCheckIn}
-                                        onCheckedChange={(v) => setFormData(prev => ({ ...prev, useVirtualCheckIn: v }))}
-                                    />
-                                    <Label>Habilitar check-in virtual (Home Office)</Label>
-                                </div>
                                 <div className="flex items-center space-x-2">
                                     <Switch
                                         checked={formData.isOfficeLocation}

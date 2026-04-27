@@ -667,7 +667,7 @@ export type ExtendedUserRole = UserRole | 'HRManager' | 'Manager';
 
 export type EmploymentType = 'full_time' | 'part_time' | 'contractor' | 'intern';
 export type ShiftType = 'diurnal' | 'nocturnal' | 'mixed';
-export type IncidenceType = 'vacation' | 'sick_leave' | 'personal_leave' | 'maternity' | 'paternity' | 'bereavement' | 'marriage' | 'adoption' | 'unpaid_leave' | 'civic_duty' | 'half_day_family' | 'home_office' | 'unjustified_absence' | 'abandono_empleo';
+export type IncidenceType = 'vacation' | 'sick_leave' | 'personal_leave' | 'maternity' | 'paternity' | 'bereavement' | 'marriage' | 'adoption' | 'unpaid_leave' | 'civic_duty' | 'half_day_family' | 'unjustified_absence' | 'abandono_empleo';
 export type IncidenceStatus = 'pending' | 'approved' | 'rejected' | 'cancelled' | 'unjustified' | 'made_up';
 export type OnboardingPhase = 'day_0' | 'day_30' | 'day_60' | 'day_90' | 'completed';
 
@@ -723,6 +723,7 @@ export type Employee = User & {
   locationId?: string;         // ID de la ubicación física
   customShiftId?: string;      // ID del turno personalizado (si aplica)
   customRestDays?: number[];   // Días de descanso específicos, ej: [0, 6] para Dom y Sab
+  homeOfficeDays?: number[];   // Días fijos de home office en la semana (0=Dom, 1=Lun...)
   shiftAssignments?: EmployeeShiftAssignment[]; // Historial de turnos asignados
   /** @deprecated Use customShiftId instead */
   shiftId?: string;            // Legacy: ID del turno (usado en seed data)
@@ -1161,7 +1162,6 @@ export type Location = {
 
   // Configuración de asistencia
   toleranceMinutes: number;       // Tolerancia de entrada en minutos (default: 10)
-  useVirtualCheckIn?: boolean;    // Usar check-in virtual (Home Office)
   isOfficeLocation?: boolean;     // Es ubicación de oficina central (ignora marcajes en días de descanso)
 
   // Estado
