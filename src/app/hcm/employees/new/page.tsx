@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { Loader2, ArrowLeft, Save, Clock } from 'lucide-react';
+import { Loader2, ArrowLeft, Save, Clock, Building2 } from 'lucide-react';
 import Link from 'next/link';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { AvatarUpload } from '@/components/ui/avatar-upload';
@@ -597,6 +597,96 @@ export default function NewEmployeePage() {
                                         </CardContent>
                                     </Card>
 
+                                    {/* Configuración de Asistencia */}
+                                    <Card>
+                                        <CardHeader>
+                                            <CardTitle className="flex items-center gap-2">
+                                                <Clock className="h-5 w-5" />
+                                                Configuración de Asistencia
+                                            </CardTitle>
+                                            <CardDescription>Configuración de horario y tiempo extra</CardDescription>
+                                        </CardHeader>
+                                        <CardContent className="space-y-4">
+                                            <FormField
+                                                control={form.control}
+                                                name="allowTimeForTime"
+                                                render={({ field }) => (
+                                                    <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4">
+                                                        <FormControl>
+                                                            <Checkbox
+                                                                checked={field.value}
+                                                                onCheckedChange={field.onChange}
+                                                            />
+                                                        </FormControl>
+                                                        <div className="space-y-1 leading-none">
+                                                            <FormLabel className="flex items-center gap-2">
+                                                                <Clock className="h-4 w-4" />
+                                                                Permitir Tiempo por Tiempo
+                                                            </FormLabel>
+                                                            <FormDescription className="mt-2">
+                                                                Permite compensar tiempo extra trabajado en la bolsa de horas (solo RH puede modificar)
+                                                            </FormDescription>
+                                                        </div>
+                                                    </FormItem>
+                                                )}
+                                            />
+
+                                            <FormField
+                                                control={form.control}
+                                                name="homeOfficeDays"
+                                                render={() => (
+                                                    <FormItem className="rounded-md border p-4">
+                                                        <div className="mb-4">
+                                                            <FormLabel className="text-base flex items-center gap-2">
+                                                                <Building2 className="h-4 w-4" />
+                                                                Días de Home Office Fijos
+                                                            </FormLabel>
+                                                            <FormDescription className="mt-1">
+                                                                Selecciona los días regulares de home office. El sistema registrará la asistencia automáticamente.
+                                                            </FormDescription>
+                                                        </div>
+                                                        <div className="flex flex-wrap gap-4">
+                                                            {DAYS_OF_WEEK.map((day) => (
+                                                                <FormField
+                                                                    key={day.value}
+                                                                    control={form.control}
+                                                                    name="homeOfficeDays"
+                                                                    render={({ field }) => {
+                                                                        return (
+                                                                            <FormItem
+                                                                                key={day.value}
+                                                                                className="flex flex-row items-center space-x-2 space-y-0"
+                                                                            >
+                                                                                <FormControl>
+                                                                                    <Checkbox
+                                                                                        checked={field.value?.includes(day.value)}
+                                                                                        onCheckedChange={(checked) => {
+                                                                                            return checked
+                                                                                                ? field.onChange([...(field.value || []), day.value])
+                                                                                                : field.onChange(
+                                                                                                    field.value?.filter(
+                                                                                                        (value) => value !== day.value
+                                                                                                    )
+                                                                                                )
+                                                                                        }}
+                                                                                    />
+                                                                                </FormControl>
+                                                                                <FormLabel className="font-normal cursor-pointer">
+                                                                                    {day.label}
+                                                                                </FormLabel>
+                                                                            </FormItem>
+                                                                        )
+                                                                    }}
+                                                                />
+                                                            ))}
+                                                        </div>
+                                                        <FormMessage />
+                                                    </FormItem>
+                                                )}
+                                            />
+                                        </CardContent>
+                                    </Card>
+
                                     {/* Legal & Fiscal */}
                                     <Card>
                                         <CardHeader>
@@ -643,80 +733,7 @@ export default function NewEmployeePage() {
                                                     </FormItem>
                                                 )}
                                             />
-                                            <FormField
-                                                control={form.control}
-                                                name="allowTimeForTime"
-                                                render={({ field }) => (
-                                                    <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4">
-                                                        <FormControl>
-                                                            <Checkbox
-                                                                checked={field.value}
-                                                                onCheckedChange={field.onChange}
-                                                            />
-                                                        </FormControl>
-                                                        <div className="space-y-1 leading-none">
-                                                            <FormLabel className="flex items-center gap-2">
-                                                                <Clock className="h-4 w-4" />
-                                                                Permitir Tiempo por Tiempo
-                                                            </FormLabel>
-                                                            <FormDescription>
-                                                                Permite compensar tiempo extra trabajado en la bolsa de horas (solo RH puede modificar)
-                                                            </FormDescription>
-                                                        </div>
-                                                    </FormItem>
-                                                )}
-                                            />
 
-                                            <FormField
-                                                control={form.control}
-                                                name="homeOfficeDays"
-                                                render={() => (
-                                                    <FormItem className="md:col-span-2">
-                                                        <div className="mb-4">
-                                                            <FormLabel className="text-base">Días de Home Office Fijos</FormLabel>
-                                                            <FormDescription>
-                                                                Selecciona los días en que el empleado hace home office de manera regular.
-                                                            </FormDescription>
-                                                        </div>
-                                                        <div className="flex flex-wrap gap-4">
-                                                            {DAYS_OF_WEEK.map((day) => (
-                                                                <FormField
-                                                                    key={day.value}
-                                                                    control={form.control}
-                                                                    name="homeOfficeDays"
-                                                                    render={({ field }) => {
-                                                                        return (
-                                                                            <FormItem
-                                                                                key={day.value}
-                                                                                className="flex flex-row items-center space-x-2 space-y-0"
-                                                                            >
-                                                                                <FormControl>
-                                                                                    <Checkbox
-                                                                                        checked={field.value?.includes(day.value)}
-                                                                                        onCheckedChange={(checked) => {
-                                                                                            return checked
-                                                                                                ? field.onChange([...(field.value || []), day.value])
-                                                                                                : field.onChange(
-                                                                                                    field.value?.filter(
-                                                                                                        (value) => value !== day.value
-                                                                                                    )
-                                                                                                )
-                                                                                        }}
-                                                                                    />
-                                                                                </FormControl>
-                                                                                <FormLabel className="font-normal cursor-pointer">
-                                                                                    {day.label}
-                                                                                </FormLabel>
-                                                                            </FormItem>
-                                                                        )
-                                                                    }}
-                                                                />
-                                                            ))}
-                                                        </div>
-                                                        <FormMessage />
-                                                    </FormItem>
-                                                )}
-                                            />
                                         </CardContent>
                                     </Card>
 
