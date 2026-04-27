@@ -194,7 +194,7 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
       <Sidebar>
         <SidebarHeader className="p-4">
           <div className="flex items-center gap-2">
-            <h2 className="text-lg font-bold tracking-tight">STUFFACTORY</h2>
+            <h2 className="text-xl font-bold tracking-tight">STUFFACTORY</h2>
           </div>
         </SidebarHeader>
         <SidebarContent>

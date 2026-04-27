@@ -160,9 +160,11 @@ export default function EditEmployeePage({ params }: { params: Promise<{ id: str
                     const { storage } = initializeFirebase();
                     const avatarRef = ref(storage, `employees/${employeeId}/avatar`);
                     await uploadBytes(avatarRef, avatarFile);
-                    newAvatarUrl = await getDownloadURL(avatarRef);
-                } catch (uploadError) {
+                    const url = await getDownloadURL(avatarRef);
+                    newAvatarUrl = `${url}&t=${Date.now()}`;
+                } catch (uploadError: any) {
                     console.error('Error subiendo foto:', uploadError);
+                    throw new Error('No se pudo subir la foto de perfil. Verifica tus permisos.');
                 }
             }
 
@@ -217,11 +219,11 @@ export default function EditEmployeePage({ params }: { params: Promise<{ id: str
 
             setHasChanges(false);
             router.push(`/hcm/employees/${employeeId}`);
-        } catch (error) {
+        } catch (error: any) {
             console.error('Error updating employee:', error);
             toast({
                 title: 'Error',
-                description: 'No se pudieron guardar los cambios.',
+                description: error.message || 'No se pudieron guardar los cambios.',
                 variant: 'destructive',
             });
         } finally {

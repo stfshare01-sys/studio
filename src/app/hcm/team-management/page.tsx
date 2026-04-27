@@ -172,7 +172,6 @@ function TeamManagementContent() {
     // Loading states
     const [loadingData, setLoadingData] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
-    const [periodClosed, setPeriodClosed] = useState(false);
     const [isPeriodClosed, setIsPeriodClosed] = useState(false);
     const [activeLocks, setActiveLocks] = useState<PayrollPeriodLock[]>([]);
     const [loadingPeriodStatus, setLoadingPeriodStatus] = useState(false);
@@ -488,16 +487,23 @@ function TeamManagementContent() {
 
                 await loadImportBatches();
 
-                // Load ONLY the overview data and basic shifts to optimize initial load
-                // Other tabs will be loaded on demand when clicked
+                // Load all tab data in parallel so header counters update correctly
                 const [
                     monthlyStatsResult,
                     dailyStatsResult,
-                    shiftsResult
+                    shiftsResult,
+                    tardinessResult,
+                    departuresResult,
+                    punchesResult,
+                    otResult
                 ] = await Promise.all([
                     getTeamMonthlyStats(managerIdToUse, ...(dateFilter !== 'all' ? dateFilter.split('-').map(Number) as [number, number] : [new Date().getFullYear(), new Date().getMonth() + 1]), hierarchyDepth),
                     getTeamDailyStats(managerIdToUse, selectedDate, hierarchyDepth),
-                    getAvailableShifts() // Load globally for the Dialog dropdowns
+                    getAvailableShifts(), // Load globally for the Dialog dropdowns
+                    getTeamTardiness(managerIdToUse, dateFilter, hierarchyDepth),
+                    getTeamEarlyDepartures(managerIdToUse, dateFilter, hierarchyDepth),
+                    getTeamMissingPunches(managerIdToUse, dateFilter, hierarchyDepth),
+                    hasPermission(permissions, 'hcm_team_overtime', 'read') ? getTeamOvertimeRequests(managerIdToUse, 'all', hierarchyDepth) : Promise.resolve({ success: true, requests: [] })
                 ]);
 
                 // Set initial overview data states
@@ -509,6 +515,18 @@ function TeamManagementContent() {
                 }
                 if (shiftsResult.success && shiftsResult.shifts) {
                     setShifts(shiftsResult.shifts);
+                }
+                if (tardinessResult.success && tardinessResult.records) {
+                    setTardiness(tardinessResult.records);
+                }
+                if (departuresResult.success && departuresResult.records) {
+                    setEarlyDepartures(departuresResult.records);
+                }
+                if (punchesResult.success && punchesResult.records) {
+                    setMissingPunches(punchesResult.records);
+                }
+                if (otResult.success && otResult.requests) {
+                    setOvertimeRequests(otResult.requests);
                 }
 
                 // If activeTab is not overview, load it
@@ -621,13 +639,20 @@ function TeamManagementContent() {
                         parsedMonth = parts[1];
                     }
 
-                    // Reload ONLY the overview data initially
                     const [
                         monthlyStatsResult,
-                        dailyStatsResult
+                        dailyStatsResult,
+                        tardinessResult,
+                        departuresResult,
+                        punchesResult,
+                        otResult
                     ] = await Promise.all([
                         getTeamMonthlyStats(selectedManagerId, parsedYear, parsedMonth, hierarchyDepth),
-                        getTeamDailyStats(selectedManagerId, selectedDate, hierarchyDepth)
+                        getTeamDailyStats(selectedManagerId, selectedDate, hierarchyDepth),
+                        getTeamTardiness(selectedManagerId, dateFilter, hierarchyDepth),
+                        getTeamEarlyDepartures(selectedManagerId, dateFilter, hierarchyDepth),
+                        getTeamMissingPunches(selectedManagerId, dateFilter, hierarchyDepth),
+                        hasPermission(permissions, 'hcm_team_overtime', 'read') ? getTeamOvertimeRequests(selectedManagerId, 'all', hierarchyDepth) : Promise.resolve({ success: true, requests: [] })
                     ]);
 
                     if (monthlyStatsResult.success && monthlyStatsResult.stats) {
@@ -635,6 +660,18 @@ function TeamManagementContent() {
                     }
                     if (dailyStatsResult.success && dailyStatsResult.stats) {
                         setDailyStats(dailyStatsResult.stats);
+                    }
+                    if (tardinessResult.success && tardinessResult.records) {
+                        setTardiness(tardinessResult.records);
+                    }
+                    if (departuresResult.success && departuresResult.records) {
+                        setEarlyDepartures(departuresResult.records);
+                    }
+                    if (punchesResult.success && punchesResult.records) {
+                        setMissingPunches(punchesResult.records);
+                    }
+                    if (otResult.success && otResult.requests) {
+                        setOvertimeRequests(otResult.requests);
                     }
 
                     // If activeTab is not overview, load it
@@ -997,46 +1034,6 @@ function TeamManagementContent() {
 
 
 
-    // Notificación de revisión completada (sin cerrar período - eso lo hace CH desde Consolidación)
-    const handleMarkReviewComplete = async () => {
-        if (!user || !firestore) return;
-
-        try {
-            const periodStart = format(startOfMonth(new Date(`${selectedMonth}-01`)), 'yyyy-MM-dd');
-            const periodEnd = format(endOfMonth(new Date(`${selectedMonth}-01`)), 'yyyy-MM-dd');
-
-            await setDoc(doc(firestore, 'manager_review_status', `${user.uid}_${selectedMonth}`), {
-                managerId: user.uid,
-                managerName: user.fullName || user.email,
-                period: selectedMonth,
-                periodStart,
-                periodEnd,
-                reviewCompletedAt: new Date().toISOString(),
-                pendingAtCompletion: {
-                    tardiness: pendingTardiness.length,
-                    departures: pendingDepartures.length,
-                    overtime: pendingOvertime.length,
-                    missingPunches: pendingMissingPunches.length
-                }
-            });
-
-            setPeriodClosed(true);
-
-            toast({
-                title: "Revisión marcada como completa",
-                description: "Capital Humano ha sido notificado de que terminaste tu revisión de infracciones.",
-                variant: "default",
-            });
-
-        } catch (error) {
-            console.error('Error marking review complete:', error);
-            toast({
-                title: "Error",
-                description: error instanceof Error ? error.message : "No se pudo completar la acción.",
-                variant: "destructive"
-            });
-        }
-    };
 
     // Missing Punches Handlers
     const handleJustifyMissingPunch = async () => {
@@ -2489,56 +2486,13 @@ function TeamManagementContent() {
                     )}
                 </Tabs>
 
-                {/* Notificación de Revisión Completa */}
+                {/* Notificación de Cierre de Período */}
                 <div className="mt-8 border-t pt-6">
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Revisión de Infracciones</CardTitle>
-                            <CardDescription>
-                                Notifica a Capital Humano que has completado la revisión de infracciones del período {selectedMonth}
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="space-y-4">
-                                <div>
-                                    <p className="text-sm text-muted-foreground mb-2">
-                                        Al marcar como completa, notificas a Capital Humano que has terminado de revisar las infracciones de tu equipo.
-                                    </p>
-                                    <p className="text-sm text-muted-foreground">
-                                        El cierre formal del período lo realizará Capital Humano desde la Consolidación de Asistencia. Las infracciones que no justifiques se procesarán automáticamente al momento del cierre.
-                                    </p>
-                                </div>
-                                <div className="flex justify-center pt-2">
-                                    <Button
-                                        onClick={handleMarkReviewComplete}
-                                        disabled={periodClosed || isPeriodClosed}
-                                        variant={periodClosed ? "outline" : "default"}
-                                        size="lg"
-                                        className="min-w-[280px]"
-                                    >
-                                        {periodClosed ? (
-                                            <>
-                                                <CheckCircle2 className="mr-2 h-4 w-4" />
-                                                Revisión Completa
-                                            </>
-                                        ) : (
-                                            <>
-                                                <Check className="mr-2 h-4 w-4" />
-                                                Marcar Revisión como Completa
-                                            </>
-                                        )}
-                                    </Button>
-                                </div>
-                            </div>
-                            {(pendingTardiness.length + pendingDepartures.length + pendingOvertime.length + pendingMissingPunches.length) > 0 && (
-                                <div className="mt-4 p-3 bg-orange-50 border border-orange-200 rounded-lg">
-                                    <p className="text-sm text-orange-800">
-                                        Tienes {pendingTardiness.length + pendingDepartures.length + pendingOvertime.length + pendingMissingPunches.length} infracciones pendientes. Si no las justificas, se procesarán automáticamente cuando Capital Humano cierre el período.
-                                    </p>
-                                </div>
-                            )}
-                        </CardContent>
-                    </Card>
+                    <div className="p-4 bg-muted/50 rounded-lg">
+                        <p className="text-sm text-muted-foreground text-center">
+                            El cierre formal del período lo realizará Capital Humano desde la Consolidación de Asistencia. Las infracciones que no justifiques se procesarán automáticamente al momento del cierre.
+                        </p>
+                    </div>
                 </div>
             </div>
 

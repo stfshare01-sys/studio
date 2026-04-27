@@ -11,15 +11,22 @@ interface AvatarUploadProps {
 export function AvatarUpload({ value, onChange }: AvatarUploadProps) {
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
+    React.useEffect(() => {
+        if (value) {
+            const url = URL.createObjectURL(value);
+            setPreviewUrl(url);
+            return () => URL.revokeObjectURL(url);
+        } else {
+            setPreviewUrl(null);
+        }
+    }, [value]);
+
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
             onChange?.(file);
-            const url = URL.createObjectURL(file);
-            setPreviewUrl(url);
         } else {
             onChange?.(null);
-            setPreviewUrl(null);
         }
     };
 
