@@ -2057,7 +2057,7 @@ interface CreateSystemUserResponse {
  * @requires Role: Admin or HRManager
  */
 export const createSystemUser = onCall<CreateSystemUserRequest>(
-    { region: 'us-central1' },
+    { region: 'us-central1', invoker: 'public' },
     async (request: CallableRequest<CreateSystemUserRequest>): Promise<CreateSystemUserResponse> => {
         // Verify caller has permission
         await verifyRole(request.auth?.uid, HCM_ROLES, 'crear usuario del sistema');

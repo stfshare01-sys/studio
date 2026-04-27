@@ -244,7 +244,7 @@ export default function NewEmployeePage() {
             console.error(error);
             toast({
                 title: "Error",
-                description: "Ocurrió un error inesperado.",
+                description: error instanceof Error ? error.message : "Ocurrió un error inesperado.",
                 variant: "destructive",
             });
         } finally {
