@@ -17,7 +17,8 @@ export const incidenceTypeSchema = z.enum([
     'civic_duty',
     'half_day_family',
     'unjustified_absence',
-    'abandono_empleo'
+    'abandono_empleo',
+    'home_office'
 ], {
     errorMap: () => ({ message: 'Selecciona un tipo de incidencia válido' })
 });

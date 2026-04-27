@@ -1289,7 +1289,8 @@ export function determineDayStatus(dayData: DayPunchData): DayStatusResult {
             adoption: { code: '1PCS', name: 'Adopción' },
             unpaid_leave: { code: 'PSGS', name: 'Permiso sin goce' },
             civic_duty: { code: '1PCS', name: 'Deber Cívico' },
-            half_day_family: { code: '1PCS', name: 'Medio día' }
+            half_day_family: { code: '1PCS', name: 'Medio día' },
+            home_office: { code: 'ASI', name: 'Home Office' }
         };
 
         const incidenceInfo = incidenceCodeMap[dayData.incidenceType];

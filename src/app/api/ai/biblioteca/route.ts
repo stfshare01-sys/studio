@@ -17,15 +17,26 @@ import { getFirestore } from 'firebase-admin/firestore';
 import { initializeApp, getApps, cert } from 'firebase-admin/app';
 import { bibliotecaRagFlow } from '@/ai/flows/biblioteca-rag';
 
+// Forzar ruta dinámica para evitar que Next.js intente pre-renderizarla en el build
+export const dynamic = 'force-dynamic';
+
 // Inicializar Firebase Admin si no está inicializado
 if (!getApps().length) {
-  initializeApp({
-    credential: cert({
-      projectId: process.env.FIREBASE_PROJECT_ID,
-      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-    }),
-  });
+  const projectId = process.env.FIREBASE_PROJECT_ID;
+  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+  const privateKey = process.env.FIREBASE_PRIVATE_KEY;
+
+  if (projectId && clientEmail && privateKey) {
+    initializeApp({
+      credential: cert({
+        projectId,
+        clientEmail,
+        privateKey: privateKey.replace(/\\n/g, '\n'),
+      }),
+    });
+  } else {
+    console.warn('[Firebase Admin] Skipping initialization due to missing credentials (likely build phase)');
+  }
 }
 
 export async function POST(req: NextRequest) {

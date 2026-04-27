@@ -667,7 +667,7 @@ export type ExtendedUserRole = UserRole | 'HRManager' | 'Manager';
 
 export type EmploymentType = 'full_time' | 'part_time' | 'contractor' | 'intern';
 export type ShiftType = 'diurnal' | 'nocturnal' | 'mixed';
-export type IncidenceType = 'vacation' | 'sick_leave' | 'personal_leave' | 'maternity' | 'paternity' | 'bereavement' | 'marriage' | 'adoption' | 'unpaid_leave' | 'civic_duty' | 'half_day_family' | 'unjustified_absence' | 'abandono_empleo';
+export type IncidenceType = 'vacation' | 'sick_leave' | 'personal_leave' | 'maternity' | 'paternity' | 'bereavement' | 'marriage' | 'adoption' | 'unpaid_leave' | 'civic_duty' | 'half_day_family' | 'unjustified_absence' | 'abandono_empleo' | 'home_office';
 export type IncidenceStatus = 'pending' | 'approved' | 'rejected' | 'cancelled' | 'unjustified' | 'made_up';
 export type OnboardingPhase = 'day_0' | 'day_30' | 'day_60' | 'day_90' | 'completed';
 
