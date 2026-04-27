@@ -66,7 +66,7 @@ type NavGroup = {
 
 const ALL_NAV_ITEMS: NavItem[] = [
   { href: "/", icon: LayoutDashboard, label: "Panel", module: "dashboard", exact: true },
-  { href: "/tasks", icon: CheckSquare, label: "Buzón", module: "requests" },
+  // { href: "/tasks", icon: CheckSquare, label: "Buzón", module: "requests" }, // Oculto temporalmente
   { href: "/hcm", icon: Briefcase, label: "Capital Humano", module: "hcm_employees" },
   { href: "/reports", icon: BarChart3, label: "Informes", module: "reports" },
   { href: "/process-mining", icon: Activity, label: "Minería de Procesos", module: "process_mining" },
@@ -85,7 +85,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Principal",
     items: [
       { href: "/", icon: LayoutDashboard, label: "Panel", module: "dashboard", exact: true },
-      { href: "/tasks", icon: CheckSquare, label: "Buzón", module: "requests" },
+      // { href: "/tasks", icon: CheckSquare, label: "Buzón", module: "requests" }, // Oculto temporalmente
     ],
   },
   {

@@ -22,7 +22,8 @@ interface CreateEmployeePayload {
     shiftId?: string;
     hireDate: string;
     managerId?: string;
-    rfc_curp?: string;
+    rfc?: string;
+    curp?: string;
     nss?: string;
     clabe?: string;
     costCenter?: string;
@@ -66,7 +67,8 @@ export async function createEmployee(
         if (payload.managerId) employeeData.directManagerId = payload.managerId;
         if (payload.positionId) employeeData.positionId = payload.positionId;
         if (payload.avatarUrl) employeeData.avatarUrl = payload.avatarUrl;
-        if (payload.rfc_curp) employeeData.rfc_curp = payload.rfc_curp;
+        if (payload.rfc) employeeData.rfc = payload.rfc;
+        if (payload.curp) employeeData.curp = payload.curp;
         if (payload.nss) employeeData.nss = payload.nss;
         if (payload.clabe) employeeData.clabe = payload.clabe;
         if (payload.costCenter) employeeData.costCenter = payload.costCenter;

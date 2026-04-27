@@ -217,7 +217,8 @@ export default function NewEmployeePage() {
                     ? data.hireDate.toISOString().split('T')[0]
                     : String(data.hireDate).split('T')[0],
                 managerId: data.managerId || undefined,
-                rfc_curp: `${data.rfc || ''} ${data.curp || ''}`.trim() || undefined,
+                rfc: data.rfc || undefined,
+                curp: data.curp || undefined,
                 nss: data.nss || undefined,
                 allowTimeForTime: data.allowTimeForTime || false,
                 employeeId: data.employeeId || undefined,
