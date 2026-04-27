@@ -508,7 +508,7 @@ export default function AttendancePage() {
                             )}
 
                             <div className="flex justify-end">
-                                <Button variant="outline" onClick={downloadTemplate}>
+                                <Button variant="default" className="button-aura" onClick={downloadTemplate}>
                                     <FileDown className="mr-2 h-4 w-4" />
                                     Descargar Plantilla
                                 </Button>

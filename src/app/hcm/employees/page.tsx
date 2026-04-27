@@ -166,18 +166,18 @@ export default function EmployeesPage() {
                     </div>
                     <div className="flex gap-2">
                         {hasHRPermissions && (
-                            <Button variant="outline" onClick={handleExportExcel} disabled={isLoading || filteredEmployees.length === 0}>
+                            <Button variant="default" className="button-aura" onClick={handleExportExcel} disabled={isLoading || filteredEmployees.length === 0}>
                                 <Download className="mr-2 h-4 w-4" />
                                 Exportar
                             </Button>
                         )}
-                        <Button asChild variant="outline">
+                        <Button asChild variant="default" className="button-aura">
                             <Link href="/hcm/employees/import">
                                 <Upload className="mr-2 h-4 w-4" />
                                 Importar
                             </Link>
                         </Button>
-                        <Button asChild>
+                        <Button asChild variant="default" className="button-aura">
                             <Link href="/hcm/employees/new">
                                 <UserPlus className="mr-2 h-4 w-4" />
                                 Nuevo Empleado
@@ -200,8 +200,8 @@ export default function EmployeesPage() {
                                     />
                                 </div>
                                 <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
-                                    <SelectTrigger className="w-full md:w-[200px]">
-                                        <Building2 className="mr-2 h-4 w-4" />
+                                    <SelectTrigger className="w-full md:w-[200px] bg-blue-600 text-white border-none">
+                                        <Building2 className="mr-2 h-4 w-4 text-white" />
                                         <SelectValue placeholder="Departamento" />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -212,7 +212,7 @@ export default function EmployeesPage() {
                                     </SelectContent>
                                 </Select>
                                 <Select value={statusFilter} onValueChange={setStatusFilter}>
-                                    <SelectTrigger className="w-full md:w-[150px]">
+                                    <SelectTrigger className="w-full md:w-[150px] bg-blue-600 text-white border-none">
                                         <SelectValue placeholder="Estado" />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -310,7 +310,7 @@ export default function EmployeesPage() {
                                                                 Activo
                                                             </Badge>
                                                         ) : (
-                                                            <Badge variant="secondary">
+                                                            <Badge variant="default" className="bg-blue-600 text-white hover:bg-blue-700">
                                                                 Inactivo
                                                             </Badge>
                                                         )}

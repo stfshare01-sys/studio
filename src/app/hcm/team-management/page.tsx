@@ -1406,7 +1406,7 @@ function TeamManagementContent() {
                         Si recientemente asignaste jefes directos a empleados y no aparecen aquí,
                         es posible que los datos necesiten ser migrados.
                     </p>
-                    <Button variant="outline" onClick={handleMigration} disabled={refreshing}>
+                    <Button variant="default" className="button-aura" onClick={handleMigration} disabled={refreshing}>
                         {refreshing ? (
                             <>
                                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -1458,7 +1458,7 @@ function TeamManagementContent() {
                             {employees.length} empleados
                         </Badge>
 
-                        <Button variant="outline" onClick={() => loadTabData(activeTab)} disabled={refreshing}>
+                        <Button variant="default" className="bg-blue-600 hover:bg-blue-700 text-white" onClick={() => loadTabData(activeTab)} disabled={refreshing}>
                             <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
                             Actualizar
                         </Button>

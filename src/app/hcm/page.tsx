@@ -178,7 +178,7 @@ export default function HCMPage() {
                             Gestión de personal, permisos y pre-nómina
                         </p>
                     </div>
-                    <div className="header-action-bar">
+                    <div className="header-action-bar flex flex-wrap gap-2">
                         {hasHRPermissions && (
                             <Button asChild variant="default" className="button-aura px-6">
                                 <Link href="/hcm/command-center">
@@ -187,8 +187,16 @@ export default function HCMPage() {
                                 </Link>
                             </Button>
                         )}
+                        {canRead('hcm_prenomina') && (
+                            <Button asChild variant="default" className="button-aura px-6">
+                                <Link href="/hcm/prenomina">
+                                    <Calculator className="mr-2 h-4 w-4" />
+                                    Pre-Nómina
+                                </Link>
+                            </Button>
+                        )}
                         {canWrite('hcm_attendance') && (
-                            <Button asChild variant="outline" className="rounded-full border-primary/20 hover:bg-primary/10">
+                            <Button asChild variant="default" className="button-aura px-6">
                                 <Link href="/hcm/attendance">
                                     <Upload className="mr-2 h-4 w-4" />
                                     Importar Asistencia
@@ -196,7 +204,7 @@ export default function HCMPage() {
                             </Button>
                         )}
                         {canWrite('hcm_employees') && (
-                            <Button asChild variant="outline" className="rounded-full border-primary/20 hover:bg-primary/10">
+                            <Button asChild variant="default" className="button-aura px-6">
                                 <Link href="/hcm/employees/new">
                                     <UserPlus className="mr-2 h-4 w-4" />
                                     Nuevo Empleado
@@ -242,53 +250,12 @@ export default function HCMPage() {
                             </Card>
                         )}
 
-                        {hasHRPermissions && (
-                            <Card className="bento-item">
-                                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                                    <CardTitle className="text-sm font-medium">Última Importación</CardTitle>
-                                    <FileSpreadsheet className="h-4 w-4 text-muted-foreground" />
-                                </CardHeader>
-                                <CardContent>
-                                    <div className="text-2xl font-bold">
-                                        {isLoading ? '...' : recentImports?.[0]?.recordCount ?? 0}
-                                    </div>
-                                    <p className="text-xs text-muted-foreground">
-                                        {recentImports?.[0]?.status === 'completed' ? 'Completada' :
-                                            recentImports?.[0]?.status === 'processing' ? 'Procesando...' :
-                                                recentImports?.[0]?.status ?? 'Sin importaciones'}
-                                    </p>
-                                </CardContent>
-                            </Card>
-                        )}
 
-                        {canRead('hcm_prenomina') && (
-                            <Card className="bento-item">
-                                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                                    <CardTitle className="text-sm font-medium">Pre-Nómina</CardTitle>
-                                    <Calculator className="h-4 w-4 text-muted-foreground" />
-                                </CardHeader>
-                                <CardContent>
-                                    <div className="text-2xl font-bold">
-                                        -
-                                    </div>
-                                    <p className="text-xs text-muted-foreground">
-                                        <Link href="/hcm/prenomina" className="text-primary hover:underline">
-                                            Ir a consolidación →
-                                        </Link>
-                                    </p>
-                                </CardContent>
-                            </Card>
-                        )}
                     </div>
 
                     {/* Main Content Tabs */}
-                    <Tabs defaultValue="overview" className="space-y-4">
-                        <TabsList>
-                            <TabsTrigger value="overview">Resumen</TabsTrigger>
-                            </TabsList>
-
-                        <TabsContent value="overview" className="space-y-4">
-                            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 bento-grid">
+                    <div className="space-y-4">
+                        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 bento-grid">
                                 {/* Quick Actions */}
                                 <Card className="bento-item">
                                     <CardHeader>
@@ -297,7 +264,7 @@ export default function HCMPage() {
                                     </CardHeader>
                                     <CardContent className="grid gap-2">
                                         {canRead('hcm_employees') && (
-                                            <Button asChild variant="outline" className="justify-start">
+                                            <Button asChild variant="default" className="justify-start bg-blue-600 hover:bg-blue-700 text-white">
                                                 <Link href="/hcm/employees">
                                                     <Users className="mr-2 h-4 w-4" />
                                                     Ver Directorio de Empleados
@@ -305,7 +272,7 @@ export default function HCMPage() {
                                             </Button>
                                         )}
                                         {canWrite('hcm_employees') && (
-                                            <Button asChild variant="outline" className="justify-start">
+                                            <Button asChild variant="default" className="justify-start bg-blue-600 hover:bg-blue-700 text-white">
                                                 <Link href="/hcm/employees/import">
                                                     <Upload className="mr-2 h-4 w-4" />
                                                     Importar Empleados
@@ -313,7 +280,7 @@ export default function HCMPage() {
                                             </Button>
                                         )}
                                         {canRead('hcm_incidences') && (
-                                            <Button asChild variant="outline" className="justify-start">
+                                            <Button asChild variant="default" className="justify-start bg-blue-600 hover:bg-blue-700 text-white">
                                                 <Link href="/hcm/incidences">
                                                     <Calendar className="mr-2 h-4 w-4" />
                                                     Gestionar Permisos
@@ -321,23 +288,16 @@ export default function HCMPage() {
                                             </Button>
                                         )}
                                         {hasDirectReports && (
-                                            <Button asChild variant="outline" className="justify-start">
+                                            <Button asChild variant="default" className="justify-start bg-blue-600 hover:bg-blue-700 text-white">
                                                 <Link href="/hcm/team-management">
                                                     <Users2 className="mr-2 h-4 w-4" />
                                                     Gestión de Equipo
                                                 </Link>
                                             </Button>
                                         )}
-                                        {canRead('hcm_attendance') && (
-                                            <Button asChild variant="outline" className="justify-start">
-                                                <Link href="/hcm/attendance">
-                                                    <Clock className="mr-2 h-4 w-4" />
-                                                    Revisar Asistencia
-                                                </Link>
-                                            </Button>
-                                        )}
+
                                         {canRead('hcm_org_chart') && (
-                                            <Button asChild variant="outline" className="justify-start">
+                                            <Button asChild variant="default" className="justify-start bg-blue-600 hover:bg-blue-700 text-white">
                                                 <Link href="/hcm/org-chart">
                                                     <TrendingUp className="mr-2 h-4 w-4" />
                                                     Ver Organigrama
@@ -345,7 +305,7 @@ export default function HCMPage() {
                                             </Button>
                                         )}
                                         {canRead('hcm_talent_grid') && (
-                                            <Button asChild variant="outline" className="justify-start">
+                                            <Button asChild variant="default" className="justify-start bg-blue-600 hover:bg-blue-700 text-white">
                                                 <Link href="/hcm/talent-grid">
                                                     <Users className="mr-2 h-4 w-4" />
                                                     Matriz 9-Box
@@ -353,21 +313,14 @@ export default function HCMPage() {
                                             </Button>
                                         )}
                                         {canRead('hcm_calendar') && (
-                                            <Button asChild variant="outline" className="justify-start">
+                                            <Button asChild variant="default" className="justify-start bg-blue-600 hover:bg-blue-700 text-white">
                                                 <Link href="/hcm/calendar">
                                                     <Calendar className="mr-2 h-4 w-4" />
                                                     Calendario del Equipo
                                                 </Link>
                                             </Button>
                                         )}
-                                        {canRead('hcm_prenomina') && (
-                                            <Button asChild variant="outline" className="justify-start">
-                                                <Link href="/hcm/prenomina">
-                                                    <Calculator className="mr-2 h-4 w-4" />
-                                                    Consolidación de Asistencia
-                                                </Link>
-                                            </Button>
-                                        )}
+
                                     </CardContent>
                                 </Card>
 
@@ -382,37 +335,37 @@ export default function HCMPage() {
                                             <CardDescription>Configuracion del sistema HCM</CardDescription>
                                         </CardHeader>
                                         <CardContent className="grid gap-2">
-                                            <Button asChild variant="outline" className="justify-start">
+                                            <Button asChild variant="default" className="justify-start bg-blue-600 hover:bg-blue-700 text-white">
                                                 <Link href="/hcm/admin/locations">
                                                     <MapPin className="mr-2 h-4 w-4" />
                                                     Ubicaciones
                                                 </Link>
                                             </Button>
-                                            <Button asChild variant="outline" className="justify-start">
+                                            <Button asChild variant="default" className="justify-start bg-blue-600 hover:bg-blue-700 text-white">
                                                 <Link href="/hcm/admin/shifts">
                                                     <Clock className="mr-2 h-4 w-4" />
                                                     Turnos
                                                 </Link>
                                             </Button>
-                                            <Button asChild variant="outline" className="justify-start">
+                                            <Button asChild variant="default" className="justify-start bg-blue-600 hover:bg-blue-700 text-white">
                                                 <Link href="/hcm/admin/positions">
                                                     <Briefcase className="mr-2 h-4 w-4" />
                                                     Puestos
                                                 </Link>
                                             </Button>
-                                            <Button asChild variant="outline" className="justify-start">
+                                            <Button asChild variant="default" className="justify-start bg-blue-600 hover:bg-blue-700 text-white">
                                                 <Link href="/hcm/admin/departments">
                                                     <Building2 className="mr-2 h-4 w-4" />
                                                     Departamentos
                                                 </Link>
                                             </Button>
-                                            <Button asChild variant="outline" className="justify-start">
+                                            <Button asChild variant="default" className="justify-start bg-blue-600 hover:bg-blue-700 text-white">
                                                 <Link href="/hcm/admin/vacation-management">
                                                     <Calendar className="mr-2 h-4 w-4" />
                                                     Gestión de Vacaciones
                                                 </Link>
                                             </Button>
-                                            <Button asChild variant="outline" className="justify-start">
+                                            <Button asChild variant="default" className="justify-start bg-blue-600 hover:bg-blue-700 text-white">
                                                 <Link href="/hcm/admin/holidays">
                                                     <Calendar className="mr-2 h-4 w-4" />
                                                     Calendarios de Días Festivos
@@ -461,37 +414,8 @@ export default function HCMPage() {
                                     </Card>
                                 )}
 
-                                {/* Alerts */}
-                                {hasHRPermissions && (
-                                    <Card className="bento-item">
-                                        <CardHeader>
-                                            <CardTitle>Alertas</CardTitle>
-                                            <CardDescription>Notificaciones importantes</CardDescription>
-                                        </CardHeader>
-                                        <CardContent>
-                                            {pendingCount > 0 ? (
-                                                <div className="flex items-start gap-2 p-3 bg-yellow-50 dark:bg-yellow-950/20 rounded-lg">
-                                                    <AlertTriangle className="h-5 w-5 text-yellow-500 mt-0.5" />
-                                                    <div>
-                                                        <p className="text-sm font-medium">Permisos pendientes</p>
-                                                        <p className="text-xs text-muted-foreground">
-                                                            Hay {pendingCount} solicitudes esperando aprobación
-                                                        </p>
-                                                    </div>
-                                                </div>
-                                            ) : (
-                                                <p className="text-sm text-muted-foreground">
-                                                    No hay alertas activas
-                                                </p>
-                                            )}
-                                        </CardContent>
-                                    </Card>
-                                )}
-                            </div>
-                        </TabsContent>
-
-
-                    </Tabs>
+                        </div>
+                    </div>
                 </main>
             </div >
         </SiteLayout >

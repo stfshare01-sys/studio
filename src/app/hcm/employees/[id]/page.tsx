@@ -406,6 +406,17 @@ export default function EmployeeDetailPage({ params }: { params: Promise<{ id: s
                                                     <span>{manager?.fullName || employee.directManagerId || 'Sin asignar'}</span>
                                                 </div>
                                             </div>
+                                            <div>
+                                                <p className="text-sm font-medium text-muted-foreground mb-1">Días de Home Office</p>
+                                                <div className="flex items-center gap-2">
+                                                    <Building2 className="h-4 w-4 text-muted-foreground" />
+                                                    <span>
+                                                        {!employee.homeOfficeDays || employee.homeOfficeDays.length === 0 
+                                                            ? 'No asignado' 
+                                                            : employee.homeOfficeDays.map(d => ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'][d]).join(', ')}
+                                                    </span>
+                                                </div>
+                                            </div>
                                         </div>
                                     </CardContent>
                                 </Card>

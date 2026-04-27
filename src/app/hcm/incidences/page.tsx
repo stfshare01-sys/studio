@@ -258,7 +258,7 @@ export default function IncidencesPage() {
             case 'rejected':
                 return <Badge variant="destructive">Rechazada</Badge>;
             case 'cancelled':
-                return <Badge variant="secondary">Cancelada</Badge>;
+                return <Badge variant="default" className="bg-blue-600 text-white">Cancelada</Badge>;
             default:
                 return <Badge className="bg-yellow-100 text-yellow-800">Pendiente</Badge>;
         }
@@ -415,7 +415,7 @@ export default function IncidencesPage() {
                             </p>
                         </div>
                     </div>
-                    <Button onClick={() => setIsCreateDialogOpen(true)}>
+                    <Button variant="default" className="button-aura" onClick={() => setIsCreateDialogOpen(true)}>
                         <Plus className="mr-2 h-4 w-4" />
                         Nueva Solicitud
                     </Button>

@@ -46,6 +46,16 @@ import {
 
 import type { Employee, Location, Position, CustomShift, User as UserType, Department } from '@/lib/types';
 
+const DAYS_OF_WEEK = [
+    { label: 'Lunes', value: 1 },
+    { label: 'Martes', value: 2 },
+    { label: 'Miércoles', value: 3 },
+    { label: 'Jueves', value: 4 },
+    { label: 'Viernes', value: 5 },
+    { label: 'Sábado', value: 6 },
+    { label: 'Domingo', value: 0 },
+];
+
 export default function EditEmployeePage({ params }: { params: Promise<{ id: string }> }) {
     const router = useRouter();
     const { toast } = useToast();
@@ -126,6 +136,7 @@ export default function EditEmployeePage({ params }: { params: Promise<{ id: str
                 allowTimeForTime: employee.allowTimeForTime || false,
                 employeeId: employee.employeeId,
                 legalEntity: employee.legalEntity,
+                homeOfficeDays: employee.homeOfficeDays || [],
             });
         }
     }, [employee]);
@@ -592,25 +603,71 @@ export default function EditEmployeePage({ params }: { params: Promise<{ id: str
                                         className="font-mono"
                                     />
                                 </div>
-                                <div className="space-y-4 md:col-span-2">
-                                    <Separator />
-                                    <div className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4">
-                                        <Checkbox
-                                            id="allowTimeForTime"
-                                            checked={formData.allowTimeForTime || false}
-                                            onCheckedChange={(checked) => handleInputChange('allowTimeForTime', checked)}
-                                        />
-                                        <div className="space-y-1 leading-none">
-                                            <Label htmlFor="allowTimeForTime" className="flex items-center gap-2 cursor-pointer">
-                                                <Clock className="h-4 w-4" />
-                                                Permitir Tiempo por Tiempo
-                                            </Label>
-                                            <p className="text-sm text-muted-foreground">
-                                                Permite compensar tiempo extra trabajado en la bolsa de horas (solo RH puede modificar)
-                                            </p>
-                                        </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    {/* Configuración de Asistencia */}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                                <Clock className="h-5 w-5" />
+                                Configuración de Asistencia
+                            </CardTitle>
+                            <CardDescription>Configuración de horario y tiempo extra</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4">
+                                    <Checkbox
+                                        id="allowTimeForTime"
+                                        checked={formData.allowTimeForTime || false}
+                                        onCheckedChange={(checked) => handleInputChange('allowTimeForTime', checked)}
+                                    />
+                                    <div className="space-y-1 leading-none">
+                                        <Label htmlFor="allowTimeForTime" className="flex items-center gap-2 cursor-pointer">
+                                            <Clock className="h-4 w-4" />
+                                            Permitir Tiempo por Tiempo
+                                        </Label>
+                                        <p className="text-sm text-muted-foreground mt-2">
+                                            Permite compensar tiempo extra trabajado en la bolsa de horas (solo RH puede modificar)
+                                        </p>
                                     </div>
                                 </div>
+
+                                <div className="flex flex-col space-y-3 rounded-md border p-4">
+                                    <div className="mb-2">
+                                        <Label className="text-base flex items-center gap-2">
+                                            <Building2 className="h-4 w-4" />
+                                            Días de Home Office Fijos
+                                        </Label>
+                                        <p className="text-sm text-muted-foreground mt-1">
+                                            Selecciona los días regulares de home office. El sistema registrará la asistencia automáticamente.
+                                        </p>
+                                    </div>
+                                    <div className="flex flex-wrap gap-4">
+                                        {DAYS_OF_WEEK.map((day) => (
+                                            <div key={day.value} className="flex items-center space-x-2">
+                                                <Checkbox
+                                                    id={`homeOfficeDay-${day.value}`}
+                                                    checked={(formData.homeOfficeDays || []).includes(day.value)}
+                                                    onCheckedChange={(checked) => {
+                                                        const currentDays = formData.homeOfficeDays || [];
+                                                        if (checked) {
+                                                            handleInputChange('homeOfficeDays', [...currentDays, day.value]);
+                                                        } else {
+                                                            handleInputChange('homeOfficeDays', currentDays.filter(v => v !== day.value));
+                                                        }
+                                                    }}
+                                                />
+                                                <Label htmlFor={`homeOfficeDay-${day.value}`} className="font-normal cursor-pointer">
+                                                    {day.label}
+                                                </Label>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+
                             </div>
                         </CardContent>
                     </Card>
