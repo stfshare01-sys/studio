@@ -56,7 +56,9 @@ export type AppModule =
   | 'hcm_prenomina_close'      // Cerrar período
   | 'hcm_prenomina_export'     // Exportar prenómina
   // SLAs
-  | 'hcm_sla_processing';    // Procesar prenómina
+  | 'hcm_sla_processing'       // Procesar prenómina
+  // Document Management
+  | 'org_documents';
 
 // Permission for a specific module
 export type ModulePermission = {
@@ -665,7 +667,7 @@ export type ExtendedUserRole = UserRole | 'HRManager' | 'Manager';
 
 export type EmploymentType = 'full_time' | 'part_time' | 'contractor' | 'intern';
 export type ShiftType = 'diurnal' | 'nocturnal' | 'mixed';
-export type IncidenceType = 'vacation' | 'sick_leave' | 'personal_leave' | 'maternity' | 'paternity' | 'bereavement' | 'marriage' | 'adoption' | 'unpaid_leave' | 'civic_duty' | 'half_day_family' | 'unjustified_absence' | 'abandono_empleo';
+export type IncidenceType = 'vacation' | 'sick_leave' | 'personal_leave' | 'maternity' | 'paternity' | 'bereavement' | 'marriage' | 'adoption' | 'unpaid_leave' | 'civic_duty' | 'half_day_family' | 'home_office' | 'unjustified_absence' | 'abandono_empleo';
 export type IncidenceStatus = 'pending' | 'approved' | 'rejected' | 'cancelled' | 'unjustified' | 'made_up';
 export type OnboardingPhase = 'day_0' | 'day_30' | 'day_60' | 'day_90' | 'completed';
 
@@ -716,15 +718,28 @@ export type Employee = User & {
 
   // Información jerárquica
   directManagerId?: string;    // ID del jefe directo
+  secondLevelManagerId?: string; // ID del jefe de segundo nivel
   positionId?: string;         // ID del puesto asociado
   locationId?: string;         // ID de la ubicación física
   customShiftId?: string;      // ID del turno personalizado (si aplica)
+  customRestDays?: number[];   // Días de descanso específicos, ej: [0, 6] para Dom y Sab
   shiftAssignments?: EmployeeShiftAssignment[]; // Historial de turnos asignados
   /** @deprecated Use customShiftId instead */
   shiftId?: string;            // Legacy: ID del turno (usado en seed data)
 
   // Configuración de compensación
   allowTimeForTime?: boolean;  // Permite tiempo por tiempo (solo RH puede modificar)
+  
+  // Control de vacaciones
+  currentVacationBalanceId?: string;
+
+  // Último retardo y contador
+  lastTardinessDate?: string;
+  tardinessCountCurrent?: number;  // Contador actual de retardos
+
+  // Baja (adicionales a terminationDate)
+  terminationReason?: string;
+  showInPrenomina?: boolean;       // Si mostrar en pre-nómina (false si baja completa)
 };
 
 /**
@@ -1522,6 +1537,7 @@ export const INCIDENCE_CODE_MAP: Record<IncidenceType | 'attendance' | 'rest_day
   adoption: 'PCS',
   civic_duty: 'PCS',
   half_day_family: 'PCS',
+  home_office: 'ASI',      // Trabajo remoto — cuenta como asistencia (ASI)
   unpaid_leave: 'PSS',
   unjustified_absence: 'FINJ',
   abandono_empleo: 'AE',
@@ -1609,34 +1625,6 @@ export type DetailedPrenominaRecord = PrenominaRecord & {
 /**
  * Empleado con campos extendidos para el nuevo sistema
  */
-export type ExtendedEmployee = Employee & {
-  // Ubicación y puesto
-  locationId?: string;            // ID de la ubicación
-  positionId?: string;            // ID del puesto
-
-  // Turno personalizado
-  customShiftId?: string;         // ID del turno personalizado
-
-  // Días de descanso específicos (override del turno)
-  customRestDays?: number[];      // ej: [0, 6] para Dom y Sab
-
-  // Jefe directo
-  directManagerId?: string;       // ID del jefe directo
-  secondLevelManagerId?: string;  // ID del jefe de segundo nivel
-
-  // Control de vacaciones
-  currentVacationBalanceId?: string;
-
-  // Último retardo y contador
-  lastTardinessDate?: string;
-  tardinessCountCurrent: number;  // Contador actual de retardos
-
-  // Fecha de baja (para pre-nómina)
-  terminationDate?: string;
-  terminationReason?: string;
-  showInPrenomina: boolean;       // Si mostrar en pre-nómina (false si baja completa)
-};
-
 // =========================================================================
 // GESTIÓN DE EQUIPO - TIPOS PARA JEFES
 // =========================================================================

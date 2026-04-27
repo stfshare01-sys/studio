@@ -471,6 +471,9 @@ export const consolidatePrenomina = onCall<ConsolidatePrenominaRequest>(
                                     case 'unpaid_leave':
                                         unpaidLeaveDays += inc.totalDays;
                                         break;
+                                    case 'home_office':
+                                        // Home office days are worked days, tracked via check-ins.
+                                        break;
                                     default:
                                         if (inc.isPaid) {
                                             paidLeaveDays += inc.totalDays;

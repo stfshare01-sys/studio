@@ -867,6 +867,55 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // ============================================================
+    // MÓDULO: ORG_DOCUMENTS (Biblioteca)
+    // Colecciones: org_documents
+    // Permisos base: read aditivo por departamento/usuario — write HRManager+Admin
+    // Accesos cruzados: Lee departments (HCM) vía UI para selector de permisos
+    // Última modificación: 2026-04-27 — Implementación inicial módulo Biblioteca
+    // ============================================================
+
+    /**
+     * @description Organizational documents (policies, manuals, procedures, forms)
+     * Read: Additive — visible if unrestricted OR user's dept matches OR user explicitly listed
+     * Create/Update: HR Managers and Admins only
+     * Delete: Admins only
+     * @path /org_documents/{docId}
+     */
+    match /org_documents/{docId} {
+      // Helper: documento sin restricciones → visible para todos los usuarios autenticados
+      function isUnrestricted() {
+        return resource.data.visibleToDepartments.size() == 0
+          && resource.data.visibleToUserIds.size() == 0;
+      }
+
+      // Helper: usuario pertenece a uno de los departamentos permitidos
+      function isInAllowedDepartment() {
+        return resource.data.visibleToDepartments.size() > 0
+          && get(/databases/$(database)/documents/employees/$(request.auth.uid)).data.department
+            in resource.data.visibleToDepartments;
+      }
+
+      // Helper: usuario está explícitamente en la lista de acceso
+      function isExplicitlyAllowed() {
+        return resource.data.visibleToUserIds.size() > 0
+          && request.auth.uid in resource.data.visibleToUserIds;
+      }
+
+      // Lectura aditiva: sin restricciones ó dept coincide ó usuario explícito
+      allow get, list: if isSignedIn()
+        && (isUnrestricted() || isInAllowedDepartment() || isExplicitlyAllowed());
+
+      // Solo HR y Admin pueden subir documentos
+      allow create: if isHRManager() && hasValidCreateTimestamps();
+
+      // Solo HR y Admin pueden actualizar metadatos
+      allow update: if isHRManager() && hasValidUpdateTimestamps();
+
+      // Solo Admins pueden eliminar documentos
+      allow delete: if hasRole('Admin');
+    }
+
     // -------------------------------------------------------------------------
     // Catch-all for Admin (Recursive God Mode)
     // ⚠️ ZERO TRUST ENFORCED: Default is DENY ALL.

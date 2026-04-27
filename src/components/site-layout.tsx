@@ -35,6 +35,7 @@ import {
   Shield,
   CheckSquare,
   Calendar,
+  BookOpen,
 } from "lucide-react";
 import { Logo } from "@/components/icons";
 import { Button } from "./ui/button";
@@ -72,6 +73,7 @@ const ALL_NAV_ITEMS: NavItem[] = [
   { href: "/templates", icon: FolderKanban, label: "Plantillas", module: "templates" },
   { href: "/master-lists", icon: Database, label: "Listas Maestras", module: "master_lists" },
   { href: "/requests/new", icon: FilePlus, label: "Nueva Solicitud", module: "requests" },
+  { href: "/biblioteca", icon: BookOpen, label: "Biblioteca", module: "org_documents" },
   { href: "/integrations", icon: Plug, label: "Integraciones", module: "integrations" },
   { href: "/admin/users", icon: Users, label: "Usuarios (Admin)", module: "admin_users" },
   { href: "/admin/roles", icon: Shield, label: "Roles y Permisos", module: "admin_roles" },
@@ -95,6 +97,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/templates", icon: FolderKanban, label: "Plantillas", module: "templates" },
       { href: "/master-lists", icon: Database, label: "Listas Maestras", module: "master_lists" },
       { href: "/requests/new", icon: FilePlus, label: "Nueva Solicitud", module: "requests" },
+      { href: "/biblioteca", icon: BookOpen, label: "Biblioteca", module: "org_documents" },
       { href: "/integrations", icon: Plug, label: "Integraciones", module: "integrations" },
     ],
   },

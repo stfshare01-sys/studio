@@ -38,26 +38,7 @@ Tienes acceso a mi base de conocimientos privada en NotebookLM.
 - **Separación:** Nunca mezcles lógica de base de datos (Admin SDK) con código de cliente (Client SDK) en el mismo archivo.
 
 ### 6. LÍMITES DE TAMAÑO DE ARCHIVOS (CRÍTICO)
-El tamaño de un archivo es un indicador directo del incumplimiento del SRP y genera deuda técnica acumulable.
-
-- **Umbral de advertencia:** > 200 líneas → Evaluar si está haciendo más de una cosa.
-- **Umbral crítico:** > 400 líneas → **DIVIDIR OBLIGATORIAMENTE** antes de añadir más lógica.
-- **Estrategia de segmentación para archivos de acciones Firebase:**
-  ```
-  feature/
-  ├── feature-queries.ts      → Solo reads/queries (getDocs, onSnapshot)
-  ├── feature-mutations.ts    → Solo writes (addDoc, updateDoc, runTransaction)
-  └── feature-utils.ts        → Funciones puras y helpers sin side effects
-  ```
-- **Estrategia para `types.ts` grande:**
-  ```
-  src/types/
-  ├── hcm.types.ts            → Tipos del módulo HCM (empleados, asistencia)
-  ├── workflow.types.ts       → Tipos del motor BPMN/Workflow
-  ├── auth.types.ts           → Tipos de usuario, roles, permisos
-  └── common.types.ts         → Tipos compartidos entre módulos
-  ```
-- **Regla de oro:** Si no puedes hacer un code review en < 5 minutos, el archivo es demasiado grande.
+// Ver: firebase coding standards.md — Sección 2. Límites de tamaño
 
 ### FORMATO DE ENTREGA
 - Código listo para producción (completo, sin `// ...` ni `// implementar`).

@@ -85,7 +85,7 @@ export interface Incidence {
     id: string;
     employeeId: string;
     employeeName: string;
-    type: 'vacation' | 'sick_leave' | 'personal_leave' | 'maternity' | 'paternity' | 'bereavement' | 'marriage' | 'adoption' | 'civic_duty' | 'half_day_family' | 'unpaid_leave' | 'unjustified_absence' | 'abandono_empleo';
+    type: 'vacation' | 'sick_leave' | 'personal_leave' | 'maternity' | 'paternity' | 'bereavement' | 'marriage' | 'adoption' | 'civic_duty' | 'half_day_family' | 'unpaid_leave' | 'unjustified_absence' | 'abandono_empleo' | 'home_office';
     startDate: string;
     endDate: string;
     totalDays: number;

@@ -226,6 +226,9 @@ Antes de proponer cualquier cambio, identificar:
 - ¿Qué forma tienen los datos que devuelve?
 - ¿Hay componentes cliente **y** server actions que la consumen?
 
+> [!TIP]
+> Para cambios profundos o creación de nuevas funcionalidades, se debe invocar el workflow `/add-feature`, el cual contiene un Análisis de Impacto y Riesgo mucho más exhaustivo.
+
 ### Paso 2 — Estructura de respuesta
 1. **Causa raíz:** Por qué ocurrió el problema estructural o el bug
 2. **Dos opciones:**

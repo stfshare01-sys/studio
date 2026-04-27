@@ -1,4 +1,4 @@
-import { IncidenceType, IncidenceStatus } from './hcm';
+import { IncidenceType, IncidenceStatus } from '@/lib/types';
 
 // =========================================================================
 // OPERATIONAL HCM TYPES - Incidences, Attendance (No Money)
@@ -352,6 +352,12 @@ export const INCIDENCE_CODE_MAP: Record<IncidenceType | 'attendance' | 'rest_day
     maternity: 'INC',
     paternity: 'PCS',
     bereavement: 'PCS',
+    marriage: 'PCS',
+    adoption: 'PCS',
+    unpaid_leave: 'PSS',
+    civic_duty: 'PCS',
+    half_day_family: 'PCS',
+    home_office: 'ASI',
     unjustified_absence: 'FINJ',
     abandono_empleo: 'AE',
     attendance: 'ASI',

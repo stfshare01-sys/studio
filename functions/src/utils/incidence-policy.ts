@@ -2,7 +2,7 @@
 import { differenceInCalendarDays, parseISO, getYear } from 'date-fns';
 
 // Minimal types for server side to avoid importing from src/lib
-export type IncidenceType = 'vacation' | 'sick_leave' | 'personal_leave' | 'maternity' | 'paternity' | 'bereavement' | 'marriage' | 'adoption' | 'unpaid_leave' | 'civic_duty' | 'half_day_family' | 'unjustified_absence' | 'abandono_empleo';
+export type IncidenceType = 'vacation' | 'sick_leave' | 'personal_leave' | 'maternity' | 'paternity' | 'bereavement' | 'marriage' | 'adoption' | 'unpaid_leave' | 'civic_duty' | 'half_day_family' | 'unjustified_absence' | 'abandono_empleo' | 'home_office';
 
 export interface Incidence {
     id: string;
@@ -56,6 +56,9 @@ export const INCIDENCE_RULES: Partial<Record<IncidenceType, IncidenceRule>> = {
     civic_duty: {
         minDays: 1,
         description: 'Cumplimiento de deberes cívicos/jurídicos'
+    },
+    home_office: {
+        description: 'Home Office / Trabajo remoto (Requiere Check in / Check out)'
     }
 };
 

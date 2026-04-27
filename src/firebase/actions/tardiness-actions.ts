@@ -37,6 +37,7 @@ import type {
 import type { MissingPunchRecord, MissingPunchType } from '@/types/hcm-operational';
 import { addDebtToHourBank } from './hour-bank-actions';
 import { checkAttendanceTaskCompletion } from './task-completion-actions';
+import { format } from 'date-fns';
 
 // =========================================================================
 // TARDINESS
@@ -91,7 +92,7 @@ export async function recordTardiness(
         const tardinessQuery = query(
             collection(firestore, 'tardiness_records'),
             where('employeeId', '==', employeeId),
-            where('date', '>=', thirtyDaysAgo.toISOString().split('T')[0]),
+            where('date', '>=', format(thirtyDaysAgo, 'yyyy-MM-dd')),
             where('isJustified', '==', false)
         );
         const tardinessSnap = await getDocs(tardinessQuery);
@@ -112,7 +113,7 @@ export async function recordTardiness(
             minutesLate,
             isJustified: false,
             justificationStatus: 'pending',
-            periodStartDate: thirtyDaysAgo.toISOString().split('T')[0],
+            periodStartDate: format(thirtyDaysAgo, 'yyyy-MM-dd'),
             tardinessCountInPeriod: countInPeriod,
             tardinessCountInWeek: countInWeek,
             sanctionApplied,
@@ -275,7 +276,7 @@ export async function resetTardinessCounter(
         const tardinessQuery = query(
             collection(firestore, 'tardiness_records'),
             where('employeeId', '==', employeeId),
-            where('date', '>=', thirtyDaysAgo.toISOString().split('T')[0])
+            where('date', '>=', format(thirtyDaysAgo, 'yyyy-MM-dd'))
         );
         const tardinessSnap = await getDocs(tardinessQuery);
 
@@ -890,7 +891,7 @@ export async function syncMissingPunchesForEmployee(employeeId: string): Promise
         // 1. Obtener los últimos 90 días de asistencia para este empleado
         const ninetyDaysAgo = new Date();
         ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
-        const startDate = ninetyDaysAgo.toISOString().split('T')[0];
+        const startDate = format(ninetyDaysAgo, 'yyyy-MM-dd');
 
         const attendanceQuery = query(
             collection(firestore, 'attendance'),

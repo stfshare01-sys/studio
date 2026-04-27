@@ -219,8 +219,14 @@ Es el mapa que evita el código fantasma.
 - `usePermissions()` → `use-permissions.ts` — hook principal de permisos
 - `canRead(module)` / `canWrite(module)` → vía `usePermissions()`
 
-### Asistencia
-- *(completar conforme crecen las funciones del módulo)*
+### Asistencia e Incidencias
+- `checkDateConflict(employeeId, start, end, incidences)` → `hcm-utils.ts` — detecta solapamientos entre fechas de incidencias
+- `determineDayStatus(date, attendance, incidences, shift, holidays)` → `hcm-utils.ts` — estado final del día para pre-nómina (`ASI`, `FINJ`, `VAC`, etc.)
+- `isIncidencePaid(type)` → `hcm-utils.ts` — devuelve `true` si la incidencia es con goce de sueldo
+- `getDefaultIncidenceDays(type)` → `hcm-utils.ts` — duración default por tipo (home_office = 1 día)
+- `validateIncidencePolicy(type, start, end, days, incidences)` → `hcm-validation.ts` — valida límites de frecuencia y duración por tipo
+- `INCIDENCE_RULES` → `hcm-validation.ts` — reglas de política por tipo de incidencia (duración máx, frecuencia anual/semanal)
+- `createIncidence(payload)` → `incidence-actions.ts` — crea solicitud de incidencia en Firestore
 
 ### Tipos base
 - `Employee` → `hcm.types.ts`

@@ -26,6 +26,7 @@ import {
 import { initializeFirebase } from '@/firebase';
 import { getDirectReports, getHierarchicalReports } from './team-queries';
 import type { TardinessRecord, AttendanceImportBatch } from '@/lib/types';
+import { format } from 'date-fns';
 
 // =========================================================================
 // CARGA DE ASISTENCIA (BATCHES)
@@ -105,8 +106,8 @@ export async function getTeamTardiness(
             const today = new Date();
             const thirtyDaysAgo = new Date(today);
             thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-            dateStart = thirtyDaysAgo.toISOString().split('T')[0];
-            dateEnd = today.toISOString().split('T')[0];
+            dateStart = format(thirtyDaysAgo, 'yyyy-MM-dd');
+            dateEnd = format(today, 'yyyy-MM-dd');
         }
 
         // Obtener retardos
@@ -190,8 +191,8 @@ export async function getTeamMissingPunches(
             const today = new Date();
             const thirtyDaysAgo = new Date(today);
             thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-            dateStart = thirtyDaysAgo.toISOString().split('T')[0];
-            dateEnd = today.toISOString().split('T')[0];
+            dateStart = format(thirtyDaysAgo, 'yyyy-MM-dd');
+            dateEnd = format(today, 'yyyy-MM-dd');
         }
 
         const allRecords: any[] = [];

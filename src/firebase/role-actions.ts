@@ -56,6 +56,8 @@ export const SYSTEM_ROLES: Record<SystemRole, ModulePermission[]> = {
     { module: 'hcm_prenomina_close', level: 'write' },
     { module: 'hcm_prenomina_export', level: 'write' },
     { module: 'hcm_sla_processing', level: 'write' },
+    // Biblioteca
+    { module: 'org_documents', level: 'write' },
   ],
   Designer: [
     { module: 'dashboard', level: 'read' },
@@ -88,6 +90,8 @@ export const SYSTEM_ROLES: Record<SystemRole, ModulePermission[]> = {
     { module: 'hcm_prenomina_process', level: 'hidden' },
     { module: 'hcm_prenomina_close', level: 'hidden' },
     { module: 'hcm_prenomina_export', level: 'hidden' },
+    // Biblioteca
+    { module: 'org_documents', level: 'read' },
   ],
   Member: [
     { module: 'dashboard', level: 'read' },
@@ -120,6 +124,8 @@ export const SYSTEM_ROLES: Record<SystemRole, ModulePermission[]> = {
     { module: 'hcm_prenomina_process', level: 'hidden' },
     { module: 'hcm_prenomina_close', level: 'hidden' },
     { module: 'hcm_prenomina_export', level: 'hidden' },
+    // Biblioteca
+    { module: 'org_documents', level: 'read' },
   ],
   HRManager: [
     { module: 'dashboard', level: 'read' },
@@ -158,6 +164,8 @@ export const SYSTEM_ROLES: Record<SystemRole, ModulePermission[]> = {
     // Vacation & Holiday management for HR
     { module: 'hcm_admin_vacation', level: 'write' },
     { module: 'hcm_admin_holidays', level: 'write' },
+    // Biblioteca
+    { module: 'org_documents', level: 'write' },
   ],
   Manager: [
     { module: 'dashboard', level: 'read' },
@@ -192,6 +200,8 @@ export const SYSTEM_ROLES: Record<SystemRole, ModulePermission[]> = {
     { module: 'hcm_prenomina_process', level: 'write' },
     { module: 'hcm_prenomina_close', level: 'hidden' },
     { module: 'hcm_prenomina_export', level: 'hidden' },
+    // Biblioteca
+    { module: 'org_documents', level: 'read' },
   ],
 };
 
@@ -232,6 +242,8 @@ export const MODULE_INFO: Record<AppModule, { name: string; description: string;
   hcm_sla_processing: { name: 'Procesamiento SLA', description: 'Ejecución manual de reglas de SLA', category: 'hcm' },
   hcm_admin_holidays: { name: 'Calendarios Festivos', description: 'Gestionar calendarios de días festivos oficiales', category: 'hcm' },
   hcm_admin_vacation: { name: 'Gestión de Vacaciones', description: 'Ajustar saldos de vacaciones individual y masivamente', category: 'hcm' },
+  // Módulo Biblioteca
+  org_documents: { name: 'Biblioteca', description: 'Políticas, manuales y documentos organizacionales', category: 'general' },
 };
 
 // System role names (canonical PascalCase)

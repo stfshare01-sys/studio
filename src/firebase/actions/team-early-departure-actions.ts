@@ -33,6 +33,7 @@ import { addDebtToHourBank } from './hour-bank-actions';
 import { checkAttendanceTaskCompletion } from './task-completion-actions';
 import { getDirectReports, getHierarchicalReports } from './team-queries';
 import type { EarlyDeparture } from '@/lib/types';
+import { format } from 'date-fns';
 
 // =========================================================================
 // SALIDAS TEMPRANAS
@@ -274,8 +275,8 @@ export async function getTeamEarlyDepartures(
             const today = new Date();
             const thirtyDaysAgo = new Date(today);
             thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-            dateStart = thirtyDaysAgo.toISOString().split('T')[0];
-            dateEnd = today.toISOString().split('T')[0];
+            dateStart = format(thirtyDaysAgo, 'yyyy-MM-dd');
+            dateEnd = format(today, 'yyyy-MM-dd');
         }
 
         const allRecords: EarlyDeparture[] = [];

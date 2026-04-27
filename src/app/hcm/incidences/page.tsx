@@ -244,7 +244,8 @@ export default function IncidencesPage() {
             half_day_family: 'Permiso Medio Día',
             unpaid_leave: 'Permiso Sin Goce',
             unjustified_absence: 'Falta Injustificada',
-            abandono_empleo: 'Abandono de Empleo'
+            abandono_empleo: 'Abandono de Empleo',
+            home_office: 'Home Office'
         };
         return labels[type] || type;
     };
@@ -491,6 +492,7 @@ export default function IncidencesPage() {
                                     <SelectItem value="maternity">Maternidad</SelectItem>
                                     <SelectItem value="paternity">Paternidad</SelectItem>
                                     <SelectItem value="bereavement">Duelo</SelectItem>
+                                    <SelectItem value="home_office">Home Office</SelectItem>
                                 </SelectContent>
                             </Select>
                             <Select value={statusFilter} onValueChange={setStatusFilter}>

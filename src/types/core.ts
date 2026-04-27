@@ -35,7 +35,8 @@ export type AppModule =
     | 'hcm_team_management'
     | 'hcm_admin_shifts'
     | 'hcm_admin_positions'
-    | 'hcm_admin_locations';
+    | 'hcm_admin_locations'
+    | 'org_documents';
 // Removed 'hcm_settlements' as part of monetary purge
 
 // Permission for a specific module

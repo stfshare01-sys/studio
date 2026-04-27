@@ -362,6 +362,7 @@ export function NewIncidenceForm({ userId, targetUserId, onSuccess, onCancel, cl
                         <SelectItem value="marriage">Matrimonio</SelectItem>
                         <SelectItem value="adoption">Adopción</SelectItem>
                         <SelectItem value="half_day_family">Permiso Medio Día</SelectItem>
+                        <SelectItem value="home_office">Home Office</SelectItem>
                         <SelectItem value="civic_duty">Deber Cívico</SelectItem>
                         <SelectItem value="unpaid_leave">Permiso Sin Goce</SelectItem>
                     </SelectContent>

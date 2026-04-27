@@ -181,7 +181,8 @@ export function isIncidencePaid(type: IncidenceType): boolean {
         'sick_leave',      // Parcialmente cubierto por IMSS
         'maternity',       // Cubierto por IMSS
         'paternity',       // 5 días con goce (Art. 132 LFT)
-        'bereavement'      // Generalmente 3 días
+        'bereavement',     // Generalmente 3 días
+        'home_office'      // Trabajo remoto
     ];
     return paidTypes.includes(type);
 }
@@ -203,7 +204,8 @@ export function getDefaultIncidenceDays(type: IncidenceType): number {
         adoption: 15,              // Variable
         unpaid_leave: 1,           // Variable
         civic_duty: 1,             // Variable
-        half_day_family: 1         // Variable
+        half_day_family: 1,        // Variable
+        home_office: 1             // Variable
     };
     return daysMap[type];
 }
@@ -1072,7 +1074,8 @@ export function checkDateConflict(
         adoption: 'adopción',
         half_day_family: 'permiso medio día',
         civic_duty: 'deber cívico',
-        unpaid_leave: 'permiso sin goce'
+        unpaid_leave: 'permiso sin goce',
+        home_office: 'home office'
     };
 
     const conflictDescriptions = conflictingRanges.map(c =>
@@ -1286,7 +1289,8 @@ export function determineDayStatus(dayData: DayPunchData): DayStatusResult {
             adoption: { code: '1PCS', name: 'Adopción' },
             unpaid_leave: { code: 'PSGS', name: 'Permiso sin goce' },
             civic_duty: { code: '1PCS', name: 'Deber Cívico' },
-            half_day_family: { code: '1PCS', name: 'Medio día' }
+            half_day_family: { code: '1PCS', name: 'Medio día' },
+            home_office: { code: 'ASI', name: 'Home Office' }
         };
 
         const incidenceInfo = incidenceCodeMap[dayData.incidenceType];

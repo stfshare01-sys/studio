@@ -21,7 +21,8 @@ import {
     Baby,
     Heart,
     User,
-    AlertCircle
+    AlertCircle,
+    Home
 } from 'lucide-react';
 import type { Employee, Incidence, IncidenceType } from '@/lib/types';
 import {
@@ -46,7 +47,7 @@ interface TeamCalendarProps {
     onDayClick?: (date: Date, employeesOff: Employee[]) => void;
 }
 
-const INCIDENCE_CONFIG: Record<IncidenceType, { icon: typeof Plane; color: string; label: string }> = {
+const INCIDENCE_CONFIG: Record<IncidenceType, { icon: any; color: string; label: string }> = {
     vacation: { icon: Plane, color: 'bg-blue-500', label: 'Vacaciones' },
     sick_leave: { icon: Stethoscope, color: 'bg-red-500', label: 'Incapacidad' },
     personal_leave: { icon: Clock, color: 'bg-purple-500', label: 'Permiso' },
@@ -59,7 +60,8 @@ const INCIDENCE_CONFIG: Record<IncidenceType, { icon: typeof Plane; color: strin
     adoption: { icon: Baby, color: 'bg-emerald-500', label: 'Adopción' },
     unpaid_leave: { icon: User, color: 'bg-slate-500', label: 'Sin Goce' },
     civic_duty: { icon: Clock, color: 'bg-yellow-600', label: 'Deber Cívico' },
-    half_day_family: { icon: Clock, color: 'bg-teal-500', label: 'Medio Día' }
+    half_day_family: { icon: Clock, color: 'bg-teal-500', label: 'Medio Día' },
+    home_office: { icon: Home, color: 'bg-indigo-400', label: 'Home Office' }
 };
 
 /**

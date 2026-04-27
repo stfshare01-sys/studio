@@ -45,6 +45,9 @@ export const INCIDENCE_RULES: Partial<Record<IncidenceType, IncidenceRule>> = {
     civic_duty: {
         minDays: 1,
         description: 'Cumplimiento de deberes cívicos/jurídicos'
+    },
+    home_office: {
+        description: 'Día de trabajo remoto (Home Office)'
     }
 };
 

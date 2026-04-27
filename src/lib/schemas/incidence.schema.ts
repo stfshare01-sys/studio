@@ -11,7 +11,14 @@ export const incidenceTypeSchema = z.enum([
     'maternity',
     'paternity',
     'bereavement',
-    'unjustified_absence'
+    'marriage',
+    'adoption',
+    'unpaid_leave',
+    'civic_duty',
+    'half_day_family',
+    'home_office',
+    'unjustified_absence',
+    'abandono_empleo'
 ], {
     errorMap: () => ({ message: 'Selecciona un tipo de incidencia válido' })
 });

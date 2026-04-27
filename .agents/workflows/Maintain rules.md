@@ -67,7 +67,7 @@ de búsqueda que se contradigan?
 
 ## Paso 3 — Detección de contenido a separar
 
-Para cada archivo en zona de riesgo (> 10,000 caracteres),
+Para cada archivo en zona de riesgo (> 11,000 caracteres),
 analizar si tiene secciones que puedan vivir en un archivo
 complementario referenciado:
 

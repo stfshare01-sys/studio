@@ -343,6 +343,41 @@ service cloud.firestore {
       allow read, write: if isHRManager();
     }
 
+    // ============================================================
+    // MÓDULO: BIBLIOTECA (ORG_DOCUMENTS)
+    // Colecciones: org_documents
+    // Permisos base: Admin/HRManager write, todos los roles pueden leer con control aditivo
+    // Accesos cruzados: Ninguno (módulo autónomo)
+    // Última modificación: 2026-04-27 — Creación inicial del módulo
+    // ============================================================
+
+    /**
+     * @description Organizational documents (policies, manuals, etc.)
+     * Read: Additive — granted if doc has no restrictions OR user matches by department/userId
+     * Write: Admin and HRManager only (granular: no allow write genérico)
+     * @path /org_documents/{documentId}
+     */
+    match /org_documents/{documentId} {
+      // Acceso de lectura aditivo:
+      // 1. Sin restricciones (visibleTo está vacío o es ['all'])
+      // 2. El uid del usuario está en la lista de acceso explícita
+      // 3. El departamento del usuario coincide con la lista de acceso
+      allow get: if isSignedIn() && (
+        !('visibleToDepartments' in resource.data) ||
+        resource.data.visibleToDepartments.size() == 0 ||
+        request.auth.uid in resource.data.visibleToUserIds ||
+        getUserData().department in resource.data.visibleToDepartments
+      );
+      // Listing: any authenticated user can list — client-side filtering applies
+      allow list: if isSignedIn();
+      // Create: Admin and HRManager only
+      allow create: if isHRManager();
+      // Update: Admin and HRManager only
+      allow update: if isHRManager();
+      // Delete: Admin only
+      allow delete: if hasRole('Admin');
+    }
+
     // -------------------------------------------------------------------------
     // Catch-all for Admin (Development only - remove in production)
     // -------------------------------------------------------------------------
