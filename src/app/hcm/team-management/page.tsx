@@ -60,7 +60,12 @@ import {
     Moon,
     LogIn,
     LogOut,
-    ArrowLeftRight
+    ArrowLeftRight,
+    XCircle,
+    AlertCircle,
+    Filter,
+    Sun,
+    SunMoon
 } from 'lucide-react';
 
 import {
@@ -2382,15 +2387,15 @@ function TeamManagementContent() {
                                                         <div className="flex flex-col">
                                                             <Badge className={cn(
                                                                 "w-fit gap-1.5 px-3 py-1 font-semibold shadow-sm border-2",
-                                                                currentShift.name.toLowerCase().includes('diurno') ? 'bg-emerald-100 text-emerald-800 border-emerald-300' :
-                                                                    currentShift.name.toLowerCase().includes('nocturno') ? 'bg-slate-900 text-slate-50 border-slate-700 ring-1 ring-slate-600' :
-                                                                        currentShift.name.toLowerCase().includes('mixto') ? 'bg-amber-100 text-amber-800 border-amber-300' :
+                                                                (currentShift?.name || '').toLowerCase().includes('diurno') ? 'bg-emerald-100 text-emerald-800 border-emerald-300' :
+                                                                    (currentShift?.name || '').toLowerCase().includes('nocturno') ? 'bg-slate-900 text-slate-50 border-slate-700 ring-1 ring-slate-600' :
+                                                                        (currentShift?.name || '').toLowerCase().includes('mixto') ? 'bg-amber-100 text-amber-800 border-amber-300' :
                                                                             'bg-blue-100 text-blue-800 border-blue-300'
                                                             )} variant="outline">
-                                                                {currentShift.name.toLowerCase().includes('diurno') && <Sun className="w-3.5 h-3.5 text-emerald-600" />}
-                                                                {currentShift.name.toLowerCase().includes('nocturno') && <Moon className="w-3.5 h-3.5 text-indigo-300" />}
-                                                                {currentShift.name.toLowerCase().includes('mixto') && <SunMoon className="w-3.5 h-3.5 text-amber-600" />}
-                                                                {currentShift.name}
+                                                                {(currentShift?.name || '').toLowerCase().includes('diurno') && <Sun className="w-3.5 h-3.5 text-emerald-600" />}
+                                                                {(currentShift?.name || '').toLowerCase().includes('nocturno') && <Moon className="w-3.5 h-3.5 text-indigo-300" />}
+                                                                {(currentShift?.name || '').toLowerCase().includes('mixto') && <SunMoon className="w-3.5 h-3.5 text-amber-600" />}
+                                                                {currentShift?.name || 'Sin turno'}
                                                             </Badge>
                                                             {currentShift.isTemp && <span className="text-xs text-muted-foreground mt-1">Temporal</span>}
                                                         </div>
