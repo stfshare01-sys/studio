@@ -12,11 +12,11 @@ Responsable del ciclo de vida del empleado y consultas de perfil individual.
 |---|---|---|
 | `getEmployeeByUserId(userId)` | Query | Perfil completo. El ID del empleado coincide con el UID de Firebase Auth. |
 | `createEmployee(userId, payload)` | Mutation | Registro maestro. Sincroniza campos clave con la colección `users`. |
-| `deactivateEmployee(id, date)` | Mutation | Baja administrativa ('BJ'). Marca `status: disabled`. |
+| `deactivateEmployee(id, date)` | Mutation | Baja administrativa ('BJ'). Marca `status: disabled` en ambas colecciones: `employees` y `users`. |
 | `blacklistEmployee(id, reason)` | Mutation | Baja con restricción de recontratación (`isBlacklisted: true`). |
 | `updateOnboardingStatus(id, phase)` | Mutation | Avance en el flujo de ingreso (`day_0` a `day_90`). |
 | `getApprovalLimit(posId, type)` | Query | Consulta límites financieros/operativos del puesto (consumido por BPMN). |
-| `getUpcomingLeaves(id)` | Query | Incidencias futuras para validación de disponibilidad. |
+| `getUpcomingLeaves(id)` | Query | Consulta incidencias futuras (filtro por `employeeId` y `status`) para validación de disponibilidad. |
 
 ## 2. Estructura y Equipo (`team-queries.ts`)
 Lógica para navegación jerárquica y organigrama.
@@ -35,13 +35,16 @@ Gestión operativa de incidencias diarias (retardos, salidas, faltas de marcaje)
 |---|---|---|
 | `recordTardiness(...)` | Retardos | Registra retardo y aplica sanciones automáticas (strike system). |
 | `justifyTardiness(...)` | Retardos | Permite compensar minutos vía **Bolsa de Horas**. |
-| `recordEarlyDeparture(...)` | Salidas | Registra salida antes del horario de fin de turno. |
+| `recordEarlyDeparture(...)` | Salidas | Registra salida antes del horario de fin de turno. La vista de equipo usa `earlyDepartureMinutes` y `justificationStatus` para su gestión. |
 | `recordMissingPunch(...)` | Marcajes | Registro preventivo cuando falta entrada o salida en biometrico. |
 | `justifyMissingPunch(...)` | Marcajes | **Core logic:** Resuelve la falta de marcaje pidiendo la hora real y validando contra el turno. |
 | `syncMissingPunchesForEmployee(...)` | Sync | Detecta días sin marcajes y genera registros pendientes de justificar. |
 
 ## 4. Incidencias y Vacaciones (`incidence-core-actions.ts`)
 Flujos de aprobación de solicitudes de ausencia.
+
+> [!NOTE]
+> El Home Office NO es una incidencia que se solicita por este flujo. Es una configuración administrativa fija (`homeOfficeDays` array numérico) dentro del perfil del empleado (`employee-actions.ts`). La política requiere que el empleado marque asistencia normalmente (check-in/check-out) en esos días, o el sistema generará una falta de marcaje (`missing_punch`).
 
 - `createIncidence(payload)`:
   - Calcula días efectivos (omitiendo festivos/descansos).
@@ -73,7 +76,7 @@ Sistema de alertas transversales.
 ---
 
 ## Tipos de Datos (Interfaces)
-- **HCM Core:** `src/lib/types.ts` (`Employee`, `AttendanceRecord`, `Incidence`).
+- **HCM Core:** `src/lib/types.ts` (`Employee`, `AttendanceRecord`, `Incidence`). Los campos `rfc` y `curp` son opcionales en el modelo `Employee` y `CreateEmployeePayload`.
 - **Operativo:** `src/types/hcm-operational.ts` (`MissingPunchRecord`).
 - **Auth/RBAC:** `src/types/auth.types.ts` (`AppModule`, `UserRole`).
 

@@ -228,64 +228,58 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
             );
           })}
         </SidebarContent>
-        <SidebarFooter>
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <SidebarMenuButton
-                    size="lg"
-                    className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground h-14"
-                  >
-                    <Avatar className="h-10 w-10 shrink-0 rounded-lg">
-                      {user?.avatarUrl && <AvatarImage src={user.avatarUrl} alt={displayName} />}
-                      <AvatarFallback className="rounded-lg">{displayName.charAt(0)}</AvatarFallback>
-                    </Avatar>
-                    <div className="grid flex-1 text-left text-sm leading-tight ml-2">
-                      <span className="truncate font-semibold">{displayName}</span>
-                      <span className="truncate text-xs opacity-60">{displayEmail}</span>
-                    </div>
-                    <ChevronsUpDown className="ml-auto size-4" />
-                  </SidebarMenuButton>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent
-                  className="w-[--radix-dropdown-menu-trigger-width] min-w-56 rounded-lg"
-                  side="bottom"
-                  align="end"
-                  sideOffset={4}
-                >
-                  <DropdownMenuLabel className="p-0 font-normal">
-                    <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
-                      <Avatar className="h-8 w-8 rounded-lg shrink-0">
-                        {user?.avatarUrl && <AvatarImage src={user.avatarUrl} alt={displayName} />}
-                        <AvatarFallback className="rounded-lg">{displayName.charAt(0)}</AvatarFallback>
-                      </Avatar>
-                      <div className="grid flex-1 text-left text-sm leading-tight">
-                        <span className="truncate font-semibold">{displayName}</span>
-                        <span className="truncate text-xs opacity-60">{displayEmail}</span>
-                      </div>
-                    </div>
-                  </DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={handleSignOut} className="cursor-pointer text-red-600 focus:text-red-600 focus:bg-red-50 dark:focus:bg-red-950">
-                    <LogOut className="mr-2 size-4" />
-                    Cerrar sesión
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </SidebarMenuItem>
-          </SidebarMenu>
-        </SidebarFooter>
       </Sidebar>
       <SidebarInset className="overflow-x-hidden min-w-0">
-        <div className="flex items-center justify-between p-2 border-b md:border-b-0">
-          <div className="md:hidden">
-            <SidebarTrigger />
+        <div className="flex items-center justify-between p-3 md:px-6 md:py-3 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 z-10 sticky top-0">
+          <div className="flex items-center">
+            <SidebarTrigger className="md:hidden mr-2" />
           </div>
-          <div className="flex items-center gap-1 ml-auto">
-            <StyleSelector />
-            <ThemeToggle />
-            <NotificationCenter />
+          <div className="flex items-center gap-4 ml-auto">
+            <div className="flex items-center gap-1 md:gap-2 mr-2">
+              <StyleSelector />
+              <ThemeToggle />
+              <NotificationCenter />
+            </div>
+
+            {/* Perfil de Usuario en el Header */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" className="h-auto p-1.5 flex items-center gap-3 rounded-full hover:bg-muted/60 transition-colors">
+                  <Avatar className="h-11 w-11 shrink-0 border border-primary/20 shadow-sm">
+                    {user?.avatarUrl && <AvatarImage src={user.avatarUrl} alt={displayName} />}
+                    <AvatarFallback className="bg-primary/10 text-primary font-medium">{displayName.charAt(0)}</AvatarFallback>
+                  </Avatar>
+                  <div className="hidden md:grid flex-1 text-left text-sm leading-tight">
+                    <span className="truncate font-semibold text-foreground">{displayName}</span>
+                    <span className="truncate text-xs text-muted-foreground">{displayEmail}</span>
+                  </div>
+                  <ChevronsUpDown className="size-4 text-muted-foreground hidden md:block" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                className="w-64 rounded-xl shadow-lg border-muted"
+                align="end"
+                sideOffset={8}
+              >
+                <DropdownMenuLabel className="p-0 font-normal">
+                  <div className="flex items-center gap-3 px-2 py-3 text-left text-sm bg-muted/30">
+                    <Avatar className="h-10 w-10 shrink-0">
+                      {user?.avatarUrl && <AvatarImage src={user.avatarUrl} alt={displayName} />}
+                      <AvatarFallback className="bg-primary/10 text-primary">{displayName.charAt(0)}</AvatarFallback>
+                    </Avatar>
+                    <div className="grid flex-1 text-left text-sm leading-tight">
+                      <span className="truncate font-semibold">{displayName}</span>
+                      <span className="truncate text-xs text-muted-foreground">{displayEmail}</span>
+                    </div>
+                  </div>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleSignOut} className="cursor-pointer text-red-600 focus:text-red-600 focus:bg-red-50 dark:focus:bg-red-950 p-3 rounded-lg mx-1 mb-1">
+                  <LogOut className="mr-2 size-4" />
+                  Cerrar sesión
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
         <div className="main-content-area overflow-y-auto overflow-x-hidden">

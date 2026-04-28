@@ -111,10 +111,29 @@ grep -rn "where('" src/ --include="*.ts" | grep "\."
 
 ---
 
-## Resumen rápido de los tres comportamientos
+## 4. Reglas Cruzadas (Cross-Service Rules) en Storage
 
-| Comportamiento | Error silencioso que genera | Solución |
+```javascript
+// ❌ PROBLEMA SILENCIOSO — Requiere configuración IAM externa al código
+match /employees/{employeeId}/avatar {
+  allow write: if firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'Admin';
+}
+```
+
+**Regla:** Cuando se usa `firestore.get()` o `firestore.exists()` dentro de `storage.rules`, Firebase Storage requiere permisos IAM explícitos para acceder a Firestore (`datastore.viewer`). Si este permiso falta, las reglas evaluarán a `false` automáticamente, devolviendo un error `403 Unauthorized` sin importar si el rol del usuario es correcto en la base de datos.
+
+**Por qué afecta a este proyecto:** El proyecto utiliza validación de roles en Firestore para permitir la carga de archivos en Storage (como fotos de perfil). Al clonar el proyecto, crear un nuevo entorno (staging/prod), o desplegar por primera vez, este permiso no viene activado por defecto.
+
+**Solución obligatoria:** 
+No se soluciona en código. Se debe ir a la consola de Firebase -> **Storage** -> **Rules**. Aparecerá una alerta indicando que las reglas usan llamadas entre servicios. Se debe hacer clic en **"Corregir problema"** para que Google Cloud asigne automáticamente el rol a la cuenta de servicio de Storage.
+
+---
+
+## Resumen rápido de comportamientos de Firebase
+
+| Comportamiento | Error que genera | Solución |
 |---|---|---|
 | `.toISOString()` completo | Fechas con -1 día en reportes | `.split('T')[0]` siempre |
 | `allow write` genérico | Delete permitido aunque se diga `if false` | Declarar `create/update/delete` por separado |
 | Campos en Maps para queries | Query falla en producción sin error claro | Subir campo al nivel superior del documento |
+| Cross-Service en Storage | Error 403 al subir archivos (Auth falla) | Clic en "Corregir problema" en Firebase Console |

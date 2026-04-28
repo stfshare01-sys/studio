@@ -75,14 +75,6 @@ export async function recordEarlyDeparture(
             updatedAt: now
         };
 
-        // Calculate severity
-        // Assume 9 hours shift for now or pass context. For manual record we might need to fetch shift config or just default.
-        // Or if we don't have hoursWorked, we can't calculate severity accurately based on % worked unless we have shift duration.
-        // However, minutesEarly is known. Maybe we skip severity for manual records or do a rough calc?
-        // Let's rely on hoursWorked if available, but here we don't calculate hours worked yet.
-        // So we skip severity for manual record or leave it undefined to be filled later.
-
-
         if (attendanceRecordId) departureData.attendanceRecordId = attendanceRecordId;
 
         const ref = await addDoc(collection(firestore, 'early_departures'), departureData);
@@ -121,7 +113,7 @@ export async function justifyEarlyDeparture(
             isJustified: true,
             justificationStatus: useHourBank ? 'compensated' : 'justified',
             justificationReason: reason,
-            justificationType, // Added type
+            justificationType,
             justifiedById,
             justifiedByName,
             justifiedAt: now,
@@ -158,7 +150,6 @@ export async function justifyEarlyDeparture(
         );
 
         // Check if this completes any pending tasks
-        // // Basado en Plan de Implementación de NotebookLM
         try {
             const tasksQuery = query(
                 collection(firestore, 'tasks'),
@@ -236,7 +227,12 @@ export async function markEarlyDepartureUnjustified(
 }
 
 /**
- * Obtiene las salidas tempranas del equipo
+ * Obtiene las salidas tempranas del equipo.
+ *
+ * COMPORTAMIENTO: Siempre incluye las salidas pendientes de cualquier período,
+ * independientemente del filtro de fecha activo. El filtro solo controla qué
+ * registros ya procesados (justificados/injustificados) son visibles.
+ * Las salidas pendientes (isJustified: false, no unjustified) SIEMPRE son visibles.
  */
 export async function getTeamEarlyDepartures(
     managerId: string,
@@ -261,7 +257,7 @@ export async function getTeamEarlyDepartures(
         let dateStart = '';
         let dateEnd = '';
 
-        if (dateFilter) {
+        if (dateFilter && dateFilter !== 'all') {
             if (dateFilter.length === 10) {
                 dateStart = dateFilter;
                 dateEnd = dateFilter;
@@ -279,12 +275,14 @@ export async function getTeamEarlyDepartures(
             dateEnd = format(today, 'yyyy-MM-dd');
         }
 
-        const allRecords: EarlyDeparture[] = [];
+        // Mapa para deduplicar por ID: los pendientes siempre se incluyen
+        const recordsMap = new Map<string, EarlyDeparture>();
 
         for (let i = 0; i < subordinateIds.length; i += 30) {
             const batch = subordinateIds.slice(i, i + 30);
 
-            const qConstraints = [
+            // --- Query 1: Registros dentro del rango de fechas (histórico/filtrado) ---
+            const qConstraints: any[] = [
                 where('employeeId', 'in', batch),
                 orderBy('date', 'asc')
             ];
@@ -294,20 +292,45 @@ export async function getTeamEarlyDepartures(
                 qConstraints.push(where('date', '<=', dateEnd));
             }
 
-            const departuresQuery = query(
+            const filteredQuery = query(
                 collection(firestore, 'early_departures'),
                 ...qConstraints
             );
 
-            const snapshot = await getDocs(departuresQuery);
-            const records = snapshot.docs.map(d => ({
-                id: d.id,
-                ...d.data()
-            })) as EarlyDeparture[];
+            // --- Query 2: Pendientes de CUALQUIER período (siempre visibles) ---
+            const pendingQuery = dateFilter !== 'all'
+                ? query(
+                    collection(firestore, 'early_departures'),
+                    where('employeeId', 'in', batch),
+                    where('isJustified', '==', false)
+                )
+                : null;
 
-            allRecords.push(...records);
+            // Ejecutar ambas queries en paralelo
+            const [filteredSnap, pendingSnap] = await Promise.all([
+                getDocs(filteredQuery),
+                pendingQuery ? getDocs(pendingQuery) : Promise.resolve(null)
+            ]);
+
+            // Poblar el mapa (deduplicado por ID)
+            filteredSnap.docs.forEach(d => {
+                const data = d.data() as Omit<EarlyDeparture, 'id'>;
+                recordsMap.set(d.id, { id: d.id, ...data } as EarlyDeparture);
+            });
+
+            if (pendingSnap) {
+                pendingSnap.docs.forEach(d => {
+                    const data = d.data() as Omit<EarlyDeparture, 'id'>;
+                    // Solo agregar pendientes reales (no los ya marcados como injustificados)
+                    if ((data as any).justificationStatus !== 'unjustified') {
+                        recordsMap.set(d.id, { id: d.id, ...data } as EarlyDeparture);
+                    }
+                });
+            }
         }
 
+        // Convertir mapa a array y ordenar por fecha descendente
+        const allRecords = Array.from(recordsMap.values());
         allRecords.sort((a, b) => b.date.localeCompare(a.date));
 
         return { success: true, records: allRecords };

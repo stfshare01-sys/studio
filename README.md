@@ -136,6 +136,21 @@ firebase deploy --only storage
 firebase emulators:start
 ```
 
+### ⚠️ Consideración para Cloud Functions v2 (onCall)
+Las Cloud Functions de 2ª generación nacen con políticas "Secure by Default" en Google Cloud Run. Si creas una nueva función `onCall` (ej. `createSystemUser`), el despliegue con Firebase CLI puede fallar silenciosamente al intentar aplicar el permiso público si hay restricciones en la organización. 
+
+Para que el frontend (`httpsCallable`) pueda consumirla sin errores de CORS o *The request was not authenticated*, **debes permitir invocaciones no autenticadas** manualmente:
+
+**Vía Google Cloud Shell:**
+```bash
+gcloud run services add-iam-policy-binding [nombre-de-tu-funcion] \
+  --member="allUsers" \
+  --role="roles/run.invoker" \
+  --region="us-central1" \
+  --project="studio-8124216502-5e35f"
+```
+*(Firebase SDK se encargará de validar internamente el token de usuario)*.
+
 ---
 
 ## Guías de arquitectura

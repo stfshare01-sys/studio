@@ -179,8 +179,12 @@ export default function EditEmployeePage({ params }: { params: Promise<{ id: str
             }
 
             // Add all form fields, converting undefined to deleteField()
+            // For sensitive string fields (rfc, curp, nss), also treat empty string as "remove"
+            const NULLABLE_STRING_FIELDS = ['rfc', 'curp', 'nss', 'clabe', 'costCenter'];
             Object.entries(formData).forEach(([key, value]) => {
                 if (value === undefined) {
+                    updateData[key] = deleteField();
+                } else if (NULLABLE_STRING_FIELDS.includes(key) && value === '') {
                     updateData[key] = deleteField();
                 } else {
                     updateData[key] = value;

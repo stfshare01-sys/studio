@@ -143,7 +143,7 @@ function TeamManagementContent() {
 
     // Advanced Filters
     const [searchTerm, setSearchTerm] = useState('');
-    const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'justified'>('all');
+    const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'justified'>('pending');
     const [selectedEmployeeFilter, setSelectedEmployeeFilter] = useState<string>('all'); // Filtro por empleado
 
     // Data states
@@ -1279,8 +1279,9 @@ function TeamManagementContent() {
                 ? (!record.isJustified && record.justificationStatus !== 'unjustified')
                 : (record.isJustified || record.justificationStatus === 'unjustified'));
         const matchesEmployee = selectedEmployeeFilter === 'all' || record.employeeId === selectedEmployeeFilter;
-        // Date Filter
-        const matchesDate = !activeBatchRange || (record.date >= activeBatchRange.start && record.date <= activeBatchRange.end);
+        // Los pendientes siempre son visibles. Solo los procesados se filtran por rango de fecha.
+        const isPending = !record.isJustified && record.justificationStatus !== 'unjustified';
+        const matchesDate = isPending || !activeBatchRange || (record.date >= activeBatchRange.start && record.date <= activeBatchRange.end);
 
         return matchesSearch && matchesStatus && filterByShift(record.employeeId) && matchesEmployee && matchesDate;
     }).sort((a, b) => a.date.localeCompare(b.date));
@@ -1293,8 +1294,9 @@ function TeamManagementContent() {
                 ? (!record.isJustified && record.justificationStatus !== 'unjustified')
                 : (record.isJustified || record.justificationStatus === 'unjustified'));
         const matchesEmployee = selectedEmployeeFilter === 'all' || record.employeeId === selectedEmployeeFilter;
-        // Date Filter
-        const matchesDate = !activeBatchRange || (record.date >= activeBatchRange.start && record.date <= activeBatchRange.end);
+        // Los pendientes siempre son visibles. Solo los procesados se filtran por rango de fecha.
+        const isPending = !record.isJustified && record.justificationStatus !== 'unjustified';
+        const matchesDate = isPending || !activeBatchRange || (record.date >= activeBatchRange.start && record.date <= activeBatchRange.end);
 
         return matchesSearch && matchesStatus && filterByShift(record.employeeId) && matchesEmployee && matchesDate;
     }).sort((a, b) => a.date.localeCompare(b.date));
@@ -1348,8 +1350,9 @@ function TeamManagementContent() {
 
     const filteredMissingPunches = missingPunches.filter(p => {
         const matchesEmployee = selectedEmployeeFilter === 'all' || p.employeeId === selectedEmployeeFilter;
-        // Date Filter
-        const matchesDate = !activeBatchRange || (p.date >= activeBatchRange.start && p.date <= activeBatchRange.end);
+        // Los marcajes sin procesar siempre son visibles. Solo los procesados se filtran por rango.
+        const isPending = !p.isJustified && !p.resultedInAbsence && !p.processed;
+        const matchesDate = isPending || !activeBatchRange || (p.date >= activeBatchRange.start && p.date <= activeBatchRange.end);
         return matchesEmployee && matchesDate;
     }).sort((a, b) => a.date.localeCompare(b.date));
 
@@ -1435,17 +1438,20 @@ function TeamManagementContent() {
                     <div className="flex items-center gap-4">
                         {/* Manager Selector for Global Access */}
                         {hasPermission(permissions, 'hcm_team_management_global', 'read') && (
-                            <div className="w-[250px]">
+                            <div className="w-[300px]">
                                 <Select value={selectedManagerId} onValueChange={(val) => { setSelectedManagerId(val); }}>
                                     <SelectTrigger>
                                         <SelectValue placeholder="Seleccionar vista..." />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="all">-- Ver Todos (Global) --</SelectItem>
-                                        <SelectItem value={user?.uid || 'self'}>Mi Equipo (Yo)</SelectItem>
-                                        {availableManagers.filter(m => m.id !== user?.uid).map(mgr => (
-                                            <SelectItem key={mgr.id} value={mgr.id}>{mgr.name}</SelectItem>
-                                        ))}
+                                        <SelectItem value="all">-- Toda la Empresa --</SelectItem>
+                                        <SelectItem value={user?.uid || 'self'}>Mi Equipo</SelectItem>
+                                        <SelectGroup>
+                                            <SelectLabel className="text-muted-foreground font-semibold">Ver equipo del manager:</SelectLabel>
+                                            {availableManagers.filter(m => m.id !== user?.uid).map(mgr => (
+                                                <SelectItem key={mgr.id} value={mgr.id}>Equipo de {mgr.name}</SelectItem>
+                                            ))}
+                                        </SelectGroup>
                                     </SelectContent>
                                 </Select>
                             </div>
@@ -1574,22 +1580,7 @@ function TeamManagementContent() {
                                     )}
                                 </div>
                             </div>
-                            <div className="flex-1">
-                                <Label>Cargar Periodo (Batch)</Label>
-                                <Select value={selectedBatchId} onValueChange={setSelectedBatchId}>
-                                    <SelectTrigger className="w-full md:w-[250px]">
-                                        <SelectValue placeholder="Seleccionar carga..." />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="all">Todos</SelectItem>
-                                        {importBatches.map(batch => (
-                                            <SelectItem key={batch.id} value={batch.id}>
-                                                {formatDateDDMMYYYY(batch.uploadedAt)} - {batch.filename}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
+
                             <div className="flex-1">
                                 <Label>Turno</Label>
                                 <Select value={selectedShiftFilter} onValueChange={(val) => setSelectedShiftFilter(val as ShiftType | 'all')}>
@@ -1686,14 +1677,14 @@ function TeamManagementContent() {
                                                     </TableCell>
                                                     <TableCell>
                                                         {stat.tardinessMinutes ? (
-                                                            <Badge variant={stat.tardinessJustified ? 'secondary' : 'destructive'}>
+                                                            <Badge variant={stat.tardinessJustified ? 'success' : 'destructive'}>
                                                                 {stat.tardinessMinutes} min
                                                             </Badge>
                                                         ) : '-'}
                                                     </TableCell>
                                                     <TableCell>
                                                         {stat.earlyDepartureMinutes ? (
-                                                            <Badge variant={stat.earlyDepartureJustified ? 'secondary' : 'outline'}>
+                                                            <Badge variant={stat.earlyDepartureJustified ? 'success' : 'warning'}>
                                                                 {stat.earlyDepartureMinutes} min
                                                             </Badge>
                                                         ) : '-'}
@@ -1701,9 +1692,9 @@ function TeamManagementContent() {
                                                     <TableCell>
                                                         {stat.overtimeHoursRequested ? (
                                                             <Badge variant={
-                                                                stat.overtimeStatus === 'approved' ? 'default' :
+                                                                stat.overtimeStatus === 'approved' ? 'success' :
                                                                     stat.overtimeStatus === 'rejected' ? 'destructive' :
-                                                                        stat.overtimeStatus === 'partial' ? 'secondary' : 'outline'
+                                                                        stat.overtimeStatus === 'partial' ? 'secondary' : 'warning'
                                                             }>
                                                                 {stat.overtimeHoursApproved || stat.overtimeHoursRequested}h
                                                             </Badge>
@@ -1711,7 +1702,7 @@ function TeamManagementContent() {
                                                     </TableCell>
                                                     <TableCell>
                                                         {stat.hasMissingPunch ? (
-                                                            <Badge variant={stat.missingPunchJustified ? 'secondary' : 'destructive'}>
+                                                            <Badge variant={stat.missingPunchJustified ? 'success' : 'destructive'}>
                                                                 {stat.missingPunchType === 'both' ? 'Entrada + Salida' :
                                                                     stat.missingPunchType === 'entry' ? 'Entrada' : 'Salida'}
                                                             </Badge>
@@ -1719,7 +1710,7 @@ function TeamManagementContent() {
                                                     </TableCell>
                                                     <TableCell>
                                                         {stat.hasIncidence ? (
-                                                            <Badge variant={stat.incidenceStatus === 'approved' ? 'default' : 'outline'}>
+                                                            <Badge variant={stat.incidenceStatus === 'approved' ? 'success' : 'warning'}>
                                                                 {stat.incidenceType === 'vacation' ? 'Vacaciones' :
                                                                     stat.incidenceType === 'sick_leave' ? 'Incapacidad' :
                                                                         stat.incidenceType === 'personal_leave' ? 'Permiso Personal' :
@@ -1903,9 +1894,9 @@ function TeamManagementContent() {
                                                         {record.justificationStatus === 'unjustified' ? (
                                                             <Badge variant="destructive">Injustificado</Badge>
                                                         ) : record.isJustified ? (
-                                                            <Badge variant="secondary">Justificado</Badge>
+                                                            <Badge variant="success">Justificado</Badge>
                                                         ) : (
-                                                            <Badge variant="outline">Pendiente</Badge>
+                                                            <Badge variant="warning">Pendiente</Badge>
                                                         )}
                                                     </TableCell>
                                                     <TableCell className="text-right">
@@ -2020,9 +2011,9 @@ function TeamManagementContent() {
                                                         {record.justificationStatus === 'unjustified' ? (
                                                             <Badge variant="destructive">Injustificado</Badge>
                                                         ) : record.isJustified ? (
-                                                            <Badge variant="secondary">Justificado</Badge>
+                                                            <Badge variant="success">Justificado</Badge>
                                                         ) : (
-                                                            <Badge variant="outline">Pendiente</Badge>
+                                                            <Badge variant="warning">Pendiente</Badge>
                                                         )}
                                                     </TableCell>
                                                     <TableCell className="text-right">
@@ -2117,16 +2108,7 @@ function TeamManagementContent() {
                                                         <TableRow key={punch.id}>
                                                             <TableCell>{punch.date}</TableCell>
                                                             <TableCell>
-                                                                <div className="flex items-center gap-3">
-                                                                    <Avatar className="h-8 w-8">
-                                                                        <AvatarImage src={employee?.avatarUrl} />
-                                                                        <AvatarFallback>{employee?.fullName?.charAt(0)}</AvatarFallback>
-                                                                    </Avatar>
-                                                                    <div>
-                                                                        <div className="font-medium">{employee?.fullName || punch.employeeName}</div>
-                                                                        <div className="text-xs text-muted-foreground">{employee?.email}</div>
-                                                                    </div>
-                                                                </div>
+                                                                <div className="font-medium">{employee?.fullName || punch.employeeName}</div>
                                                             </TableCell>
                                                             <TableCell>
                                                                 <Badge variant="outline">
@@ -2135,11 +2117,11 @@ function TeamManagementContent() {
                                                             </TableCell>
                                                             <TableCell>
                                                                 {punch.isJustified ? (
-                                                                    <Badge variant="default">Justificado</Badge>
+                                                                    <Badge variant="success">Justificado</Badge>
                                                                 ) : punch.resultedInAbsence ? (
                                                                     <Badge variant="destructive">Falta</Badge>
                                                                 ) : (
-                                                                    <Badge variant="secondary">Pendiente</Badge>
+                                                                    <Badge variant="warning">Pendiente</Badge>
                                                                 )}
                                                             </TableCell>
                                                             <TableCell className="text-right">
@@ -2265,9 +2247,9 @@ function TeamManagementContent() {
                                                     <TableCell className="max-w-xs truncate">{request.reason}</TableCell>
                                                     <TableCell>
                                                         <Badge variant={
-                                                            request.status === 'approved' ? 'default' :
+                                                            request.status === 'approved' ? 'success' :
                                                                 request.status === 'rejected' ? 'destructive' :
-                                                                    request.status === 'partial' ? 'secondary' : 'outline'
+                                                                    request.status === 'partial' ? 'secondary' : 'warning'
                                                         }>
                                                             {request.status === 'approved' ? 'Aprobada' :
                                                                 request.status === 'rejected' ? 'Rechazada' :

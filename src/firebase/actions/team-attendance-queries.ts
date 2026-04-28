@@ -65,7 +65,11 @@ export async function getAttendanceImportBatches(
 // =========================================================================
 
 /**
- * Obtiene los retardos pendientes de justificación del equipo
+ * Obtiene los retardos del equipo.
+ * COMPORTAMIENTO: Siempre incluye los registros pendientes de cualquier período,
+ * independientemente del filtro de fecha. El filtro de fecha solo controla qué
+ * registros ya procesados (justificados/injustificados) se muestran.
+ * Los pendientes SIEMPRE son visibles para que el manager no los pierda.
  */
 export async function getTeamTardiness(
     managerId: string,
@@ -110,39 +114,63 @@ export async function getTeamTardiness(
             dateEnd = format(today, 'yyyy-MM-dd');
         }
 
-        // Obtener retardos
-        // Nota: Firestore no permite where 'in' con más de 30 elementos
-        // Así que dividimos si es necesario
-        const allRecords: TardinessRecord[] = [];
+        // Mapa para deduplicar por ID: los pendientes siempre se incluyen
+        const recordsMap = new Map<string, TardinessRecord>();
 
         for (let i = 0; i < subordinateIds.length; i += 30) {
             const batch = subordinateIds.slice(i, i + 30);
 
-            const qConstraints = [
+            // --- Query 1: Registros dentro del rango de fechas (histórico/filtrado) ---
+            const qConstraintsFiltered = [
                 where('employeeId', 'in', batch),
                 orderBy('date', 'asc')
             ];
 
             if (dateFilter !== 'all') {
-                qConstraints.push(where('date', '>=', dateStart));
-                qConstraints.push(where('date', '<=', dateEnd));
+                qConstraintsFiltered.push(where('date', '>=', dateStart));
+                qConstraintsFiltered.push(where('date', '<=', dateEnd));
             }
 
-            const tardinessQuery = query(
+            const filteredQuery = query(
                 collection(firestore, 'tardiness_records'),
-                ...qConstraints
+                ...qConstraintsFiltered
             );
 
-            const snapshot = await getDocs(tardinessQuery);
-            const records = snapshot.docs.map(d => ({
-                id: d.id,
-                ...d.data()
-            })) as TardinessRecord[];
+            // --- Query 2: Pendientes de CUALQUIER período (siempre visibles) ---
+            // Solo aplica cuando hay un filtro activo (si dateFilter === 'all', ya cargamos todo)
+            const pendingQuery = dateFilter !== 'all'
+                ? query(
+                    collection(firestore, 'tardiness_records'),
+                    where('employeeId', 'in', batch),
+                    where('isJustified', '==', false)
+                )
+                : null;
 
-            allRecords.push(...records);
+            // Ejecutar ambas queries en paralelo
+            const [filteredSnap, pendingSnap] = await Promise.all([
+                getDocs(filteredQuery),
+                pendingQuery ? getDocs(pendingQuery) : Promise.resolve(null)
+            ]);
+
+            // Poblar el mapa (deduplicado por ID)
+            filteredSnap.docs.forEach(d => {
+                const data = d.data() as Omit<TardinessRecord, 'id'>;
+                recordsMap.set(d.id, { id: d.id, ...data } as TardinessRecord);
+            });
+
+            if (pendingSnap) {
+                pendingSnap.docs.forEach(d => {
+                    const data = d.data() as Omit<TardinessRecord, 'id'>;
+                    // Solo agregar pendientes reales (no los ya marcados como injustificados)
+                    if ((data as any).justificationStatus !== 'unjustified') {
+                        recordsMap.set(d.id, { id: d.id, ...data } as TardinessRecord);
+                    }
+                });
+            }
         }
 
-        // Ordenar por fecha descendente
+        // Convertir mapa a array y ordenar por fecha descendente
+        const allRecords = Array.from(recordsMap.values());
         allRecords.sort((a, b) => b.date.localeCompare(a.date));
 
         return { success: true, records: allRecords };
@@ -156,6 +184,11 @@ export async function getTeamTardiness(
 // MARCAJES FALTANTES DEL EQUIPO
 // =========================================================================
 
+/**
+ * Obtiene los marcajes faltantes del equipo.
+ * COMPORTAMIENTO: Siempre incluye los marcajes sin procesar de cualquier período,
+ * independientemente del filtro de fecha activo.
+ */
 export async function getTeamMissingPunches(
     managerId: string,
     dateFilter?: string,
@@ -195,11 +228,13 @@ export async function getTeamMissingPunches(
             dateEnd = format(today, 'yyyy-MM-dd');
         }
 
-        const allRecords: any[] = [];
+        // Mapa para deduplicar por ID
+        const recordsMap = new Map<string, any>();
 
         for (let i = 0; i < subordinateIds.length; i += 30) {
             const batch = subordinateIds.slice(i, i + 30);
 
+            // --- Query 1: Registros dentro del rango de fechas (filtrado) ---
             const qConstraints = [
                 where('employeeId', 'in', batch),
                 orderBy('date', 'asc')
@@ -210,21 +245,51 @@ export async function getTeamMissingPunches(
                 qConstraints.push(where('date', '<=', dateEnd));
             }
 
-            const q = query(
+            const filteredQ = query(
                 collection(firestore, 'missing_punches'),
                 ...qConstraints
             );
 
-            const snapshot = await getDocs(q);
-            snapshot.forEach(doc => {
+            // --- Query 2: Pendientes (sin procesar) de cualquier período ---
+            const pendingQ = dateFilter !== 'all'
+                ? query(
+                    collection(firestore, 'missing_punches'),
+                    where('employeeId', 'in', batch),
+                    where('processed', '==', false)
+                )
+                : null;
+
+            const [filteredSnap, pendingSnap] = await Promise.all([
+                getDocs(filteredQ),
+                pendingQ ? getDocs(pendingQ) : Promise.resolve(null)
+            ]);
+
+            filteredSnap.forEach(doc => {
                 const data = doc.data();
-                allRecords.push({
+                recordsMap.set(doc.id, {
                     id: doc.id,
                     ...data,
-                    employeeName: subordinateMap.get(data.employeeId) || data.employeeName // Asegurar nombre actualizado
+                    employeeName: subordinateMap.get(data.employeeId) || data.employeeName
                 });
             });
+
+            if (pendingSnap) {
+                pendingSnap.forEach(doc => {
+                    const data = doc.data();
+                    // Solo pendientes reales (no resultaron en falta)
+                    if (!data.resultedInAbsence) {
+                        recordsMap.set(doc.id, {
+                            id: doc.id,
+                            ...data,
+                            employeeName: subordinateMap.get(data.employeeId) || data.employeeName
+                        });
+                    }
+                });
+            }
         }
+
+        const allRecords = Array.from(recordsMap.values());
+        allRecords.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
 
         return { success: true, records: allRecords };
 

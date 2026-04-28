@@ -336,7 +336,7 @@ export default function EmployeeDetailPage({ params }: { params: Promise<{ id: s
                             <div className="grid gap-6 md:grid-cols-2">
                                 <Card>
                                     <CardHeader>
-                                        <CardTitle>Información de Contacto</CardTitle>
+                                        <CardTitle>Información General</CardTitle>
                                     </CardHeader>
                                     <CardContent className="space-y-4">
                                         <div className="flex items-center gap-3">
@@ -346,6 +346,24 @@ export default function EmployeeDetailPage({ params }: { params: Promise<{ id: s
                                             <div>
                                                 <p className="text-sm font-medium">Correo Electrónico</p>
                                                 <p className="text-sm text-muted-foreground">{employee.email}</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <div className="p-2 bg-muted rounded-full">
+                                                <Building2 className="h-4 w-4 text-muted-foreground" />
+                                            </div>
+                                            <div>
+                                                <p className="text-sm font-medium">RFC</p>
+                                                <p className="text-sm text-muted-foreground">{employee.rfc || employee.rfc_curp?.split(' ')[0] || 'No registrado'}</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <div className="p-2 bg-muted rounded-full">
+                                                <User className="h-4 w-4 text-muted-foreground" />
+                                            </div>
+                                            <div>
+                                                <p className="text-sm font-medium">CURP</p>
+                                                <p className="text-sm text-muted-foreground">{employee.curp || employee.rfc_curp?.split(' ')[1] || 'No registrado'}</p>
                                             </div>
                                         </div>
                                     </CardContent>
@@ -429,11 +447,11 @@ export default function EmployeeDetailPage({ params }: { params: Promise<{ id: s
                                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                                             <div>
                                                 <p className="text-sm font-medium text-muted-foreground">RFC con Homoclave</p>
-                                                <p className="text-lg font-mono mt-1">{employee.rfc_curp?.split(' ')[0] || 'No registrado'}</p>
+                                                <p className="text-lg font-mono mt-1">{employee.rfc || employee.rfc_curp?.split(' ')[0] || 'No registrado'}</p>
                                             </div>
                                             <div>
                                                 <p className="text-sm font-medium text-muted-foreground">CURP</p>
-                                                <p className="text-lg font-mono mt-1">{employee.rfc_curp?.split(' ')[1] || 'No registrado'}</p>
+                                                <p className="text-lg font-mono mt-1">{employee.curp || employee.rfc_curp?.split(' ')[1] || 'No registrado'}</p>
                                             </div>
                                             <div>
                                                 <p className="text-sm font-medium text-muted-foreground">NSS (IMSS)</p>
