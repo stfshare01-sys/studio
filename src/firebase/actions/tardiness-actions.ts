@@ -89,14 +89,21 @@ export async function recordTardiness(
         const weekStart = new Date();
         weekStart.setDate(weekStart.getDate() - 7);
 
+        // ⚠️ REGLA CRÍTICA (team-management-module):
+        // Firestore NO puede combinar where('date','>=') con where('isJustified','==') en campos
+        // diferentes sin un índice compuesto de 3 campos específico.
+        // Solución permanente: filtrar solo por employeeId + date en Firestore,
+        // aplicar el filtro isJustified en memoria. NO revertir a filtro Firestore.
         const tardinessQuery = query(
             collection(firestore, 'tardiness_records'),
             where('employeeId', '==', employeeId),
-            where('date', '>=', format(thirtyDaysAgo, 'yyyy-MM-dd')),
-            where('isJustified', '==', false)
+            where('date', '>=', format(thirtyDaysAgo, 'yyyy-MM-dd'))
         );
         const tardinessSnap = await getDocs(tardinessQuery);
-        const records = tardinessSnap.docs.map(d => d.data() as TardinessRecord);
+        // Filtro en memoria: solo retardos no justificados (evita índice compuesto imposible)
+        const records = tardinessSnap.docs
+            .map(d => d.data() as TardinessRecord)
+            .filter(r => !r.isJustified);
 
         const countInPeriod = records.length + 1;
         const countInWeek = records.filter(r => new Date(r.date) >= weekStart).length + 1;

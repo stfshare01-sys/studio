@@ -56,7 +56,8 @@ import {
     CheckCircle2,
     Calculator,
     Lock,
-    History
+    History,
+    Moon
 } from 'lucide-react';
 
 import {
@@ -1150,8 +1151,15 @@ function TeamManagementContent() {
                 setProvidedEntryTime('');
                 setProvidedExitTime('');
 
-                // Recargar datos
+                // ⚠️ REGLA CRÍTICA (team-management-module):
+                // justifyMissingPunch puede generar registros en tardiness_records
+                // y/o early_departures además de actualizar missing_punches.
+                // Siempre recargar los tres tabs para que los nuevos registros
+                // aparezcan en sus pestañas correspondientes.
+                // NO reducir estas llamadas a solo 'missing-punches'.
                 loadTabData('missing-punches');
+                if (result.generatedTardinessId) loadTabData('tardiness');
+                if (result.generatedEarlyDepartureId) loadTabData('early-departures');
             } else {
                 throw new Error(result.error || 'Error al justificar marcaje');
             }
@@ -1442,14 +1450,17 @@ function TeamManagementContent() {
                         {hasPermission(permissions, 'hcm_team_management_global', 'read') && (
                             <div className="w-[300px]">
                                 <Select value={selectedManagerId} onValueChange={(val) => { setSelectedManagerId(val); }}>
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="Seleccionar vista..." />
+                                    <SelectTrigger className="bg-slate-900 border-slate-800 text-slate-50 focus:ring-slate-400 font-medium shadow-md">
+                                        <div className="flex items-center gap-2">
+                                            <Users2 className="h-4 w-4 text-indigo-400" />
+                                            <SelectValue placeholder="Seleccionar vista..." />
+                                        </div>
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="all">-- Toda la Empresa --</SelectItem>
-                                        <SelectItem value={user?.uid || 'self'}>Mi Equipo</SelectItem>
+                                        <SelectItem value="all" className="font-semibold text-indigo-600">-- Toda la Empresa --</SelectItem>
+                                        <SelectItem value={user?.uid || 'self'}>Mi Equipo Directo</SelectItem>
                                         <SelectGroup>
-                                            <SelectLabel className="text-muted-foreground font-semibold">Ver equipo del manager:</SelectLabel>
+                                            <SelectLabel className="text-slate-500 font-semibold px-2 py-1.5 text-xs uppercase tracking-wider">Equipos por Manager:</SelectLabel>
                                             {availableManagers.filter(m => m.id !== user?.uid).map(mgr => (
                                                 <SelectItem key={mgr.id} value={mgr.id}>Equipo de {mgr.name}</SelectItem>
                                             ))}
@@ -1458,9 +1469,9 @@ function TeamManagementContent() {
                                 </Select>
                             </div>
                         )}
-                        <Badge variant="outline" className="text-base py-1 px-3">
+                        <Badge variant="outline" className="text-base py-1.5 px-4 bg-indigo-600 text-white border-indigo-500 shadow-lg ring-1 ring-indigo-400/30">
                             <Users2 className="h-4 w-4 mr-2" />
-                            {employees.length} empleados
+                            {employees.length} <span className="ml-1 opacity-80">empleados</span>
                         </Badge>
 
                         <Button variant="default" className="bg-blue-600 hover:bg-blue-700 text-white" onClick={() => loadTabData(activeTab)} disabled={refreshing}>
@@ -1526,82 +1537,84 @@ function TeamManagementContent() {
 
                 {/* Main Content Tabs */}
                 <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-                    <TabsList>
-                        <TabsTrigger value="overview">Vista General</TabsTrigger>
-                        <TabsTrigger value="tardiness">
+                    <TabsList className="bg-slate-100 p-1 border border-slate-200 shadow-inner">
+                        <TabsTrigger value="overview" className="data-[state=active]:bg-white data-[state=active]:text-indigo-700 data-[state=active]:shadow-sm">Vista General</TabsTrigger>
+                        <TabsTrigger value="tardiness" className="data-[state=active]:bg-white data-[state=active]:text-indigo-700 data-[state=active]:shadow-sm">
                             Retardos
                             {pendingTardiness.length > 0 && (
-                                <Badge variant="destructive" className="ml-2">{pendingTardiness.length}</Badge>
+                                <Badge variant="destructive" className="ml-2 bg-rose-600 animate-pulse">{pendingTardiness.length}</Badge>
                             )}
                         </TabsTrigger>
-                        <TabsTrigger value="early-departures">
+                        <TabsTrigger value="early-departures" className="data-[state=active]:bg-white data-[state=active]:text-indigo-700 data-[state=active]:shadow-sm">
                             Salidas Tempranas
                             {pendingDepartures.length > 0 && (
-                                <Badge variant="secondary" className="ml-2">{pendingDepartures.length}</Badge>
+                                <Badge variant="destructive" className="ml-2 bg-rose-600 animate-pulse">{pendingDepartures.length}</Badge>
                             )}
                         </TabsTrigger>
-                        <TabsTrigger value="missing-punches">
+                        <TabsTrigger value="missing-punches" className="data-[state=active]:bg-white data-[state=active]:text-indigo-700 data-[state=active]:shadow-sm">
                             Sin Registro
                             {missingPunches.filter(p => !p.isJustified && !p.resultedInAbsence).length > 0 && (
-                                <Badge variant="destructive" className="ml-2">{missingPunches.filter(p => !p.isJustified && !p.resultedInAbsence).length}</Badge>
+                                <Badge variant="destructive" className="ml-2 bg-rose-600 animate-pulse">{missingPunches.filter(p => !p.isJustified && !p.resultedInAbsence).length}</Badge>
                             )}
                         </TabsTrigger>
                         {hasPermission(permissions, 'hcm_team_overtime', 'read') && (
-                            <TabsTrigger value="overtime">
+                            <TabsTrigger value="overtime" className="data-[state=active]:bg-white data-[state=active]:text-indigo-700 data-[state=active]:shadow-sm">
                                 Horas Extras
                                 {pendingOvertime.length > 0 && (
-                                    <Badge className="ml-2">{pendingOvertime.length}</Badge>
+                                    <Badge variant="destructive" className="ml-2 bg-rose-600 animate-pulse">{pendingOvertime.length}</Badge>
                                 )}
                             </TabsTrigger>
                         )}
                         {hasPermission(permissions, 'hcm_team_shifts', 'read') && (
-                            <TabsTrigger value="shifts">Turnos y Horarios</TabsTrigger>
+                            <TabsTrigger value="shifts" className="data-[state=active]:bg-white data-[state=active]:text-indigo-700 data-[state=active]:shadow-sm">
+                                Turnos y Horarios
+                            </TabsTrigger>
                         )}
                         {hasPermission(permissions, 'hcm_team_hour_bank', 'read') && (
-                            <TabsTrigger value="hour-bank">Bolsa de Horas</TabsTrigger>
+                            <TabsTrigger value="hour-bank" className="data-[state=active]:bg-white data-[state=active]:text-indigo-700 data-[state=active]:shadow-sm">
+                                Bolsa de Horas
+                            </TabsTrigger>
                         )}
                     </TabsList>
 
                     {/* Filters for all tabs except daily overview */}
                     {activeTab !== 'overview' && (
-                        <div className="flex flex-col md:flex-row gap-4 items-end md:items-center">
-                            <div className="flex-1">
-                                <Label>Periodo / Mes</Label>
+                        <div className="flex justify-end mb-4">
+                            <div className="flex flex-col md:flex-row gap-4 items-center bg-slate-900 p-2 px-4 rounded-xl border border-slate-800 shadow-lg ring-1 ring-white/5">
                                 <div className="flex items-center gap-2">
-                                    <Input
-                                        type="month"
-                                        value={dateFilter.length === 7 ? dateFilter : dateFilter.substring(0, 7)}
-                                        onChange={(e) => setDateFilter(e.target.value)}
-                                        className="w-full md:w-[200px]"
-                                    />
-                                    {isPeriodClosed && (
-                                        <Badge className="bg-red-100 text-red-800 border-red-300 whitespace-nowrap">
-                                            <Lock className="w-3 h-3 mr-1" />
-                                            Período Cerrado
-                                        </Badge>
-                                    )}
+                                    <Label className="text-xs font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">Periodo Reporte</Label>
+                                    <div className="flex items-center gap-2">
+                                        <Input
+                                            type="month"
+                                            value={dateFilter.length === 7 ? dateFilter : dateFilter.substring(0, 7)}
+                                            onChange={(e) => setDateFilter(e.target.value)}
+                                            className="h-9 w-full md:w-[160px] bg-slate-800 border-slate-700 text-slate-50 focus-visible:ring-indigo-500/30"
+                                        />
+                                        {isPeriodClosed && (
+                                            <Badge className="bg-rose-500/10 text-rose-400 border-rose-500/20 h-7 whitespace-nowrap font-bold">
+                                                <Lock className="w-3 h-3 mr-1" />
+                                                Cerrado
+                                            </Badge>
+                                        )}
+                                    </div>
                                 </div>
-                            </div>
 
-                            <div className="flex-1">
-                                <Label>Turno</Label>
-                                <Select value={selectedShiftFilter} onValueChange={(val) => setSelectedShiftFilter(val as ShiftType | 'all')}>
-                                    <SelectTrigger className="w-full md:w-[200px]">
-                                        <SelectValue placeholder="Todos los turnos" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="all">Todos</SelectItem>
-                                        <SelectItem value="diurnal">Diurno</SelectItem>
-                                        <SelectItem value="mixed">Mixto</SelectItem>
-                                        <SelectItem value="nocturnal">Nocturno</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            <div className="flex gap-2">
-                                <Button variant="outline" onClick={() => loadTabData(activeTab)}>
-                                    <RefreshCw className="mr-2 h-4 w-4" />
-                                    Actualizar
-                                </Button>
+                                <div className="hidden md:block w-px h-6 bg-border/60" />
+
+                                <div className="flex items-center gap-2">
+                                    <Label className="text-xs font-bold text-muted-foreground uppercase">Turno</Label>
+                                    <Select value={selectedShiftFilter} onValueChange={(val) => setSelectedShiftFilter(val as ShiftType | 'all')}>
+                                        <SelectTrigger className="h-9 w-full md:w-[150px] bg-background border-muted-foreground/20 focus-visible:ring-primary/30">
+                                            <SelectValue placeholder="Todos" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="all">Todos</SelectItem>
+                                            <SelectItem value="diurnal">Diurno</SelectItem>
+                                            <SelectItem value="mixed">Mixto</SelectItem>
+                                            <SelectItem value="nocturnal">Nocturno</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
                             </div>
                         </div>
                     )}
@@ -1679,24 +1692,24 @@ function TeamManagementContent() {
                                                     </TableCell>
                                                     <TableCell>
                                                         {stat.tardinessMinutes ? (
-                                                            <Badge variant={stat.tardinessJustified ? 'success' : 'destructive'}>
+                                                            <Badge variant="outline" className={stat.tardinessJustified ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'}>
                                                                 {stat.tardinessMinutes} min
                                                             </Badge>
                                                         ) : '-'}
                                                     </TableCell>
                                                     <TableCell>
                                                         {stat.earlyDepartureMinutes ? (
-                                                            <Badge variant={stat.earlyDepartureJustified ? 'success' : 'warning'}>
+                                                            <Badge variant="outline" className={stat.earlyDepartureJustified ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'}>
                                                                 {stat.earlyDepartureMinutes} min
                                                             </Badge>
                                                         ) : '-'}
                                                     </TableCell>
                                                     <TableCell>
                                                         {stat.overtimeHoursRequested ? (
-                                                            <Badge variant={
-                                                                stat.overtimeStatus === 'approved' ? 'success' :
-                                                                    stat.overtimeStatus === 'rejected' ? 'destructive' :
-                                                                        stat.overtimeStatus === 'partial' ? 'secondary' : 'warning'
+                                                            <Badge variant="outline" className={
+                                                                stat.overtimeStatus === 'approved' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                                                                    stat.overtimeStatus === 'rejected' ? 'bg-rose-50 text-rose-700 border-rose-200' :
+                                                                        stat.overtimeStatus === 'partial' ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-amber-50 text-amber-700 border-amber-200'
                                                             }>
                                                                 {stat.overtimeHoursApproved || stat.overtimeHoursRequested}h
                                                             </Badge>
@@ -1704,7 +1717,7 @@ function TeamManagementContent() {
                                                     </TableCell>
                                                     <TableCell>
                                                         {stat.hasMissingPunch ? (
-                                                            <Badge variant={stat.missingPunchJustified ? 'success' : 'destructive'}>
+                                                            <Badge variant="outline" className={stat.missingPunchJustified ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'}>
                                                                 {stat.missingPunchType === 'both' ? 'Entrada + Salida' :
                                                                     stat.missingPunchType === 'entry' ? 'Entrada' : 'Salida'}
                                                             </Badge>
@@ -1712,7 +1725,7 @@ function TeamManagementContent() {
                                                     </TableCell>
                                                     <TableCell>
                                                         {stat.hasIncidence ? (
-                                                            <Badge variant={stat.incidenceStatus === 'approved' ? 'success' : 'warning'}>
+                                                            <Badge variant="outline" className={stat.incidenceStatus === 'approved' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'}>
                                                                 {stat.incidenceType === 'vacation' ? 'Vacaciones' :
                                                                     stat.incidenceType === 'sick_leave' ? 'Incapacidad' :
                                                                         stat.incidenceType === 'personal_leave' ? 'Permiso Personal' :
@@ -1894,11 +1907,11 @@ function TeamManagementContent() {
                                                     </TableCell>
                                                     <TableCell>
                                                         {record.justificationStatus === 'unjustified' ? (
-                                                            <Badge variant="destructive">Injustificado</Badge>
+                                                            <Badge variant="outline" className="bg-rose-50 text-rose-700 border-rose-200">Injustificado</Badge>
                                                         ) : record.isJustified ? (
-                                                            <Badge variant="success">Justificado</Badge>
+                                                            <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200">Justificado</Badge>
                                                         ) : (
-                                                            <Badge variant="warning">Pendiente</Badge>
+                                                            <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">Pendiente</Badge>
                                                         )}
                                                     </TableCell>
                                                     <TableCell className="text-right">
@@ -2011,11 +2024,11 @@ function TeamManagementContent() {
                                                     </TableCell>
                                                     <TableCell>
                                                         {record.justificationStatus === 'unjustified' ? (
-                                                            <Badge variant="destructive">Injustificado</Badge>
+                                                            <Badge variant="outline" className="bg-rose-50 text-rose-700 border-rose-200">Injustificado</Badge>
                                                         ) : record.isJustified ? (
-                                                            <Badge variant="success">Justificado</Badge>
+                                                            <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200">Justificado</Badge>
                                                         ) : (
-                                                            <Badge variant="warning">Pendiente</Badge>
+                                                            <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">Pendiente</Badge>
                                                         )}
                                                     </TableCell>
                                                     <TableCell className="text-right">
@@ -2113,17 +2126,25 @@ function TeamManagementContent() {
                                                                 <div className="font-medium">{employee?.fullName || punch.employeeName}</div>
                                                             </TableCell>
                                                             <TableCell>
-                                                                <Badge variant="outline">
+                                                                <Badge className={cn(
+                                                                    "gap-1.5 px-3 py-1 font-semibold shadow-sm border-2",
+                                                                    punch.missingType === 'entry' ? 'bg-emerald-100 text-emerald-800 border-emerald-300' :
+                                                                        punch.missingType === 'exit' ? 'bg-indigo-100 text-indigo-800 border-indigo-300' :
+                                                                            'bg-rose-100 text-rose-800 border-rose-300'
+                                                                )} variant="outline">
+                                                                    {punch.missingType === 'entry' && <LogIn className="w-3.5 h-3.5" />}
+                                                                    {punch.missingType === 'exit' && <LogOut className="w-3.5 h-3.5" />}
+                                                                    {punch.missingType === 'both' && <ArrowLeftRight className="w-3.5 h-3.5" />}
                                                                     {missingTypeLabels[punch.missingType as keyof typeof missingTypeLabels]}
                                                                 </Badge>
                                                             </TableCell>
                                                             <TableCell>
                                                                 {punch.isJustified ? (
-                                                                    <Badge variant="success">Justificado</Badge>
+                                                                    <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200">Justificado</Badge>
                                                                 ) : punch.resultedInAbsence ? (
-                                                                    <Badge variant="destructive">Falta</Badge>
+                                                                    <Badge variant="outline" className="bg-rose-50 text-rose-700 border-rose-200">Falta</Badge>
                                                                 ) : (
-                                                                    <Badge variant="warning">Pendiente</Badge>
+                                                                    <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">Pendiente</Badge>
                                                                 )}
                                                             </TableCell>
                                                             <TableCell className="text-right">
@@ -2194,9 +2215,9 @@ function TeamManagementContent() {
                                                 ))}
                                             </SelectContent>
                                         </Select>
-                                        <Badge variant="default">{overtimeStats.approved} aprobadas</Badge>
-                                        <Badge variant="outline">{overtimeStats.pending} pendientes</Badge>
-                                        <Badge variant="destructive">{overtimeStats.rejected} rechazadas</Badge>
+                                        <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200">{overtimeStats.approved} aprobadas</Badge>
+                                        <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">{overtimeStats.pending} pendientes</Badge>
+                                        <Badge variant="outline" className="bg-rose-50 text-rose-700 border-rose-200">{overtimeStats.rejected} rechazadas</Badge>
                                     </div>
                                 </div>
                             </CardHeader>
@@ -2237,22 +2258,32 @@ function TeamManagementContent() {
                                                                 const hours = Math.floor(debt / 60);
                                                                 const mins = debt % 60;
                                                                 return (
-                                                                    <span className="font-bold text-red-600">
+                                                                    <Badge variant="outline" className="bg-rose-50 text-rose-700 border-rose-200 font-bold">
                                                                         -{hours}h {mins}m
-                                                                    </span>
+                                                                    </Badge>
                                                                 );
                                                             }
                                                             return <span className="text-muted-foreground">-</span>;
                                                         })()}
                                                     </TableCell>
-                                                    <TableCell>{Number(request.hoursRequested).toFixed(2)}h</TableCell>
+                                                    <TableCell>
+                                                        <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 font-semibold">
+                                                            {Number(request.hoursRequested).toFixed(2)}h
+                                                        </Badge>
+                                                    </TableCell>
                                                     <TableCell className="max-w-xs truncate">{request.reason}</TableCell>
                                                     <TableCell>
-                                                        <Badge variant={
-                                                            request.status === 'approved' ? 'success' :
-                                                                request.status === 'rejected' ? 'destructive' :
-                                                                    request.status === 'partial' ? 'secondary' : 'warning'
-                                                        }>
+                                                        <Badge className={cn(
+                                                            "gap-1.5 px-3 py-1 font-semibold shadow-sm border-2",
+                                                            request.status === 'approved' ? 'bg-emerald-100 text-emerald-800 border-emerald-300' :
+                                                                request.status === 'rejected' ? 'bg-rose-100 text-rose-800 border-rose-300' :
+                                                                    request.status === 'partial' ? 'bg-indigo-100 text-indigo-800 border-indigo-300' : 
+                                                                    'bg-amber-100 text-amber-800 border-amber-300'
+                                                        )} variant="outline">
+                                                            {request.status === 'approved' && <CheckCircle2 className="w-3.5 h-3.5" />}
+                                                            {request.status === 'rejected' && <XCircle className="w-3.5 h-3.5" />}
+                                                            {request.status === 'partial' && <Clock className="w-3.5 h-3.5" />}
+                                                            {request.status === 'pending' && <AlertCircle className="w-3.5 h-3.5" />}
                                                             {request.status === 'approved' ? 'Aprobada' :
                                                                 request.status === 'rejected' ? 'Rechazada' :
                                                                     request.status === 'partial' ? 'Parcial' : 'Pendiente'}
@@ -2301,8 +2332,11 @@ function TeamManagementContent() {
                                         <CardDescription>Asigna turnos o modifica horarios de tus subordinados</CardDescription>
                                     </div>
                                     <Select value={selectedEmployeeFilter} onValueChange={setSelectedEmployeeFilter}>
-                                        <SelectTrigger className="w-48">
-                                            <SelectValue placeholder="Filtrar por empleado" />
+                                        <SelectTrigger className="w-64 bg-slate-900 border-slate-800 text-slate-50 focus:ring-slate-400 font-medium shadow-md">
+                                            <div className="flex items-center gap-2">
+                                                <Filter className="h-4 w-4 text-indigo-400" />
+                                                <SelectValue placeholder="Filtrar por empleado" />
+                                            </div>
                                         </SelectTrigger>
                                         <SelectContent>
                                             <SelectItem value="all">Todos los empleados</SelectItem>
@@ -2342,7 +2376,16 @@ function TeamManagementContent() {
                                                     <TableCell>{employee.positionTitle}</TableCell>
                                                     <TableCell>
                                                         <div className="flex flex-col">
-                                                            <Badge variant={currentShift.isOverride ? (currentShift.isTemp ? "secondary" : "default") : "outline"} className="w-fit">
+                                                            <Badge className={cn(
+                                                                "w-fit gap-1.5 px-3 py-1 font-semibold shadow-sm border-2",
+                                                                currentShift.name.toLowerCase().includes('diurno') ? 'bg-emerald-100 text-emerald-800 border-emerald-300' :
+                                                                    currentShift.name.toLowerCase().includes('nocturno') ? 'bg-slate-900 text-slate-50 border-slate-700 ring-1 ring-slate-600' :
+                                                                        currentShift.name.toLowerCase().includes('mixto') ? 'bg-amber-100 text-amber-800 border-amber-300' :
+                                                                            'bg-blue-100 text-blue-800 border-blue-300'
+                                                            )} variant="outline">
+                                                                {currentShift.name.toLowerCase().includes('diurno') && <Sun className="w-3.5 h-3.5 text-emerald-600" />}
+                                                                {currentShift.name.toLowerCase().includes('nocturno') && <Moon className="w-3.5 h-3.5 text-indigo-300" />}
+                                                                {currentShift.name.toLowerCase().includes('mixto') && <SunMoon className="w-3.5 h-3.5 text-amber-600" />}
                                                                 {currentShift.name}
                                                             </Badge>
                                                             {currentShift.isTemp && <span className="text-xs text-muted-foreground mt-1">Temporal</span>}
@@ -2391,8 +2434,11 @@ function TeamManagementContent() {
                                     <div className="flex items-center justify-between">
                                         <CardTitle>Bolsa de Horas del Equipo</CardTitle>
                                         <Select value={selectedEmployeeFilter} onValueChange={setSelectedEmployeeFilter}>
-                                            <SelectTrigger className="w-48">
-                                                <SelectValue placeholder="Filtrar por empleado" />
+                                            <SelectTrigger className="w-64 bg-slate-900 border-slate-800 text-slate-50 focus:ring-slate-400 font-medium shadow-md">
+                                                <div className="flex items-center gap-2">
+                                                    <Filter className="h-4 w-4 text-indigo-400" />
+                                                    <SelectValue placeholder="Filtrar por empleado" />
+                                                </div>
                                             </SelectTrigger>
                                             <SelectContent>
                                                 <SelectItem value="all">Todos los empleados</SelectItem>
@@ -2440,15 +2486,35 @@ function TeamManagementContent() {
                                                         </TableCell>
                                                         <TableCell>{employee.positionTitle}</TableCell>
                                                         <TableCell>
-                                                            <span className={`font-bold ${formatted.colorClass}`}>
+                                                            <Badge 
+                                                                variant="outline" 
+                                                                className={cn(
+                                                                    "font-bold px-2.5 py-0.5",
+                                                                    balance > 0 ? "bg-rose-50 text-rose-700 border-rose-200" : 
+                                                                    balance < 0 ? "bg-emerald-50 text-emerald-700 border-emerald-200" : 
+                                                                    "bg-slate-50 text-slate-600 border-slate-200"
+                                                                )}
+                                                            >
                                                                 {formatted.text}
-                                                            </span>
+                                                            </Badge>
                                                         </TableCell>
-                                                        <TableCell className="text-red-500">
-                                                            {hb?.totalDebtAccumulated ? `${Math.floor(hb.totalDebtAccumulated / 60)}h ${hb.totalDebtAccumulated % 60}min` : '-'}
+                                                        <TableCell>
+                                                            {hb?.totalDebtAccumulated ? (
+                                                                <Badge variant="outline" className="bg-rose-50 text-rose-700 border-rose-200 font-medium">
+                                                                    {`${Math.floor(hb.totalDebtAccumulated / 60)}h ${hb.totalDebtAccumulated % 60}min`}
+                                                                </Badge>
+                                                            ) : (
+                                                                <span className="text-muted-foreground">-</span>
+                                                            )}
                                                         </TableCell>
-                                                        <TableCell className="text-green-600">
-                                                            {hb?.totalCompensated ? `${Math.floor(hb.totalCompensated / 60)}h ${hb.totalCompensated % 60}min` : '-'}
+                                                        <TableCell>
+                                                            {hb?.totalCompensated ? (
+                                                                <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 font-medium">
+                                                                    {`${Math.floor(hb.totalCompensated / 60)}h ${hb.totalCompensated % 60}min`}
+                                                                </Badge>
+                                                            ) : (
+                                                                <span className="text-muted-foreground">-</span>
+                                                            )}
                                                         </TableCell>
                                                         <TableCell className="text-right">
                                                             <Button

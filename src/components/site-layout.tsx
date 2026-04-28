@@ -245,7 +245,7 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="h-auto p-1.5 flex items-center gap-3 rounded-full hover:bg-muted/60 transition-colors">
-                  <Avatar className="h-11 w-11 shrink-0 border border-primary/20 shadow-sm">
+                  <Avatar className="h-12 w-12 md:h-14 md:w-14 shrink-0 border border-primary/20 shadow-sm">
                     {user?.avatarUrl && <AvatarImage src={user.avatarUrl} alt={displayName} />}
                     <AvatarFallback className="bg-primary/10 text-primary font-medium">{displayName.charAt(0)}</AvatarFallback>
                   </Avatar>
