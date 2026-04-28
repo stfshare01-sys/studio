@@ -362,7 +362,7 @@ function TeamManagementContent() {
                     break;
 
                 case 'overtime':
-                    const otResult = await getTeamOvertimeRequests(managerToUse, 'all', hierarchyDepth); // 'all' to get all for stats
+                    const otResult = await getTeamOvertimeRequests(managerToUse, 'all', hierarchyDepth, dateFilter); // dateFilter activa dual-query de pendientes
                     if (otResult.success) {
                         setOvertimeRequests(otResult.requests || []);
                         if (otResult.stats) setOvertimeStats(otResult.stats);
@@ -1322,8 +1322,11 @@ function TeamManagementContent() {
 
     const filteredOvertime = overtimeRequests.filter(r => {
         const matchesEmployee = selectedEmployeeFilter === 'all' || r.employeeId === selectedEmployeeFilter;
-        // Date Filter (assuming r.date exists on OvertimeRequest)
-        const matchesDate = !activeBatchRange || (r.date >= activeBatchRange.start && r.date <= activeBatchRange.end);
+        // Las solicitudes pendientes SIEMPRE son visibles sin importar el rango de fecha
+        // El backend ya inyectó los pendientes vía dual-query; aquí solo garantizamos que
+        // el filtro de fecha en el cliente tampoco los excluya.
+        const isPending = r.status === 'pending';
+        const matchesDate = isPending || !activeBatchRange || (r.date >= activeBatchRange.start && r.date <= activeBatchRange.end);
         return filterByShift(r.employeeId) && matchesEmployee && matchesDate;
     }).sort((a, b) => a.date.localeCompare(b.date));
 
