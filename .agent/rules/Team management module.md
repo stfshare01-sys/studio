@@ -152,6 +152,46 @@ con `date` — siempre filtrar en memoria:
 
 ---
 
+## CONTRATO 5 — Campos Opcionales en `addDoc`: Nunca `undefined`
+
+**Función afectada:** `recordTardiness` en `tardiness-actions.ts`
+
+**Problema recurrente:** Firestore **no acepta** campos con valor `undefined` en `addDoc`.
+Asignar `campo: condición ? valor : undefined` genera:
+```
+FirebaseError: Function addDoc() called with invalid data.
+Unsupported field value: undefined (found in field sanctionType...)
+```
+
+```ts
+// ❌ PROHIBIDO — undefined en campo de Firestore
+{
+  sanctionType: sanctionApplied ? 'suspension_1day' : undefined, // ← Firestore lo rechaza
+  sanctionDate: sanctionApplied ? now : undefined,               // ← ídem
+}
+
+// ✅ CORRECTO — spread condicional omite el campo cuando no aplica
+{
+  sanctionApplied,
+  ...(sanctionApplied && {
+    sanctionType: 'suspension_1day',
+    sanctionDate: now,
+  }),
+}
+```
+
+**Regla de oro:** Si un campo es opcional en un documento de Firestore,
+**omitirlo** cuando no aplica (spread condicional), nunca asignarlo como `undefined`.
+Alternativa válida para `updateDoc`: usar `deleteField()` de `firebase/firestore`.
+
+**Señal de detección:**
+```bash
+grep -n ": undefined" src/firebase/actions/
+# Todo resultado dentro de un objeto que se pasa a addDoc/setDoc requiere corrección
+```
+
+---
+
 ## Checklist al modificar este módulo
 
 ```
@@ -163,4 +203,6 @@ con `date` — siempre filtrar en memoria:
     en Firestore y por employeeId en memoria?
 [ ] Si añado lógica de "siempre visible para pendientes": ¿uso el patrón
     de recordsMap con deduplicación por ID?
+[ ] Si construyo payload para addDoc/setDoc: ¿algún campo puede ser undefined?
+    → Usar spread condicional para omitir campos opcionales
 ```

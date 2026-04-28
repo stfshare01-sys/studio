@@ -50,12 +50,17 @@ interface OvertimeStats {
 }
 
 /**
- * Obtiene las solicitudes de horas extras pendientes del equipo
+ * Obtiene las solicitudes de horas extras del equipo.
+ * COMPORTAMIENTO: Siempre incluye las solicitudes pendientes de cualquier período,
+ * independientemente del filtro de fecha. El filtro de fecha solo controla qué
+ * registros ya procesados (aprobados/rechazados) se muestran.
+ * Las pendientes SIEMPRE son visibles para que el manager no las pierda.
  */
 export async function getTeamOvertimeRequests(
     managerId: string,
     statusFilter?: 'pending' | 'approved' | 'rejected' | 'partial' | 'all',
-    hierarchyDepth?: number
+    hierarchyDepth?: number,
+    dateFilter?: string // YYYY-MM para filtrar historial. Las pendientes ignoran este filtro.
 ): Promise<{ success: boolean; requests?: OvertimeRequest[]; stats?: OvertimeStats; error?: string }> {
     try {
         const { firestore } = initializeFirebase();
@@ -71,35 +76,69 @@ export async function getTeamOvertimeRequests(
 
         const subordinateIds = subordinatesResult.employees.map(e => e.id);
 
-        const allRequests: OvertimeRequest[] = [];
+        // Preparar rango de fechas si hay filtro activo
+        let dateStart = '';
+        let dateEnd = '';
+        const hasDateFilter = dateFilter && dateFilter !== 'all' && dateFilter.length === 7;
+        if (hasDateFilter) {
+            dateStart = `${dateFilter}-01`;
+            const [year, month] = dateFilter!.split('-').map(Number);
+            const lastDay = new Date(year, month, 0).getDate();
+            dateEnd = `${dateFilter}-${lastDay.toString().padStart(2, '0')}`;
+        }
+
+        // Mapa para deduplicar por ID
+        const requestsMap = new Map<string, OvertimeRequest>();
 
         for (let i = 0; i < subordinateIds.length; i += 30) {
             const batch = subordinateIds.slice(i, i + 30);
 
-            let overtimeQuery;
-            if (statusFilter && statusFilter !== 'all') {
-                overtimeQuery = query(
-                    collection(firestore, 'overtime_requests'),
-                    where('employeeId', 'in', batch),
-                    where('status', '==', statusFilter),
-                    orderBy('date', 'asc')
-                );
-            } else {
-                overtimeQuery = query(
-                    collection(firestore, 'overtime_requests'),
-                    where('employeeId', 'in', batch),
-                    orderBy('date', 'asc')
-                );
+            // --- Query 1: Registros dentro del rango de fechas (histórico) ---
+            const qConstraints: any[] = [
+                where('employeeId', 'in', batch),
+                orderBy('date', 'asc')
+            ];
+
+            if (hasDateFilter) {
+                qConstraints.push(where('date', '>=', dateStart));
+                qConstraints.push(where('date', '<=', dateEnd));
             }
 
-            const snapshot = await getDocs(overtimeQuery);
-            const requests = snapshot.docs.map(d => ({
-                id: d.id,
-                ...d.data()
-            })) as OvertimeRequest[];
+            // Aplicar statusFilter a la query histórica si corresponde
+            // (la query de pendientes ya es implícitamente status==='pending')
+            const filteredQuery = hasDateFilter && statusFilter && statusFilter !== 'all'
+                ? query(collection(firestore, 'overtime_requests'), where('employeeId', 'in', batch), where('status', '==', statusFilter), where('date', '>=', dateStart), where('date', '<=', dateEnd), orderBy('date', 'asc'))
+                : query(collection(firestore, 'overtime_requests'), ...qConstraints);
 
-            allRequests.push(...requests);
+            // --- Query 2: Pendientes de CUALQUIER período (siempre visibles) ---
+            const pendingQuery = hasDateFilter
+                ? query(
+                    collection(firestore, 'overtime_requests'),
+                    where('employeeId', 'in', batch),
+                    where('status', '==', 'pending')
+                )
+                : null;
+
+            const [filteredSnap, pendingSnap] = await Promise.all([
+                getDocs(filteredQuery),
+                pendingQuery ? getDocs(pendingQuery) : Promise.resolve(null)
+            ]);
+
+            filteredSnap.docs.forEach(d => {
+                const data = d.data() as Omit<OvertimeRequest, 'id'>;
+                requestsMap.set(d.id, { id: d.id, ...data });
+            });
+
+            if (pendingSnap) {
+                pendingSnap.docs.forEach(d => {
+                    const data = d.data() as Omit<OvertimeRequest, 'id'>;
+                    requestsMap.set(d.id, { id: d.id, ...data });
+                });
+            }
         }
+
+        const allRequests = Array.from(requestsMap.values());
+        allRequests.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
 
         // Calcular estadísticas
         const stats: OvertimeStats = {

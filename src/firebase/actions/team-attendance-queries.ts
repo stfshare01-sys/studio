@@ -250,12 +250,15 @@ export async function getTeamMissingPunches(
                 ...qConstraints
             );
 
-            // --- Query 2: Pendientes (sin procesar) de cualquier período ---
+            // --- Query 2: Pendientes (no justificados) de CUALQUIER período ---
+            // IMPORTANTE: Se usa isJustified==false en lugar de processed==false porque
+            // Firestore no devuelve documentos donde el campo 'processed' no existe.
+            // Los documentos legacy sin ese campo quedarían excluidos silenciosamente.
             const pendingQ = dateFilter !== 'all'
                 ? query(
                     collection(firestore, 'missing_punches'),
                     where('employeeId', 'in', batch),
-                    where('processed', '==', false)
+                    where('isJustified', '==', false)
                 )
                 : null;
 
@@ -276,8 +279,8 @@ export async function getTeamMissingPunches(
             if (pendingSnap) {
                 pendingSnap.forEach(doc => {
                     const data = doc.data();
-                    // Solo pendientes reales (no resultaron en falta)
-                    if (!data.resultedInAbsence) {
+                    // Solo pendientes reales: no justificados y que no resultaron en falta
+                    if (!data.isJustified && !data.resultedInAbsence) {
                         recordsMap.set(doc.id, {
                             id: doc.id,
                             ...data,

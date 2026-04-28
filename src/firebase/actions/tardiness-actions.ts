@@ -124,8 +124,13 @@ export async function recordTardiness(
             tardinessCountInPeriod: countInPeriod,
             tardinessCountInWeek: countInWeek,
             sanctionApplied,
-            sanctionType: sanctionApplied ? 'suspension_1day' : undefined,
-            sanctionDate: sanctionApplied ? now : undefined,
+            // ⚠️ REGLA: Firestore no acepta campos con valor undefined en addDoc.
+            // Usar spread condicional para omitir campos opcionales cuando no aplican.
+            // NO revertir a: sanctionType: sanctionApplied ? '...' : undefined
+            ...(sanctionApplied && {
+                sanctionType: 'suspension_1day',
+                sanctionDate: now,
+            }),
             createdAt: now,
             updatedAt: now,
         };
