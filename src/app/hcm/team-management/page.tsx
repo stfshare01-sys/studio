@@ -88,6 +88,7 @@ import { usePermissions } from '@/hooks/use-permissions';
 import { hasPermission } from '@/firebase/role-actions';
 import { useToast } from '@/hooks/use-toast';
 import { format, startOfMonth, endOfMonth } from 'date-fns';
+import { cn } from '@/lib/utils';
 
 import type {
     Employee,
