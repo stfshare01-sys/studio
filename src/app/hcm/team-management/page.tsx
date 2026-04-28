@@ -57,7 +57,10 @@ import {
     Calculator,
     Lock,
     History,
-    Moon
+    Moon,
+    LogIn,
+    LogOut,
+    ArrowLeftRight
 } from 'lucide-react';
 
 import {
