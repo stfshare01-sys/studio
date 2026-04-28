@@ -123,6 +123,9 @@ npm run build
 # Desplegar a Firebase (reglas + hosting)
 firebase deploy
 
+> **Aviso de Firebase App Hosting:** 
+> Las variables de entorno de archivos `.env` (como las claves de Firebase) NO se sincronizan con GitHub por seguridad. Debes agregarlas **manualmente** en la consola web de Firebase (App Hosting > Configuración > Variables de Entorno). Recuerda usar el prefijo `NEXT_PUBLIC_` para que estén disponibles en el navegador web.
+
 # Solo reglas de Firestore
 firebase deploy --only firestore:rules
 
@@ -137,9 +140,10 @@ firebase emulators:start
 
 ## Guías de arquitectura
 
-Las reglas y workflows del agente de IA están en `.agents/rules/` y `.agents/workflows/`.  
+Las reglas y workflows del agente de IA están en `.agent/rules/` y `.agents/workflows/`.  
 Antes de añadir cualquier feature, consultar:
 
+- `firebase coding standards.md` — Modo Analista de Refactorización y límites de tamaño (Workflow maestro)
 - `module-boundaries.md` — Cómo estructurar módulos y sus dependencias
 - `search-before-write.md` — Prevenir duplicación de código
 - `no-source-modification.md` — Usar adaptadores en lugar de modificar código existente
