@@ -1,8 +1,8 @@
 import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
-  // Ignorar advertencias de Cloud Workstations en desarrollo
-  serverExternalPackages: ['firebase-admin'],
+  // Ignorar advertencias de Cloud Workstations en desarrollo y evitar errores de webpack
+  serverExternalPackages: ['firebase-admin', '@opentelemetry/instrumentation', '@opentelemetry/sdk-node', '@genkit-ai/core'],
   // La propiedad raíz que espera Next.js para evitar el error de preview
   // Se agregan los orígenes en la nube (la parte base de cloudworkstations)
   // o también se pueden usar comodines dependiendo de la versión exacta de Next
