@@ -43,7 +43,6 @@ import {
 } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 
-import { KardexTimeline, EmployeeMovement } from '@/components/hcm/kardex-timeline';
 import { VacationBalanceCard } from '@/components/hcm/vacation-balance-card';
 import { deactivateEmployee } from '@/firebase/actions/employee-actions';
 import { callApproveIncidence } from '@/firebase/callable-functions';
@@ -112,17 +111,6 @@ export default function EmployeeDetailPage({ params }: { params: Promise<{ id: s
     }, [firestore, isUserLoading, employeeId]);
 
     const { data: incidences, isLoading: isLoadingIncidences } = useCollection<Incidence>(incidencesQuery);
-
-    // 5. Fetch Kardex Movements
-    const movementsQuery = useMemoFirebase(() => {
-        if (!firestore || isUserLoading) return null;
-        return query(
-            collection(firestore, 'employees', employeeId, 'movements'),
-            orderBy('date', 'desc')
-        );
-    }, [firestore, isUserLoading, employeeId]);
-
-    const { data: movements, isLoading: isLoadingMovements } = useCollection<EmployeeMovement>(movementsQuery);
 
     // 6. Fetch Active Shift Assignments
     const shiftAssignmentsQuery = useMemoFirebase(() => {
@@ -324,11 +312,10 @@ export default function EmployeeDetailPage({ params }: { params: Promise<{ id: s
                 </header>
                 <main className="flex-1 p-4 pt-0 sm:p-6 sm:pt-0">
                     <Tabs defaultValue="general" className="w-full">
-                        <TabsList className="grid w-full grid-cols-4 lg:w-[800px]">
+                        <TabsList className="grid w-full grid-cols-3 lg:w-[600px]">
                             <TabsTrigger value="general">General</TabsTrigger>
                             <TabsTrigger value="attendance">Asistencia</TabsTrigger>
                             <TabsTrigger value="incidences">Permisos</TabsTrigger>
-                            <TabsTrigger value="kardex">Kardex</TabsTrigger>
                         </TabsList>
 
                         {/* Tab: General Information */}
@@ -424,17 +411,54 @@ export default function EmployeeDetailPage({ params }: { params: Promise<{ id: s
                                                     <span>{manager?.fullName || employee.directManagerId || 'Sin asignar'}</span>
                                                 </div>
                                             </div>
+                                        </div>
+                                    </CardContent>
+                                </Card>
+
+                                <Card>
+                                    <CardHeader>
+                                        <CardTitle className="flex items-center gap-2">
+                                            <Clock className="h-5 w-5 text-primary" />
+                                            Configuración de Asistencia
+                                        </CardTitle>
+                                    </CardHeader>
+                                    <CardContent className="space-y-4">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                             <div>
-                                                <p className="text-sm font-medium text-muted-foreground mb-1">Días de Home Office</p>
+                                                <p className="text-sm font-medium text-muted-foreground mb-1">Modalidad de Trabajo</p>
                                                 <div className="flex items-center gap-2">
                                                     <Building2 className="h-4 w-4 text-muted-foreground" />
-                                                    <span>
-                                                        {!employee.homeOfficeDays || employee.homeOfficeDays.length === 0 
-                                                            ? 'No asignado' 
-                                                            : employee.homeOfficeDays.map(d => ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'][d]).join(', ')}
+                                                    <span className="font-medium">
+                                                        {employee.workMode === 'office' ? '🏢 Oficina' :
+                                                            employee.workMode === 'hybrid' ? '🏠 Híbrido' :
+                                                                employee.workMode === 'remote' ? '💻 Trabajo Remoto' :
+                                                                    employee.workMode === 'field' ? '🚗 En Campo' : '🏢 Oficina'}
                                                     </span>
                                                 </div>
                                             </div>
+                                            <div>
+                                                <p className="text-sm font-medium text-muted-foreground mb-1">Tiempo por Tiempo</p>
+                                                <div className="flex items-center gap-2">
+                                                    <Clock className="h-4 w-4 text-muted-foreground" />
+                                                    <span className="font-medium">{employee.allowTimeForTime ? '✅ Permitido' : '❌ No permitido'}</span>
+                                                </div>
+                                            </div>
+                                            {(employee.workMode === 'hybrid' || !employee.workMode) && (
+                                                <div className="col-span-full pt-2 border-t">
+                                                    <p className="text-sm font-medium text-muted-foreground mb-1">Días de Home Office Programados</p>
+                                                    <div className="flex flex-wrap gap-2 mt-2">
+                                                        {!employee.homeOfficeDays || employee.homeOfficeDays.length === 0 ? (
+                                                            <span className="text-sm text-muted-foreground italic">Sin días programados</span>
+                                                        ) : (
+                                                            employee.homeOfficeDays.map((d: number) => (
+                                                                <Badge key={d} variant="outline" className="bg-primary/5 text-primary border-primary/20">
+                                                                    {['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'][d]}
+                                                                </Badge>
+                                                            ))
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            )}
                                         </div>
                                     </CardContent>
                                 </Card>
@@ -588,19 +612,6 @@ export default function EmployeeDetailPage({ params }: { params: Promise<{ id: s
                                             </div>
                                         )}
                                     </div>
-                                </CardContent>
-                            </Card>
-                        </TabsContent>
-
-                        {/* Tab: Kardex */}
-                        <TabsContent value="kardex" className="mt-6">
-                            <Card>
-                                <CardHeader>
-                                    <CardTitle>Kardex del Empleado</CardTitle>
-                                    <CardDescription>Historial cronológico de movimientos y cambios laborales.</CardDescription>
-                                </CardHeader>
-                                <CardContent>
-                                    <KardexTimeline movements={movements || []} isLoading={isLoadingMovements} />
                                 </CardContent>
                             </Card>
                         </TabsContent>

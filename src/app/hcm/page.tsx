@@ -279,7 +279,7 @@ export default function HCMPage() {
                                             </Button>
                                         )}
                                         {/* Mi Asistencia — disponible para todos los empleados */}
-                                        <Button asChild variant="default" className="justify-start bg-green-600 hover:bg-green-700 text-white">
+                                        <Button asChild variant="default" className="justify-start bg-blue-600 hover:bg-blue-700 text-white">
                                             <Link href="/hcm/my-attendance">
                                                 <Home className="mr-2 h-4 w-4" />
                                                 Mi Asistencia (Home Office)

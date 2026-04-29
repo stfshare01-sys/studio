@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
     LogIn, LogOut, Home, AlertTriangle, CheckCircle2,
-    Loader2, Info, WifiOff, CalendarDays, MapPin, Navigation,
+    Loader2, Info, WifiOff, CalendarDays, MapPin, Navigation, Building2,
 } from 'lucide-react';
 import { useMyAttendance } from '@/hooks/use-my-attendance';
 import type { Employee } from '@/lib/types';
@@ -53,6 +53,40 @@ export function MyAttendanceWidget({ employee, compact = false }: MyAttendanceWi
     const hasCheckIn = Boolean(checkIn);
     const hasCheckOut = Boolean(checkOut);
     const isComplete = hasCheckIn && hasCheckOut;
+
+    // -----------------------------------------------------------------------
+    // Bloqueo para empleados de oficina — no deben usar el widget digital
+    // -----------------------------------------------------------------------
+    if (workMode === 'office') {
+        return (
+            <Card className={`w-full ${compact ? 'max-w-full' : 'max-w-md'} border-0 shadow-lg`}>
+                <CardHeader className="pb-2">
+                    <CardTitle className="flex items-center gap-2 text-base">
+                        <Building2 className="h-4 w-4 text-slate-500" />
+                        {dayName} — {todayDate}
+                    </CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <div className="flex flex-col items-center gap-4 py-6 text-center">
+                        <div className="rounded-full bg-slate-100 dark:bg-slate-800 p-4">
+                            <Building2 className="h-8 w-8 text-slate-400" />
+                        </div>
+                        <div className="space-y-1">
+                            <p className="font-semibold text-sm">Tu modalidad es Oficina</p>
+                            <p className="text-xs text-muted-foreground max-w-[260px]">
+                                Tu registro de asistencia se captura automáticamente a través del checador físico.
+                                No necesitas registrar aquí tu entrada o salida.
+                            </p>
+                        </div>
+                        <Badge className="bg-slate-600 text-white text-xs gap-1">
+                            <Building2 className="h-3 w-3" />
+                            Checador físico asignado
+                        </Badge>
+                    </div>
+                </CardContent>
+            </Card>
+        );
+    }
 
     return (
         <Card
