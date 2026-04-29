@@ -209,3 +209,59 @@ export async function notifyShiftCancelled(
         link: '/hcm/calendar'
     });
 }
+
+// =========================================================================
+// HOME OFFICE NOTIFICATIONS
+// =========================================================================
+
+/**
+ * Notifica al jefe directo (o a HRManager si no hay jefe) cuando se detecta
+ * un marcaje faltante en un empleado.
+ * Se llama inmediatamente después de crear el MissingPunchRecord en Firestore.
+ *
+ * @param managerId  - UID del jefe directo del empleado (o HRManager como fallback)
+ * @param employeeName - Nombre del empleado con el marcaje faltante
+ * @param date - Fecha del marcaje faltante (YYYY-MM-DD)
+ * @param missingType - 'entry' | 'exit' | 'both'
+ * @param isHomeOffice - Si el día corresponde a un día de HO configurado
+ */
+export async function notifyMissingPunch(
+    firestore: Firestore,
+    managerId: string,
+    employeeName: string,
+    date: string,
+    missingType: 'entry' | 'exit' | 'both',
+    isHomeOffice?: boolean
+) {
+    const typeLabel = missingType === 'entry' ? 'entrada' : missingType === 'exit' ? 'salida' : 'entrada y salida';
+    const hoLabel = isHomeOffice ? ' (Home Office)' : '';
+    await createNotification(firestore, managerId, {
+        title: 'Marcaje Faltante Detectado',
+        message: `${employeeName} no tiene marcaje de ${typeLabel} para el día ${date}${hoLabel}. Revisa el módulo de Gestión de Equipo.`,
+        type: 'warning',
+        link: '/hcm/team-management'
+    });
+}
+
+/**
+ * Notifica al jefe directo cuando un empleado registra asistencia en Home Office
+ * en un día que NO está configurado como su día fijo de HO.
+ * Permite al jefe validar o rechazar el cambio de modalidad no avisado.
+ *
+ * @param managerId   - UID del jefe directo del empleado
+ * @param employeeName - Nombre del empleado
+ * @param date - Fecha del registro no programado (YYYY-MM-DD)
+ */
+export async function notifyUnscheduledHomeOffice(
+    firestore: Firestore,
+    managerId: string,
+    employeeName: string,
+    date: string
+) {
+    await createNotification(firestore, managerId, {
+        title: 'Home Office No Programado',
+        message: `${employeeName} registró asistencia en Home Office el día ${date}, que no corresponde a su día fijo de HO. Verifica en Gestión de Equipo.`,
+        type: 'warning',
+        link: '/hcm/team-management'
+    });
+}

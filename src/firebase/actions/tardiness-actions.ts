@@ -37,6 +37,7 @@ import type {
 import type { MissingPunchRecord, MissingPunchType } from '@/types/hcm-operational';
 import { addDebtToHourBank } from './hour-bank-actions';
 import { checkAttendanceTaskCompletion } from './task-completion-actions';
+import { notifyMissingPunch } from './notification-actions';
 import { format } from 'date-fns';
 
 // =========================================================================
@@ -502,10 +503,14 @@ export async function recordMissingPunch(
 
         // Verificar si el empleado está exento de asistencia
         let isExempt = false;
+        let managerId: string | undefined;
+        let isHomeOfficeEmployee = false;
         try {
             const empDoc = await getDoc(doc(firestore, 'employees', employeeId));
             if (empDoc.exists()) {
                 const empData = empDoc.data();
+                managerId = empData.managerId as string | undefined;
+                isHomeOfficeEmployee = Array.isArray(empData.homeOfficeDays) && empData.homeOfficeDays.length > 0;
                 if (empData.positionId) {
                     const posDoc = await getDoc(doc(firestore, 'positions', empData.positionId));
                     if (posDoc.exists() && posDoc.data().isExemptFromAttendance) {
@@ -560,6 +565,19 @@ export async function recordMissingPunch(
             collection(firestore, 'missing_punches'),
             missingPunchData
         );
+
+        // Notificar al jefe directo sobre el marcaje faltante
+        // Se dispara junto con la importación de asistencia — no requiere Cloud Function adicional
+        if (managerId) {
+            try {
+                await notifyMissingPunch(firestore, managerId, employeeName, date, missingType, isHomeOfficeEmployee);
+            } catch (notifError) {
+                // La notificación falla silenciosamente para no bloquear el registro
+                console.warn('[HCM] notifyMissingPunch falló pero el registro se creó:', notifError);
+            }
+        } else {
+            console.warn(`[HCM] No se encontró managerId para ${employeeName} — notificación omitida.`);
+        }
 
         console.log(`[HCM] Recorded missing punch ${missingPunchRef.id} for ${employeeName} - type: ${missingType}`);
         return { success: true, missingPunchId: missingPunchRef.id };

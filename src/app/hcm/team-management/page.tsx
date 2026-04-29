@@ -65,7 +65,8 @@ import {
     AlertCircle,
     Filter,
     Sun,
-    SunMoon
+    SunMoon,
+    MapPin
 } from 'lucide-react';
 
 import {
@@ -2135,7 +2136,30 @@ function TeamManagementContent() {
                                                         <TableRow key={punch.id}>
                                                             <TableCell>{punch.date}</TableCell>
                                                             <TableCell>
-                                                                <div className="font-medium">{employee?.fullName || punch.employeeName}</div>
+                                                                <div className="flex items-center gap-2">
+                                                                    <div className="font-medium">{employee?.fullName || punch.employeeName}</div>
+                                                                    {punch.isHomeOffice && (
+                                                                        <Badge
+                                                                            variant="outline"
+                                                                            className="bg-blue-100 text-blue-700 border-blue-300 text-[10px] px-1.5 py-0 font-bold tracking-wide"
+                                                                        >
+                                                                            HO
+                                                                        </Badge>
+                                                                    )}
+                                                                    {(employee?.workMode === 'remote' || employee?.workMode === 'field') && (
+                                                                        <span
+                                                                            title={employee.workMode === 'remote' ? 'Trabajo Remoto' : 'En Campo'}
+                                                                            className={`inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0 rounded border ${
+                                                                                employee.workMode === 'remote'
+                                                                                    ? 'bg-violet-100 text-violet-700 border-violet-300'
+                                                                                    : 'bg-amber-100 text-amber-700 border-amber-300'
+                                                                            }`}
+                                                                        >
+                                                                            <MapPin className="h-2.5 w-2.5" />
+                                                                            {employee.workMode === 'remote' ? 'REM' : 'CAM'}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
                                                             </TableCell>
                                                             <TableCell>
                                                                 <Badge className={cn(

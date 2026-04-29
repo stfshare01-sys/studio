@@ -724,6 +724,14 @@ export type Employee = User & {
   customShiftId?: string;      // ID del turno personalizado (si aplica)
   customRestDays?: number[];   // Días de descanso específicos, ej: [0, 6] para Dom y Sab
   homeOfficeDays?: number[];   // Días fijos de home office en la semana (0=Dom, 1=Lun...)
+  /**
+   * Modalidad de trabajo del empleado.
+   * - 'office'  → usa checador físico, no usa widget de auto-marcaje
+   * - 'remote'  → 100% desde casa, widget activo todos los días
+   * - 'field'   → vendedor/campo sin checador, widget activo todos los días
+   * - 'hybrid'  → oficina + días HO configurados (comportamiento actual)
+   */
+  workMode?: 'office' | 'remote' | 'field' | 'hybrid';
   shiftAssignments?: EmployeeShiftAssignment[]; // Historial de turnos asignados
   /** @deprecated Use customShiftId instead */
   shiftId?: string;            // Legacy: ID del turno (usado en seed data)
@@ -846,6 +854,27 @@ export type AttendanceRecord = {
 
   // Lote de importación
   importBatchId: string;        // ID del lote de importación
+
+  // Origen del marcaje — diferencia biométrico de auto-reporte
+  source?: 'biometric' | 'self_reported' | 'manual'; // Fuente del registro de asistencia
+
+  // Home Office Flags
+  isHomeOffice?: boolean;       // Si true, este día fue trabajado en Home Office (día configurado)
+  isUnscheduledHO?: boolean;    // Si true, el empleado registró HO en un día no configurado como tal
+
+  // Geolocalización del marcaje (solo para source: 'self_reported')
+  location?: {
+    lat: number;          // Latitud en grados decimales
+    lng: number;          // Longitud en grados decimales
+    accuracy: number;     // Radio de precisión en metros
+    capturedAt: string;   // ISO timestamp del momento de captura GPS
+  };
+  checkOutLocation?: {
+    lat: number;
+    lng: number;
+    accuracy: number;
+    capturedAt: string;
+  };
 
   // Auditoría
   createdAt: string;

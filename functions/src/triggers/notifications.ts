@@ -5,8 +5,12 @@
  */
 
 import { onDocumentCreated } from 'firebase-functions/v2/firestore';
+import { defineSecret } from 'firebase-functions/params';
 import * as admin from 'firebase-admin';
 import * as nodemailer from 'nodemailer';
+
+// Declaración del secreto de Firebase
+const smtpPassword = defineSecret('SMTP_PASSWORD');
 
 // Initialize Firebase Admin SDK if not already initialized
 if (!admin.apps.length) {
@@ -15,27 +19,19 @@ if (!admin.apps.length) {
 
 const db = admin.firestore();
 
-// Office 365 SMTP Configuration
-// IMPORTANT: The password must be provided via env variable SMTP_PASSWORD
-const transporter = nodemailer.createTransport({
-    host: 'smtp.office365.com',
-    port: 587,
-    secure: false, // true for 465, false for other ports
-    auth: {
-        user: 'stfshare01@stuffactory.mx',
-        pass: process.env.SMTP_PASSWORD || '',   // Set this in your functions/.env file
-    },
-    tls: {
-        ciphers: 'SSLv3'
-    }
-});
+// Se inicializará dentro de la función porque los secretos 
+// solo están disponibles durante la ejecución.
+let transporter: nodemailer.Transporter | null = null;
 
 /**
  * Trigger: Enviar correo electrónico al jefe (u otro usuario) cuando recibe
  * una nueva notificación en la base de datos (campanita).
  */
 export const onNotificationCreated = onDocumentCreated(
-    'users/{userId}/notifications/{notificationId}',
+    {
+        document: 'users/{userId}/notifications/{notificationId}',
+        secrets: [smtpPassword]
+    },
     async (event) => {
         const snapshot = event.data;
         if (!snapshot) {
@@ -47,6 +43,22 @@ export const onNotificationCreated = onDocumentCreated(
         const userId = event.params.userId;
 
         try {
+            // Inicializar transporter si no existe usando el valor del secreto
+            if (!transporter) {
+                transporter = nodemailer.createTransport({
+                    host: 'smtp.office365.com',
+                    port: 587,
+                    secure: false, // true for 465, false for other ports
+                    auth: {
+                        user: 'stfshare01@stuffactory.mx',
+                        pass: smtpPassword.value(),
+                    },
+                    tls: {
+                        ciphers: 'SSLv3'
+                    }
+                });
+            }
+
             // Fetch the user's email address
             const userDoc = await db.collection('users').doc(userId).get();
             if (!userDoc.exists) {
@@ -60,10 +72,6 @@ export const onNotificationCreated = onDocumentCreated(
             if (!recipientEmail) {
                 console.log(`User ${userId} has no email address configured, skipping.`);
                 return;
-            }
-
-            if (!process.env.SMTP_PASSWORD) {
-                console.warn('⚠️ SMTP_PASSWORD environment variable is NOT SET. Emails will fail to send. Please set it in functions/.env');
             }
 
             const linkParam = notificationData.link ? `https://nexus.stuffactory.mx${notificationData.link}` : 'https://nexus.stuffactory.mx';

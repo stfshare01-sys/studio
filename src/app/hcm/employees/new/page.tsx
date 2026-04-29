@@ -60,6 +60,7 @@ const employeeSchema = z.object({
     legalEntity: z.string().optional(),
     avatarFile: z.any().optional(), // Archivo para la foto de perfil
     homeOfficeDays: z.array(z.number()).optional(),
+    workMode: z.enum(['office', 'hybrid', 'remote', 'field']).optional(),
 });
 
 type EmployeeFormValues = z.infer<typeof employeeSchema>;
@@ -137,6 +138,7 @@ export default function NewEmployeePage() {
             employeeId: '',
             legalEntity: '',
             homeOfficeDays: [],
+            workMode: 'office' as const,
         },
     });
 
@@ -225,6 +227,7 @@ export default function NewEmployeePage() {
                 legalEntity: data.legalEntity || undefined,
                 avatarUrl: avatarUrl,
                 homeOfficeDays: data.homeOfficeDays || [],
+                workMode: data.workMode || 'office',
             });
 
             if (result.success) {
@@ -631,6 +634,36 @@ export default function NewEmployeePage() {
                                                 )}
                                             />
 
+                                            {/* Modalidad de trabajo */}
+                                            <FormField
+                                                control={form.control}
+                                                name="workMode"
+                                                render={({ field }) => (
+                                                    <FormItem>
+                                                        <FormLabel>Modalidad de Trabajo</FormLabel>
+                                                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                                            <FormControl>
+                                                                <SelectTrigger>
+                                                                    <SelectValue placeholder="Seleccionar modalidad" />
+                                                                </SelectTrigger>
+                                                            </FormControl>
+                                                            <SelectContent>
+                                                                <SelectItem value="office">🏢 Oficina — checan en checador físico</SelectItem>
+                                                                <SelectItem value="hybrid">🏠 Híbrido — mezcla de oficina y Home Office</SelectItem>
+                                                                <SelectItem value="remote">💻 Trabajo Remoto — 100% desde casa</SelectItem>
+                                                                <SelectItem value="field">🚗 En Campo — vendedor o visitas externas</SelectItem>
+                                                            </SelectContent>
+                                                        </Select>
+                                                        <FormDescription>
+                                                            Determina si el empleado usa el widget de marcaje digital en la app
+                                                        </FormDescription>
+                                                        <FormMessage />
+                                                    </FormItem>
+                                                )}
+                                            />
+
+                                            {/* Días de HO — solo para modalidad híbrida */}
+                                            {(form.watch('workMode') === 'hybrid' || !form.watch('workMode')) && (
                                             <FormField
                                                 control={form.control}
                                                 name="homeOfficeDays"
@@ -684,6 +717,7 @@ export default function NewEmployeePage() {
                                                     </FormItem>
                                                 )}
                                             />
+                                            )}
                                         </CardContent>
                                     </Card>
 

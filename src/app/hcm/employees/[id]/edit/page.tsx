@@ -137,6 +137,7 @@ export default function EditEmployeePage({ params }: { params: Promise<{ id: str
                 employeeId: employee.employeeId,
                 legalEntity: employee.legalEntity,
                 homeOfficeDays: employee.homeOfficeDays || [],
+                workMode: employee.workMode || 'office',
             });
         }
     }, [employee]);
@@ -641,38 +642,63 @@ export default function EditEmployeePage({ params }: { params: Promise<{ id: str
                                     </div>
                                 </div>
 
-                                <div className="flex flex-col space-y-3 rounded-md border p-4">
-                                    <div className="mb-2">
-                                        <Label className="text-base flex items-center gap-2">
-                                            <Building2 className="h-4 w-4" />
-                                            Días de Home Office Fijos
-                                        </Label>
-                                        <p className="text-sm text-muted-foreground mt-1">
-                                            Selecciona los días regulares de home office. El sistema registrará la asistencia automáticamente.
-                                        </p>
-                                    </div>
-                                    <div className="flex flex-wrap gap-4">
-                                        {DAYS_OF_WEEK.map((day) => (
-                                            <div key={day.value} className="flex items-center space-x-2">
-                                                <Checkbox
-                                                    id={`homeOfficeDay-${day.value}`}
-                                                    checked={(formData.homeOfficeDays || []).includes(day.value)}
-                                                    onCheckedChange={(checked) => {
-                                                        const currentDays = formData.homeOfficeDays || [];
-                                                        if (checked) {
-                                                            handleInputChange('homeOfficeDays', [...currentDays, day.value]);
-                                                        } else {
-                                                            handleInputChange('homeOfficeDays', currentDays.filter(v => v !== day.value));
-                                                        }
-                                                    }}
-                                                />
-                                                <Label htmlFor={`homeOfficeDay-${day.value}`} className="font-normal cursor-pointer">
-                                                    {day.label}
-                                                </Label>
-                                            </div>
-                                        ))}
-                                    </div>
+                                {/* Modalidad de trabajo */}
+                                <div className="space-y-2 col-span-full md:col-span-2">
+                                    <Label>Modalidad de Trabajo</Label>
+                                    <Select
+                                        value={formData.workMode || 'office'}
+                                        onValueChange={(v) => handleInputChange('workMode' as any, v)}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Seleccionar modalidad" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="office">🏢 Oficina — checan en checador físico</SelectItem>
+                                            <SelectItem value="hybrid">🏠 Híbrido — mezcla de oficina y Home Office</SelectItem>
+                                            <SelectItem value="remote">💻 Trabajo Remoto — 100% desde casa</SelectItem>
+                                            <SelectItem value="field">🚗 En Campo — vendedor o visitas externas</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                    <p className="text-xs text-muted-foreground">
+                                        Determina si el empleado puede usar el widget de marcaje digital en la app
+                                    </p>
                                 </div>
+
+                                {/* Días de HO — solo para modalidad híbrida */}
+                                {(formData.workMode === 'hybrid' || !formData.workMode) && (
+                                    <div className="flex flex-col space-y-3 rounded-md border p-4 col-span-full">
+                                        <div className="mb-2">
+                                            <Label className="text-base flex items-center gap-2">
+                                                <Building2 className="h-4 w-4" />
+                                                Días de Home Office Fijos
+                                            </Label>
+                                            <p className="text-sm text-muted-foreground mt-1">
+                                                Selecciona los días regulares de home office. El sistema registrará la asistencia automáticamente.
+                                            </p>
+                                        </div>
+                                        <div className="flex flex-wrap gap-4">
+                                            {DAYS_OF_WEEK.map((day) => (
+                                                <div key={day.value} className="flex items-center space-x-2">
+                                                    <Checkbox
+                                                        id={`homeOfficeDay-${day.value}`}
+                                                        checked={(formData.homeOfficeDays || []).includes(day.value)}
+                                                        onCheckedChange={(checked) => {
+                                                            const currentDays = formData.homeOfficeDays || [];
+                                                            if (checked) {
+                                                                handleInputChange('homeOfficeDays', [...currentDays, day.value]);
+                                                            } else {
+                                                                handleInputChange('homeOfficeDays', currentDays.filter(v => v !== day.value));
+                                                            }
+                                                        }}
+                                                    />
+                                                    <Label htmlFor={`homeOfficeDay-${day.value}`} className="font-normal cursor-pointer">
+                                                        {day.label}
+                                                    </Label>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
 
                             </div>
                         </CardContent>

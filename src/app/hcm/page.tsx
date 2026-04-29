@@ -29,9 +29,10 @@ import {
     Briefcase,
     LayoutDashboard,
     Building2,
+    Home,
 } from 'lucide-react';
 import Link from 'next/link';
-import type { Employee, Incidence, AttendanceImportBatch } from '@/lib/types';
+import type { Employee, Incidence } from '@/lib/types';
 import { getDirectReports } from '@/firebase/actions/team-actions';
 
 /**
@@ -130,17 +131,7 @@ export default function HCMPage() {
 
     const { data: pendingIncidences, isLoading: incidencesLoading } = useCollection<Incidence>(incidencesQuery);
 
-    // Fetch recent imports - only if user is loaded and has HR permissions
-    const importsQuery = useMemoFirebase(() => {
-        if (!firestore || isUserLoading || !user || !hasHRPermissions) return null;
-        return query(
-            collection(firestore, 'attendance_imports'),
-            orderBy('uploadedAt', 'desc'),
-            limit(5)
-        );
-    }, [firestore, isUserLoading, user, hasHRPermissions]);
 
-    const { data: recentImports, isLoading: importsLoading } = useCollection<AttendanceImportBatch>(importsQuery);
 
     // Check if current user has direct reports (for team management access)
     // Only query for roles that have permission to list employees
@@ -159,7 +150,7 @@ export default function HCMPage() {
     const { data: directReports, isLoading: directReportsLoading } = useCollection<Employee>(directReportsQuery);
     const hasDirectReports = (directReports && directReports.length > 0) || isAdmin;
 
-    const isLoading = isUserLoading || employeesLoading || incidencesLoading || importsLoading || directReportsLoading;
+    const isLoading = isUserLoading || employeesLoading || incidencesLoading || directReportsLoading;
 
     // Stats calculations
     const totalEmployees = employees?.length ?? 0;
@@ -287,6 +278,14 @@ export default function HCMPage() {
                                                 </Link>
                                             </Button>
                                         )}
+                                        {/* Mi Asistencia — disponible para todos los empleados */}
+                                        <Button asChild variant="default" className="justify-start bg-green-600 hover:bg-green-700 text-white">
+                                            <Link href="/hcm/my-attendance">
+                                                <Home className="mr-2 h-4 w-4" />
+                                                Mi Asistencia (Home Office)
+                                            </Link>
+                                        </Button>
+
                                         {hasDirectReports && (
                                             <Button asChild variant="default" className="justify-start bg-blue-600 hover:bg-blue-700 text-white">
                                                 <Link href="/hcm/team-management">
@@ -375,44 +374,7 @@ export default function HCMPage() {
                                     </Card>
                                 )}
 
-                                {/* Recent Imports */}
-                                {hasHRPermissions && (
-                                    <Card className="bento-item">
-                                        <CardHeader>
-                                            <CardTitle>Importaciones Recientes</CardTitle>
-                                            <CardDescription>Últimos archivos de asistencia cargados</CardDescription>
-                                        </CardHeader>
-                                        <CardContent>
-                                            {importsLoading ? (
-                                                <p className="text-sm text-muted-foreground">Cargando...</p>
-                                            ) : recentImports && recentImports.length > 0 ? (
-                                                <div className="space-y-3">
-                                                    {recentImports.slice(0, 3).map((importBatch) => (
-                                                        <div key={importBatch.id} className="flex items-center justify-between">
-                                                            <div className="flex items-center gap-2">
-                                                                {importBatch.status === 'completed' ? (
-                                                                    <CheckCircle2 className="h-4 w-4 text-green-500" />
-                                                                ) : importBatch.status === 'failed' ? (
-                                                                    <XCircle className="h-4 w-4 text-red-500" />
-                                                                ) : (
-                                                                    <AlertTriangle className="h-4 w-4 text-yellow-500" />
-                                                                )}
-                                                                <span className="text-sm truncate max-w-[150px]">{importBatch.filename}</span>
-                                                            </div>
-                                                            <span className="text-xs text-muted-foreground">
-                                                                {importBatch.recordCount} registros
-                                                            </span>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            ) : (
-                                                <p className="text-sm text-muted-foreground">
-                                                    No hay importaciones recientes
-                                                </p>
-                                            )}
-                                        </CardContent>
-                                    </Card>
-                                )}
+
 
                         </div>
                     </div>

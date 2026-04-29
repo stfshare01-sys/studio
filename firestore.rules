@@ -334,22 +334,38 @@ service cloud.firestore {
       allow delete: if false; // Nunca borrar historial salarial
     }
 
-    /**
-     * @description Attendance records imported from external system
-     * Read: Employees can read their own, HR/Admin can read all
-     * Write: HR Managers and Admins only (immutable for audit)
-     * @path /attendance/{attendanceId}
-     */
+    // ============================================================
+    // MÓDULO: HCM — ASISTENCIA
+    // Colecciones: attendance
+    // Permisos base:
+    //   - Lectura: Empleado (propios), Manager/HR (todos)
+    //   - Escritura: HR/Admin (registros importados), Empleado (self_reported)
+    // Última modificación: auto-marcaje Home Office / sin biométrico
+    // ============================================================
     match /attendance/{attendanceId} {
-      // Employees can read their own attendance records
+      // Empleado puede leer sus propios registros
       allow get: if isSignedIn() && resource.data.employeeId == request.auth.uid;
-      // HR and Admin can read all attendance records
-      allow get: if isHRManager();
-      // HR and Admin can list all attendance records
-      allow list: if isHRManager();
-      // Only HR and Admin can create/update attendance records
+      // Manager y HR pueden leer todos los registros
+      allow get, list: if isManagerOrHR();
+
+      // HR y Admin pueden crear/actualizar cualquier registro (importación del checador)
       allow create, update: if isHRManager();
-      // Attendance records are immutable for audit purposes
+
+      // AUTO-MARCAJE: Empleado puede crear/actualizar su propio registro
+      // SOLO si el campo source es 'self_reported' y el employeeId coincide con su uid.
+      // Esto aplica para empleados sin acceso a biométrico (Home Office y similares).
+      allow create: if isSignedIn()
+        && request.resource.data.employeeId == request.auth.uid
+        && request.resource.data.source == 'self_reported';
+
+      allow update: if isSignedIn()
+        && resource.data.employeeId == request.auth.uid
+        && resource.data.source == 'self_reported'
+        && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['checkIn', 'checkOut', 'hoursWorked', 'regularHours', 'isValid',
+                      'source', 'isHomeOffice', 'isUnscheduledHO', 'updatedAt']);
+
+      // Attendance records are immutable for audit (no delete)
       allow delete: if false;
     }
 
@@ -777,17 +793,9 @@ service cloud.firestore {
     // HCM: Attendance & Incidence Collections
     // =========================================================================
 
-    /**
-     * @description Attendance records (imported from checador)
-     * Read: Manager/HR (team/all)
-     * Write: Manager/HR (import), HR/Admin (edit)
-     * @path /attendance/{recordId}
-     */
-    match /attendance/{recordId} {
-      allow get, list: if isManagerOrHR();
-      allow create, update: if isManagerOrHR();
-      allow delete: if isHRManager();
-    }
+    // NOTA: Las reglas de /attendance están definidas en la sección HCM (arriba).
+    // El bloque duplicado fue eliminado para evitar conflictos de reglas aditivas.
+    // Ver: firebase-scale-firestore-behavior.md — Sección 2: Additividad de Reglas
 
     /**
      * @description Tardiness records

@@ -540,6 +540,8 @@ export type MissingPunchRecord = {
     justifiedAt?: string;             // Fecha/hora de justificación
     resultedInAbsence: boolean;       // Si quedó como FALTA
     linkedAbsenceId?: string;         // ID de la falta (si aplica)
+    // Home Office Flags
+    isHomeOffice?: boolean;           // Si true, la falta corresponde a un día de Home Office configurado
     createdAt: string;
     updatedAt: string;
 };
