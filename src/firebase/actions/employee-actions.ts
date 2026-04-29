@@ -33,6 +33,7 @@ interface CreateEmployeePayload {
     legalEntity?: string;
     avatarUrl?: string; // URL of the uploaded profile photo
     homeOfficeDays?: number[]; // [0,1,2,3,4,5,6]
+    workMode?: Employee['workMode'];
 }
 
 /**
@@ -78,6 +79,7 @@ export async function createEmployee(
         if (payload.employeeId) employeeData.employeeId = payload.employeeId;
         if (payload.legalEntity) employeeData.legalEntity = payload.legalEntity;
         if (payload.homeOfficeDays) employeeData.homeOfficeDays = payload.homeOfficeDays;
+        if (payload.workMode) employeeData.workMode = payload.workMode;
 
         await setDoc(employeeRef, employeeData, {});
 

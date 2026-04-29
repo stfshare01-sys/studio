@@ -697,6 +697,8 @@ export type Employee = User & {
   terminationDate?: string;    // Fecha de baja (si aplica)
   costCenter?: string;         // Centro de costos contable
   positionTitle: string;       // Puesto / cargo
+  scheduledStart?: string;     // Hora de entrada programada (e.g. "09:00")
+  scheduledEnd?: string;       // Hora de salida programada (e.g. "18:00")
 
   // Datos financieros (sensibles)
   clabe?: string;              // Cuenta bancaria CLABE 18 dígitos
@@ -869,12 +871,7 @@ export type AttendanceRecord = {
     accuracy: number;     // Radio de precisión en metros
     capturedAt: string;   // ISO timestamp del momento de captura GPS
   };
-  checkOutLocation?: {
-    lat: number;
-    lng: number;
-    accuracy: number;
-    capturedAt: string;
-  };
+
 
   // Auditoría
   createdAt: string;
