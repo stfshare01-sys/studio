@@ -539,7 +539,7 @@ export const consolidatePrenomina = onCall<ConsolidatePrenominaRequest>(
                             const prenominaData: Omit<PrenominaRecord, 'id'> = {
                                 employeeId: employee.id,
                                 employeeName: employee.fullName || 'Empleado Desconocido',
-                                employeeRfc: employee.rfc ?? (employee.rfc_curp as string | undefined)?.split(' ')[0] ?? '',
+                                employeeRfc: (employee as any).rfc ?? ((employee as any).rfc_curp as string | undefined)?.split(' ')[0] ?? '',
                                 periodStart,
                                 periodEnd,
                                 periodType,
