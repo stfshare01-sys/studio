@@ -1,8 +1,9 @@
 'use client';
 
-import { doc, getDoc, updateDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, collection, query, where, getDocs, serverTimestamp } from 'firebase/firestore';
 import { initializeFirebase } from '@/firebase';
-import type { Task, TardinessRecord, EarlyDeparture, OvertimeRequest } from '@/lib/types';
+import type { Task } from "@/types/workflow.types";
+import type { TardinessRecord, EarlyDeparture, OvertimeRequest } from "@/types/hcm.types";
 
 /**
  * Verifica si todos los registros de una tarea de asistencia han sido procesados
@@ -110,7 +111,7 @@ async function completeTask(
 
         await updateDoc(taskRef, {
             status: 'completed',
-            completedAt: new Date().toISOString(),
+            completedAt: serverTimestamp(),
             completedBy,
             completionReason: reason
         });

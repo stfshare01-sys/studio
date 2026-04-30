@@ -49,9 +49,8 @@ import {
     DollarSign,
     Clock,
 } from 'lucide-react';
-
-import type { Position, Department } from '@/lib/types';
-import { formatCurrency } from '@/lib/hcm-utils';
+import { formatCurrency } from '@/lib/payroll-format-utils';
+import type { Position, Department } from "@/types/hcm.types";
 
 const initialFormState = {
     name: '',

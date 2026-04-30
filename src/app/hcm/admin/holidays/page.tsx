@@ -13,7 +13,6 @@ import {
     orderBy
 } from 'firebase/firestore';
 import { useFirestore } from '@/firebase';
-import { HolidayCalendar, OfficialHoliday } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -56,6 +55,7 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { HolidayCalendar, OfficialHoliday } from "@/types/hcm.types";
 
 export default function HolidayCalendarsPage() {
     const db = useFirestore();

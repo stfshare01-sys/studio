@@ -15,8 +15,8 @@ import {
     doc, collection, addDoc, getDocs, query, where, limit, getDoc
 } from 'firebase/firestore';
 import { initializeFirebase } from '@/firebase';
-import type { Employee } from '@/lib/types';
 import { notifyMissingPunch } from './notification-actions';
+import type { Employee } from "@/types/hcm.types";
 
 // =========================================================================
 // HELPER: ¿Es hoy un día de Home Office configurado?

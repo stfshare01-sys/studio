@@ -5,7 +5,6 @@ import { useFirebase } from '@/firebase/provider';
 import { usePermissions } from '@/hooks/use-permissions';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { adjustVacationBalance } from '@/firebase/actions/incidence-actions';
-import type { VacationBalance } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -17,6 +16,7 @@ import { Badge } from '@/components/ui/badge';
 import { Calendar, AlertCircle, TrendingUp, TrendingDown } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
+import type { VacationBalance } from "@/types/hcm.types";
 
 interface VacationBalanceCardProps {
     employeeId: string;

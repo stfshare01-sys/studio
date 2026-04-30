@@ -22,7 +22,7 @@ import {
     orderBy
 } from 'firebase/firestore';
 import { initializeFirebase } from '@/firebase';
-import type { Employee } from '@/lib/types';
+import type { Employee } from "@/types/hcm.types";
 
 // =========================================================================
 // SUBORDINADOS DIRECTOS

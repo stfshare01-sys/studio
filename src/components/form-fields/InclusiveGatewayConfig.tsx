@@ -14,12 +14,7 @@ import {
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Plus, Trash2, ArrowRight, GitBranch, AlertCircle } from 'lucide-react';
-import type {
-  WorkflowStepDefinition,
-  RuleCondition,
-  RuleOperator,
-  FormField,
-} from '@/lib/types';
+import type { WorkflowStepDefinition, RuleCondition, RuleOperator, FormField } from "@/types/workflow.types";
 
 interface InclusiveGatewayConfigProps {
   conditions: { targetStepId: string; condition: RuleCondition }[];

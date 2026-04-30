@@ -24,7 +24,6 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { TableSkeleton } from "@/components/ui/table-skeleton"
 import { PlusCircle } from "lucide-react"
-import type { MasterList } from "@/lib/types"
 import { RecordFormDialog } from "./record-form-dialog"
 
 interface DataTableProps<TData, TValue> {
@@ -197,6 +196,7 @@ import {
 import { doc, deleteDoc } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
 import { Loader2 } from "lucide-react"
+import type { MasterList } from "@/types/common.types";
 
 function DeleteConfirmDialog({
   open,

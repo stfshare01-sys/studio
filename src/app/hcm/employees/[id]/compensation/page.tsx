@@ -47,9 +47,9 @@ import {
     History,
     Info,
 } from 'lucide-react';
-
-import type { Employee, Compensation } from '@/lib/types';
-import { formatCurrency, calculateVacationDays, calculateYearsOfService } from '@/lib/hcm-utils';
+import { formatCurrency } from '@/lib/payroll-format-utils';
+import { calculateVacationDays, calculateYearsOfService } from '@/lib/vacation-utils';
+import type { Employee, Compensation } from "@/types/hcm.types";
 
 export default function EmployeeCompensationPage({ params }: { params: Promise<{ id: string }> }) {
     const router = useRouter();

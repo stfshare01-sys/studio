@@ -23,13 +23,7 @@ import {
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Plus, Trash2, X, Zap, ArrowRight } from 'lucide-react';
-import type {
-  FormField,
-  DefaultValueRule,
-  DefaultValueRuleCondition,
-  VisibilityLogicalOperator,
-  RuleOperator,
-} from '@/lib/types';
+import type { FormField, DefaultValueRule, DefaultValueRuleCondition, VisibilityLogicalOperator, RuleOperator } from "@/types/workflow.types";
 
 interface DefaultValueRulesBuilderProps {
   fields: FormField[];

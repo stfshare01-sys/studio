@@ -17,7 +17,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Plus, Trash2 } from 'lucide-react';
-import type { ValidationRule, ValidationType, FormFieldType } from '@/lib/types';
+import type { ValidationRule, ValidationType, FormFieldType } from "@/types/workflow.types";
 
 interface FieldValidationConfigProps {
   fieldType: FormFieldType;

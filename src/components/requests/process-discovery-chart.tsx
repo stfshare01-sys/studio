@@ -2,9 +2,9 @@
 "use client";
 
 import { useMemo } from 'react';
-import type { EnrichedRequest } from '@/lib/types';
 import { differenceInHours, parseISO } from 'date-fns';
 import { cn } from '@/lib/utils';
+import type { EnrichedRequest } from "@/types/workflow.types";
 
 interface ProcessNode {
   id: string;

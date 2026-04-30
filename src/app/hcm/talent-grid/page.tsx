@@ -8,12 +8,12 @@ import { useCollection } from '@/firebase/firestore/use-collection';
 import { collection, query, where, orderBy } from 'firebase/firestore';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { NineBoxGrid } from '@/components/hcm/nine-box-grid';
-import type { Employee } from '@/lib/types';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, Grid3X3, Info } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { usePermissions } from '@/hooks/use-permissions';
+import type { Employee } from "@/types/hcm.types";
 
 /**
  * 9-Box Grid Talent Evaluation Page

@@ -6,7 +6,7 @@ import { doc } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { initializeFirebase } from '.';
 import { updateDocumentNonBlocking } from './non-blocking-updates';
-import type { UserRole } from '@/lib/types';
+import type { UserRole } from '@/types/auth.types';
 
 // =========================================================================
 // TOGGLE USER STATUS (Client-side Firestore update)

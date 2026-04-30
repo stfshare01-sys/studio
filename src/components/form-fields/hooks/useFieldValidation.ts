@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useState } from 'react';
-import type { FormField, ValidationRule } from '@/lib/types';
+import type { FormField, ValidationRule } from "@/types/workflow.types";
 
 export type ValidationErrors = Record<string, string | null>;
 

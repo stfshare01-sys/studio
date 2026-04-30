@@ -3,8 +3,8 @@
 import { useEffect } from 'react';
 import { Input } from '@/components/ui/input';
 import { useUser } from '@/firebase';
-import type { FormField, UserIdentityValue } from '@/lib/types';
 import { User, Clock } from 'lucide-react';
+import type { FormField, UserIdentityValue } from "@/types/workflow.types";
 
 interface UserIdentityFieldProps {
   field: FormField;

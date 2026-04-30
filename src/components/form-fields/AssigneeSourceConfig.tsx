@@ -13,7 +13,8 @@ import {
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Users, User, Mail, UserCircle } from 'lucide-react';
-import type { AssigneeSource, AssigneeSourceType, FormField, User as UserType } from '@/lib/types';
+import type { User as UserType } from '@/types/auth.types';
+import type { AssigneeSource, AssigneeSourceType, FormField } from "@/types/workflow.types";
 
 interface AssigneeSourceConfigProps {
   value: AssigneeSource | undefined;

@@ -10,7 +10,6 @@ import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase";
 import { collection, doc, setDoc, updateDoc } from "firebase/firestore";
-import type { Template } from "@/lib/types";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { SimulateChangeDialog } from "@/components/templates/simulate-change-dialog";
@@ -18,6 +17,7 @@ import React, { useEffect, useState } from "react";
 import { preInstalledTemplates } from "@/lib/pre-installed-templates";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useToast } from "@/hooks/use-toast";
+import type { Template } from "@/types/workflow.types";
 
 function TemplateSkeleton() {
     return (

@@ -13,10 +13,14 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
   SidebarProvider,
   SidebarSeparator,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
@@ -37,6 +41,22 @@ import {
   Calendar,
   BookOpen,
   ChevronsUpDown,
+  ChevronRight,
+  Calculator,
+  Upload,
+  UserPlus,
+  Clock,
+  MapPin,
+  Building2,
+  Home,
+  Users2,
+  TrendingUp,
+  Settings,
+  FileText,
+  Palmtree,
+  PartyPopper,
+  FileCheck,
+  AppWindow,
 } from "lucide-react";
 import { Logo } from "@/components/icons";
 import { Button } from "./ui/button";
@@ -58,7 +78,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 import { usePermissions } from "@/hooks/use-permissions";
-import type { AppModule } from "@/lib/types";
+import type { AppModule } from '@/types/auth.types';
 
 // Unified navigation configuration
 type NavItem = {
@@ -67,6 +87,8 @@ type NavItem = {
   label: string;
   module: AppModule;
   exact?: boolean;
+  subItems?: NavItem[];
+  hrOnly?: boolean;
 };
 
 type NavGroup = {
@@ -76,8 +98,49 @@ type NavGroup = {
 
 const ALL_NAV_ITEMS: NavItem[] = [
   { href: "/", icon: LayoutDashboard, label: "Panel", module: "dashboard", exact: true },
-  // { href: "/tasks", icon: CheckSquare, label: "Buzón", module: "requests" }, // Oculto temporalmente
-  { href: "/hcm", icon: Briefcase, label: "Capital Humano", module: "hcm_employees" },
+  { href: "/hcm", icon: AppWindow, label: "Panel HCM", module: "dashboard", exact: true },
+  { href: "/hcm/command-center", icon: LayoutDashboard, label: "Centro de Comando", module: "hcm_employees", hrOnly: true },
+  {
+    href: "/hcm/directory",
+    icon: Users,
+    label: "Directorio y Talento",
+    module: "hcm_employees",
+    subItems: [
+       { href: "/hcm/employees", icon: Users, label: "Directorio", module: "hcm_employees" },
+       { href: "/hcm/employees/new", icon: UserPlus, label: "Nuevo Empleado", module: "hcm_employees" },
+       { href: "/hcm/employees/import", icon: Upload, label: "Importar Empleados", module: "hcm_employees" },
+       { href: "/hcm/org-chart", icon: TrendingUp, label: "Organigrama", module: "hcm_org_chart" },
+       { href: "/hcm/talent-grid", icon: Users, label: "Matriz 9-Box", module: "hcm_talent_grid" },
+    ]
+  },
+  {
+    href: "/hcm/time",
+    icon: Clock,
+    label: "Asistencia y Permisos",
+    module: "hcm_attendance",
+    subItems: [
+      { href: "/hcm/my-attendance", icon: Home, label: "Mi Asistencia", module: "dashboard" },
+          { href: "/hcm/team-management", icon: Users2, label: "Gestión de Equipo", module: "hcm_team_management" },
+          { href: "/hcm/incidences", icon: FileCheck, label: "Permisos", module: "hcm_incidences" },
+          { href: "/hcm/attendance", icon: Upload, label: "Importar Asistencia", module: "hcm_attendance" },
+      { href: "/hcm/calendar", icon: Calendar, label: "Calendario", module: "hcm_calendar" },
+    ]
+  },
+  { href: "/hcm/prenomina", icon: Calculator, label: "Pre-Nómina", module: "hcm_prenomina" },
+  {
+    href: "/hcm/admin",
+    icon: Settings,
+    label: "Configuración HCM",
+    module: "hcm_admin_locations",
+    subItems: [
+      { href: "/hcm/admin/locations", icon: MapPin, label: "Ubicaciones", module: "hcm_admin_locations" },
+      { href: "/hcm/admin/shifts", icon: Clock, label: "Turnos", module: "hcm_admin_shifts" },
+      { href: "/hcm/admin/positions", icon: Briefcase, label: "Puestos", module: "hcm_admin_positions" },
+      { href: "/hcm/admin/departments", icon: Building2, label: "Departamentos", module: "hcm_admin_departments" },
+      { href: "/hcm/admin/vacation-management", icon: Palmtree, label: "Vacaciones", module: "hcm_admin_vacation" },
+      { href: "/hcm/admin/holidays", icon: PartyPopper, label: "Días Festivos", module: "hcm_admin_holidays" },
+    ]
+  },
   { href: "/reports", icon: BarChart3, label: "Informes", module: "reports" },
   { href: "/process-mining", icon: Activity, label: "Minería de Procesos", module: "process_mining" },
   { href: "/templates", icon: FolderKanban, label: "Plantillas", module: "templates" },
@@ -95,13 +158,59 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Principal",
     items: [
       { href: "/", icon: LayoutDashboard, label: "Panel", module: "dashboard", exact: true },
-      // { href: "/tasks", icon: CheckSquare, label: "Buzón", module: "requests" }, // Oculto temporalmente
     ],
+  },
+  {
+    label: "Capital Humano",
+    items: [
+      { href: "/hcm", icon: AppWindow, label: "Panel HCM", module: "dashboard", exact: true },
+      { href: "/hcm/command-center", icon: LayoutDashboard, label: "Centro de Comando", module: "hcm_employees", hrOnly: true },
+      {
+        href: "/hcm/directory",
+        icon: Users,
+        label: "Directorio y Talento",
+        module: "hcm_employees",
+        subItems: [
+           { href: "/hcm/employees", icon: Users, label: "Directorio", module: "hcm_employees" },
+           { href: "/hcm/employees/new", icon: UserPlus, label: "Nuevo Empleado", module: "hcm_employees" },
+           { href: "/hcm/employees/import", icon: Upload, label: "Importar Empleados", module: "hcm_employees" },
+           { href: "/hcm/org-chart", icon: TrendingUp, label: "Organigrama", module: "hcm_org_chart" },
+           { href: "/hcm/talent-grid", icon: Users, label: "Matriz 9-Box", module: "hcm_talent_grid" },
+        ]
+      },
+      {
+        href: "/hcm/time",
+        icon: Clock,
+        label: "Asistencia y Permisos",
+        module: "hcm_attendance",
+        subItems: [
+          { href: "/hcm/my-attendance", icon: Home, label: "Mi Asistencia", module: "dashboard" },
+          { href: "/hcm/team-management", icon: Users2, label: "Gestión de Equipo", module: "hcm_team_management" },
+          { href: "/hcm/incidences", icon: FileCheck, label: "Permisos", module: "hcm_incidences" },
+          { href: "/hcm/attendance", icon: Upload, label: "Importar Asistencia", module: "hcm_attendance" },
+          { href: "/hcm/calendar", icon: Calendar, label: "Calendario", module: "hcm_calendar" },
+        ]
+      },
+      { href: "/hcm/prenomina", icon: Calculator, label: "Pre-Nómina", module: "hcm_prenomina" },
+      {
+        href: "/hcm/admin",
+        icon: Settings,
+        label: "Configuración HCM",
+        module: "hcm_admin_locations",
+        subItems: [
+          { href: "/hcm/admin/locations", icon: MapPin, label: "Ubicaciones", module: "hcm_admin_locations" },
+          { href: "/hcm/admin/shifts", icon: Clock, label: "Turnos", module: "hcm_admin_shifts" },
+          { href: "/hcm/admin/positions", icon: Briefcase, label: "Puestos", module: "hcm_admin_positions" },
+          { href: "/hcm/admin/departments", icon: Building2, label: "Departamentos", module: "hcm_admin_departments" },
+          { href: "/hcm/admin/vacation-management", icon: Palmtree, label: "Vacaciones", module: "hcm_admin_vacation" },
+          { href: "/hcm/admin/holidays", icon: PartyPopper, label: "Días Festivos", module: "hcm_admin_holidays" },
+        ]
+      }
+    ]
   },
   {
     label: "Módulos",
     items: [
-      { href: "/hcm", icon: Briefcase, label: "Capital Humano", module: "hcm_employees" },
       { href: "/reports", icon: BarChart3, label: "Informes", module: "reports" },
       { href: "/process-mining", icon: Activity, label: "Minería de Procesos", module: "process_mining" },
       { href: "/templates", icon: FolderKanban, label: "Plantillas", module: "templates" },
@@ -139,7 +248,9 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
   }, [user]);
 
   // Use the permissions hook for dynamic filtering
-  const { canRead, isAdmin, isLoading: permissionsLoading } = usePermissions();
+  const { canRead, canWrite, isAdmin, isLoading: permissionsLoading } = usePermissions();
+
+  const hasHRPermissions = isAdmin || canWrite('hcm_employees');
 
   useEffect(() => {
     if (!isUserLoading && !user) {
@@ -172,17 +283,24 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
 
   // Filter items based on permissions
   const navItems = ALL_NAV_ITEMS.filter(item => {
-    // Admin sees everything (redundant check if hasPermission handles isAdmin, but good for clarity)
+    // Admin sees everything
     if (isAdmin) return true;
+
+    // Special check for HR Only modules
+    if (item.hrOnly && !hasHRPermissions) return false;
 
     // Special check for Team Management based on actual reports
     if (item.href === '/hcm/team-management' && isManager) return true;
 
-    // If it's the root HCM nav item, check if ANY HCM sub-module is visible
-    if (item.href === '/hcm') {
-      return canRead('hcm_employees') || canRead('hcm_attendance') ||
-        canRead('hcm_incidences') || canRead('hcm_prenomina') ||
-        canRead('hcm_calendar') || canRead('hcm_org_chart');
+    // Si el ítem tiene sub-menús, será visible si el usuario puede ver al menos un sub-menú
+    if (item.subItems && item.subItems.length > 0) {
+      return item.subItems.some(sub => {
+        if (sub.href === '/hcm/team-management') {
+          const isRestrictedRole = user?.role === 'Manager';
+          if (isRestrictedRole && !isManager) return false;
+        }
+        return canRead(sub.module);
+      });
     }
 
     // Check read permission for the module
@@ -206,21 +324,88 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
                 <SidebarGroupLabel className="nav-group-label">{group.label}</SidebarGroupLabel>
                 <SidebarGroupContent>
                   <SidebarMenu>
-                    {visibleItems.map((item) => (
-                      <SidebarMenuItem key={item.href}>
-                        <SidebarMenuButton
-                          asChild
-                          isActive={item.exact ? pathname === item.href : pathname.startsWith(item.href)}
-                          className="w-full"
-                          size="default"
-                        >
-                          <Link href={item.href}>
-                            <item.icon className="size-5 shrink-0" />
-                            <span>{item.label}</span>
-                          </Link>
-                        </SidebarMenuButton>
-                      </SidebarMenuItem>
-                    ))}
+                    {visibleItems.map((item) => {
+                      const isCollapsible = item.subItems && item.subItems.length > 0;
+                      const isActive = item.exact ? pathname === item.href : pathname.startsWith(item.href);
+
+                      if (isCollapsible) {
+                        // Filter sub-items by permission and the HRManager restriction
+                          const filteredSubItems = item.subItems!.filter(sub => {
+                            // Special restriction for HR Only
+                            if (sub.hrOnly && !hasHRPermissions) return false;
+
+                            // Special restriction for Team Management:
+                            // Managers must have direct reports to see this module
+                            if (sub.href === '/hcm/team-management') {
+                              const isRestrictedRole = user?.role === 'Manager';
+                              if (isRestrictedRole && !isManager) return false;
+                            }
+                            return canRead(sub.module) || isAdmin;
+                          });
+
+                        if (filteredSubItems.length === 0) {
+                          return (
+                            <SidebarMenuItem key={item.href}>
+                              <SidebarMenuButton
+                                asChild
+                                isActive={isActive}
+                                className="w-full"
+                                size="default"
+                              >
+                                <Link href={item.href}>
+                                  <item.icon className="size-5 shrink-0" />
+                                  <span>{item.label}</span>
+                                </Link>
+                              </SidebarMenuButton>
+                            </SidebarMenuItem>
+                          );
+                        }
+
+                        return (
+                          <Collapsible key={item.href} asChild defaultOpen={isActive} className="group/collapsible">
+                            <SidebarMenuItem>
+                              <CollapsibleTrigger asChild>
+                                <SidebarMenuButton tooltip={item.label} isActive={isActive}>
+                                  {item.icon && <item.icon className="size-5 shrink-0" />}
+                                  <span>{item.label}</span>
+                                  <ChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
+                                </SidebarMenuButton>
+                              </CollapsibleTrigger>
+                              <CollapsibleContent>
+                                <SidebarMenuSub>
+                                  {filteredSubItems.map((subItem) => (
+                                    <SidebarMenuSubItem key={subItem.href}>
+                                      <SidebarMenuSubButton asChild isActive={pathname === subItem.href}>
+                                        <Link href={subItem.href}>
+                                          {subItem.icon && <subItem.icon className="size-4 shrink-0" />}
+                                          <span>{subItem.label}</span>
+                                        </Link>
+                                      </SidebarMenuSubButton>
+                                    </SidebarMenuSubItem>
+                                  ))}
+                                </SidebarMenuSub>
+                              </CollapsibleContent>
+                            </SidebarMenuItem>
+                          </Collapsible>
+                        );
+                      }
+
+                      return (
+                        <SidebarMenuItem key={item.href}>
+                          <SidebarMenuButton
+                            asChild
+                            isActive={isActive}
+                            className="w-full"
+                            size="default"
+                          >
+                            <Link href={item.href}>
+                              <item.icon className="size-5 shrink-0" />
+                              <span>{item.label}</span>
+                            </Link>
+                          </SidebarMenuButton>
+                        </SidebarMenuItem>
+                      );
+                    })}
                   </SidebarMenu>
                 </SidebarGroupContent>
                 {gi < NAV_GROUPS.length - 1 && <SidebarSeparator className="mt-2" />}

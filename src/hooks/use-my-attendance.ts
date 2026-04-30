@@ -21,7 +21,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { isHomeOfficeDay, detectAndRecordHOMissingPunch } from '@/firebase/actions/home-office-attendance-utils';
 import { selfCheckIn, selfCheckOut, getTodayAttendance } from '@/firebase/actions/self-attendance-actions';
-import type { Employee } from '@/lib/types';
+import type { Employee } from "@/types/hcm.types";
 
 /** Estado del permiso GPS del navegador */
 export type GpsStatus = 'idle' | 'requesting' | 'granted' | 'denied' | 'unavailable';

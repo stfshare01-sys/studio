@@ -23,13 +23,7 @@ import {
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Plus, Trash2, Eye, EyeOff, X } from 'lucide-react';
-import type {
-  FormField,
-  VisibilityRule,
-  VisibilityCondition,
-  VisibilityLogicalOperator,
-  RuleOperator,
-} from '@/lib/types';
+import type { FormField, VisibilityRule, VisibilityCondition, VisibilityLogicalOperator, RuleOperator } from "@/types/workflow.types";
 
 interface VisibilityRulesBuilderProps {
   fields: FormField[];

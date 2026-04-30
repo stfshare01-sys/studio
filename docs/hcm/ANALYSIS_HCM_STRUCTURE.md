@@ -113,7 +113,7 @@ Campo en el perfil del empleado que controla el comportamiento del widget de mar
 
 | Valor | Descripción | Widget digital | Días HO configurables |
 |---|---|---|---|
-| `office` | Personal fijo en oficina con checador físico | ❌ No | ❌ No |
+| `office` | Personal fijo en oficina con checador físico | ❌ Bloqueado — muestra pantalla informativa sin botones | ❌ No |
 | `hybrid` | Oficina + días de Home Office fijos | ✅ Solo días HO | ✅ Sí |
 | `remote` | 100% trabajo desde casa | ✅ Siempre | ❌ No aplica |
 | `field` | Vendedores / visitas externas | ✅ Siempre | ❌ No aplica |
@@ -122,9 +122,31 @@ Campo en el perfil del empleado que controla el comportamiento del widget de mar
 - Alta de empleado: `employees/new/page.tsx` — Select "Modalidad de Trabajo"
 - Edición: `employees/[id]/edit/page.tsx` — misma Card de Configuración de Asistencia
 - Los días de HO (checkboxes) solo se muestran en la UI cuando `workMode === 'hybrid'`
+- Empleados sin `workMode` asignado (registros previos) → se tratan como `hybrid` por defecto (`workMode ?? 'hybrid'`)
 
 **Impacto en Team Management:**
 - La tabla de Missing Punches muestra badges `REM` / `CAM` con ícono 📍 junto al nombre del empleado cuando `workMode` es `remote` o `field`.
+
+### Flujo HO no programado (hybrid fuera de día configurado)
+
+Cuando un empleado `hybrid` intenta marcar en un día que **no** está en su array `homeOfficeDays`:
+
+1. El widget muestra una advertencia amarilla: _"Hoy no es tu día de Home Office"_
+2. El empleado puede **Cancelar** (sin efecto) o **Confirmar de todas formas**
+3. Si confirma:
+   - Se registra la asistencia en `attendance` con `isUnscheduledHO: true` e `isHomeOffice: false`
+   - Se envía una notificación inmediata al `directManagerId` del empleado via `notifyUnscheduledHomeOffice`
+   - La asistencia cuenta como válida para prenómina (`source: 'self_reported'`)
+
+**Campo clave en `AttendanceRecord`:**
+
+| Campo | Tipo | Cuándo es `true` |
+|---|---|---|
+| `isHomeOffice` | `boolean` | Marcaje en día HO configurado o modalidad remote/field |
+| `isUnscheduledHO` | `boolean` | Marcaje hybrid en día **no** configurado como HO |
+
+> [!WARNING]
+> La notificación al jefe llega en tiempo real, pero **no existe aún una vista de auditoría en RH** donde se puedan filtrar todos los registros con `isUnscheduledHO: true` por periodo. Los datos están en Firestore y son consultables, pero la UI de reporte está pendiente (ver Deuda Técnica).
 
 ---
 
@@ -148,3 +170,6 @@ Campo en el perfil del empleado que controla el comportamiento del widget de mar
 ## Observaciones de Deuda Técnica
 - Algunos archivos como `tardiness-actions.ts` superan las 900 líneas. Según la [regla de límites de tamaño](../../.agent/rules/reglas.md), estos archivos deben ser segmentados próximamente.
 - Existe una inconsistencia histórica entre `managerId` y `directManagerId` que se está resolviendo vía `migrateManagerIdField`.
+- **[Pendiente]** Vista de auditoría de HO no programado: los registros con `isUnscheduledHO: true` ya se guardan en Firestore, pero no existe una vista en Team Management ni en el módulo RH donde filtrarlos por periodo. Se necesita un reporte/filtro para que RH pueda dar seguimiento a marcajes fuera de los días configurados.
+- **[Pendiente]** Vista de auditoría GPS: las coordenadas de marcaje (`location.lat`, `location.lng`) ya se guardan en `attendance` para empleados `remote` y `field`, pero no hay interfaz para visualizarlas en mapa o tabla. Pendiente construir en Team Management o en un módulo de reportes.
+- **[Pendiente]** Empleados existentes sin `workMode` asignado deberán ser actualizados manualmente en su perfil de edición para activar el bloqueo correcto del widget.

@@ -10,7 +10,6 @@ import { useCollection } from '@/firebase/firestore/use-collection';
 import { collection, query, where, orderBy, limit } from 'firebase/firestore';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { TeamCalendar } from '@/components/hcm/team-calendar';
-import type { Employee, Incidence } from '@/lib/types';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, Calendar, Users, ShieldAlert } from 'lucide-react';
@@ -27,6 +26,7 @@ import { format } from 'date-fns';
 import { usePermissions } from "@/hooks/use-permissions";
 import { es } from 'date-fns/locale';
 import { Skeleton } from '@/components/ui/skeleton';
+import type { Employee, Incidence } from "@/types/hcm.types";
 
 function AccessDenied() {
     return (

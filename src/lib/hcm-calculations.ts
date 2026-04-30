@@ -8,15 +8,8 @@ import {
     getDocs,
     Firestore
 } from 'firebase/firestore';
-import type {
-    Employee,
-    Location,
-    HolidayCalendar,
-    CustomShift,
-    ShiftType,
-    OfficialHoliday
-} from './types';
 import { parseISO, isSameDay, addDays, getDay, isAfter, isBefore } from 'date-fns';
+import type { Employee, Location, HolidayCalendar, CustomShift, ShiftType, OfficialHoliday } from "@/types/hcm.types";
 
 /**
  * Result of the effective days calculation

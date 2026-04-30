@@ -18,7 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { ShieldAlert, Search, FileText, User, ChevronDown, Loader2 } from 'lucide-react';
-import type { AuditLog } from '@/lib/types';
+import type { AuditLog } from '@/types/auth.types';
 
 export default function AuditLogViewer() {
     const [limitCount, setLimitCount] = useState(50);

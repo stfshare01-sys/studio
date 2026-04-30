@@ -15,9 +15,10 @@
 
 import {
     doc, collection, addDoc, updateDoc, getDocs, query, where, limit,
+    serverTimestamp,
 } from 'firebase/firestore';
 import { initializeFirebase } from '@/firebase';
-import type { OvertimeRequest, HolidayCalendar, OfficialHoliday } from '@/lib/types';
+import type { OvertimeRequest, HolidayCalendar, OfficialHoliday } from "@/types/hcm.types";
 
 // =========================================================================
 // OVERTIME REQUESTS
@@ -34,7 +35,6 @@ export async function createOvertimeRequest(
 ): Promise<{ success: boolean; requestId?: string; error?: string }> {
     try {
         const { firestore } = initializeFirebase();
-        const now = new Date().toISOString();
 
         const requestData: Omit<OvertimeRequest, 'id'> = {
             employeeId,
@@ -46,8 +46,8 @@ export async function createOvertimeRequest(
             approverLevel: 1,
             requestedToId,
             requestedToName,
-            createdAt: now,
-            updatedAt: now,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
         };
 
         const requestRef = await addDoc(collection(firestore, 'overtime_requests'), requestData);
@@ -68,15 +68,14 @@ export async function processOvertimeRequest(
 ): Promise<{ success: boolean; error?: string }> {
     try {
         const { firestore } = initializeFirebase();
-        const now = new Date().toISOString();
         const requestRef = doc(firestore, 'overtime_requests', requestId);
 
         const updateData: Partial<OvertimeRequest> = {
             status: action === 'approve' ? 'approved' : action === 'reject' ? 'rejected' : 'partial',
             approvedById: processedById,
             approvedByName: processedByName,
-            approvedAt: now,
-            updatedAt: now,
+            approvedAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
         };
 
         if (action === 'partial' && hoursApproved !== undefined) updateData.hoursApproved = hoursApproved;
@@ -136,13 +135,12 @@ export async function getHolidayCalendar(
             { date: `${year}-12-25`, name: 'Navidad', isObligatory: true, premiumRequired: true },
         ];
 
-        const now = new Date().toISOString();
         const newCalendar: Omit<HolidayCalendar, 'id'> = {
             name: `México ${year} Oficial`,
             year,
             holidays: defaultHolidays,
-            createdAt: now,
-            updatedAt: now,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
         };
 
         const calendarRef = await addDoc(collection(firestore, 'holiday_calendars'), newCalendar);

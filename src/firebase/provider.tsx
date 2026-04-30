@@ -7,7 +7,7 @@ import { Firestore, doc, onSnapshot } from 'firebase/firestore';
 import { Auth, User, onAuthStateChanged } from 'firebase/auth';
 import { FirebaseStorage } from 'firebase/storage';
 import { FirebaseErrorListener } from '@/components/FirebaseErrorListener'
-import type { User as AppUser } from '@/lib/types';
+import type { User as AppUser } from '@/types/auth.types';
 import { initializeFirebase } from '@/firebase';
 
 

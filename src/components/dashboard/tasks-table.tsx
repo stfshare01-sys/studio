@@ -3,7 +3,7 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
-import type { Task, User } from "@/lib/types";
+import type { User } from '@/types/auth.types';
 import {
   Table,
   TableBody,
@@ -25,6 +25,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { useFirestore, useUser, useCollection, useMemoFirebase } from "@/firebase";
 import { collection } from "firebase/firestore";
 import { handleTaskEscalation } from "@/lib/workflow-engine";
+import type { Task } from "@/types/workflow.types";
 
 const PAGE_SIZE = 10;
 

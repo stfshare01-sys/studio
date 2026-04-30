@@ -10,7 +10,7 @@ import {
     serverTimestamp,
     Firestore
 } from "firebase/firestore";
-import type { Notification } from "@/lib/types";
+import type { Notification } from "@/types/hcm.types";
 
 /**
  * Creates a notification for a specific user.
@@ -30,7 +30,7 @@ export async function createNotification(
         await addDoc(notificationsRef, {
             ...notification,
             read: false,
-            createdAt: new Date().toISOString()
+            createdAt: serverTimestamp()
         });
     } catch (error) {
         console.error("Error creating notification:", error);

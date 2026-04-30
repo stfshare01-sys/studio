@@ -1,10 +1,10 @@
 'use client';
 
-import { doc, setDoc, collection, query, getDocs, updateDoc, deleteField, DocumentSnapshot, getDoc, where, orderBy, limit } from 'firebase/firestore';
+import { doc, setDoc, collection, query, getDocs, updateDoc, deleteField, DocumentSnapshot, getDoc, where, orderBy, limit, serverTimestamp } from 'firebase/firestore';
 import { initializeFirebase } from '@/firebase';
 import { updateDocumentNonBlocking } from '../non-blocking-updates';
 import { callProcessEmployeeImport, CloudFunctionError, type EmployeeImportRow as CFEmployeeImportRow } from '../callable-functions';
-import type { Employee, ShiftType, Incidence } from '@/lib/types';
+import type { Employee, ShiftType, Incidence } from "@/types/hcm.types";
 
 // =========================================================================
 // EMPLOYEE MANAGEMENT
@@ -137,9 +137,9 @@ export async function blacklistEmployee(
         updateDocumentNonBlocking(employeeRef, {
             isBlacklisted: true,
             blacklistReason: reason,
-            blacklistDate: new Date().toISOString(),
+            blacklistDate: serverTimestamp(),
             status: 'disabled',
-            terminationDate: new Date().toISOString()
+            terminationDate: serverTimestamp()
         });
 
         console.log(`[HCM] Blacklisted employee ${employeeId}`);
@@ -164,14 +164,12 @@ export async function deactivateEmployee(
 ): Promise<{ success: boolean; error?: string }> {
     try {
         const { firestore } = initializeFirebase();
-        const nowISO = new Date().toISOString();
-
         // 1. Update the employees collection
         const employeeRef = doc(firestore, 'employees', employeeId);
         await updateDoc(employeeRef, {
             status: 'disabled',
             terminationDate,
-            updatedAt: nowISO,
+            updatedAt: serverTimestamp(),
         });
 
         // 2. Sync status to the users collection so auth/nav guards also work
@@ -179,7 +177,7 @@ export async function deactivateEmployee(
             const userRef = doc(firestore, 'users', employeeId);
             await updateDoc(userRef, {
                 status: 'disabled',
-                updatedAt: nowISO,
+                updatedAt: serverTimestamp(),
             });
         } catch (syncError) {
             // Non-blocking: log but don't fail the whole operation
@@ -282,7 +280,7 @@ export async function migrateManagerIdField(): Promise<{
                     updateDoc(employeeRef, {
                         directManagerId: data.managerId,
                         managerId: deleteField(), // Remove the old field
-                        updatedAt: new Date().toISOString()
+                        updatedAt: serverTimestamp()
                     }).then(() => {
                         migratedCount++;
                     })

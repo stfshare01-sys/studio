@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/select';
 import { Loader2 } from 'lucide-react';
 import { useDynamicOptions, staticOptionsToDynamic } from './hooks/useDynamicOptions';
-import type { FormField } from '@/lib/types';
+import type { FormField } from "@/types/workflow.types";
 
 interface DynamicSelectProps {
   field: FormField;

@@ -13,8 +13,9 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { CheckCircle2, XCircle, AlertTriangle } from 'lucide-react';
-import type { DetailedPrenominaRecord, DailyPrenominaEntry, IncidenceCode } from '@/lib/types';
-import { normalizeTextForPayroll, formatNameForPayroll, getDayShortName, formatCurrency } from '@/lib/hcm-utils';
+import { normalizeTextForPayroll, formatNameForPayroll, formatCurrency } from '@/lib/payroll-format-utils';
+import { getDayShortName } from '@/lib/workday-utils';
+import type { DetailedPrenominaRecord, DailyPrenominaEntry, IncidenceCode } from "@/types/hcm.types";
 
 interface PrenominaDetailTableProps {
     records: DetailedPrenominaRecord[];

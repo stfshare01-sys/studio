@@ -1,13 +1,7 @@
 'use client';
 
 import { useCallback, useEffect } from 'react';
-import type {
-  DefaultValueRule,
-  DefaultValueRuleCondition,
-  FormField,
-  VisibilityLogicalOperator,
-  RuleOperator,
-} from '@/lib/types';
+import type { DefaultValueRule, DefaultValueRuleCondition, FormField, VisibilityLogicalOperator, RuleOperator } from "@/types/workflow.types";
 
 interface UseDefaultValueRulesOptions {
   rules: DefaultValueRule[];

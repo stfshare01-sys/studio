@@ -2,7 +2,6 @@
 "use client";
 
 import React, { useState } from "react";
-import { Employee } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useFirebase } from "@/firebase/provider";
@@ -10,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ChevronDown, ChevronRight, User, Mail, Building2, Briefcase, Calendar, X, ExternalLink } from "lucide-react";
 import Link from "next/link";
+import { Employee } from "@/types/hcm.types";
 
 // --- Types ---
 

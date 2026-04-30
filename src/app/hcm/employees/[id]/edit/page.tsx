@@ -43,8 +43,8 @@ import {
     MapPin,
     Clock,
 } from 'lucide-react';
-
-import type { Employee, Location, Position, CustomShift, User as UserType, Department } from '@/lib/types';
+import type { User as UserType } from '@/types/auth.types';
+import type { Employee, Location, Position, CustomShift, Department } from "@/types/hcm.types";
 
 const DAYS_OF_WEEK = [
     { label: 'Lunes', value: 1 },

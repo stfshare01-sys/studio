@@ -12,7 +12,7 @@ import {
   serverTimestamp,
   deleteField,
 } from "firebase/firestore";
-import type { Role, ModulePermission, AppModule, PermissionLevel, SystemRole } from "@/lib/types";
+import type { Role, ModulePermission, AppModule, PermissionLevel, SystemRole } from '@/types/auth.types';
 import { calculateSystemLevel } from "@/lib/permissions-config";
 
 // -------------------------------------------------------------------------

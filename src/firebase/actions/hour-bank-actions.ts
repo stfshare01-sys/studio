@@ -22,13 +22,10 @@ import {
     where,
     orderBy,
     limit,
+    serverTimestamp,
 } from 'firebase/firestore';
 import { initializeFirebase } from '@/firebase';
-import type {
-    HourBank,
-    HourBankMovement,
-    OvertimeCalculation,
-} from '@/lib/types';
+import type { HourBank, HourBankMovement, OvertimeCalculation } from "@/types/hcm.types";
 
 // =========================================================================
 // CONSULTAS DE BOLSA DE HORAS
@@ -54,15 +51,14 @@ export async function getHourBank(
         }
 
         // Crear bolsa de horas con saldo 0 si no existe
-        const now = new Date().toISOString();
         const newHourBank: Omit<HourBank, 'id'> = {
             employeeId,
             balanceMinutes: 0,
             hiddenPositiveMinutes: 0,
             totalDebtAccumulated: 0,
             totalCompensated: 0,
-            createdAt: now,
-            updatedAt: now,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
         };
 
         await setDoc(hourBankRef, newHourBank);
@@ -171,7 +167,7 @@ export async function addDebtToHourBank(params: {
 }): Promise<{ success: boolean; movementId?: string; newBalance?: number; error?: string }> {
     try {
         const { firestore } = initializeFirebase();
-        const now = new Date().toISOString();
+        const nowISO = new Date().toISOString();
 
         // Obtener o crear bolsa de horas
         const hourBankResult = await getHourBank(params.employeeId);
@@ -209,7 +205,7 @@ export async function addDebtToHourBank(params: {
             sourceRecordType: params.type,
             createdById: params.createdById,
             createdByName: params.createdByName,
-            createdAt: now,
+            createdAt: serverTimestamp(),
         };
 
         const movementRef = await addDoc(collection(firestore, 'hourBankMovements'), movement);
@@ -227,7 +223,7 @@ export async function addDebtToHourBank(params: {
                 sourceRecordType: params.type,
                 createdById: 'SISTEMA',
                 createdByName: 'Sistema',
-                createdAt: now,
+                createdAt: nowISO,
             };
             await addDoc(collection(firestore, 'hourBankMovements'), compensationMovement);
         }
@@ -238,8 +234,8 @@ export async function addDebtToHourBank(params: {
             hiddenPositiveMinutes: newHiddenPositive,
             totalDebtAccumulated: hourBank.totalDebtAccumulated + params.minutes,
             totalCompensated: hourBank.totalCompensated + minutesCompensatedFromHidden,
-            lastMovementDate: now,
-            updatedAt: now,
+            lastMovementDate: nowISO,
+            updatedAt: serverTimestamp(),
         });
 
         return {
@@ -269,7 +265,7 @@ export async function compensateWithOvertime(params: {
 }): Promise<{ success: boolean; calculation?: OvertimeCalculation; error?: string }> {
     try {
         const { firestore } = initializeFirebase();
-        const now = new Date().toISOString();
+        const nowISO = new Date().toISOString();
 
         // Obtener bolsa de horas
         const hourBankResult = await getHourBank(params.employeeId);
@@ -339,7 +335,7 @@ export async function compensateWithOvertime(params: {
                 sourceRecordType: 'overtime',
                 createdById: params.createdById,
                 createdByName: params.createdByName,
-                createdAt: now,
+                createdAt: serverTimestamp(),
             };
 
             await addDoc(collection(firestore, 'hourBankMovements'), movement);
@@ -348,8 +344,8 @@ export async function compensateWithOvertime(params: {
             await updateDoc(doc(firestore, 'hourBanks', hourBank.id), {
                 balanceMinutes: remainingDebt,
                 totalCompensated: hourBank.totalCompensated + minutesCompensated,
-                lastMovementDate: now,
-                updatedAt: now,
+                lastMovementDate: nowISO,
+                updatedAt: serverTimestamp(),
             });
         }
 
@@ -373,7 +369,7 @@ export async function manualHourBankAdjustment(params: {
 }): Promise<{ success: boolean; movementId?: string; newBalance?: number; error?: string }> {
     try {
         const { firestore } = initializeFirebase();
-        const now = new Date().toISOString();
+        const nowISO = new Date().toISOString();
 
         // Obtener o crear bolsa de horas
         const hourBankResult = await getHourBank(params.employeeId);
@@ -394,7 +390,7 @@ export async function manualHourBankAdjustment(params: {
             reason: params.reason,
             createdById: params.createdById,
             createdByName: params.createdByName,
-            createdAt: now,
+            createdAt: serverTimestamp(),
         };
 
         const movementRef = await addDoc(collection(firestore, 'hourBankMovements'), movement);
@@ -402,8 +398,8 @@ export async function manualHourBankAdjustment(params: {
         // Actualizar bolsa de horas
         const updates: Record<string, any> = {
             balanceMinutes: newBalance,
-            lastMovementDate: now,
-            updatedAt: now,
+            lastMovementDate: nowISO,
+            updatedAt: serverTimestamp(),
         };
 
         if (params.minutes > 0) {
@@ -486,7 +482,7 @@ export async function accumulateHiddenPositiveHours(params: {
 }): Promise<{ success: boolean; newHiddenBalance?: number; error?: string }> {
     try {
         const { firestore } = initializeFirebase();
-        const now = new Date().toISOString();
+        const nowISO = new Date().toISOString();
 
         const hourBankResult = await getHourBank(params.employeeId);
         if (!hourBankResult.success || !hourBankResult.hourBank) {
@@ -520,7 +516,7 @@ export async function accumulateHiddenPositiveHours(params: {
             reason: params.reason,
             createdById: 'SISTEMA',
             createdByName: 'Sistema',
-            createdAt: now,
+            createdAt: nowISO,
         };
 
         await addDoc(collection(firestore, 'hourBankMovements'), movement);
@@ -536,7 +532,7 @@ export async function accumulateHiddenPositiveHours(params: {
                 reason: `Compensación automática retroactiva: ${autoCompensated}min de bolsa oculta aplicados a deuda existente`,
                 createdById: 'SISTEMA',
                 createdByName: 'Sistema',
-                createdAt: now,
+                createdAt: nowISO,
             };
             await addDoc(collection(firestore, 'hourBankMovements'), compensationMovement);
         }
@@ -546,8 +542,8 @@ export async function accumulateHiddenPositiveHours(params: {
             hiddenPositiveMinutes: finalHiddenPositive,
             balanceMinutes: finalBalance,
             totalCompensated: hourBank.totalCompensated + autoCompensated,
-            lastMovementDate: now,
-            updatedAt: now,
+            lastMovementDate: nowISO,
+            updatedAt: serverTimestamp(),
         });
 
         return { success: true, newHiddenBalance: finalHiddenPositive };
@@ -567,7 +563,7 @@ export async function resetHiddenPositiveBalance(
 ): Promise<{ success: boolean; previousHidden?: number; error?: string }> {
     try {
         const { firestore } = initializeFirebase();
-        const now = new Date().toISOString();
+        const nowISO = new Date().toISOString();
 
         const hourBankResult = await getHourBank(employeeId);
         if (!hourBankResult.success || !hourBankResult.hourBank) {
@@ -582,21 +578,21 @@ export async function resetHiddenPositiveBalance(
             const movement: Omit<HourBankMovement, 'id'> = {
                 hourBankId: hourBank.id,
                 employeeId,
-                date: now.split('T')[0],
+                date: nowISO.split('T')[0],
                 type: 'hidden_positive_compensation',
                 minutes: -previousHidden,
                 reason: `Reset de bolsa oculta al cerrar periodo (${previousHidden} min expirados)`,
                 createdById: 'SISTEMA',
                 createdByName: 'Sistema',
-                createdAt: now,
+                createdAt: nowISO,
             };
             await addDoc(collection(firestore, 'hourBankMovements'), movement);
 
             // Resetear solo las horas ocultas, mantener deudas intactas
             await updateDoc(doc(firestore, 'hourBanks', hourBank.id), {
                 hiddenPositiveMinutes: 0,
-                lastMovementDate: now,
-                updatedAt: now,
+                lastMovementDate: nowISO,
+                updatedAt: serverTimestamp(),
             });
         }
 

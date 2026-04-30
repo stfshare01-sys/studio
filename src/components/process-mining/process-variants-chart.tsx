@@ -3,10 +3,10 @@
 
 import { useMemo } from 'react';
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import type { Request } from '@/lib/types';
 import { analyzeProcessVariants, ProcessVariant } from '@/lib/process-mining';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import type { Request } from "@/types/workflow.types";
 
 interface ProcessVariantsChartProps {
   requests: Request[];

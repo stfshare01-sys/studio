@@ -46,7 +46,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import Link from 'next/link';
-import type { MasterList, MasterListField } from '@/lib/types';
+import type { MasterList, MasterListField } from "@/types/common.types";
 
 type FieldType = 'text' | 'number' | 'boolean' | 'date';
 

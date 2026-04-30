@@ -29,7 +29,8 @@ import {
     deleteDoc,
     query,
     where,
-    orderBy
+    orderBy,
+    serverTimestamp,
 } from 'firebase/firestore';
 import { initializeFirebase } from '@/firebase';
 import { updateDocumentNonBlocking } from '../non-blocking-updates';
@@ -38,7 +39,7 @@ import {
     notifyScheduleChanged
 } from './notification-actions';
 import { getDirectReports, getHierarchicalReports } from './team-queries';
-import type { ShiftAssignment, ScheduleChange, CustomShift } from '@/lib/types';
+import type { ShiftAssignment, ScheduleChange, CustomShift } from "@/types/hcm.types";
 
 // =========================================================================
 // ASIGNACIÓN DE TURNOS
@@ -63,7 +64,6 @@ export async function assignShift(
 ): Promise<{ success: boolean; assignmentId?: string; error?: string }> {
     try {
         const { firestore } = initializeFirebase();
-        const now = new Date().toISOString();
 
         // Validar que si es temporal, tenga fecha fin
         if (assignmentType === 'temporary' && !endDate) {
@@ -82,9 +82,9 @@ export async function assignShift(
             status: 'active',
             assignedById,
             assignedByName,
-            assignedAt: now,
-            createdAt: now,
-            updatedAt: now
+            assignedAt: serverTimestamp(),
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
         };
 
         // Only add optional fields if they have values
@@ -99,7 +99,7 @@ export async function assignShift(
             const employeeRef = doc(firestore, 'employees', employeeId);
             updateDocumentNonBlocking(employeeRef, {
                 customShiftId: newShiftId,
-                updatedAt: now
+                updatedAt: serverTimestamp()
             });
         }
 
@@ -173,7 +173,7 @@ export async function assignShift(
                             await updateDoc(tardinessDoc.ref, {
                                 scheduledTime: effectiveStart,
                                 minutesLate: newMinutesLate,
-                                updatedAt: new Date().toISOString()
+                                updatedAt: serverTimestamp()
                             });
                             console.log(`[HCM] assignShift: retardo mitigado para ${employeeId} en ${recordDate} (${tardData.minutesLate} -> ${newMinutesLate})`);
                         }
@@ -203,7 +203,6 @@ export async function cancelShiftAssignment(
 ): Promise<{ success: boolean; error?: string }> {
     try {
         const { firestore } = initializeFirebase();
-        const now = new Date().toISOString();
 
         const ref = doc(firestore, 'shift_assignments', assignmentId);
 
@@ -211,8 +210,8 @@ export async function cancelShiftAssignment(
             status: 'cancelled',
             cancelledById,
             cancelledByName,
-            cancelledAt: now,
-            updatedAt: now
+            cancelledAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
         });
 
         return { success: true };
@@ -346,7 +345,6 @@ export async function changeEmployeeSchedule(
 ): Promise<{ success: boolean; changeId?: string; error?: string }> {
     try {
         const { firestore } = initializeFirebase();
-        const now = new Date().toISOString();
 
         // Validar que si es temporal, tenga fecha fin
         if (changeType === 'temporary' && !endDate) {
@@ -366,9 +364,9 @@ export async function changeEmployeeSchedule(
             status: 'active',
             assignedById,
             assignedByName,
-            assignedAt: now,
-            createdAt: now,
-            updatedAt: now
+            assignedAt: serverTimestamp(),
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
         };
 
         if (endDate) changeData.endDate = endDate;
@@ -403,13 +401,12 @@ export async function cancelScheduleChange(
 ): Promise<{ success: boolean; error?: string }> {
     try {
         const { firestore } = initializeFirebase();
-        const now = new Date().toISOString();
 
         const ref = doc(firestore, 'schedule_changes', changeId);
 
         await updateDoc(ref, {
             status: 'cancelled',
-            updatedAt: now
+            updatedAt: serverTimestamp()
         });
 
         return { success: true };

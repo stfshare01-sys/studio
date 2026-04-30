@@ -8,7 +8,7 @@ import {
     Loader2, Info, WifiOff, CalendarDays, MapPin, Navigation, Building2,
 } from 'lucide-react';
 import { useMyAttendance } from '@/hooks/use-my-attendance';
-import type { Employee } from '@/lib/types';
+import type { Employee } from "@/types/hcm.types";
 
 // Días de la semana en español (0=Dom, 1=Lun...)
 const DAY_NAMES = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];

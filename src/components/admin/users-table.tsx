@@ -3,7 +3,7 @@
 
 import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { getAllRoles } from "@/firebase/role-actions";
-import type { User, UserRole, UserStatus, Role } from "@/lib/types";
+import type { User, UserRole, UserStatus, Role } from '@/types/auth.types';
 import {
     Table,
     TableBody,

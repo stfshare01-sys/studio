@@ -3,7 +3,7 @@
 "use client";
 
 import { useState } from "react";
-import type { EnrichedWorkflowStep, User, Request as RequestType, Task } from "@/lib/types";
+import type { User } from '@/types/auth.types';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -27,6 +27,7 @@ import { useToast } from "@/hooks/use-toast";
 import { doc, collection } from "firebase/firestore";
 import { updateDocumentNonBlocking, addDocumentNonBlocking } from "@/firebase/non-blocking-updates";
 import { usePermissions } from "@/hooks/use-permissions";
+import type { EnrichedWorkflowStep, Request as RequestType, Task } from "@/types/workflow.types";
 
 function ReassignTaskDialog({ task, request, allUsers, onReassign }: { task: Task, request: RequestType, allUsers: User[], onReassign: () => void }) {
   const [newAssigneeId, setNewAssigneeId] = useState<string | undefined>(undefined);

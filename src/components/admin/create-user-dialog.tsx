@@ -16,7 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import type { UserRole } from "@/lib/types";
+import type { UserRole } from '@/types/auth.types';
 import { Loader2 } from "lucide-react";
 import { createNewUser } from "@/firebase/admin-actions";
 import { createEmployee } from "@/firebase/actions/employee-actions";

@@ -2,13 +2,13 @@
 "use client"
 
 import { ColumnDef } from "@tanstack/react-table"
-import type { MasterListField } from "@/lib/types"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { Badge } from "@/components/ui/badge"
 
 // This component will be used to render the actions for each row
 import { DataTableRowActions } from "./data-table-row-actions"
+import type { MasterListField } from "@/types/common.types";
 
 export const columns = (fields: MasterListField[]): ColumnDef<any>[] => {
   

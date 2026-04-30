@@ -46,8 +46,7 @@ import {
     Loader2,
     Users,
 } from 'lucide-react';
-
-import type { Department, Position, Location } from '@/lib/types';
+import type { Department, Position, Location } from "@/types/hcm.types";
 
 const initialFormState = {
     name: '',

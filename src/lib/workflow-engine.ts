@@ -21,10 +21,11 @@ import {
     runTransaction,
     writeBatch
 } from "firebase/firestore";
-import type { Task, Request, Template, User, WorkflowStepDefinition, Rule } from './types';
+import type { User } from '@/types/auth.types';
 import { addDocumentNonBlocking, updateDocumentNonBlocking, setDocumentNonBlocking } from '@/firebase/non-blocking-updates';
 import { intelligentTaskAssignment } from '@/ai/flows/intelligent-task-assignment';
 import { addHours, isPast } from 'date-fns';
+import type { Task, Request, Template, WorkflowStepDefinition, Rule } from "@/types/workflow.types";
 
 interface EvaluateRulesParams {
     firestore: Firestore;

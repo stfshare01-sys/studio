@@ -23,7 +23,7 @@ import {
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Plus, Trash2, Eye, EyeOff, Lock, Unlock, AlertCircle } from 'lucide-react';
-import type { FormField, FieldStateOverride } from '@/lib/types';
+import type { FormField, FieldStateOverride } from "@/types/workflow.types";
 
 interface FieldStateOverrideConfigProps {
   fields: FormField[];

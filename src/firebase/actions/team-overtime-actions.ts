@@ -23,7 +23,8 @@ import {
     getDocs,
     query,
     where,
-    orderBy
+    orderBy,
+    serverTimestamp,
 } from 'firebase/firestore';
 import { initializeFirebase } from '@/firebase';
 import {
@@ -33,8 +34,8 @@ import {
 } from './notification-actions';
 import { checkAttendanceTaskCompletion } from './task-completion-actions';
 import { getDirectReports, getHierarchicalReports } from './team-queries';
-import type { OvertimeRequest, Employee, Location, AttendanceRecord, AttendanceImportBatch } from '@/lib/types';
-import { calculateOvertimeWithRounding, roundOvertimeHours } from '@/lib/hcm-utils';
+import { calculateOvertimeWithRounding, roundOvertimeHours } from '@/lib/overtime-utils';
+import type { OvertimeRequest, Employee, Location, AttendanceRecord, AttendanceImportBatch } from "@/types/hcm.types";
 
 // =========================================================================
 // HORAS EXTRAS
@@ -188,7 +189,6 @@ export async function approveOvertimeRequest(
 ): Promise<{ success: boolean; error?: string }> {
     try {
         const { firestore } = initializeFirebase();
-        const now = new Date().toISOString();
 
         const ref = doc(firestore, 'overtime_requests', requestId);
         const snap = await getDoc(ref);
@@ -242,8 +242,8 @@ export async function approveOvertimeRequest(
             hoursApproved: finalHoursApproved,
             approvedById,
             approvedByName,
-            approvedAt: now,
-            updatedAt: now
+            approvedAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
         });
 
         // Recalcular la semana completa con la configuración correcta de la ubicación
@@ -317,7 +317,6 @@ export async function rejectOvertimeRequest(
 ): Promise<{ success: boolean; error?: string }> {
     try {
         const { firestore } = initializeFirebase();
-        const now = new Date().toISOString();
 
         const ref = doc(firestore, 'overtime_requests', requestId);
         const snap = await getDoc(ref);
@@ -360,9 +359,9 @@ export async function rejectOvertimeRequest(
             tripleHours: 0,
             approvedById: rejectedById,
             approvedByName: rejectedByName,
-            approvedAt: now,
+            approvedAt: serverTimestamp(),
             rejectionReason,
-            updatedAt: now
+            updatedAt: serverTimestamp()
         });
 
         // Recalcular la semana completa, por si había otras solicitudes que ahora deben ajustarse
@@ -482,7 +481,7 @@ async function recalculateWeeklyOvertime(
         // Agregamos un sort explícito adicional por createdAt para desempatar mismo día
         requests.sort((a, b) => {
             if (a.date === b.date) {
-                return a.createdAt.localeCompare(b.createdAt);
+                return ((a.createdAt as any)?.toMillis?.() || (a.createdAt as any)?.seconds || 0) - ((b.createdAt as any)?.toMillis?.() || (b.createdAt as any)?.seconds || 0);
             }
             return a.date.localeCompare(b.date);
         });
@@ -530,7 +529,7 @@ async function recalculateWeeklyOvertime(
                 await updateDoc(doc(firestore, 'overtime_requests', req.id), {
                     doubleHours: reqDouble,
                     tripleHours: reqTriple,
-                    updatedAt: new Date().toISOString()
+                    updatedAt: serverTimestamp()
                 });
             }
         }

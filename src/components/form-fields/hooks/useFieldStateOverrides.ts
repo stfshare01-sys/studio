@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useCallback } from 'react';
-import type { FormField, FieldStateOverride, WorkflowStepDefinition } from '@/lib/types';
+import type { FormField, FieldStateOverride, WorkflowStepDefinition } from "@/types/workflow.types";
 
 interface UseFieldStateOverridesOptions {
   fields: FormField[];

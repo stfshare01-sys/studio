@@ -4,7 +4,7 @@
 import SiteLayout from "@/components/site-layout";
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase";
 import { collection, query, collectionGroup, limit, orderBy } from "firebase/firestore";
-import type { Request as RequestType, Task, User } from '@/lib/types';
+import type { User } from '@/types/auth.types';
 import React, { useMemo, useState } from "react";
 import { DateRange } from "react-day-picker";
 import { addDays, format, isValid } from 'date-fns';
@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { usePermissions } from "@/hooks/use-permissions";
 import { parseFirebaseDate } from "@/lib/utils";
+import type { Request as RequestType, Task } from "@/types/workflow.types";
 
 const MAX_RECORDS = 1000; // Limit queries to prevent performance issues
 

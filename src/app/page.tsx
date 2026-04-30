@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { RequestsTable } from "@/components/dashboard/requests-table";
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase";
 import { collection, query, where, limit } from "firebase/firestore";
-import type { Request as RequestType, Task, User, Incidence } from '@/lib/types';
+import type { User } from '@/types/auth.types';
 import { INCIDENCE_RULES } from '@/lib/hcm-validation';
 import { FilePlus, Hourglass, CheckCircle, Timer } from "lucide-react";
 import Link from "next/link";
@@ -17,7 +17,8 @@ import { TaskCard, EnrichedTask } from "@/components/tasks/task-card";
 import React from "react";
 import { differenceInHours } from 'date-fns';
 import { StatCard } from "@/components/dashboard/stat-card";
-
+import type { Request as RequestType, Task } from "@/types/workflow.types";
+import type { Incidence } from "@/types/hcm.types";
 
 function DataTableSkeleton() {
   return (

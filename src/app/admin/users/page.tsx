@@ -4,7 +4,7 @@
 import SiteLayout from "@/components/site-layout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import type { User } from "@/lib/types";
+import type { User } from '@/types/auth.types';
 import { Skeleton } from "@/components/ui/skeleton";
 import { UsersTable } from "@/components/admin/users-table";
 import { PlusCircle, ShieldAlert } from "lucide-react";

@@ -15,12 +15,12 @@ import {
   ComposedChart,
   Area,
 } from 'recharts';
-import type { Request } from '@/lib/types';
 import { calculateSPCData, SPCDataPoint } from '@/lib/process-mining';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { Badge } from '@/components/ui/badge';
 import { AlertTriangle, CheckCircle2 } from 'lucide-react';
+import type { Request } from "@/types/workflow.types";
 
 interface SPCChartProps {
   requests: Request[];

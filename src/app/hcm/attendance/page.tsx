@@ -39,11 +39,11 @@ import {
     FileDown,
     ArrowLeft
 } from 'lucide-react';
-import type { AttendanceImportBatch, AttendanceRecord } from '@/lib/types';
 import { processAttendanceImport } from '@/firebase/actions/incidence-actions';
 import type { OvertimeMode } from '@/firebase/actions/attendance-import-actions';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import type { AttendanceImportBatch, AttendanceRecord } from "@/types/hcm.types";
 
 /**
  * Attendance Import Page
@@ -334,11 +334,20 @@ export default function AttendancePage() {
         URL.revokeObjectURL(url);
     };
 
-    const formatDate = (dateStr: string) => {
+    const formatDate = (dateValue: any) => {
         try {
-            return format(new Date(dateStr), 'dd MMM yyyy, HH:mm', { locale: es });
+            if (!dateValue) return '-';
+            let dateObj;
+            if (typeof dateValue?.toDate === 'function') {
+                dateObj = dateValue.toDate();
+            } else if (typeof dateValue === 'object') {
+                return 'Procesando...'; // FieldValue
+            } else {
+                dateObj = new Date(dateValue);
+            }
+            return format(dateObj, 'dd MMM yyyy, HH:mm', { locale: es });
         } catch {
-            return dateStr;
+            return String(dateValue);
         }
     };
 

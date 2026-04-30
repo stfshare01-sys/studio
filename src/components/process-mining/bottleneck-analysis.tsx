@@ -13,13 +13,13 @@ import {
   Cell,
   Legend,
 } from 'recharts';
-import type { Task } from '@/lib/types';
 import { analyzeBottlenecks, BottleneckAnalysis as BottleneckData } from '@/lib/process-mining';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { TrendingUp, TrendingDown, Minus, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import type { Task } from "@/types/workflow.types";
 
 interface BottleneckAnalysisProps {
   tasks: Task[];

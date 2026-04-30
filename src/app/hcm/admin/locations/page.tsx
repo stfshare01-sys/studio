@@ -49,8 +49,7 @@ import {
     Factory,
     Loader2,
 } from 'lucide-react';
-
-import type { Location, LocationType } from '@/lib/types';
+import type { Location, LocationType } from "@/types/hcm.types";
 
 const LOCATION_TYPE_LABELS: Record<LocationType, { label: string; icon: React.ReactNode }> = {
     cedis: { label: 'CEDIS', icon: <Building2 className="h-4 w-4" /> },

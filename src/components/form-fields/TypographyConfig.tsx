@@ -12,7 +12,7 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { Card, CardContent } from '@/components/ui/card';
 import { Type, AlignLeft, AlignCenter, AlignRight, Palette } from 'lucide-react';
-import type { TypographyConfig as TypographyConfigType } from '@/lib/types';
+import type { TypographyConfig as TypographyConfigType } from "@/types/workflow.types";
 
 interface TypographyConfigProps {
   value: TypographyConfigType | undefined;

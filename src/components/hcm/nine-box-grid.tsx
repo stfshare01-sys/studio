@@ -26,8 +26,8 @@ import {
     Target,
     Zap
 } from 'lucide-react';
-import type { Employee } from '@/lib/types';
 import Link from 'next/link';
+import type { Employee } from "@/types/hcm.types";
 
 interface NineBoxGridProps {
     employees: Employee[];

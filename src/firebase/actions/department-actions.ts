@@ -10,10 +10,11 @@ import {
     query,
     where,
     orderBy,
-    limit
+    limit,
+    serverTimestamp
 } from 'firebase/firestore';
 import { initializeFirebase } from '@/firebase';
-import type { Department } from '@/lib/types';
+import type { Department } from "@/types/hcm.types";
 
 // =========================================================================
 // DEPARTMENT MANAGEMENT
@@ -40,8 +41,6 @@ export async function createDepartment(
 ): Promise<{ success: boolean; departmentId?: string; error?: string }> {
     try {
         const { firestore } = initializeFirebase();
-        const now = new Date().toISOString();
-
         // Check if code is unique
         const codeQuery = query(
             collection(firestore, 'departments'),
@@ -83,8 +82,8 @@ export async function createDepartment(
             budgetPeriod: payload.budgetPeriod,
             locationId: payload.locationId,
             isActive: true,
-            createdAt: now,
-            updatedAt: now,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
             createdById: payload.createdById,
         };
 
@@ -119,8 +118,6 @@ export async function updateDepartment(
 ): Promise<{ success: boolean; error?: string }> {
     try {
         const { firestore } = initializeFirebase();
-        const now = new Date().toISOString();
-
         const departmentRef = doc(firestore, 'departments', departmentId);
         const departmentSnap = await getDoc(departmentRef);
 
@@ -153,7 +150,7 @@ export async function updateDepartment(
 
         await updateDoc(departmentRef, {
             ...payload,
-            updatedAt: now,
+            updatedAt: serverTimestamp(),
         });
 
         console.log(`[HCM] Updated department ${departmentId}`);

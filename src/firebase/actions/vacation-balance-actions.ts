@@ -16,19 +16,18 @@
 
 import {
     doc, collection, addDoc, updateDoc, getDoc, getDocs, query, where, orderBy, limit,
+    serverTimestamp,
 } from 'firebase/firestore';
 import { initializeFirebase } from '@/firebase';
-import type { Employee, VacationBalance, VacationMovement } from '@/lib/types';
 import {
     calculateVacationDays,
     calculateYearsOfService,
     isAnniversaryDate,
     getNextAnniversaryDate,
-} from '@/lib/hcm-utils';
+} from '@/lib/vacation-utils';
 import { notifyRole, createNotification } from './notification-actions';
+import type { Employee, VacationBalance, VacationMovement } from "@/types/hcm.types";
 
-// =========================================================================
-// VACATION BALANCE MANAGEMENT
 // =========================================================================
 
 export interface VacationBalanceLoad {
@@ -86,7 +85,7 @@ export async function updateVacationBalance(
 ): Promise<{ success: boolean; error?: string }> {
     try {
         const { firestore } = initializeFirebase();
-        const now = new Date().toISOString();
+        const nowISO = new Date().toISOString(); // Preserved: used in movement arrays and business dates
 
         // Get current balance
         const balanceResult = await getVacationBalance(employeeId);
@@ -103,7 +102,7 @@ export async function updateVacationBalance(
 
         const movement: VacationMovement = {
             id: `mov_${Date.now()}`,
-            date: now,
+            date: nowISO,
             type,
             days: type === 'cancelled' ? -days : days,
             description: type === 'taken' ? 'Vacaciones tomadas' :
@@ -133,7 +132,7 @@ export async function updateVacationBalance(
             daysScheduled: newDaysScheduled,
             daysAvailable: Math.max(0, newDaysAvailable),
             movements: [...balance.movements, movement].slice(-100),
-            lastUpdated: now,
+            lastUpdated: serverTimestamp(),
         });
 
         console.log(`[HCM] Updated vacation balance for ${employeeId}: ${type} ${days} days`);
@@ -162,7 +161,7 @@ export async function resetVacationBalanceOnAnniversary(
 ): Promise<{ success: boolean; newBalance?: VacationBalance; error?: string }> {
     try {
         const { firestore } = initializeFirebase();
-        const now = new Date().toISOString();
+        const nowISO = new Date().toISOString(); // Preserved: used in movement arrays and business dates
 
         // 1. Obtener datos del empleado
         const employeeRef = doc(firestore, 'employees', employeeId);
@@ -223,7 +222,7 @@ export async function resetVacationBalanceOnAnniversary(
         // 7. Crear movimientos de auditoría
         const movements: VacationMovement[] = [{
             id: `mov_reset_${Date.now()}`,
-            date: now,
+            date: nowISO,
             type: 'reset',
             days: daysEntitled,
             description: `Renovación aniversario año ${yearsOfService}. Días nuevos: ${daysEntitled}.`,
@@ -232,7 +231,7 @@ export async function resetVacationBalanceOnAnniversary(
         if (daysCarriedOver > 0) {
             movements.push({
                 id: `mov_carryover_${Date.now()}`,
-                date: now,
+                date: nowISO,
                 type: 'adjustment',
                 days: daysCarriedOver,
                 description: `Días arrastrados del período anterior (${maxCarryOverDays !== undefined ? `límite: ${maxCarryOverDays}` : 'sin límite'})`,
@@ -245,8 +244,8 @@ export async function resetVacationBalanceOnAnniversary(
         // 9. Crear nuevo balance
         const newBalance: Omit<VacationBalance, 'id'> = {
             employeeId,
-            periodStart: now,
-            periodEnd: nextAnniversary.toISOString(),
+            periodStart: nowISO,
+            periodEnd: nextAnniversary.toISOString().split('T')[0],
             daysEntitled,
             yearsOfService,
             daysTaken: 0,
@@ -257,8 +256,8 @@ export async function resetVacationBalanceOnAnniversary(
             daysPending: 0,
             vacationPremiumPaid: false,
             movements,
-            lastUpdated: now,
-            createdAt: now,
+            lastUpdated: serverTimestamp(),
+            createdAt: serverTimestamp(),
         };
 
         const balanceRef = await addDoc(collection(firestore, 'vacation_balances'), newBalance);
@@ -295,7 +294,7 @@ export async function adjustVacationBalance(
 ): Promise<{ success: boolean; newBalance?: VacationBalance; error?: string }> {
     try {
         const { firestore } = initializeFirebase();
-        const now = new Date().toISOString();
+        const nowISO = new Date().toISOString(); // Preserved: used in movement arrays and business dates
 
         // Validaciones
         if (!reason || reason.trim().length < 10) {
@@ -355,7 +354,7 @@ export async function adjustVacationBalance(
                 id: '', // temporalmente vacío, se sobreescribe después de crear
                 employeeId,
                 periodStart: employee.hireDate, // podemos usar su fecha de inicio para el periodo base
-                periodEnd: nextAnniversary.toISOString(),
+                periodEnd: nextAnniversary.toISOString().split('T')[0],
                 daysEntitled: newDaysEntitled,
                 yearsOfService,
                 daysTaken: 0,
@@ -365,8 +364,8 @@ export async function adjustVacationBalance(
                 daysPending: 0,
                 vacationPremiumPaid: false,
                 movements: [],
-                lastUpdated: now,
-                createdAt: now
+                lastUpdated: serverTimestamp(),
+                createdAt: serverTimestamp()
             };
         } else {
             balanceRef = doc(firestore, 'vacation_balances', currentBalance.id);
@@ -391,7 +390,7 @@ export async function adjustVacationBalance(
         // Crear movimiento de ajuste
         const movement: VacationMovement = {
             id: `mov_adj_${Date.now()}`,
-            date: now,
+            date: nowISO,
             type: 'adjustment',
             days: adjustmentDays,
             description: `Ajuste manual: ${reason.trim()}`,
@@ -408,8 +407,8 @@ export async function adjustVacationBalance(
                 daysEntitled: newDaysEntitled,
                 daysAvailable: newDaysAvailable,
                 movements: [movement],
-                lastUpdated: now,
-                createdAt: now
+                lastUpdated: serverTimestamp(),
+                createdAt: serverTimestamp()
             };
             
             const addedDocRef = await addDoc(collection(firestore, 'vacation_balances'), newBalanceDataToInsert);
@@ -420,7 +419,7 @@ export async function adjustVacationBalance(
                 daysEntitled: newDaysEntitled,
                 daysAvailable: newDaysAvailable,
                 movements: [...currentBalance.movements, movement].slice(-100),
-                lastUpdated: now,
+                lastUpdated: serverTimestamp(),
             });
         }
 
@@ -434,7 +433,7 @@ export async function adjustVacationBalance(
             reason: reason.trim(),
             adjustedById,
             adjustedByName,
-            adjustedAt: now,
+            adjustedAt: serverTimestamp(),
         });
 
         // Crear notificación para el empleado
@@ -452,7 +451,7 @@ export async function adjustVacationBalance(
             daysEntitled: newDaysEntitled,
             daysAvailable: newDaysAvailable,
             movements: [...currentBalance.movements, movement].slice(-100),
-            lastUpdated: now,
+            lastUpdated: serverTimestamp(),
         };
 
         return { success: true, newBalance: updatedBalance };
@@ -486,7 +485,7 @@ export async function bulkLoadVacationBalances(
 }> {
     try {
         const { firestore } = initializeFirebase();
-        const now = new Date().toISOString();
+        const nowISO = new Date().toISOString(); // Preserved: used in movement arrays and business dates
 
         let successCount = 0;
         const errors: Array<{ employeeId: string; error: string }> = [];
@@ -607,7 +606,7 @@ export async function bulkLoadVacationBalances(
 
                 const movement: VacationMovement = {
                     id: `mov_load_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-                    date: now,
+                    date: nowISO,
                     type: 'adjustment',
                     days: balanceLoad.daysEntitled,
                     description: `Carga inicial: ${balanceLoad.reason.trim()}`,
@@ -625,14 +624,14 @@ export async function bulkLoadVacationBalances(
                         daysScheduled,
                         daysAvailable,
                         movements: [...balanceData.movements, movement].slice(-100),
-                        lastUpdated: now,
+                        lastUpdated: serverTimestamp(),
                     });
                 } else {
                     // Crear nuevo balance
                     const newBalance: Omit<VacationBalance, 'id'> = {
                         employeeId: firestoreEmployeeId,
                         periodStart: employee.hireDate,
-                        periodEnd: nextAnniversary.toISOString(),
+                        periodEnd: nextAnniversary.toISOString().split('T')[0],
                         daysEntitled: balanceLoad.daysEntitled,
                         yearsOfService,
                         daysTaken,
@@ -642,8 +641,8 @@ export async function bulkLoadVacationBalances(
                         daysPending: 0,
                         vacationPremiumPaid: false,
                         movements: [movement],
-                        lastUpdated: now,
-                        createdAt: now,
+                        lastUpdated: serverTimestamp(),
+                        createdAt: serverTimestamp(),
                     };
 
                     await addDoc(collection(firestore, 'vacation_balances'), newBalance);
@@ -659,7 +658,7 @@ export async function bulkLoadVacationBalances(
                     reason: `Carga masiva: ${balanceLoad.reason.trim()}`,
                     adjustedById: loadedById,
                     adjustedByName: loadedByName,
-                    adjustedAt: now,
+                    adjustedAt: serverTimestamp(),
                 });
 
                 successCount++;

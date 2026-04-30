@@ -4,7 +4,7 @@
 import SiteLayout from "@/components/site-layout";
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase";
 import { collection, query, collectionGroup, limit, orderBy } from "firebase/firestore";
-import type { Request as RequestType, Task, Template, User } from '@/lib/types';
+import type { User } from '@/types/auth.types';
 import React, { useMemo, useState } from "react";
 import { DateRange } from "react-day-picker";
 import { addDays, startOfDay, isValid, subDays } from 'date-fns';
@@ -22,6 +22,7 @@ import {
   ProcessHealthScore,
 } from '@/components/process-mining';
 import { usePermissions } from "@/hooks/use-permissions";
+import type { Request as RequestType, Task, Template } from "@/types/workflow.types";
 
 const MAX_RECORDS = 1000;
 

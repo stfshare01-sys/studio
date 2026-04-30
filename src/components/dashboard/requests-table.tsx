@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import type { Request, User } from "@/lib/types";
+import type { User } from '@/types/auth.types';
 import {
   Table,
   TableBody,
@@ -24,6 +24,7 @@ import { TableSkeleton } from "../ui/table-skeleton";
 import { useDoc, useFirestore, useMemoFirebase } from "@/firebase";
 import { doc } from "firebase/firestore";
 import { Skeleton } from "../ui/skeleton";
+import type { Request } from "@/types/workflow.types";
 
 const PAGE_SIZE = 10;
 

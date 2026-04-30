@@ -24,7 +24,6 @@ import {
     AlertCircle,
     Home
 } from 'lucide-react';
-import type { Employee, Incidence, IncidenceType } from '@/lib/types';
 import {
     format,
     startOfMonth,
@@ -40,6 +39,7 @@ import {
     endOfWeek
 } from 'date-fns';
 import { es } from 'date-fns/locale';
+import type { Employee, Incidence, IncidenceType } from "@/types/hcm.types";
 
 interface TeamCalendarProps {
     employees: Employee[];

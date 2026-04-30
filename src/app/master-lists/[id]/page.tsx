@@ -5,7 +5,6 @@ import SiteLayout from '@/components/site-layout';
 import { notFound, useParams, useRouter } from 'next/navigation';
 import { useDoc, useFirestore, useMemoFirebase } from '@/firebase';
 import { collection, doc } from 'firebase/firestore';
-import type { MasterList } from '@/lib/types';
 import { ArrowLeft, PlusCircle, Import, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -13,6 +12,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
 import { DataTable } from '@/components/master-lists/data-table';
 import { columns } from '@/components/master-lists/columns';
+import type { MasterList } from "@/types/common.types";
 
 function MasterListDataSkeleton() {
   return (

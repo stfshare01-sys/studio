@@ -11,7 +11,7 @@ import {
 } from '@/components/ui/select';
 import { Card, CardContent } from '@/components/ui/card';
 import { Clock, Calendar, ArrowRight } from 'lucide-react';
-import type { TimerConfig, TimerType, FormField } from '@/lib/types';
+import type { TimerConfig, TimerType, FormField } from "@/types/workflow.types";
 
 interface TimerStepConfigProps {
   value: TimerConfig | undefined;

@@ -25,15 +25,16 @@ import {
     getDocs,
     query,
     where,
-    orderBy
+    orderBy,
+    serverTimestamp,
 } from 'firebase/firestore';
 import { initializeFirebase } from '@/firebase';
 import { notifyEarlyDepartureJustified } from './notification-actions';
 import { addDebtToHourBank } from './hour-bank-actions';
 import { checkAttendanceTaskCompletion } from './task-completion-actions';
 import { getDirectReports, getHierarchicalReports } from './team-queries';
-import type { EarlyDeparture } from '@/lib/types';
 import { format } from 'date-fns';
+import type { EarlyDeparture } from "@/types/hcm.types";
 
 // =========================================================================
 // SALIDAS TEMPRANAS
@@ -52,7 +53,6 @@ export async function recordEarlyDeparture(
 ): Promise<{ success: boolean; departureId?: string; error?: string }> {
     try {
         const { firestore } = initializeFirebase();
-        const now = new Date().toISOString();
 
         // Calcular minutos de salida temprana
         const [schedH, schedM] = scheduledEndTime.split(':').map(Number);
@@ -71,8 +71,8 @@ export async function recordEarlyDeparture(
             actualEndTime,
             minutesEarly,
             isJustified: false,
-            createdAt: now,
-            updatedAt: now
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
         };
 
         if (attendanceRecordId) departureData.attendanceRecordId = attendanceRecordId;
@@ -98,7 +98,6 @@ export async function justifyEarlyDeparture(
 ): Promise<{ success: boolean; error?: string }> {
     try {
         const { firestore } = initializeFirebase();
-        const now = new Date().toISOString();
 
         const ref = doc(firestore, 'early_departures', departureId);
 
@@ -116,8 +115,8 @@ export async function justifyEarlyDeparture(
             justificationType,
             justifiedById,
             justifiedByName,
-            justifiedAt: now,
-            updatedAt: now,
+            justifiedAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
             hourBankApplied: useHourBank
         });
 
@@ -184,7 +183,7 @@ export async function markEarlyDepartureUnjustified(
 ): Promise<{ success: boolean; error?: string }> {
     try {
         const { firestore } = initializeFirebase();
-        const now = new Date().toISOString();
+
         const ref = doc(firestore, 'early_departures', departureId);
 
         await updateDoc(ref, {
@@ -194,8 +193,8 @@ export async function markEarlyDepartureUnjustified(
             justificationReason: 'Marcado como injustificado por supervisor',
             justifiedById,
             justifiedByName,
-            justifiedAt: now,
-            updatedAt: now
+            justifiedAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
         });
 
         // Check if this completes any pending tasks

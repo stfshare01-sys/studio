@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useCallback } from 'react';
-import type { TableColumnDefinition, TableRowData, TableColumnFormula } from '@/lib/types';
+import type { TableColumnDefinition, TableRowData, TableColumnFormula } from "@/types/workflow.types";
 
 /**
  * Parses and evaluates a simple arithmetic expression

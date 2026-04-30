@@ -2,7 +2,6 @@
 "use client";
 
 import { useMemo } from 'react';
-import type { Request, Template } from '@/lib/types';
 import { analyzeConformance, ConformanceDeviation } from '@/lib/process-mining';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -10,6 +9,7 @@ import { Progress } from '@/components/ui/progress';
 import { AlertTriangle, CheckCircle2, XCircle, ArrowRight, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import type { Request, Template } from "@/types/workflow.types";
 
 interface ConformancePanelProps {
   requests: Request[];

@@ -10,15 +10,15 @@ import { AlertTriangle, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { getEmployeeByUserId } from '@/firebase/actions/employee-actions';
 import { getVacationBalance, createIncidence } from '@/firebase/actions/incidence-actions';
-import { checkDateConflict } from '@/lib/hcm-utils';
+import { checkDateConflict } from '@/lib/incidence-utils';
 import { calculateEffectiveLeaveDays, EffectiveDaysResult } from '@/lib/hcm-calculations';
 import { useCollection } from '@/firebase/firestore/use-collection';
 import { collection, query, where, orderBy, Query } from 'firebase/firestore';
 import { useFirebase, useMemoFirebase } from '@/firebase/provider';
-import type { Incidence, IncidenceType, Employee, VacationBalance } from '@/lib/types';
 import { format, isSameDay, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { validateIncidencePolicy, INCIDENCE_RULES } from '@/lib/hcm-validation';
+import type { Incidence, IncidenceType, Employee, VacationBalance } from "@/types/hcm.types";
 
 interface NewIncidenceFormProps {
     userId: string;          // The user currently logged in

@@ -16,7 +16,7 @@ import { Badge } from '@/components/ui/badge';
 import { TableSkeleton } from '@/components/ui/table-skeleton';
 import { EmptyState } from '@/components/ui/empty-state';
 import { cn } from '@/lib/utils';
-import type { Task } from '@/lib/types';
+import type { Task } from "@/types/workflow.types";
 
 export type TaskInboxContextFilter = 'HCM' | 'IT' | 'all';
 

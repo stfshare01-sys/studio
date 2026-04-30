@@ -15,14 +15,11 @@ import {
     query,
     where,
     Timestamp,
+    serverTimestamp,
 } from 'firebase/firestore';
 import { initializeFirebase } from '@/firebase';
-import type {
-    Incidence,
-    TardinessRecord,
-    EarlyDeparture,
-} from '@/lib/types';
 import { notifyTardinessJustified, notifyEarlyDepartureJustified } from './notification-actions';
+import type { Incidence, TardinessRecord, EarlyDeparture } from "@/types/hcm.types";
 
 /**
  * Intenta justificar automáticamente un registro de retardo o salida
@@ -46,7 +43,6 @@ export async function autoJustifyFromIncidences(
 }> {
     try {
         const { firestore } = initializeFirebase();
-        const now = new Date().toISOString();
 
         // 1. Buscar incidencias aprobadas para este empleado que cubran la fecha
         // Las incidencias tienen startDate y endDate
@@ -92,10 +88,10 @@ export async function autoJustifyFromIncidences(
             justificationType: 'other', // Podríamos mapear tipo de incidencia a tipo de justificación si fuera necesario
             justificationReason: `Auto-justificado por incidencia aprobada: ${matchingIncidence.type}`,
             linkedIncidenceId: matchingIncidence.id,
-            justifiedAt: now,
+            justifiedAt: serverTimestamp(),
             justifiedById: 'SYSTEM',
             justifiedByName: 'Sistema (Automático)',
-            updatedAt: now
+            updatedAt: serverTimestamp()
         };
 
         await updateDoc(recordRef, updateData);
@@ -176,7 +172,6 @@ export async function justifyInfractionsFromIncidence(
 ): Promise<{ justifiedCount: number; error?: string }> {
     try {
         const { firestore } = initializeFirebase();
-        const now = new Date().toISOString();
         let justifiedCount = 0;
 
         // 1. Justificar Retardos en el rango
@@ -201,10 +196,10 @@ export async function justifyInfractionsFromIncidence(
                     justificationType: 'other',
                     justificationReason: `Auto-justificado por incidencia retroactiva: ${incidenceType}`,
                     linkedIncidenceId: incidenceId,
-                    justifiedAt: now,
+                    justifiedAt: serverTimestamp(),
                     justifiedById: 'SYSTEM',
                     justifiedByName: 'Sistema (Automático)',
-                    updatedAt: now
+                    updatedAt: serverTimestamp()
                 });
 
                 // Notificar
@@ -244,10 +239,10 @@ export async function justifyInfractionsFromIncidence(
                     justificationType: 'other',
                     justificationReason: `Auto-justificado por incidencia retroactiva: ${incidenceType}`,
                     linkedIncidenceId: incidenceId,
-                    justifiedAt: now,
+                    justifiedAt: serverTimestamp(),
                     justifiedById: 'SYSTEM',
                     justifiedByName: 'Sistema (Automático)',
-                    updatedAt: now
+                    updatedAt: serverTimestamp()
                 });
 
                 await notifyEarlyDepartureJustified(

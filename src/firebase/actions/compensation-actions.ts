@@ -4,11 +4,12 @@ import {
     collection,
     addDoc,
     getDoc,
-    doc
+    doc,
+    serverTimestamp
 } from 'firebase/firestore';
 import { initializeFirebase } from '@/firebase';
-import type { Compensation, Employee } from '@/lib/types';
-import { calculateVacationDays, calculateYearsOfService } from '@/lib/hcm-utils';
+import { calculateVacationDays, calculateYearsOfService } from '@/lib/vacation-utils';
+import type { Compensation, Employee } from "@/types/hcm.types";
 
 // =========================================================================
 // LOCAL HELPER FUNCTIONS (Compensation calculations)
@@ -79,8 +80,6 @@ export async function createCompensation(
         const sdiFactor = calculateSDIFactor(vacationDays, vacationPremium, aguinaldoDays);
         const sdiBase = calculateSDI(payload.salaryDaily, sdiFactor);
 
-        const now = new Date().toISOString();
-
         const compensationData: Omit<Compensation, 'id'> = {
             employeeId: payload.employeeId,
             salaryDaily: payload.salaryDaily,
@@ -93,8 +92,8 @@ export async function createCompensation(
             savingsFundPercentage: payload.savingsFundPercentage,
             foodVouchersDaily: payload.foodVouchersDaily,
             effectiveDate: payload.effectiveDate,
-            createdAt: now,
-            updatedAt: now,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
             createdById: payload.createdById
         };
 

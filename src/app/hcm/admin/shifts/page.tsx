@@ -48,8 +48,7 @@ import {
     Moon,
     Loader2,
 } from 'lucide-react';
-
-import type { CustomShift, ShiftType } from '@/lib/types';
+import type { CustomShift, ShiftType } from "@/types/hcm.types";
 
 const DAYS_OF_WEEK = [
     { value: 0, label: 'Domingo', short: 'Dom' },

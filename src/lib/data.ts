@@ -1,4 +1,4 @@
-import type { User } from './types';
+import type { User } from '@/types/auth.types';
 import { PlaceHolderImages } from './placeholder-images';
 
 const findImage = (id: string) => PlaceHolderImages.find(img => img.id === id)?.imageUrl || '';

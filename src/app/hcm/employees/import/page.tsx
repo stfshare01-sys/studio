@@ -30,10 +30,10 @@ import {
     RefreshCw,
     ArrowLeft
 } from 'lucide-react';
-import type { EmployeeImportBatch } from '@/lib/types';
 import { callProcessEmployeeImport, type EmployeeImportRow } from '@/firebase/callable-functions';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import type { EmployeeImportBatch } from "@/types/hcm.types";
 
 export default function ImportEmployeesPage() {
     const { firestore, user, isUserLoading } = useFirebase();
@@ -273,7 +273,7 @@ export default function ImportEmployeesPage() {
                                             <TableRow key={imp.id}>
                                                 <TableCell><div className="flex items-center gap-2">{getStatusIcon(imp.status)}{getStatusBadge(imp.status)}</div></TableCell>
                                                 <TableCell><div className="flex items-center gap-2"><FileSpreadsheet className="h-4 w-4 text-muted-foreground" /><span className="truncate max-w-[200px]">{imp.filename}</span></div></TableCell>
-                                                <TableCell>{format(new Date(imp.uploadedAt), 'dd MMM yyyy, HH:mm', { locale: es })}</TableCell>
+                                                <TableCell>{typeof imp.uploadedAt === 'string' ? format(new Date(imp.uploadedAt), 'dd MMM yyyy, HH:mm', { locale: es }) : typeof (imp.uploadedAt as any)?.toDate === 'function' ? format((imp.uploadedAt as any).toDate(), 'dd MMM yyyy, HH:mm', { locale: es }) : 'Procesando...'}</TableCell>
                                                 <TableCell>{imp.recordCount}</TableCell>
                                                 <TableCell><span className="text-green-600">{imp.successCount}</span> / <span className="text-red-600">{imp.errorCount}</span></TableCell>
                                                 <TableCell>{imp.uploadedByName}</TableCell>

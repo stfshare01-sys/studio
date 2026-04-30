@@ -14,7 +14,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { GripVertical, Columns, LayoutGrid, Maximize2 } from 'lucide-react';
-import type { FormField, FieldLayoutConfig } from '@/lib/types';
+import type { FormField, FieldLayoutConfig } from "@/types/workflow.types";
 
 interface FieldLayoutEditorProps {
   fields: FormField[];

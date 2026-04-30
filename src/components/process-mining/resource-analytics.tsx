@@ -17,7 +17,7 @@ import {
   PolarRadiusAxis,
   Radar,
 } from 'recharts';
-import type { Task, User } from '@/lib/types';
+import type { User } from '@/types/auth.types';
 import { analyzeResources, ResourceMetrics } from '@/lib/process-mining';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -25,6 +25,7 @@ import { Progress } from '@/components/ui/progress';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
 import { TrendingUp, TrendingDown, Minus, Users } from 'lucide-react';
+import type { Task } from "@/types/workflow.types";
 
 interface ResourceAnalyticsProps {
   tasks: Task[];

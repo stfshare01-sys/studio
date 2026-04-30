@@ -5,7 +5,6 @@ import { useEffect, useState, useMemo } from "react";
 import SiteLayout from "@/components/site-layout";
 import { useFirestore, useUser, useCollection, useMemoFirebase } from "@/firebase";
 import { collection, query, where, documentId } from "firebase/firestore";
-import type { Task, Request, Template } from "@/lib/types";
 import { SERVICE_CATALOG } from "@/lib/catalog-definitions";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,6 +19,7 @@ import { es } from "date-fns/locale";
 // --- Types ---
 
 import { TaskCard, EnrichedTask } from "@/components/tasks/task-card";
+import type { Task, Request, Template } from "@/types/workflow.types";
 
 type TaskFilterMode = 'ALL' | 'HCM' | 'IT' | 'FIN' | 'GEN';
 

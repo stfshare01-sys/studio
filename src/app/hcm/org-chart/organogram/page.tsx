@@ -5,12 +5,13 @@ import React, { useState, useRef, useMemo } from "react";
 import SiteLayout from "@/components/site-layout";
 import { useFirestore, useCollection, useMemoFirebase } from "@/firebase";
 import { collection, query, where, orderBy } from "firebase/firestore";
-import type { Employee, User } from "@/lib/types";
+import type { User } from '@/types/auth.types';
 import { OrgChartTree, EmployeeDetailPanel } from "@/components/hcm/org-chart";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Maximize2, ZoomIn, ZoomOut } from "lucide-react";
 import Link from "next/link";
 import { Skeleton } from "@/components/ui/skeleton";
+import type { Employee } from "@/types/hcm.types";
 
 export default function OrgChartPage() {
     const firestore = useFirestore();

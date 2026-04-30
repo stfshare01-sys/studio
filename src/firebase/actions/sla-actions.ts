@@ -14,15 +14,9 @@ import {
     runTransaction
 } from "firebase/firestore";
 import { initializeFirebase } from "../index";
-import type {
-    TardinessRecord,
-    EarlyDeparture,
-    OvertimeRequest,
-    Role,
-    HourBank,
-    Employee
-} from "@/lib/types";
+import type { Role } from '@/types/auth.types';
 import { getUserPermissions, hasPermission } from "../role-actions";
+import type { TardinessRecord, EarlyDeparture, OvertimeRequest, HourBank, Employee } from "@/types/hcm.types";
 
 /**
  * Ejecuta el procesamiento manual de reglas SLA para todos los registros pendientes.
@@ -188,7 +182,7 @@ export async function runGlobalSLAProcessing(
                     tripleHours: 0,
                     approvedById: currentUserId,
                     approvedByName: 'SLA Automático',
-                    approvedAt: new Date().toISOString(),
+                    approvedAt: serverTimestamp(),
                     rejectionReason: reason,
                     updatedAt: serverTimestamp()
                 });
@@ -206,7 +200,7 @@ export async function runGlobalSLAProcessing(
                         sourceRecordType: 'overtime',
                         createdById: currentUserId,
                         createdByName: 'SLA Automático',
-                        createdAt: new Date().toISOString()
+                        createdAt: serverTimestamp()
                     });
 
                     if (hbSnap.exists()) {

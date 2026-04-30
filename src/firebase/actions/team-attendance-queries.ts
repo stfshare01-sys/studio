@@ -25,8 +25,8 @@ import {
 } from 'firebase/firestore';
 import { initializeFirebase } from '@/firebase';
 import { getDirectReports, getHierarchicalReports } from './team-queries';
-import type { TardinessRecord, AttendanceImportBatch } from '@/lib/types';
 import { format } from 'date-fns';
+import type { TardinessRecord, AttendanceImportBatch } from "@/types/hcm.types";
 
 // =========================================================================
 // CARGA DE ASISTENCIA (BATCHES)

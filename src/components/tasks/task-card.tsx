@@ -6,7 +6,7 @@ import { FileText, ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { formatDistanceToNow, isPast } from "date-fns";
 import { es } from "date-fns/locale";
-import type { Task } from "@/lib/types";
+import type { Task } from "@/types/workflow.types";
 
 // Extended Task type to include optional enrichment fields
 export type EnrichedTask = Task & {

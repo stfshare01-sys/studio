@@ -14,12 +14,7 @@ import {
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Plus, Trash2, ArrowRight, GitMerge, GitFork, AlertCircle } from 'lucide-react';
-import type {
-  WorkflowStepDefinition,
-  RuleOperator,
-  FormField,
-  GatewayRoute,
-} from '@/lib/types';
+import type { WorkflowStepDefinition, RuleOperator, FormField, GatewayRoute } from "@/types/workflow.types";
 
 interface GatewayRoutingConfigProps {
   gatewayType: 'gateway-exclusive' | 'gateway-parallel' | 'gateway-inclusive';

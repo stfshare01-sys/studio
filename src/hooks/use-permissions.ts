@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useUser, useFirestore } from "@/firebase";
-import type { AppModule, ModulePermission, PermissionLevel } from "@/lib/types";
+import type { AppModule, ModulePermission, PermissionLevel } from '@/types/auth.types';
 import {
   getUserPermissions,
   hasPermission as checkPermission,

@@ -1,10 +1,10 @@
 'use client';
 
-import { doc, collection, addDoc, updateDoc, getDocs, query, where, limit } from 'firebase/firestore';
+import { doc, collection, addDoc, updateDoc, getDocs, query, where, limit, serverTimestamp } from 'firebase/firestore';
 import { initializeFirebase } from '@/firebase';
 import { callConsolidatePrenomina, CloudFunctionError } from '../callable-functions';
-import type { PayrollPeriodLock, HolidayCalendar } from '@/lib/types';
 import { resetHiddenPositiveBalance } from './hour-bank-actions';
+import type { PayrollPeriodLock, HolidayCalendar } from "@/types/hcm.types";
 
 // =========================================================================
 // PRENOMINA CONSOLIDATION (OPERATIONAL REPORT)
@@ -60,8 +60,6 @@ export async function lockPayrollPeriod(
 ): Promise<{ success: boolean; lockId?: string; error?: string }> {
     try {
         const { firestore } = initializeFirebase();
-        const now = new Date().toISOString();
-
         // Check for any overlapping locks (not just exact match)
         const existingQuery = query(
             collection(firestore, 'payroll_period_locks'),
@@ -82,11 +80,11 @@ export async function lockPayrollPeriod(
             periodEnd,
             periodType,
             isLocked: true,
-            lockedAt: now,
+            lockedAt: serverTimestamp(),
             lockedById,
             lockedByName,
-            createdAt: now,
-            updatedAt: now,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
         };
         if (locationId !== undefined) lockData.locationId = locationId;
         if (prenominaExportId !== undefined) lockData.prenominaExportId = prenominaExportId;
@@ -179,16 +177,14 @@ export async function unlockPayrollPeriod(
 ): Promise<{ success: boolean; error?: string }> {
     try {
         const { firestore } = initializeFirebase();
-        const now = new Date().toISOString();
-
         const lockRef = doc(firestore, 'payroll_period_locks', lockId);
 
         await updateDoc(lockRef, {
             isLocked: false,
-            unlockedAt: now,
+            unlockedAt: serverTimestamp(),
             unlockedById,
             unlockReason,
-            updatedAt: now,
+            updatedAt: serverTimestamp(),
         });
 
         console.log(`[HCM] Unlocked payroll period ${lockId}`);

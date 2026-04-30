@@ -1,4 +1,4 @@
-import { AppModule, ModulePermission, SystemRole } from "./types";
+import { AppModule, ModulePermission, SystemRole } from "@/types/auth.types";
 
 export interface SystemLevelRule {
     requiredPermissions: { module: AppModule; level: 'read' | 'write' }[];

@@ -1,5 +1,5 @@
 
-import { Template } from './types';
+import { Template } from "@/types/workflow.types";
 
 export const SYSTEM_TEMPLATES: Template[] = [
     {

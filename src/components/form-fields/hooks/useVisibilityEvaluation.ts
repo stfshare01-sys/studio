@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
-import type { FormField, VisibilityRule, VisibilityCondition, RuleOperator } from '@/lib/types';
+import type { FormField, VisibilityRule, VisibilityCondition, RuleOperator } from "@/types/workflow.types";
 
 /**
  * Evaluates a single condition against form data

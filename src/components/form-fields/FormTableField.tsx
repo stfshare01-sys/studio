@@ -21,7 +21,7 @@ import {
 } from '@/components/ui/table';
 import { Plus, Trash2 } from 'lucide-react';
 import { useTableFormulas } from './hooks/useTableFormulas';
-import type { FormField, TableRowData, TableColumnDefinition } from '@/lib/types';
+import type { FormField, TableRowData, TableColumnDefinition } from "@/types/workflow.types";
 
 interface FormTableFieldProps {
   field: FormField;

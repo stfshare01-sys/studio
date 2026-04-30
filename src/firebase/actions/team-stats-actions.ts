@@ -24,13 +24,7 @@ import {
 } from 'firebase/firestore';
 import { initializeFirebase } from '@/firebase';
 import { getDirectReports, getHierarchicalReports } from './team-queries';
-import type {
-    TardinessRecord,
-    OvertimeRequest,
-    EarlyDeparture,
-    TeamDailyStats,
-    EmployeeMonthlyStats
-} from '@/lib/types';
+import type { TardinessRecord, OvertimeRequest, EarlyDeparture, TeamDailyStats, EmployeeMonthlyStats } from "@/types/hcm.types";
 
 // =========================================================================
 // HELPERS INTERNOS

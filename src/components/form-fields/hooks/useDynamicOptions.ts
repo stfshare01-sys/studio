@@ -3,7 +3,7 @@
 import { useMemo } from 'react';
 import { collection, query, where } from 'firebase/firestore';
 import { useFirestore, useMemoFirebase, useCollection } from '@/firebase';
-import type { DynamicSelectSource, CascadeFilter } from '@/lib/types';
+import type { DynamicSelectSource, CascadeFilter } from "@/types/workflow.types";
 
 export type DynamicOption = {
   value: string;

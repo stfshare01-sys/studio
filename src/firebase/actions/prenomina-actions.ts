@@ -5,7 +5,7 @@ import {
     getDocs,
 } from 'firebase/firestore';
 import { initializeFirebase } from '@/firebase';
-import type { Incidence } from '@/lib/types';
+import type { Incidence } from "@/types/hcm.types";
 
 /**
  * Checks for any pending incidences within the given date range.

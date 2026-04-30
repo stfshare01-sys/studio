@@ -44,7 +44,7 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import Link from 'next/link';
-import type { MasterListField } from '@/lib/types';
+import type { MasterListField } from "@/types/common.types";
 
 type FieldType = 'text' | 'number' | 'boolean' | 'date';
 

@@ -2,7 +2,6 @@
 'use client';
 
 import { useState } from 'react';
-import type { Template } from '@/lib/types';
 import { processSimulation, ProcessSimulationOutput } from '@/ai/flows/process-simulation';
 import {
   Dialog,
@@ -19,6 +18,7 @@ import { Loader2, Sparkles, AlertTriangle, Lightbulb, TrendingUp } from 'lucide-
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Separator } from '../ui/separator';
+import type { Template } from "@/types/workflow.types";
 
 interface SimulateChangeDialogProps {
   template: Template | null;

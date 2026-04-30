@@ -50,10 +50,10 @@ import {
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import Link from 'next/link';
-import type { Employee } from '@/lib/types';
-import { calculateYearsOfService } from '@/lib/hcm-utils';
+import { calculateYearsOfService } from '@/lib/vacation-utils';
 import { SearchEmptyState } from '@/components/ui/empty-state';
 import { usePermissions } from '@/hooks/use-permissions';
+import type { Employee } from "@/types/hcm.types";
 
 /**
  * Employees Directory Page

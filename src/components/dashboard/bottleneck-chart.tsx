@@ -2,11 +2,11 @@
 'use client';
 
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-import type { Task } from '@/lib/types';
 import { useMemo } from 'react';
 import { differenceInHours } from 'date-fns';
 import { Skeleton } from '../ui/skeleton';
 import { parseFirebaseDate } from '@/lib/utils';
+import type { Task } from "@/types/workflow.types";
 
 interface BottleneckChartProps {
   tasks: Task[] | null;

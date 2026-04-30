@@ -22,7 +22,7 @@ import {
 } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Plus, Trash2, GripVertical, Settings2 } from 'lucide-react';
-import type { TableColumnDefinition, TableColumnType, FormField } from '@/lib/types';
+import type { TableColumnDefinition, TableColumnType, FormField } from "@/types/workflow.types";
 
 interface TableColumnDialogProps {
   columns: TableColumnDefinition[];

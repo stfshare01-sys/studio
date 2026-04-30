@@ -12,14 +12,14 @@
  */
 
 import {
-    doc, collection, addDoc, getDoc,
+    doc, collection, addDoc, getDoc, serverTimestamp,
 } from 'firebase/firestore';
 import { initializeFirebase } from '@/firebase';
 import { callApproveIncidence, callNotifyNewIncidence, CloudFunctionError } from '../callable-functions';
-import type { Employee, Incidence } from '@/lib/types';
 import { calculateEffectiveLeaveDays } from '@/lib/hcm-calculations';
 import { justifyInfractionsFromIncidence } from './auto-justification-actions';
 import { notifyRole, createNotification } from './notification-actions';
+import type { Employee, Incidence } from "@/types/hcm.types";
 
 // =========================================================================
 // INCIDENCE MANAGEMENT
@@ -43,8 +43,6 @@ export async function createIncidence(
 ): Promise<{ success: boolean; incidenceId?: string; error?: string }> {
     try {
         const { firestore } = initializeFirebase();
-        const now = new Date().toISOString();
-
         // VALIDATION: Check if employee is active
         const employeeRef = doc(firestore, 'employees', payload.employeeId);
         const employeeSnap = await getDoc(employeeRef);
@@ -111,8 +109,8 @@ export async function createIncidence(
             ...payload,
             totalDays,
             status: 'pending',
-            createdAt: now,
-            updatedAt: now
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
         };
 
         const incidenceRef = collection(firestore, 'incidences');

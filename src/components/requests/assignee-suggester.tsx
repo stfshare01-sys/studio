@@ -2,7 +2,7 @@
 "use client";
 
 import { useState } from "react";
-import type { User, EnrichedWorkflowStep, Request, Template } from "@/lib/types";
+import type { User } from '@/types/auth.types';
 import { intelligentTaskAssignment } from "@/ai/flows/intelligent-task-assignment";
 import { Button } from "@/components/ui/button";
 import {
@@ -27,6 +27,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useFirestore, useUser } from "@/firebase";
 import { doc, collection } from "firebase/firestore";
 import { updateDocumentNonBlocking, addDocumentNonBlocking } from "@/firebase/non-blocking-updates";
+import type { EnrichedWorkflowStep, Request, Template } from "@/types/workflow.types";
 
 type Suggestion = {
   suggestedUserId: string;

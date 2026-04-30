@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useMemo } from "react";
-import type { User, Task } from "@/lib/types";
+import type { User } from '@/types/auth.types';
 import { differenceInHours } from 'date-fns';
 import { parseFirebaseDate } from '@/lib/utils';
 import {
@@ -14,6 +14,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
+import type { Task } from "@/types/workflow.types";
 
 interface UserPerformanceTableProps {
   users: User[];

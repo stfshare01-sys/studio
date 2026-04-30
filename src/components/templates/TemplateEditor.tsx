@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
@@ -36,7 +36,7 @@ import { useCollection, useFirestore, useMemoFirebase, useAuth } from "@/firebas
 import { addDocumentNonBlocking, updateDocumentNonBlocking } from "@/firebase/non-blocking-updates";
 import { collection, doc } from "firebase/firestore";
 import { useRouter } from "next/navigation";
-import type { FormField, WorkflowStepDefinition, Rule, RuleCondition, RuleAction, WorkflowStepType, FormFieldType, RuleOperator, User as UserType, RequestPriority, UserRole, EscalationPolicy, VisibilityRule, TableColumnDefinition, DynamicSelectSource, UserIdentityConfig, ValidationRule, Template, FieldLayoutConfig, DefaultValueRule, TypographyConfig as TypographyConfigType, InitiatorPermission } from "@/lib/types";
+import type { User as UserType, UserRole } from '@/types/auth.types';
 import { VisibilityRulesBuilder, FieldValidationConfig, TableColumnDialog, useMasterLists, FieldLayoutEditor, GatewayRoutingConfig, DefaultValueRulesBuilder, TypographyConfig, HtmlFieldEditor, TimerStepConfig } from "@/components/form-fields";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
@@ -45,7 +45,12 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 
-// --- Helper Components (Extracting strictly what is needed) ---
+import { CopilotDialog } from "./CopilotDialog";
+import { FieldFormDialog } from "./FieldFormDialog";
+import { RuleDisplay, RuleBuilderDialog } from "./RuleBuilder";
+import type { FormField, WorkflowStepDefinition, Rule, RuleCondition, RuleAction, WorkflowStepType, FormFieldType, RuleOperator, RequestPriority, EscalationPolicy, VisibilityRule, TableColumnDefinition, DynamicSelectSource, UserIdentityConfig, ValidationRule, Template, FieldLayoutConfig, DefaultValueRule, TypographyConfig as TypographyConfigType, InitiatorPermission } from "@/types/workflow.types";
+
+// --- Helper Components ---
 
 const BpmnIcon = ({ type, className }: { type: WorkflowStepType, className?: string }) => {
     switch (type) {
@@ -61,69 +66,14 @@ const BpmnIcon = ({ type, className }: { type: WorkflowStepType, className?: str
 type Lane = { id: string; name: string; steps: WorkflowStepDefinition[]; };
 type Pool = { id: string; name: string; lanes: Lane[]; };
 
-function CopilotDialog({ onApply }: { onApply: (data: GenerateProcessOutput) => void }) {
-    const [description, setDescription] = useState('');
-    const [isLoading, setIsLoading] = useState(false);
-    const [isOpen, setIsOpen] = useState(false);
-    const { toast } = useToast();
-
-    const handleGenerate = async () => {
-        if (!description.trim()) {
-            toast({ variant: 'destructive', title: 'Descripción vacía', description: 'Por favor, describe el proceso que quieres generar.' });
-            return;
-        }
-        setIsLoading(true);
-        try {
-            const result = await generateProcessFromDescription(description);
-            onApply(result);
-            setIsOpen(false);
-            toast({ title: '¡Borrador Generado!', description: 'El lienzo ha sido actualizado con el borrador de la IA.' });
-        } catch (error) {
-            console.error("AI process generation failed:", error);
-            toast({ variant: 'destructive', title: 'Error de la IA', description: 'No se pudo generar el proceso. Por favor, inténtelo de nuevo.' });
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
-    return (
-        <Dialog open={isOpen} onOpenChange={setIsOpen}>
-            <DialogTrigger asChild>
-                <Button variant="outline"><WandSparkles className="mr-2 h-4 w-4" /> Generar con IA</Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-xl">
-                <DialogHeader>
-                    <DialogTitle>Asistente de Procesos (Copilot)</DialogTitle>
-                    <DialogDescription>Describe el proceso que quieres modelar en lenguaje natural.</DialogDescription>
-                </DialogHeader>
-                <div className="py-4 space-y-4">
-                    <Textarea
-                        placeholder='Ej: "Crear un flujo para aprobar facturas..."'
-                        rows={6}
-                        value={description}
-                        onChange={(e) => setDescription(e.target.value)}
-                        disabled={isLoading}
-                    />
-                </div>
-                <DialogFooter>
-                    <DialogClose asChild><Button variant="ghost" disabled={isLoading}>Cancelar</Button></DialogClose>
-                    <Button onClick={handleGenerate} disabled={isLoading}>
-                        {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <WandSparkles className="mr-2 h-4 w-4" />}
-                        Generar Borrador
-                    </Button>
-                </DialogFooter>
-            </DialogContent>
-        </Dialog>
-    )
-}
 
 function SortableField({ field, onRemove, onEdit }: { field: FormField, onRemove: (id: string) => void, onEdit: (field: FormField) => void }) {
     const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: field.id, data: { type: 'field' } });
     const style = { transform: CSS.Transform.toString(transform), transition };
     const fieldTypeLabels: Record<FormFieldType, string> = {
-        text: 'Texto', textarea: 'Área de texto', date: 'Fecha', number: 'Número',
+        text: 'Texto', textarea: 'Ãrea de texto', date: 'Fecha', number: 'NÃºmero',
         select: 'Desplegable', checkbox: 'Casilla', radio: 'Opciones', file: 'Archivo',
-        table: 'Tabla', 'dynamic-select': 'Desplegable dinámico', 'user-identity': 'Identidad usuario', email: 'Email', html: 'HTML'
+        table: 'Tabla', 'dynamic-select': 'Desplegable dinÃ¡mico', 'user-identity': 'Identidad usuario', email: 'Email', html: 'HTML'
     };
 
     return (
@@ -171,7 +121,7 @@ function SortableStep({
                 <div className="flex flex-wrap items-center gap-1 text-muted-foreground">
                     <Popover>
                         <PopoverTrigger asChild><Button variant="ghost" size="sm" className="h-auto p-1"><UserSquare className="h-3.5 w-3.5 mr-1" /><span className="text-xs truncate max-w-[80px]">{step.assigneeRole || "Asignar"}</span><Pencil className="h-3 w-3 ml-1 opacity-0 group-hover:opacity-100" /></Button></PopoverTrigger>
-                        <PopoverContent className="w-auto p-2"><div className="space-y-2"><Label className="text-xs">Rol de Asignación</Label><Input value={step.assigneeRole || ''} onChange={(e) => onUpdateStep(poolId, laneId, step.id, { assigneeRole: e.target.value })} className="h-8" /></div></PopoverContent>
+                        <PopoverContent className="w-auto p-2"><div className="space-y-2"><Label className="text-xs">Rol de AsignaciÃ³n</Label><Input value={step.assigneeRole || ''} onChange={(e) => onUpdateStep(poolId, laneId, step.id, { assigneeRole: e.target.value })} className="h-8" /></div></PopoverContent>
                     </Popover>
                     {step.type === 'task' && (
                         <>
@@ -199,14 +149,14 @@ function SortableStep({
                                 </PopoverTrigger>
                                 <PopoverContent className="w-64 p-2" align="start">
                                     <div className="space-y-3">
-                                        <Label className="text-xs">Política de Escalado por SLA</Label>
+                                        <Label className="text-xs">PolÃ­tica de Escalado por SLA</Label>
                                         <div className="space-y-2">
-                                            <Label htmlFor={`esc-action-${step.id}`} className="text-xs font-normal">Acción</Label>
+                                            <Label htmlFor={`esc-action-${step.id}`} className="text-xs font-normal">AcciÃ³n</Label>
                                             <Select
                                                 value={step.escalationPolicy?.action}
                                                 onValueChange={(val) => updateEscalationForSla({ action: val as 'NOTIFY' | 'REASSIGN' })}
                                             >
-                                                <SelectTrigger id={`esc-action-${step.id}`} className="h-8"><SelectValue placeholder="Seleccionar acción..." /></SelectTrigger>
+                                                <SelectTrigger id={`esc-action-${step.id}`} className="h-8"><SelectValue placeholder="Seleccionar acciÃ³n..." /></SelectTrigger>
                                                 <SelectContent>
                                                     <SelectItem value="NOTIFY">Notificar</SelectItem>
                                                     <SelectItem value="REASSIGN">Reasignar</SelectItem>
@@ -287,7 +237,7 @@ function LaneItem({ poolId, lane, laneIndex, totalLanes, handleUpdate, handleAdd
                 </div>
                 <Input value={lane.name} onChange={(e) => handleUpdate('lane', { poolId, laneId: lane.id }, e.target.value)} className="h-8 border-none bg-transparent p-0 flex-1" />
                 <DropdownMenu>
-                    <DropdownMenuTrigger asChild><Button variant="ghost" size="sm"><PlusCircle className="mr-2 h-4 w-4" />Añadir</Button></DropdownMenuTrigger>
+                    <DropdownMenuTrigger asChild><Button variant="ghost" size="sm"><PlusCircle className="mr-2 h-4 w-4" />AÃ±adir</Button></DropdownMenuTrigger>
                     <DropdownMenuContent>
                         <DropdownMenuItem onSelect={() => handleAddStep(poolId, lane.id, "Nueva Tarea", 'task')}><BpmnIcon type="task" className="mr-2" /> Tarea</DropdownMenuItem>
                         <DropdownMenuItem onSelect={() => handleAddStep(poolId, lane.id, "Gateway Exclusivo", 'gateway-exclusive')}><BpmnIcon type="gateway-exclusive" className="mr-2" /> Gateway X</DropdownMenuItem>
@@ -322,7 +272,7 @@ function PoolItem({ pool, index, totalPools, handleUpdate, handleAddLane, handle
                     <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => movePool(index, 'down')} disabled={index === totalPools - 1}><ArrowDown className="h-3 w-3" /></Button>
                 </div>
                 <Input value={pool.name} onChange={(e) => handleUpdate('pool', { poolId: pool.id }, e.target.value)} className="text-base font-semibold border-none bg-transparent p-0 flex-1" />
-                <Button variant="ghost" size="sm" onClick={() => handleAddLane(pool.id)}><PlusCircle className="mr-2 h-4 w-4" /> Añadir Carril</Button>
+                <Button variant="ghost" size="sm" onClick={() => handleAddLane(pool.id)}><PlusCircle className="mr-2 h-4 w-4" /> AÃ±adir Carril</Button>
                 <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover/pool:opacity-100 text-destructive" onClick={() => handleDelete('pool', pool.id)}><Trash2 className="h-4 w-4" /></Button>
             </div>
             <div className="space-y-2 pl-6">
@@ -439,14 +389,14 @@ export function TemplateEditor({ mode, initialData, templateId }: TemplateEditor
                 // Logic to create document (using non-blocking for speed, but routing needs ID)
                 // Since we need ID to redirect, we use addDocumentNonBlocking which returns REF.
                 const docRef = await addDocumentNonBlocking(collection(firestore, 'request_templates'), templateData);
-                toast({ title: 'Éxito', description: 'Plantilla creada correctamente' });
+                toast({ title: 'Ã‰xito', description: 'Plantilla creada correctamente' });
                 router.push('/templates');
             } else {
                 if (!templateId) throw new Error("No ID for edit");
                 // Update
                 const docRef = doc(firestore, 'request_templates', templateId);
                 await updateDocumentNonBlocking(docRef, templateData);
-                toast({ title: 'Éxito', description: 'Plantilla actualizada' });
+                toast({ title: 'Ã‰xito', description: 'Plantilla actualizada' });
                 router.push('/templates');
             }
 
@@ -510,10 +460,10 @@ export function TemplateEditor({ mode, initialData, templateId }: TemplateEditor
                 };
                 await addDocumentNonBlocking(collection(firestore, 'request_templates'), templateData);
                 toast({
-                    title: newStatus === 'published' ? '¡Publicada!' : 'Despublicada',
+                    title: newStatus === 'published' ? 'Â¡Publicada!' : 'Despublicada',
                     description: newStatus === 'published'
-                        ? 'La plantilla está ahora disponible en "Nueva Solicitud"'
-                        : 'La plantilla ya no está visible en "Nueva Solicitud"'
+                        ? 'La plantilla estÃ¡ ahora disponible en "Nueva Solicitud"'
+                        : 'La plantilla ya no estÃ¡ visible en "Nueva Solicitud"'
                 });
                 router.push('/templates');
             } else {
@@ -526,15 +476,15 @@ export function TemplateEditor({ mode, initialData, templateId }: TemplateEditor
                 });
                 setTemplateStatus(newStatus);
                 toast({
-                    title: newStatus === 'published' ? '¡Publicada!' : 'Despublicada',
+                    title: newStatus === 'published' ? 'Â¡Publicada!' : 'Despublicada',
                     description: newStatus === 'published'
-                        ? 'La plantilla está ahora disponible en "Nueva Solicitud"'
-                        : 'La plantilla ya no está visible en "Nueva Solicitud"'
+                        ? 'La plantilla estÃ¡ ahora disponible en "Nueva Solicitud"'
+                        : 'La plantilla ya no estÃ¡ visible en "Nueva Solicitud"'
                 });
             }
         } catch (error) {
             console.error(error);
-            toast({ variant: 'destructive', title: 'Error', description: 'No se pudo cambiar el estado de publicación' });
+            toast({ variant: 'destructive', title: 'Error', description: 'No se pudo cambiar el estado de publicaciÃ³n' });
         } finally {
             setIsPublishing(false);
         }
@@ -768,10 +718,10 @@ export function TemplateEditor({ mode, initialData, templateId }: TemplateEditor
                                             />
                                         </div>
                                         <div>
-                                            <Label htmlFor="template-description">Descripción</Label>
+                                            <Label htmlFor="template-description">DescripciÃ³n</Label>
                                             <Textarea
                                                 id="template-description"
-                                                placeholder="Descripción del flujo de trabajo."
+                                                placeholder="DescripciÃ³n del flujo de trabajo."
                                                 value={templateDescription}
                                                 onChange={(e) => setTemplateDescription(e.target.value)}
                                                 rows={3}
@@ -795,7 +745,7 @@ export function TemplateEditor({ mode, initialData, templateId }: TemplateEditor
                                 <TabsTrigger value="formulario">Formulario</TabsTrigger>
                                 <TabsTrigger value="reglas">Reglas</TabsTrigger>
                                 <TabsTrigger value="flujo">Flujo de Trabajo</TabsTrigger>
-                                <TabsTrigger value="config">Configuración</TabsTrigger>
+                                <TabsTrigger value="config">ConfiguraciÃ³n</TabsTrigger>
                             </TabsList>
 
                             {/* Tab: Formulario */}
@@ -804,13 +754,13 @@ export function TemplateEditor({ mode, initialData, templateId }: TemplateEditor
                                     <CardHeader>
                                         <CardTitle>Campos del Formulario</CardTitle>
                                         <CardDescription>
-                                            Defina los datos que se recopilarán para esta plantilla.
+                                            Defina los datos que se recopilarÃ¡n para esta plantilla.
                                         </CardDescription>
                                     </CardHeader>
                                     <CardContent className="space-y-4">
                                         <div className="space-y-2 rounded-md border p-4 min-h-[120px]">
                                             {fields.length === 0 ? (
-                                                <p className="text-center text-sm text-muted-foreground py-4">Añada campos a su formulario.</p>
+                                                <p className="text-center text-sm text-muted-foreground py-4">AÃ±ada campos a su formulario.</p>
                                             ) : (
                                                 <SortableContext items={fields.map(f => f.id)} strategy={verticalListSortingStrategy} id="form-fields">
                                                     {fields.map((field) => (
@@ -823,7 +773,7 @@ export function TemplateEditor({ mode, initialData, templateId }: TemplateEditor
                                             )}
                                         </div>
                                         <Button variant="outline" className="w-full" onClick={() => { setEditingField(null); setIsFieldDialogOpen(true); }}>
-                                            <PlusCircle className="mr-2 h-4 w-4" /> Añadir Campo
+                                            <PlusCircle className="mr-2 h-4 w-4" /> AÃ±adir Campo
                                         </Button>
                                     </CardContent>
                                 </Card>
@@ -832,15 +782,15 @@ export function TemplateEditor({ mode, initialData, templateId }: TemplateEditor
                                 {fields.length > 0 && (
                                     <Card>
                                         <CardHeader>
-                                            <CardTitle>Diseño del Formulario</CardTitle>
+                                            <CardTitle>DiseÃ±o del Formulario</CardTitle>
                                             <CardDescription>
-                                                Configure la disposición de los campos en filas y columnas para mostrarlos lado a lado.
+                                                Configure la disposiciÃ³n de los campos en filas y columnas para mostrarlos lado a lado.
                                             </CardDescription>
                                         </CardHeader>
                                         <CardContent>
                                             {fields.length === 1 ? (
                                                 <p className="text-sm text-muted-foreground py-4 text-center">
-                                                    Agregue más campos para configurar el layout. Con múltiples campos puede colocarlos lado a lado.
+                                                    Agregue mÃ¡s campos para configurar el layout. Con mÃºltiples campos puede colocarlos lado a lado.
                                                 </p>
                                             ) : (
                                                 <FieldLayoutEditor
@@ -861,7 +811,7 @@ export function TemplateEditor({ mode, initialData, templateId }: TemplateEditor
                                         <CardHeader>
                                             <CardTitle>Reglas de Visibilidad</CardTitle>
                                             <CardDescription>
-                                                Configure cuándo mostrar u ocultar campos.
+                                                Configure cuÃ¡ndo mostrar u ocultar campos.
                                             </CardDescription>
                                         </CardHeader>
                                         <CardContent>
@@ -879,7 +829,7 @@ export function TemplateEditor({ mode, initialData, templateId }: TemplateEditor
                                         <CardHeader>
                                             <CardTitle>Valores por Defecto Condicionales</CardTitle>
                                             <CardDescription>
-                                                Configure valores que se asignan automáticamente basándose en condiciones.
+                                                Configure valores que se asignan automÃ¡ticamente basÃ¡ndose en condiciones.
                                             </CardDescription>
                                         </CardHeader>
                                         <CardContent>
@@ -895,7 +845,7 @@ export function TemplateEditor({ mode, initialData, templateId }: TemplateEditor
                                 <Card>
                                     <CardHeader>
                                         <CardTitle>Motor de Reglas de Negocio</CardTitle>
-                                        <CardDescription>Defina la lógica condicional para automatizar decisiones.</CardDescription>
+                                        <CardDescription>Defina la lÃ³gica condicional para automatizar decisiones.</CardDescription>
                                     </CardHeader>
                                     <CardContent className="space-y-4">
                                         <div className="space-y-3">
@@ -912,7 +862,7 @@ export function TemplateEditor({ mode, initialData, templateId }: TemplateEditor
                                         <Dialog open={isRuleDialogOpen} onOpenChange={setIsRuleDialogOpen}>
                                             <DialogTrigger asChild>
                                                 <Button variant="outline" className="w-full" onClick={() => handleOpenRuleDialog(null)}>
-                                                    <PlusCircle className="mr-2 h-4 w-4" /> Añadir Regla
+                                                    <PlusCircle className="mr-2 h-4 w-4" /> AÃ±adir Regla
                                                 </Button>
                                             </DialogTrigger>
                                             <RuleBuilderDialog
@@ -935,7 +885,7 @@ export function TemplateEditor({ mode, initialData, templateId }: TemplateEditor
                                     <CardHeader>
                                         <CardTitle>Lienzo del Flujo de Trabajo (BPMN)</CardTitle>
                                         <CardDescription>
-                                            Diseñe y ordene las etapas de su proceso usando Piscinas (Pools) y Carriles (Lanes).
+                                            DiseÃ±e y ordene las etapas de su proceso usando Piscinas (Pools) y Carriles (Lanes).
                                         </CardDescription>
                                     </CardHeader>
                                     <CardContent className="space-y-4">
@@ -961,19 +911,19 @@ export function TemplateEditor({ mode, initialData, templateId }: TemplateEditor
                                             </SortableContext>
                                         </div>
                                         <Button variant="outline" className="w-full mt-4" onClick={addPool}>
-                                            <Library className="mr-2 h-4 w-4" /> Añadir Piscina
+                                            <Library className="mr-2 h-4 w-4" /> AÃ±adir Piscina
                                         </Button>
                                     </CardContent>
                                 </Card>
                             </TabsContent>
 
-                            {/* Tab: Configuración */}
+                            {/* Tab: ConfiguraciÃ³n */}
                             <TabsContent value="config" className="space-y-4 mt-4">
                                 <Card>
                                     <CardHeader>
-                                        <CardTitle>¿Quién puede iniciar esta solicitud?</CardTitle>
+                                        <CardTitle>Â¿QuiÃ©n puede iniciar esta solicitud?</CardTitle>
                                         <CardDescription>
-                                            Configure quién tiene permiso para crear nuevas solicitudes usando esta plantilla.
+                                            Configure quiÃ©n tiene permiso para crear nuevas solicitudes usando esta plantilla.
                                         </CardDescription>
                                     </CardHeader>
                                     <CardContent className="space-y-4">
@@ -985,7 +935,7 @@ export function TemplateEditor({ mode, initialData, templateId }: TemplateEditor
                                                     onValueChange={(v) => setInitiatorPermissions({ type: v as InitiatorPermission['type'] })}
                                                 >
                                                     <SelectTrigger>
-                                                        <SelectValue placeholder="Seleccione quién puede iniciar..." />
+                                                        <SelectValue placeholder="Seleccione quiÃ©n puede iniciar..." />
                                                     </SelectTrigger>
                                                     <SelectContent>
                                                         <SelectItem value="all">
@@ -997,7 +947,7 @@ export function TemplateEditor({ mode, initialData, templateId }: TemplateEditor
                                                         <SelectItem value="user">
                                                             <div className="flex items-center gap-2">
                                                                 <User className="h-4 w-4" />
-                                                                <span>Usuarios específicos</span>
+                                                                <span>Usuarios especÃ­ficos</span>
                                                             </div>
                                                         </SelectItem>
                                                         <SelectItem value="role">
@@ -1015,14 +965,14 @@ export function TemplateEditor({ mode, initialData, templateId }: TemplateEditor
                                                         <SelectItem value="department">
                                                             <div className="flex items-center gap-2">
                                                                 <Building2 className="h-4 w-4" />
-                                                                <span>Por departamento/área</span>
+                                                                <span>Por departamento/Ã¡rea</span>
                                                             </div>
                                                         </SelectItem>
                                                     </SelectContent>
                                                 </Select>
                                             </div>
 
-                                            {/* Selector de usuarios específicos */}
+                                            {/* Selector de usuarios especÃ­ficos */}
                                             {initiatorPermissions.type === 'user' && (
                                                 <div className="space-y-2 rounded-md border p-4">
                                                     <Label>Seleccionar usuarios</Label>
@@ -1104,7 +1054,7 @@ export function TemplateEditor({ mode, initialData, templateId }: TemplateEditor
                                                         ))}
                                                         {(!positions || positions.length === 0) && (
                                                             <p className="text-sm text-muted-foreground text-center py-4">
-                                                                No hay puestos configurados. Vaya a HCM → Admin → Puestos para crearlos.
+                                                                No hay puestos configurados. Vaya a HCM â†’ Admin â†’ Puestos para crearlos.
                                                             </p>
                                                         )}
                                                     </div>
@@ -1116,10 +1066,10 @@ export function TemplateEditor({ mode, initialData, templateId }: TemplateEditor
                                                 </div>
                                             )}
 
-                                            {/* Selector de departamentos/áreas */}
+                                            {/* Selector de departamentos/Ã¡reas */}
                                             {initiatorPermissions.type === 'department' && (
                                                 <div className="space-y-2 rounded-md border p-4">
-                                                    <Label>Seleccionar departamentos o áreas</Label>
+                                                    <Label>Seleccionar departamentos o Ã¡reas</Label>
                                                     <div className="space-y-2 max-h-[200px] overflow-y-auto">
                                                         {departments?.map(dept => (
                                                             <label key={dept.id} className="flex items-center gap-2 cursor-pointer hover:bg-muted p-2 rounded">
@@ -1137,13 +1087,13 @@ export function TemplateEditor({ mode, initialData, templateId }: TemplateEditor
                                                                 />
                                                                 <span className="text-sm">{dept.name}</span>
                                                                 {dept.parentId && (
-                                                                    <span className="text-xs text-muted-foreground">(Sub-área)</span>
+                                                                    <span className="text-xs text-muted-foreground">(Sub-Ã¡rea)</span>
                                                                 )}
                                                             </label>
                                                         ))}
                                                         {(!departments || departments.length === 0) && (
                                                             <p className="text-sm text-muted-foreground text-center py-4">
-                                                                No hay departamentos configurados. Vaya a HCM → Admin → Departamentos para crearlos.
+                                                                No hay departamentos configurados. Vaya a HCM â†’ Admin â†’ Departamentos para crearlos.
                                                             </p>
                                                         )}
                                                     </div>
@@ -1158,7 +1108,7 @@ export function TemplateEditor({ mode, initialData, templateId }: TemplateEditor
                                             {initiatorPermissions.type === 'all' && (
                                                 <div className="rounded-md bg-muted/50 p-4 text-sm text-muted-foreground">
                                                     <Users className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                                                    <p className="text-center">Cualquier usuario autenticado podrá crear solicitudes usando esta plantilla.</p>
+                                                    <p className="text-center">Cualquier usuario autenticado podrÃ¡ crear solicitudes usando esta plantilla.</p>
                                                 </div>
                                             )}
                                         </div>
@@ -1167,7 +1117,7 @@ export function TemplateEditor({ mode, initialData, templateId }: TemplateEditor
 
                                 <Card>
                                     <CardHeader>
-                                        <CardTitle>Estado de Publicación</CardTitle>
+                                        <CardTitle>Estado de PublicaciÃ³n</CardTitle>
                                         <CardDescription>
                                             Las plantillas en borrador no aparecen en "Nueva Solicitud".
                                         </CardDescription>
@@ -1190,7 +1140,7 @@ export function TemplateEditor({ mode, initialData, templateId }: TemplateEditor
                                                     </p>
                                                     <p className="text-sm text-muted-foreground">
                                                         {templateStatus === 'published'
-                                                            ? 'La plantilla está visible y disponible para crear solicitudes'
+                                                            ? 'La plantilla estÃ¡ visible y disponible para crear solicitudes'
                                                             : 'La plantilla solo es visible para administradores'
                                                         }
                                                     </p>
@@ -1241,777 +1191,6 @@ export function TemplateEditor({ mode, initialData, templateId }: TemplateEditor
                 </Dialog>
             </div>
         </DndContext>
-    );
-}
-
-// --- Field Form Dialog Component (Full version with all field type configurations) ---
-function FieldFormDialog({ field, onSave, onCancel }: {
-    field: FormField | null;
-    onSave: (field: FormField) => void;
-    onCancel: () => void;
-}) {
-    const [label, setLabel] = useState(field?.label || '');
-    const [type, setType] = useState<FormFieldType>(field?.type || 'text');
-    const [options, setOptions] = useState<string[]>(field?.options || ['']);
-    const isEditing = !!field;
-
-    useEffect(() => {
-        if (field) {
-            setLabel(field.label);
-            setType(field.type);
-            setOptions(field.options && field.options.length > 0 ? field.options : ['']);
-            // Load table config
-            setTableColumns(field.tableColumns || []);
-            setMinRows(field.minRows);
-            setMaxRows(field.maxRows);
-            setShowSummaryRow(field.showSummaryRow || false);
-            // Load dynamic select config
-            setDynamicSourceType(field.dynamicSource?.type || 'static');
-            setMasterListId(field.dynamicSource?.masterListId || '');
-            setCollectionPath(field.dynamicSource?.collectionPath || '');
-            setLabelField(field.dynamicSource?.labelField || 'name');
-            setValueField(field.dynamicSource?.valueField || 'id');
-            setCascadeFieldId(field.dynamicSource?.filterConfig?.dependsOn || '');
-            setCascadeFilterField(field.dynamicSource?.filterConfig?.filterField || '');
-            // Load user identity config
-            setUserIdentityDisplayField(field.userIdentityConfig?.displayField || 'both');
-            setIncludeTimestamp(field.userIdentityConfig?.includeTimestamp ?? true);
-            // Load validation and metadata
-            setValidations(field.validations || []);
-            setPlaceholder(field.placeholder || '');
-            setHelpText(field.helpText || '');
-            setTypography(field.typography);
-            setHtmlContent(field.htmlContent || '');
-        } else {
-            setLabel('');
-            setType('text');
-            setOptions(['']);
-            setTableColumns([]);
-            setMinRows(undefined);
-            setMaxRows(undefined);
-            setShowSummaryRow(false);
-            setDynamicSourceType('static');
-            setMasterListId('');
-            setCollectionPath('');
-            setLabelField('name');
-            setValueField('id');
-            setCascadeFieldId('');
-            setCascadeFilterField('');
-            setUserIdentityDisplayField('both');
-            setIncludeTimestamp(true);
-            setValidations([]);
-            setPlaceholder('');
-            setHelpText('');
-            setTypography(undefined);
-            setHtmlContent('');
-        }
-    }, [field]);
-
-    // Table configuration
-    const [tableColumns, setTableColumns] = useState<TableColumnDefinition[]>([]);
-    const [minRows, setMinRows] = useState<number | undefined>();
-    const [maxRows, setMaxRows] = useState<number | undefined>();
-    const [showSummaryRow, setShowSummaryRow] = useState(false);
-
-    // Dynamic select configuration
-    const [dynamicSourceType, setDynamicSourceType] = useState<'master-list' | 'collection' | 'static'>('static');
-    const [masterListId, setMasterListId] = useState('');
-    const [collectionPath, setCollectionPath] = useState('');
-    const [labelField, setLabelField] = useState('name');
-    const [valueField, setValueField] = useState('id');
-    const [cascadeFieldId, setCascadeFieldId] = useState('');
-    const [cascadeFilterField, setCascadeFilterField] = useState('');
-
-    // User identity configuration
-    const [userIdentityDisplayField, setUserIdentityDisplayField] = useState<'email' | 'fullName' | 'both'>('both');
-    const [includeTimestamp, setIncludeTimestamp] = useState(true);
-
-    // Validation rules
-    const [validations, setValidations] = useState<ValidationRule[]>([]);
-
-    // Field metadata
-    const [placeholder, setPlaceholder] = useState('');
-    const [helpText, setHelpText] = useState('');
-
-    // Typography configuration
-    const [typography, setTypography] = useState<TypographyConfigType | undefined>(undefined);
-
-    // HTML content
-    const [htmlContent, setHtmlContent] = useState('');
-
-    // Load master lists
-    const { masterLists } = useMasterLists();
-
-    const handleAddOption = () => setOptions([...options, '']);
-    const handleOptionChange = (index: number, value: string) => {
-        const newOptions = [...options];
-        newOptions[index] = value;
-        setOptions(newOptions);
-    };
-    const handleRemoveOption = (index: number) => {
-        if (options.length > 1) {
-            setOptions(options.filter((_, i) => i !== index));
-        }
-    };
-
-    const handleSubmit = () => {
-        const finalField: FormField = {
-            id: field?.id || `field-${Date.now()}`,
-            label: label.trim(),
-            type
-        };
-
-        // Basic options for select/radio
-        if (['select', 'radio'].includes(type)) {
-            finalField.options = options.map(o => o.trim()).filter(o => o);
-        }
-        if (type === 'checkbox') {
-            finalField.options = [label.trim()];
-        }
-
-        // Table configuration
-        if (type === 'table') {
-            finalField.tableColumns = tableColumns;
-            if (minRows) finalField.minRows = minRows;
-            if (maxRows) finalField.maxRows = maxRows;
-            finalField.showSummaryRow = showSummaryRow;
-        }
-
-        // Dynamic select configuration
-        if (type === 'dynamic-select') {
-            finalField.dynamicSource = {
-                type: dynamicSourceType,
-                labelField,
-                valueField,
-            };
-            if (dynamicSourceType === 'master-list' && masterListId) {
-                finalField.dynamicSource.masterListId = masterListId;
-            }
-            if (dynamicSourceType === 'collection' && collectionPath) {
-                finalField.dynamicSource.collectionPath = collectionPath;
-            }
-            if (cascadeFieldId && cascadeFilterField) {
-                finalField.dynamicSource.filterConfig = {
-                    dependsOn: cascadeFieldId,
-                    filterField: cascadeFilterField,
-                    operator: '==',
-                };
-            }
-        }
-
-        // User identity configuration
-        if (type === 'user-identity') {
-            finalField.userIdentityConfig = {
-                displayField: userIdentityDisplayField,
-                includeTimestamp,
-            };
-            finalField.readOnly = true;
-        }
-
-        // Validation rules
-        if (validations.length > 0) {
-            finalField.validations = validations;
-        }
-
-        // Additional metadata
-        if (placeholder) finalField.placeholder = placeholder;
-        if (helpText) finalField.helpText = helpText;
-
-        // Typography configuration
-        if (typography && Object.keys(typography).length > 0) {
-            finalField.typography = typography;
-        }
-
-        // HTML content
-        if (type === 'html' && htmlContent) {
-            finalField.htmlContent = htmlContent;
-        }
-
-        onSave(finalField);
-    };
-
-    const needsOptions = ['select', 'radio'].includes(type);
-
-    return (
-        <div className="space-y-4 py-2 max-h-[70vh] overflow-y-auto pr-2">
-            {/* Basic field info */}
-            <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                    <Label htmlFor="field-label">Etiqueta del Campo *</Label>
-                    <Input
-                        id="field-label"
-                        value={label}
-                        onChange={(e) => setLabel(e.target.value)}
-                        placeholder="p.ej., Nombre del Solicitante"
-                    />
-                </div>
-                <div className="space-y-2">
-                    <Label htmlFor="field-type">Tipo de Campo</Label>
-                    <Select value={type} onValueChange={(value) => setType(value as FormFieldType)}>
-                        <SelectTrigger id="field-type">
-                            <SelectValue placeholder="Seleccione un tipo..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="text">Texto</SelectItem>
-                            <SelectItem value="textarea">Área de texto</SelectItem>
-                            <SelectItem value="number">Número</SelectItem>
-                            <SelectItem value="email">Email</SelectItem>
-                            <SelectItem value="date">Fecha</SelectItem>
-                            <SelectItem value="select">Lista desplegable</SelectItem>
-                            <SelectItem value="dynamic-select">Lista desplegable dinámica</SelectItem>
-                            <SelectItem value="radio">Botones de opción</SelectItem>
-                            <SelectItem value="checkbox">Casilla de verificación</SelectItem>
-                            <SelectItem value="file">Carga de archivos</SelectItem>
-                            <SelectItem value="table">Tabla interactiva</SelectItem>
-                            <SelectItem value="user-identity">Identidad del usuario</SelectItem>
-                            <SelectItem value="html">HTML personalizado</SelectItem>
-                        </SelectContent>
-                    </Select>
-                </div>
-            </div>
-
-            {/* Placeholder and help text */}
-            <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                    <Label>Placeholder (opcional)</Label>
-                    <Input
-                        value={placeholder}
-                        onChange={(e) => setPlaceholder(e.target.value)}
-                        placeholder="Texto de ayuda en el campo"
-                    />
-                </div>
-                <div className="space-y-2">
-                    <Label>Texto de ayuda (opcional)</Label>
-                    <Input
-                        value={helpText}
-                        onChange={(e) => setHelpText(e.target.value)}
-                        placeholder="Descripción adicional"
-                    />
-                </div>
-            </div>
-
-            {/* Static options for select/radio */}
-            {needsOptions && (
-                <div className="space-y-2 rounded-md border p-4">
-                    <Label>Opciones</Label>
-                    <div className="space-y-2">
-                        {options.map((option, index) => (
-                            <div key={index} className="flex items-center gap-2">
-                                <Input
-                                    value={option}
-                                    onChange={(e) => handleOptionChange(index, e.target.value)}
-                                    placeholder={`Opción ${index + 1}`}
-                                />
-                                <Button variant="ghost" size="icon" onClick={() => handleRemoveOption(index)} disabled={options.length <= 1}>
-                                    <X className="h-4 w-4" />
-                                </Button>
-                            </div>
-                        ))}
-                    </div>
-                    <Button variant="outline" size="sm" onClick={handleAddOption} className="mt-2">
-                        <PlusCircle className="mr-2 h-4 w-4" /> Añadir Opción
-                    </Button>
-                </div>
-            )}
-
-            {/* Table configuration */}
-            {type === 'table' && (
-                <div className="space-y-4 rounded-md border p-4">
-                    <Label className="text-base font-semibold">Configuración de Tabla</Label>
-                    <TableColumnDialog
-                        columns={tableColumns}
-                        onColumnsChange={setTableColumns}
-                    />
-                    <div className="grid grid-cols-3 gap-4 pt-2">
-                        <div className="space-y-2">
-                            <Label>Filas mínimas</Label>
-                            <Input
-                                type="number"
-                                min={0}
-                                value={minRows ?? ''}
-                                onChange={(e) => setMinRows(e.target.value ? parseInt(e.target.value) : undefined)}
-                                placeholder="Sin límite"
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <Label>Filas máximas</Label>
-                            <Input
-                                type="number"
-                                min={1}
-                                value={maxRows ?? ''}
-                                onChange={(e) => setMaxRows(e.target.value ? parseInt(e.target.value) : undefined)}
-                                placeholder="Sin límite"
-                            />
-                        </div>
-                        <div className="space-y-2 flex items-end">
-                            <label className="flex items-center gap-2 cursor-pointer pb-2">
-                                <Checkbox
-                                    checked={showSummaryRow}
-                                    onCheckedChange={(checked) => setShowSummaryRow(checked === true)}
-                                />
-                                <span className="text-sm">Mostrar fila resumen</span>
-                            </label>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Dynamic select configuration */}
-            {type === 'dynamic-select' && (
-                <div className="space-y-4 rounded-md border p-4">
-                    <Label className="text-base font-semibold">Configuración de Lista Dinámica</Label>
-
-                    <div className="space-y-2">
-                        <Label>Fuente de datos</Label>
-                        <Select value={dynamicSourceType} onValueChange={(v) => setDynamicSourceType(v as any)}>
-                            <SelectTrigger>
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="static">Opciones estáticas</SelectItem>
-                                <SelectItem value="master-list">Lista maestra</SelectItem>
-                                <SelectItem value="collection">Colección de Firestore</SelectItem>
-                            </SelectContent>
-                        </Select>
-                    </div>
-
-                    {dynamicSourceType === 'master-list' && (
-                        <div className="space-y-2">
-                            <Label>Lista maestra</Label>
-                            <Select value={masterListId} onValueChange={setMasterListId}>
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Seleccione una lista..." />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {masterLists.map(ml => (
-                                        <SelectItem key={ml.id} value={ml.id}>{ml.name}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                    )}
-
-                    {dynamicSourceType === 'collection' && (
-                        <div className="grid grid-cols-3 gap-2">
-                            <div className="space-y-2">
-                                <Label>Ruta de colección</Label>
-                                <Input
-                                    value={collectionPath}
-                                    onChange={(e) => setCollectionPath(e.target.value)}
-                                    placeholder="p.ej., productos"
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <Label>Campo para etiqueta</Label>
-                                <Input
-                                    value={labelField}
-                                    onChange={(e) => setLabelField(e.target.value)}
-                                    placeholder="name"
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <Label>Campo para valor</Label>
-                                <Input
-                                    value={valueField}
-                                    onChange={(e) => setValueField(e.target.value)}
-                                    placeholder="id"
-                                />
-                            </div>
-                        </div>
-                    )}
-
-                    {dynamicSourceType === 'static' && (
-                        <div className="space-y-2">
-                            <Label>Opciones</Label>
-                            <div className="space-y-2">
-                                {options.map((option, index) => (
-                                    <div key={index} className="flex items-center gap-2">
-                                        <Input
-                                            value={option}
-                                            onChange={(e) => handleOptionChange(index, e.target.value)}
-                                            placeholder={`Opción ${index + 1}`}
-                                        />
-                                        <Button variant="ghost" size="icon" onClick={() => handleRemoveOption(index)} disabled={options.length <= 1}>
-                                            <X className="h-4 w-4" />
-                                        </Button>
-                                    </div>
-                                ))}
-                            </div>
-                            <Button variant="outline" size="sm" onClick={handleAddOption}>
-                                <PlusCircle className="mr-2 h-4 w-4" /> Añadir
-                            </Button>
-                        </div>
-                    )}
-
-                    <div className="pt-2 border-t">
-                        <Label className="text-sm text-muted-foreground">Filtro en cascada (opcional)</Label>
-                        <div className="grid grid-cols-2 gap-2 mt-2">
-                            <div className="space-y-1">
-                                <Label className="text-xs">Depende del campo ID</Label>
-                                <Input
-                                    value={cascadeFieldId}
-                                    onChange={(e) => setCascadeFieldId(e.target.value)}
-                                    placeholder="ID del campo padre"
-                                />
-                            </div>
-                            <div className="space-y-1">
-                                <Label className="text-xs">Filtrar por campo</Label>
-                                <Input
-                                    value={cascadeFilterField}
-                                    onChange={(e) => setCascadeFilterField(e.target.value)}
-                                    placeholder="Campo a filtrar"
-                                />
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* User identity configuration */}
-            {type === 'user-identity' && (
-                <div className="space-y-4 rounded-md border p-4">
-                    <Label className="text-base font-semibold">Configuración de Identidad de Usuario</Label>
-                    <p className="text-sm text-muted-foreground">
-                        Este campo se completa automáticamente con los datos del usuario que llena el formulario.
-                    </p>
-
-                    <div className="space-y-2">
-                        <Label>Mostrar</Label>
-                        <Select value={userIdentityDisplayField} onValueChange={(v) => setUserIdentityDisplayField(v as any)}>
-                            <SelectTrigger>
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="email">Solo email</SelectItem>
-                                <SelectItem value="fullName">Solo nombre completo</SelectItem>
-                                <SelectItem value="both">Email y nombre</SelectItem>
-                            </SelectContent>
-                        </Select>
-                    </div>
-
-                    <label className="flex items-center gap-2 cursor-pointer">
-                        <Checkbox
-                            checked={includeTimestamp}
-                            onCheckedChange={(checked) => setIncludeTimestamp(checked === true)}
-                        />
-                        <span className="text-sm">Incluir fecha y hora de llenado</span>
-                    </label>
-                </div>
-            )}
-
-            {/* HTML field configuration */}
-            {type === 'html' && (
-                <div className="space-y-4 rounded-md border p-4">
-                    <HtmlFieldEditor
-                        value={htmlContent}
-                        onChange={setHtmlContent}
-                    />
-                </div>
-            )}
-
-            {/* Typography configuration - for all visual field types */}
-            {!['user-identity', 'file', 'table'].includes(type) && (
-                <div className="space-y-2 rounded-md border p-4">
-                    <Label className="text-base font-semibold">Tipografía y Estilo</Label>
-                    <TypographyConfig
-                        value={typography}
-                        onChange={setTypography}
-                    />
-                </div>
-            )}
-
-            {/* Validation configuration */}
-            {!['user-identity', 'html'].includes(type) && (
-                <div className="space-y-2 rounded-md border p-4">
-                    <Label className="text-base font-semibold">Validaciones</Label>
-                    <FieldValidationConfig
-                        fieldType={type}
-                        validations={validations}
-                        onValidationsChange={setValidations}
-                    />
-                </div>
-            )}
-
-            <DialogFooter className="pt-4 sticky bottom-0 bg-background">
-                <Button variant="outline" onClick={onCancel}>
-                    Cancelar
-                </Button>
-                <Button onClick={handleSubmit} disabled={!label.trim() || (type === 'table' && tableColumns.length === 0)}>
-                    {isEditing ? 'Guardar Cambios' : 'Añadir Campo'}
-                </Button>
-            </DialogFooter>
-        </div>
-    );
-}
-
-// --- Rule Display Components ---
-function RuleConditionDisplay({ condition, fields, steps }: { condition: RuleCondition, fields: FormField[], steps: WorkflowStepDefinition[] }) {
-    const source = condition.type === 'form'
-        ? fields.find(f => f.id === condition.fieldId)
-        : steps.find(s => s.id === condition.fieldId);
-
-    const operatorLabels: Partial<Record<RuleOperator, string>> = {
-        '==': '=', '!=': '!=', '>': '>', '<': '<', '>=': '>=', '<=': '<=',
-        'contains': 'contiene', 'not_contains': 'no contiene', 'is': 'es', 'is_not': 'no es',
-    };
-
-    const getSourceTypeIcon = (type: FormFieldType | 'outcome' | undefined) => {
-        switch (type) {
-            case 'number': return <Hash className="h-4 w-4 text-muted-foreground" />;
-            case 'text':
-            case 'textarea':
-                return <CaseSensitive className="h-4 w-4 text-muted-foreground" />;
-            case 'select':
-            case 'radio':
-            case 'checkbox':
-            case 'outcome':
-                return <GitBranch className="h-4 w-4 text-muted-foreground" />;
-            default: return null;
-        }
-    }
-
-    return (
-        <div className="flex items-center gap-2 text-sm">
-            <span className="font-semibold text-muted-foreground">SI</span>
-            <div className="flex items-center gap-1">
-                {getSourceTypeIcon((source?.type || (condition.type === 'outcome' ? 'outcome' : undefined)) as FormFieldType | 'outcome' | undefined)}
-                <Badge variant="outline">{(source as any)?.name || (source as any)?.label || '??'}</Badge>
-            </div>
-            <span className="font-semibold text-muted-foreground">{operatorLabels[condition.operator] || condition.operator}</span>
-            <Badge variant="secondary" className="font-mono">{condition.value}</Badge>
-        </div>
-    );
-}
-
-function RuleActionDisplay({ action, steps, users }: { action: RuleAction, steps: WorkflowStepDefinition[], users: UserType[] }) {
-    const getActionIcon = (type: RuleAction['type']) => {
-        switch (type) {
-            case 'REQUIRE_ADDITIONAL_STEP':
-            case 'ROUTE_TO_STEP':
-                return <GitBranch className="h-5 w-5 text-primary" />;
-            case 'ASSIGN_USER':
-                return <User className="h-5 w-5 text-primary" />;
-            case 'SEND_NOTIFICATION':
-                return <Bell className="h-5 w-5 text-primary" />;
-            case 'CHANGE_REQUEST_PRIORITY':
-                return <AlertTriangle className="h-5 w-5 text-primary" />;
-        }
-    }
-
-    const renderActionDetails = () => {
-        switch (action.type) {
-            case 'REQUIRE_ADDITIONAL_STEP':
-            case 'ROUTE_TO_STEP':
-                const step = steps.find(s => s.id === action.stepId);
-                return <>{action.type === 'ROUTE_TO_STEP' ? 'Enrutar a' : 'Añadir paso'}: <Badge>{step?.name || '??'}</Badge></>;
-            case 'ASSIGN_USER':
-                const assignUser = users.find(u => u.id === action.userId);
-                const assignStep = steps.find(s => s.id === action.stepId);
-                return <>Asignar <Badge variant="secondary">{assignUser?.fullName || '??'}</Badge> a <Badge>{assignStep?.name || '??'}</Badge></>;
-            case 'SEND_NOTIFICATION':
-                return <>Notificar a <Badge variant="secondary">{action.target}</Badge> con mensaje: <span className="italic">"{action.message}"</span></>;
-            case 'CHANGE_REQUEST_PRIORITY':
-                return <>Cambiar prioridad a <Badge variant="destructive">{action.priority}</Badge></>;
-            default:
-                return null;
-        }
-    }
-
-    return (
-        <div className="flex items-center gap-3">
-            <div className="flex-shrink-0">{getActionIcon(action.type)}</div>
-            <div className="flex flex-wrap items-center gap-2 text-sm">{renderActionDetails()}</div>
-        </div>
-    );
-}
-
-function RuleDisplay({ rule, fields, pools, users, onRemove, onEdit }: { rule: Rule, fields: FormField[], pools: Pool[], users: UserType[], onRemove: (id: string) => void, onEdit: (rule: Rule) => void }) {
-    const allSteps = pools.flatMap(p => p.lanes.flatMap(l => l.steps));
-
-    return (
-        <div className="group relative rounded-lg border bg-card p-4 transition-all hover:shadow-md">
-            <div className="grid grid-cols-[1fr,auto,1fr] items-center gap-4">
-                {/* Condition */}
-                <RuleConditionDisplay condition={rule.condition} fields={fields} steps={allSteps} />
-
-                {/* Arrow */}
-                <div className="flex justify-center">
-                    <ChevronsRight className="h-6 w-6 text-muted-foreground" />
-                </div>
-
-                {/* Action */}
-                <RuleActionDisplay action={rule.action} steps={allSteps} users={users} />
-            </div>
-
-            <Button
-                variant="ghost"
-                size="icon"
-                className="absolute right-8 top-1 h-6 w-6 opacity-0 group-hover:opacity-100"
-                onClick={() => onEdit(rule)}
-            >
-                <Pencil className="h-4 w-4 text-primary" />
-                <span className="sr-only">Editar regla</span>
-            </Button>
-
-            <Button
-                variant="ghost"
-                size="icon"
-                className="absolute right-1 top-1 h-6 w-6 opacity-0 group-hover:opacity-100"
-                onClick={() => onRemove(rule.id)}
-            >
-                <Trash2 className="h-4 w-4 text-destructive" />
-                <span className="sr-only">Eliminar regla</span>
-            </Button>
-        </div>
-    );
-}
-
-function RuleBuilderDialog({ fields, steps, users, onAddRule, onUpdateRule, ruleToEdit, onClose }: { fields: FormField[], steps: WorkflowStepDefinition[], users: UserType[], onAddRule: (rule: Omit<Rule, 'id'>) => void, onUpdateRule: (rule: Rule) => void, ruleToEdit: Rule | null, onClose: () => void }) {
-    const { toast } = useToast();
-    const [condition, setCondition] = useState<Partial<RuleCondition>>({ type: 'form' });
-    const [action, setAction] = useState<Partial<RuleAction>>({ type: 'REQUIRE_ADDITIONAL_STEP' });
-    const isEditing = !!ruleToEdit;
-
-    useEffect(() => {
-        if (ruleToEdit) {
-            setCondition(ruleToEdit.condition);
-            setAction(ruleToEdit.action);
-        } else {
-            setCondition({ type: 'form' });
-            setAction({ type: 'REQUIRE_ADDITIONAL_STEP' });
-        }
-    }, [ruleToEdit]);
-
-    const decisionTasks = steps.filter(s => s.outcomes && s.outcomes.length > 0);
-    const formFieldsForRules = fields.filter(f => ['number', 'select', 'radio', 'text', 'textarea'].includes(f.type));
-    const selectedSource = condition.type === 'form' ? formFieldsForRules.find(f => f.id === condition.fieldId) : decisionTasks.find(s => s.id === condition.fieldId);
-
-    const getOperatorsForType = (type?: FormFieldType | 'outcome'): { value: RuleOperator, label: string }[] => {
-        if (type === 'outcome') return [{ value: '==', label: 'es igual a' }];
-        switch (type) {
-            case 'number':
-                return [{ value: '==', label: 'es igual a' }, { value: '!=', label: 'no es igual a' }, { value: '>', label: 'es mayor que' }, { value: '<', label: 'es menor que' }, { value: '>=', label: 'es mayor o igual que' }, { value: '<=', label: 'es menor o igual que' }];
-            case 'text':
-            case 'textarea':
-                return [{ value: 'is', label: 'es igual a' }, { value: 'is_not', label: 'no es igual a' }, { value: 'contains', label: 'contiene' }, { value: 'not_contains', label: 'no contiene' }];
-            case 'select':
-            case 'radio':
-                return [{ value: 'is', label: 'es' }, { value: 'is_not', label: 'no es' }];
-            default: return [];
-        }
-    };
-
-    const availableOperators = getOperatorsForType((selectedSource?.type || (condition.type === 'outcome' ? 'outcome' : undefined)) as FormFieldType | 'outcome' | undefined);
-
-    const handleSubmit = () => {
-        if (!condition.fieldId || !condition.operator || (condition.value === undefined || condition.value === '')) {
-            toast({ variant: "destructive", title: "Condición incompleta" }); return;
-        }
-
-        const newRule: Omit<Rule, 'id'> = { condition: condition as RuleCondition, action: action as RuleAction };
-
-        if (isEditing && ruleToEdit) {
-            onUpdateRule({ ...newRule, id: ruleToEdit.id });
-        } else {
-            onAddRule(newRule);
-        }
-        toast({ title: isEditing ? "Regla actualizada" : "Regla agregada" });
-        onClose();
-    };
-
-    return (
-        <DialogContent className="sm:max-w-3xl">
-            <DialogHeader>
-                <DialogTitle>{isEditing ? "Editar Regla de Negocio" : "Constructor de Reglas de Negocio"}</DialogTitle>
-                <DialogDescription>Cree una regla "SI-ENTONCES" para automatizar su flujo de trabajo.</DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-6 py-4">
-                <div className="p-4 rounded-md border">
-                    <h3 className="mb-4 text-lg font-medium flex items-center"><ShieldCheck className="mr-2 h-5 w-5 text-primary" /> Condición (SI)</h3>
-                    <div className="grid grid-cols-4 gap-4">
-                        <div className="space-y-2 col-span-1">
-                            <Label>Tipo de Condición</Label>
-                            <Select value={condition.type} onValueChange={(v) => setCondition({ type: v as any })}>
-                                <SelectTrigger><SelectValue /></SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="form">Basada en Campo de Formulario</SelectItem>
-                                    <SelectItem value="outcome">Basada en Resultado de Tarea</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        <div className="space-y-2 col-span-3 grid grid-cols-3 gap-4">
-                            <div className="space-y-2">
-                                <Label>Fuente</Label>
-                                <Select value={condition.fieldId} onValueChange={(v) => setCondition(c => ({ ...c, fieldId: v }))}>
-                                    <SelectTrigger><SelectValue placeholder="Seleccione fuente..." /></SelectTrigger>
-                                    <SelectContent>
-                                        {condition.type === 'form' && formFieldsForRules.map(field => <SelectItem key={field.id} value={field.id}>{field.label}</SelectItem>)}
-                                        {condition.type === 'outcome' && decisionTasks.map(task => <SelectItem key={task.id} value={task.id}>{task.name}</SelectItem>)}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            <div className="space-y-2">
-                                <Label>Operador</Label>
-                                <Select value={condition.operator} onValueChange={(v) => setCondition(c => ({ ...c, operator: v as any }))} disabled={!selectedSource}>
-                                    <SelectTrigger><SelectValue placeholder="Seleccione..." /></SelectTrigger>
-                                    <SelectContent>{availableOperators.map(op => <SelectItem key={op.value} value={op.value}>{op.label}</SelectItem>)}</SelectContent>
-                                </Select>
-                            </div>
-                            <div className="space-y-2">
-                                <Label>Valor</Label>
-                                {selectedSource && (selectedSource.type === 'number' || selectedSource.type === 'text' || selectedSource.type === 'textarea') ? (
-                                    <Input type={selectedSource?.type === 'number' ? 'number' : 'text'} placeholder="p.ej., 5000" value={condition.value || ''} onChange={(e) => setCondition(c => ({ ...c, value: e.target.value }))} />
-                                ) : (
-                                    <Select value={condition.value} onValueChange={(v) => setCondition(c => ({ ...c, value: v }))} disabled={!selectedSource}>
-                                        <SelectTrigger><SelectValue placeholder="Seleccione valor..." /></SelectTrigger>
-                                        <SelectContent>
-                                            {((selectedSource as any)?.options || (selectedSource as any)?.outcomes)?.map((opt: string) => <SelectItem key={opt} value={opt}>{opt}</SelectItem>)}
-                                        </SelectContent>
-                                    </Select>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div className="p-4 rounded-md border">
-                    <h3 className="mb-4 text-lg font-medium flex items-center"><GitBranch className="mr-2 h-5 w-5 text-primary" /> Acción (ENTONCES)</h3>
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                            <Label>Tipo de Acción</Label>
-                            <Select value={action.type} onValueChange={(v) => setAction({ type: v as any })}>
-                                <SelectTrigger><SelectValue /></SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="REQUIRE_ADDITIONAL_STEP">Añadir Paso Requerido</SelectItem>
-                                    <SelectItem value="ROUTE_TO_STEP">Enrutar a Paso</SelectItem>
-                                    <SelectItem value="ASSIGN_USER">Asignar Usuario a Tarea</SelectItem>
-                                    <SelectItem value="SEND_NOTIFICATION">Enviar Notificación</SelectItem>
-                                    <SelectItem value="CHANGE_REQUEST_PRIORITY">Cambiar Prioridad de Solicitud</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        <div className="space-y-2">
-                            {(action.type === 'REQUIRE_ADDITIONAL_STEP' || action.type === 'ROUTE_TO_STEP') &&
-                                <><Label>Paso de Destino</Label><Select value={(action as any).stepId} onValueChange={(v) => setAction(a => ({ ...a, stepId: v }))}><SelectTrigger><SelectValue placeholder="Seleccione un paso..." /></SelectTrigger><SelectContent>{steps.map(step => <SelectItem key={step.id} value={step.id}>{step.name}</SelectItem>)}</SelectContent></Select></>
-                            }
-                            {action.type === 'ASSIGN_USER' &&
-                                <div className="grid grid-cols-2 gap-2"><div className="space-y-2"><Label>Tarea</Label><Select value={(action as any).stepId} onValueChange={(v) => setAction(a => ({ ...a, stepId: v }))}><SelectTrigger><SelectValue placeholder="Seleccione tarea..." /></SelectTrigger><SelectContent>{steps.map(step => <SelectItem key={step.id} value={step.id}>{step.name}</SelectItem>)}</SelectContent></Select></div><div className="space-y-2"><Label>Usuario</Label><Select value={(action as any).userId} onValueChange={(v) => setAction(a => ({ ...a, userId: v }))}><SelectTrigger><SelectValue placeholder="Seleccione usuario..." /></SelectTrigger><SelectContent>{users.map(user => <SelectItem key={user.id} value={user.id}>{user.fullName}</SelectItem>)}</SelectContent></Select></div></div>
-                            }
-                            {action.type === 'SEND_NOTIFICATION' &&
-                                <div className="grid grid-cols-2 gap-2"><div className="space-y-2"><Label>Destinatario</Label><Select value={(action as any).target} onValueChange={(v) => setAction(a => ({ ...a, target: v }) as Partial<RuleAction>)}><SelectTrigger><SelectValue placeholder="Seleccione..." /></SelectTrigger><SelectContent><SelectItem value="submitter">Creador de la solicitud</SelectItem><SelectItem value="Admin">Admin</SelectItem><SelectItem value="Member">Miembro</SelectItem></SelectContent></Select></div><div className="space-y-2"><Label>Mensaje</Label><Input placeholder="Tu mensaje aquí" value={(action as any).message || ''} onChange={(e) => setAction(a => ({ ...a, message: e.target.value }) as Partial<RuleAction>)} /></div></div>
-                            }
-                            {action.type === 'CHANGE_REQUEST_PRIORITY' &&
-                                <><Label>Nueva Prioridad</Label><Select value={(action as any).priority} onValueChange={(v) => setAction(a => ({ ...a, priority: v }) as Partial<RuleAction>)}><SelectTrigger><SelectValue placeholder="Seleccione prioridad..." /></SelectTrigger><SelectContent><SelectItem value="Alta">Alta</SelectItem><SelectItem value="Media">Media</SelectItem><SelectItem value="Baja">Baja</SelectItem></SelectContent></Select></>
-                            }
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <DialogFooter>
-                <DialogClose asChild><Button variant="ghost" onClick={onClose}>Cancelar</Button></DialogClose>
-                <Button onClick={handleSubmit}>{isEditing ? "Guardar Cambios" : "Añadir Regla"}</Button>
-            </DialogFooter>
-        </DialogContent>
     );
 }
 

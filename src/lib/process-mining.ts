@@ -1,17 +1,7 @@
 
-/**
- * Process Mining Utilities Library
- *
- * Provides advanced process mining calculations including:
- * - Process Variants Analysis
- * - Conformance Checking
- * - Statistical Process Control
- * - Resource Analytics
- * - Predictive Metrics
- */
-
-import { Request, Task, Template, User } from './types';
+import type { User } from '@/types/auth.types';
 import { differenceInHours, differenceInMinutes, parseISO, startOfDay, format } from 'date-fns';
+import { Request, Task, Template } from "@/types/workflow.types";
 
 // ============================================
 // TYPES

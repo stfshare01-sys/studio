@@ -3,10 +3,10 @@
 
 import { useMemo } from 'react';
 import { Line, LineChart, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-import type { Request as RequestType } from '@/lib/types';
 import { eachDayOfInterval, format, startOfDay } from 'date-fns';
 import { DateRange } from 'react-day-picker';
 import { parseFirebaseDate } from '@/lib/utils';
+import type { Request as RequestType } from "@/types/workflow.types";
 
 interface RequestVolumeChartProps {
   requests: RequestType[];

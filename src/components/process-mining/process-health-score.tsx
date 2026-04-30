@@ -2,7 +2,6 @@
 "use client";
 
 import { useMemo } from 'react';
-import type { Request, Task, Template } from '@/lib/types';
 import {
   analyzeConformance,
   analyzeBottlenecks,
@@ -13,6 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
 import { Activity, CheckCircle2, AlertTriangle, TrendingUp, Target, Shield } from 'lucide-react';
+import type { Request, Task, Template } from "@/types/workflow.types";
 
 interface ProcessHealthScoreProps {
   requests: Request[];

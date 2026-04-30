@@ -46,8 +46,7 @@ import { useToast } from '@/hooks/use-toast';
 import { VacationBalanceCard } from '@/components/hcm/vacation-balance-card';
 import { deactivateEmployee } from '@/firebase/actions/employee-actions';
 import { callApproveIncidence } from '@/firebase/callable-functions';
-
-import type { Employee, AttendanceRecord, Incidence, ShiftAssignment, CustomShift } from '@/lib/types';
+import type { Employee, AttendanceRecord, Incidence, ShiftAssignment, CustomShift } from "@/types/hcm.types";
 
 export default function EmployeeDetailPage({ params }: { params: Promise<{ id: string }> }) {
     const router = useRouter();

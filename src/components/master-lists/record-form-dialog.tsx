@@ -18,7 +18,7 @@ import {
     DialogTitle,
 } from "@/components/ui/dialog"
 import { useToast } from "@/hooks/use-toast"
-import type { MasterList, MasterListField } from "@/lib/types"
+import type { MasterList, MasterListField } from "@/types/common.types";
 
 interface RecordFormDialogProps {
     open: boolean

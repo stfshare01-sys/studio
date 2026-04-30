@@ -3,7 +3,7 @@
 import { useCallback } from 'react';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { initializeFirebase } from '@/firebase';
-import type { LookupConfig, FormField } from '@/lib/types';
+import type { LookupConfig, FormField } from "@/types/workflow.types";
 
 interface UseLookupOptions {
   fields: FormField[];

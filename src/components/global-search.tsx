@@ -14,10 +14,11 @@ import { Search, Loader2, User, FolderKanban, FileText } from "lucide-react";
 import { useDebounce } from "@/hooks/use-debounce";
 import { useFirestore, useUser } from "@/firebase";
 import { collection, query, where, getDocs, limit, collectionGroup } from "firebase/firestore";
-import type { User as UserType, Template, Request } from "@/lib/types";
+import type { User as UserType } from '@/types/auth.types';
 import Link from "next/link";
 import { ScrollArea } from "./ui/scroll-area";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
+import type { Template, Request } from "@/types/workflow.types";
 
 type SearchResult = {
     type: 'user' | 'template' | 'request';

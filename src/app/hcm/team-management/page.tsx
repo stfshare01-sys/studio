@@ -1,19 +1,29 @@
 'use client';
 
-import { useState, useMemo, useEffect, useCallback, Suspense, useRef } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { Suspense } from 'react';
 import SiteLayout from '@/components/site-layout';
-import { useFirebase, useMemoFirebase } from '@/firebase/provider';
-import { useCollection } from '@/firebase/firestore/use-collection';
-import { getFirestore, doc, getDoc, setDoc, updateDoc, Timestamp, collection, query, where, getDocs, orderBy, limit as firestoreLimit, limit, runTransaction, serverTimestamp } from 'firebase/firestore';
+import { useFirebase } from '@/firebase/provider';
+import { TeamOverviewTab } from './components/tabs/TeamOverviewTab';
+import { TeamTardinessTab } from './components/tabs/TeamTardinessTab';
+import { TeamEarlyDeparturesTab } from './components/tabs/TeamEarlyDeparturesTab';
+import { TeamMissingPunchesTab } from './components/tabs/TeamMissingPunchesTab';
+import { TeamOvertimeTab } from './components/tabs/TeamOvertimeTab';
+import { TeamShiftsTab } from './components/tabs/TeamShiftsTab';
+import { TeamHourBankTab } from './components/tabs/TeamHourBankTab';
+import { JustifyTardinessDialog } from './components/modals/JustifyTardinessDialog';
+import { JustifyDepartureDialog } from './components/modals/JustifyDepartureDialog';
+import { OvertimeApprovalDialog } from './components/modals/OvertimeApprovalDialog';
+import { ShiftAssignmentDialog } from './components/modals/ShiftAssignmentDialog';
+import { CancelShiftDialog } from './components/modals/CancelShiftDialog';
+import { ShiftHistoryDialog } from './components/modals/ShiftHistoryDialog';
+import { HourBankHistoryDialog } from './components/modals/HourBankHistoryDialog';
+import { JustifyMissingPunchDialog } from './components/modals/JustifyMissingPunchDialog';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
     Select,
     SelectContent,
@@ -24,99 +34,24 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from '@/components/ui/table';
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
-} from '@/components/ui/dialog';
-import { Switch } from '@/components/ui/switch';
-import {
     Users2,
     Clock,
     AlertTriangle,
     Timer,
-    CalendarDays,
-    Check,
-    X,
     Loader2,
-    ChevronLeft,
-    ChevronRight,
     RefreshCw,
-    Gavel,
-    CheckCircle2,
-    Calculator,
     Lock,
-    History,
-    Moon,
-    LogIn,
-    LogOut,
-    ArrowLeftRight,
-    XCircle,
-    AlertCircle,
-    Filter,
-    Sun,
-    SunMoon,
-    MapPin
+    Check,
+    ArrowLeft,
 } from 'lucide-react';
-
-import {
-    getDirectReports,
-    getHierarchicalReports,
-    hasDirectReports,
-    getTeamTardiness,
-    getTeamEarlyDepartures,
-    getTeamOvertimeRequests,
-    getTeamMonthlyStats,
-    getTeamDailyStats,
-    justifyEarlyDeparture,
-    approveOvertimeRequest,
-    rejectOvertimeRequest,
-    assignShift,
-    getTeamShiftAssignments,
-    getEmployeeShiftHistory,
-    cancelShiftAssignment,
-    getAttendanceImportBatches,
-    getAvailableShifts,
-    markEarlyDepartureUnjustified,
-    getTeamMissingPunches
-} from '@/firebase/actions/team-actions';
-import { justifyTardiness, markTardinessUnjustified, justifyMissingPunch } from '@/firebase/actions/incidence-actions';
+import Link from 'next/link';
 import { migrateManagerIdField } from '@/firebase/actions/employee-actions';
-import { getTeamHourBanks, getHourBankMovements, formatHourBankBalance, manualHourBankAdjustment, formatMinutesToReadable } from '@/firebase/actions/hour-bank-actions';
+import { formatHourBankBalance } from '@/firebase/actions/hour-bank-actions';
 import { usePermissions } from '@/hooks/use-permissions';
 import { hasPermission } from '@/firebase/role-actions';
-import { useToast } from '@/hooks/use-toast';
-import { format, startOfMonth, endOfMonth } from 'date-fns';
-import { cn } from '@/lib/utils';
-
-import type {
-    Employee,
-    TardinessRecord,
-    EarlyDeparture,
-    OvertimeRequest,
-    EmployeeMonthlyStats,
-    TeamDailyStats,
-    CustomShift,
-    HourBank,
-    HourBankMovement,
-    JustificationType,
-    ShiftAssignment,
-    ShiftType,
-    AttendanceImportBatch,
-    Position,
-    PayrollPeriodLock
-} from '@/lib/types';
-import { JUSTIFICATION_TYPE_LABELS } from '@/lib/types';
+import { useTeamManagement } from './hooks/use-team-management';
+import { formatDateDDMMYYYY } from './utils';
+import type { ShiftType } from "@/types/hcm.types";
 
 export default function TeamManagementPage() {
     return (
@@ -126,1272 +61,48 @@ export default function TeamManagementPage() {
     );
 }
 
-// Helper: Formato homologado DD-MM-AAAA
-const formatDateDDMMYYYY = (dateStr: string): string => {
-    if (!dateStr) return '';
-    // Soporta YYYY-MM-DD y ISO timestamps
-    const d = new Date(dateStr.includes('T') ? dateStr : `${dateStr}T12:00:00`);
-    if (isNaN(d.getTime())) return dateStr;
-    const dd = d.getDate().toString().padStart(2, '0');
-    const mm = (d.getMonth() + 1).toString().padStart(2, '0');
-    const yyyy = d.getFullYear();
-    return `${dd}-${mm}-${yyyy}`;
-};
-
 function TeamManagementContent() {
-    const searchParams = useSearchParams();
-    const lastUrlSync = useRef<{ batchId: string | null; tab: string | null }>({ batchId: null, tab: null });
-    const { user, isUserLoading, firestore } = useFirebase();
-    const { permissions, hierarchyDepth, isLoading: loadingPermissions } = usePermissions();
-    const { toast } = useToast();
-    const [activeTab, setActiveTab] = useState('overview');
-
-    // Date filters
-    const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
-    const [selectedMonth, setSelectedMonth] = useState(() => {
-        const now = new Date();
-        return `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}`;
-    });
-    const [dateFilter, setDateFilter] = useState(selectedMonth); // Used for month/period filtering
-
-    // Advanced Filters
-    const [searchTerm, setSearchTerm] = useState('');
-    const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'justified'>('pending');
-    const [selectedEmployeeFilter, setSelectedEmployeeFilter] = useState<string>('all'); // Filtro por empleado
-
-    // Data states
-    const [employees, setEmployees] = useState<Employee[]>([]);
-    const [tardiness, setTardiness] = useState<TardinessRecord[]>([]);
-    const [earlyDepartures, setEarlyDepartures] = useState<EarlyDeparture[]>([]);
-    const [overtimeRequests, setOvertimeRequests] = useState<OvertimeRequest[]>([]);
-    const [monthlyStats, setMonthlyStats] = useState<EmployeeMonthlyStats[]>([]);
-    const [dailyStats, setDailyStats] = useState<TeamDailyStats[]>([]);
-    const [shifts, setShifts] = useState<CustomShift[]>([]);
-    const [shiftAssignments, setShiftAssignments] = useState<ShiftAssignment[]>([]);
-    const [overtimeStats, setOvertimeStats] = useState({ pending: 0, approved: 0, rejected: 0, partial: 0, totalHoursApproved: 0, totalHoursPending: 0 });
-    const [hourBanks, setHourBanks] = useState<HourBank[]>([]);
-    const [hourBankMovements, setHourBankMovements] = useState<HourBankMovement[]>([]);
-    const [hourBankAdjustment, setHourBankAdjustment] = useState({ hours: 0, reason: '' });
-    const [providedEntryTime, setProvidedEntryTime] = useState('');
-    const [providedExitTime, setProvidedExitTime] = useState('');
-    const [missingPunches, setMissingPunches] = useState<any[]>([]); // MissingPunchRecord[]
-
-
-    // Global Access State
-    const [selectedManagerId, setSelectedManagerId] = useState<string>('');
-    const [availableManagers, setAvailableManagers] = useState<{ id: string, name: string }[]>([]);
-    const [hasSubordinates, setHasSubordinates] = useState(true); // To control UI when no subordinates
-
-    // Loading states
-    const [loadingData, setLoadingData] = useState(true);
-    const [refreshing, setRefreshing] = useState(false);
-    const [isPeriodClosed, setIsPeriodClosed] = useState(false);
-    const [activeLocks, setActiveLocks] = useState<PayrollPeriodLock[]>([]);
-    const [loadingPeriodStatus, setLoadingPeriodStatus] = useState(false);
-
-    // State for filters
-    const [importBatches, setImportBatches] = useState<AttendanceImportBatch[]>([]);
-    const [selectedBatchId, setSelectedBatchId] = useState<string>('all');
-    const [selectedShiftFilter, setSelectedShiftFilter] = useState<ShiftType | 'all'>('all');
-
-    const [shiftHistoryDialog, setShiftHistoryDialog] = useState<{ open: boolean; employee?: Employee }>({ open: false });
-    const [shiftHistory, setShiftHistory] = useState<ShiftAssignment[]>([]);
-
-    // Fetch positions for configuration checks
-    const positionsQuery = useMemoFirebase(() => {
-        if (!firestore) return null;
-        return query(collection(firestore, 'positions'));
-    }, [firestore]);
-    const { data: positions } = useCollection<Position>(positionsQuery);
-
-    // Helper to check if employee allows time bank
-    const canEmployeeUseTimeBank = useCallback((employeeId?: string) => {
-        if (!employeeId || !employees.length || !positions?.length) return false;
-        const employee = employees.find(e => e.id === employeeId);
-        if (!employee) return false;
-
-        // Check for specific employee override first
-        if (typeof employee.allowTimeForTime === 'boolean') {
-            return employee.allowTimeForTime;
-        }
-
-        // Match by ID (preferred) or Name (legacy/fallback)
-        const position = positions.find(p =>
-            (employee.positionId && p.id === employee.positionId) ||
-            p.name === employee.positionTitle
-        );
-
-        return position?.allowTimeBank || false;
-    }, [employees, positions]);
-
-    // Dialog states
-    const [justifyTardinessDialog, setJustifyTardinessDialog] = useState<{ open: boolean; record?: TardinessRecord; employeeName?: string }>({ open: false });
-    const [justifyDepartureDialog, setJustifyDepartureDialog] = useState<{ open: boolean; record?: EarlyDeparture; employeeName?: string }>({ open: false });
-    const [overtimeDialog, setOvertimeDialog] = useState<{ open: boolean; request?: OvertimeRequest }>({ open: false });
-    const [shiftDialog, setShiftDialog] = useState<{ open: boolean; employee?: Employee }>({ open: false });
-    const [cancelShiftDialog, setCancelShiftDialog] = useState<{ open: boolean; assignment?: ShiftAssignment }>({ open: false });
-    const [hourBankDialog, setHourBankDialog] = useState<{ open: boolean; employee?: Employee }>({ open: false });
-    const [justifyMissingPunchDialog, setJustifyMissingPunchDialog] = useState<{
-        open: boolean;
-        punch?: any; // MissingPunchRecord
-        employeeName?: string;
-    }>({ open: false });
-
-    // Form states
-    const [justificationReason, setJustificationReason] = useState('');
-    const [justificationType, setJustificationType] = useState<JustificationType | undefined>(undefined);
-    const [useHourBank, setUseHourBank] = useState(false);
-    const [hoursToApprove, setHoursToApprove] = useState('');
-    const [rejectionReason, setRejectionReason] = useState('');
-    const [shiftForm, setShiftForm] = useState({
-        shiftId: '',
-        type: 'temporary' as 'temporary' | 'permanent',
-        startDate: new Date().toISOString().split('T')[0],
-        endDate: '',
-        reason: ''
-    });
-    const [submitting, setSubmitting] = useState(false);
-
-    const loadImportBatches = useCallback(async () => {
-        const batchesResult = await getAttendanceImportBatches();
-        if (batchesResult.success && batchesResult.batches) {
-            setImportBatches(batchesResult.batches);
-        }
-    }, []);
-
-    // Helper: Verify if a specific date is within any of the active locks
-    const isDateLocked = useCallback((dateStr: string, locks: PayrollPeriodLock[]): boolean => {
-        return locks.some(lock => dateStr >= lock.periodStart && dateStr <= lock.periodEnd);
-    }, []);
-
-    // Check if current period is closed using granular date-range locks
-    useEffect(() => {
-        const checkPeriodClosure = async () => {
-            if (!dateFilter) return;
-
-            setLoadingPeriodStatus(true);
-            try {
-                // Import checkPeriodLock from report-actions
-                const { checkPeriodLock } = await import('@/firebase/actions/report-actions');
-
-                // Calculate period start/end based on dateFilter
-                // dateFilter can be "YYYY-MM" (month) or "YYYY-MM-DD" (specific date)
-                let periodStart: string;
-                let periodEnd: string;
-
-                if (dateFilter === 'all') {
-                    setIsPeriodClosed(false);
-                    return;
-                }
-
-                if (/^\d{4}-\d{2}$/.test(dateFilter)) {
-                    // Month format: "2026-02"
-                    const [year, month] = dateFilter.split('-').map(Number);
-                    const startDate = new Date(year, month - 1, 1);
-                    const endDate = new Date(year, month, 0); // Last day of month
-                    periodStart = format(startDate, 'yyyy-MM-dd');
-                    periodEnd = format(endDate, 'yyyy-MM-dd');
-                } else if (/^\d{4}-\d{2}-\d{2}$/.test(dateFilter)) {
-                    // Specific date format
-                    periodStart = dateFilter;
-                    periodEnd = dateFilter;
-                } else {
-                    // Invalid or unknown format, default to today
-                    const today = new Date();
-                    const formattedToday = format(today, 'yyyy-MM-dd');
-                    periodStart = formattedToday;
-                    periodEnd = formattedToday;
-                }
-
-                // Check if this specific date range is locked
-                const lockResult = await checkPeriodLock(periodStart, periodEnd);
-
-                if (lockResult.overlappingLocks && lockResult.overlappingLocks.length > 0) {
-                    setActiveLocks(lockResult.overlappingLocks);
-                    setIsPeriodClosed(true); // Retain for overall visual indicators if needed
-                    console.log('🔒 Period has overlapping locks:', periodStart, '-', periodEnd);
-                } else {
-                    setActiveLocks([]);
-                    setIsPeriodClosed(false);
-                    console.log('✅ Period is completely open:', periodStart, '-', periodEnd);
-                }
-            } catch (error) {
-                console.error('Error checking period lock:', error);
-                setActiveLocks([]);
-                setIsPeriodClosed(false);
-            } finally {
-                setLoadingPeriodStatus(false);
-            }
-        };
-
-        checkPeriodClosure();
-    }, [dateFilter]);
-
-    const loadTabData = useCallback(async (tab: string, managerId?: string) => {
-        const managerToUse = managerId || selectedManagerId;
-        if (!user?.id || !managerToUse) {
-            return;
-        }
-
-        setRefreshing(true);
-        try {
-            switch (tab) {
-                case 'overview':
-                    const [year, month] = dateFilter.split('-').map(Number);
-                    const statsResult = await getTeamMonthlyStats(managerToUse, year, month, hierarchyDepth);
-                    if (statsResult.success && statsResult.stats) {
-                        setMonthlyStats(statsResult.stats);
-                    }
-                    const dailyResult = await getTeamDailyStats(managerToUse, selectedDate, hierarchyDepth);
-                    if (dailyResult.success && dailyResult.stats) {
-                        setDailyStats(dailyResult.stats);
-                    }
-                    break;
-
-                case 'tardiness':
-                    const tardinessResult = await getTeamTardiness(managerToUse, dateFilter, hierarchyDepth);
-                    if (tardinessResult.success && tardinessResult.records) {
-                        setTardiness(tardinessResult.records);
-                    }
-                    break;
-
-                case 'early-departures':
-                    const departuresResult = await getTeamEarlyDepartures(managerToUse, dateFilter, hierarchyDepth);
-                    if (departuresResult.success && departuresResult.records) {
-                        setEarlyDepartures(departuresResult.records);
-                    }
-                    break;
-
-                case 'overtime':
-                    const otResult = await getTeamOvertimeRequests(managerToUse, 'all', hierarchyDepth, dateFilter); // dateFilter activa dual-query de pendientes
-                    if (otResult.success) {
-                        setOvertimeRequests(otResult.requests || []);
-                        if (otResult.stats) setOvertimeStats(otResult.stats);
-                    }
-                    try {
-                        const fnEmployees = hierarchyDepth === undefined || hierarchyDepth > 1 
-                            ? (mId: string) => getHierarchicalReports(mId, hierarchyDepth === undefined ? 10 : hierarchyDepth)
-                            : getDirectReports;
-                        const empsResult = await fnEmployees(managerToUse);
-                        if (empsResult.success && empsResult.employees) {
-                            const employeeIds = empsResult.employees.map(e => e.id).filter(Boolean);
-                            if (employeeIds.length > 0) {
-                                const hbResult = await getTeamHourBanks(employeeIds);
-                                if (hbResult.success && hbResult.hourBanks) {
-                                    setHourBanks(hbResult.hourBanks);
-                                }
-                            } else {
-                                setHourBanks([]);
-                            }
-                        }
-                    } catch (hbError) {
-                        // Hour bank read may fail for users without time_bank permissions
-                        console.warn('Hour bank data unavailable for overtime tab:', hbError);
-                        setHourBanks([]);
-                    }
-                    break;
-
-                case 'shifts':
-                    if (!hasPermission(permissions, 'hcm_team_shifts', 'read')) break;
-                    // We use getTeamShiftAssignments for the team view
-                    const assignmentsResult = await getTeamShiftAssignments(managerToUse, hierarchyDepth);
-                    if (assignmentsResult.success && assignmentsResult.assignments) {
-                        setShiftAssignments(assignmentsResult.assignments);
-                    }
-                    // Also get available shifts definitions just in case we need them for dropdowns
-                    const shiftsResult = await getAvailableShifts();
-                    if (shiftsResult.success && shiftsResult.shifts) {
-                        setShifts(shiftsResult.shifts);
-                    }
-                    break;
-
-                case 'hour-bank':
-                    // Seguridad delegada a Firestore rules (isManagerOrHR)
-                    // No usamos hasPermission aquí porque bloquea a usuarios con permisos válidos en Firestore
-                    try {
-                        const fnEmployees = hierarchyDepth === undefined || hierarchyDepth > 1 
-                            ? (mId: string) => getHierarchicalReports(mId, hierarchyDepth === undefined ? 10 : hierarchyDepth)
-                            : getDirectReports;
-                        const empResult = await fnEmployees(managerToUse);
-                        if (empResult.success && empResult.employees) {
-                            setEmployees(empResult.employees);
-                            if (empResult.employees.length > 0) {
-                                const empIds = empResult.employees.map(e => e.id);
-                                const hbResult = await getTeamHourBanks(empIds);
-                                if (hbResult.success && hbResult.hourBanks) {
-                                    setHourBanks(hbResult.hourBanks);
-                                } else {
-                                    console.warn('[loadTabData] hour-bank: query failed or empty', hbResult.error);
-                                    setHourBanks([]);
-                                }
-                            } else {
-                                setHourBanks([]);
-                            }
-                        }
-                    } catch (hbError) {
-                        console.warn('[loadTabData] hour-bank: error loading data', hbError);
-                        setHourBanks([]);
-                    }
-                    break;
-
-                case 'missing-punches':
-                    const punchesResult = await getTeamMissingPunches(managerToUse, dateFilter, hierarchyDepth);
-                    if (punchesResult.success && punchesResult.records) {
-                        setMissingPunches(punchesResult.records);
-                    }
-                    break;
-            }
-        } catch (error) {
-            console.error('Error loading tab data:', error);
-        } finally {
-            setRefreshing(false);
-        }
-    }, [user?.id, selectedManagerId, dateFilter, selectedDate, hierarchyDepth, permissions]);
-
-    // Flag to track if initial load has been done
-    const [initialLoadDone, setInitialLoadDone] = useState(false);
-
-    // Initial data load and manager setup - runs ONCE when user is available
-    useEffect(() => {
-        // Skip if already loaded, no user, or STILL loading permissions
-        if (initialLoadDone || !user || loadingPermissions) {
-            return;
-        }
-
-        console.log('🚀 Initial useEffect triggered (first time only)', { user: user?.uid, hierarchyDepth });
-
-        const loadInitial = async () => {
-            setLoadingData(true);
-
-            // Limpiar datos stale para evitar mostrar estadísticas viejas mientras carga
-            setMonthlyStats([]);
-            setDailyStats([]);
-            setTardiness([]);
-            setEarlyDepartures([]);
-            setOvertimeRequests([]);
-            setMissingPunches([]);
-            setHourBanks([]);
-
-            // Set manager ID immediately to user's ID
-            const managerIdToUse = user.uid;
-            setSelectedManagerId(managerIdToUse);
-
-            try {
-                // Load available managers if global permission exists
-                if (hasPermission(permissions, 'hcm_team_management_global', 'read')) {
-                    const allEmployeesRes = await getDirectReports('all');
-                    if (allEmployeesRes.success && allEmployeesRes.employees) {
-                        setAvailableManagers(allEmployeesRes.employees.map(e => ({ id: e.id, name: e.fullName })));
-                    }
-                }
-
-                // Load initial employees
-                const fnEmployees = hierarchyDepth === undefined || hierarchyDepth > 1 
-                    ? (mId: string) => getHierarchicalReports(mId, hierarchyDepth === undefined ? 10 : hierarchyDepth)
-                    : getDirectReports;
-                const empResult = await fnEmployees(managerIdToUse);
-                if (empResult.success && empResult.employees) {
-                    setEmployees(empResult.employees);
-                    setHasSubordinates(empResult.employees.length > 0);
-                } else {
-                    setEmployees([]);
-                    setHasSubordinates(false);
-                }
-
-                await loadImportBatches();
-
-                // Load all tab data in parallel so header counters update correctly
-                const [
-                    monthlyStatsResult,
-                    dailyStatsResult,
-                    shiftsResult,
-                    tardinessResult,
-                    departuresResult,
-                    punchesResult,
-                    otResult
-                ] = await Promise.all([
-                    getTeamMonthlyStats(managerIdToUse, ...(dateFilter !== 'all' ? dateFilter.split('-').map(Number) as [number, number] : [new Date().getFullYear(), new Date().getMonth() + 1]), hierarchyDepth),
-                    getTeamDailyStats(managerIdToUse, selectedDate, hierarchyDepth),
-                    getAvailableShifts(), // Load globally for the Dialog dropdowns
-                    getTeamTardiness(managerIdToUse, dateFilter, hierarchyDepth),
-                    getTeamEarlyDepartures(managerIdToUse, dateFilter, hierarchyDepth),
-                    getTeamMissingPunches(managerIdToUse, dateFilter, hierarchyDepth),
-                    hasPermission(permissions, 'hcm_team_overtime', 'read') ? getTeamOvertimeRequests(managerIdToUse, 'all', hierarchyDepth) : Promise.resolve({ success: true, requests: [] })
-                ]);
-
-                // Set initial overview data states
-                if (monthlyStatsResult.success && monthlyStatsResult.stats) {
-                    setMonthlyStats(monthlyStatsResult.stats);
-                }
-                if (dailyStatsResult.success && dailyStatsResult.stats) {
-                    setDailyStats(dailyStatsResult.stats);
-                }
-                if (shiftsResult.success && shiftsResult.shifts) {
-                    setShifts(shiftsResult.shifts);
-                }
-                if (tardinessResult.success && tardinessResult.records) {
-                    setTardiness(tardinessResult.records);
-                }
-                if (departuresResult.success && departuresResult.records) {
-                    setEarlyDepartures(departuresResult.records);
-                }
-                if (punchesResult.success && punchesResult.records) {
-                    setMissingPunches(punchesResult.records);
-                }
-                if (otResult.success && otResult.requests) {
-                    setOvertimeRequests(otResult.requests);
-                }
-
-                // If activeTab is not overview, load it
-                if (activeTab !== 'overview') {
-                    await loadTabData(activeTab, managerIdToUse);
-                }
-
-            } catch (error) {
-                console.error('Error loading initial data:', error);
-            } finally {
-                setLoadingData(false);
-                setInitialLoadDone(true);
-            }
-        };
-
-        loadInitial();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [initialLoadDone, user, loadingPermissions]);
-
-    // Handle batch selection
-    useEffect(() => {
-        if (selectedBatchId === 'all') {
-            // If 'all' is selected, skip date filtering
-            setDateFilter('all');
-            return;
-        }
-
-        const batch = importBatches.find(b => b.id === selectedBatchId);
-        if (batch && batch.dateRangeStart) {
-            // Use the month of the batch's start date for filtering
-            const monthStr = batch.dateRangeStart.substring(0, 7); // YYYY-MM
-            setDateFilter(monthStr);
-        }
-    }, [selectedBatchId, importBatches]);
-
-    // Handle batchId from URL - respect URL changes but allow manual overrides
-    useEffect(() => {
-        const batchId = searchParams.get('batchId');
-        const tab = searchParams.get('tab');
-
-        // Only apply if the URL parameters have changed since we last synced them
-        if (batchId !== lastUrlSync.current.batchId || tab !== lastUrlSync.current.tab) {
-            if (batchId) setSelectedBatchId(batchId);
-            if (tab) setActiveTab(tab);
-
-            // Record what we just synced to prevent fighting manual changes
-            lastUrlSync.current = { batchId, tab };
-        }
-    }, [searchParams]);
-
-    // Track the previous manager to detect manager switches
-    const prevManagerRef = useRef<string>('');
-
-    // Effect to reload data when tab, date, or manager changes (AFTER initial load)
-    useEffect(() => {
-        // Only run after initial load is complete
-        if (!initialLoadDone || !user?.id || !selectedManagerId) {
-            console.log('⏸️ Reload useEffect skipped (waiting for initial load)', { initialLoadDone, userId: user?.id, selectedManagerId });
-            return;
-        }
-
-        const managerChanged = prevManagerRef.current !== '' && prevManagerRef.current !== selectedManagerId;
-        prevManagerRef.current = selectedManagerId;
-
-        console.log('🔁 Reload useEffect triggered', {
-            activeTab,
-            selectedDate,
-            dateFilter,
-            selectedManagerId,
-            managerChanged
-        });
-
-        // When manager changes, reload the employees list + all tab data for counters
-        if (managerChanged) {
-            const reloadAll = async () => {
-                setLoadingData(true);
-
-                // Limpiar datos stale para evitar mostrar estadísticas de otro manager/rol
-                setMonthlyStats([]);
-                setDailyStats([]);
-                setTardiness([]);
-                setEarlyDepartures([]);
-                setOvertimeRequests([]);
-                setMissingPunches([]);
-                setHourBanks([]);
-
-                try {
-                    // Reload employees for the new manager
-                    const fnEmployees = hierarchyDepth === undefined || hierarchyDepth > 1 
-                        ? (mId: string) => getHierarchicalReports(mId, hierarchyDepth === undefined ? 10 : hierarchyDepth)
-                        : getDirectReports;
-                    const empResult = await fnEmployees(selectedManagerId);
-                    if (empResult.success && empResult.employees) {
-                        setEmployees(empResult.employees);
-                        setHasSubordinates(empResult.employees.length > 0);
-                    } else {
-                        setEmployees([]);
-                        setHasSubordinates(false);
-                    }
-
-                    // Reload ALL tab data in parallel so header counters update correctly
-                    // Parse dateFilter safely (it can be 'all' or unsupported values)
-                    const now = new Date();
-                    let parsedYear = now.getFullYear();
-                    let parsedMonth = now.getMonth() + 1;
-
-                    if (dateFilter !== 'all' && /^\d{4}-\d{2}/.test(dateFilter)) {
-                        const parts = dateFilter.split('-').map(Number);
-                        parsedYear = parts[0];
-                        parsedMonth = parts[1];
-                    }
-
-                    const [
-                        monthlyStatsResult,
-                        dailyStatsResult,
-                        tardinessResult,
-                        departuresResult,
-                        punchesResult,
-                        otResult
-                    ] = await Promise.all([
-                        getTeamMonthlyStats(selectedManagerId, parsedYear, parsedMonth, hierarchyDepth),
-                        getTeamDailyStats(selectedManagerId, selectedDate, hierarchyDepth),
-                        getTeamTardiness(selectedManagerId, dateFilter, hierarchyDepth),
-                        getTeamEarlyDepartures(selectedManagerId, dateFilter, hierarchyDepth),
-                        getTeamMissingPunches(selectedManagerId, dateFilter, hierarchyDepth),
-                        hasPermission(permissions, 'hcm_team_overtime', 'read') ? getTeamOvertimeRequests(selectedManagerId, 'all', hierarchyDepth) : Promise.resolve({ success: true, requests: [] })
-                    ]);
-
-                    if (monthlyStatsResult.success && monthlyStatsResult.stats) {
-                        setMonthlyStats(monthlyStatsResult.stats);
-                    }
-                    if (dailyStatsResult.success && dailyStatsResult.stats) {
-                        setDailyStats(dailyStatsResult.stats);
-                    }
-                    if (tardinessResult.success && tardinessResult.records) {
-                        setTardiness(tardinessResult.records);
-                    }
-                    if (departuresResult.success && departuresResult.records) {
-                        setEarlyDepartures(departuresResult.records);
-                    }
-                    if (punchesResult.success && punchesResult.records) {
-                        setMissingPunches(punchesResult.records);
-                    }
-                    if (otResult.success && otResult.requests) {
-                        setOvertimeRequests(otResult.requests);
-                    }
-
-                    // If activeTab is not overview, load it
-                    if (activeTab !== 'overview') {
-                        await loadTabData(activeTab, selectedManagerId);
-                    }
-                } catch (error) {
-                    console.error('Error reloading data for manager switch:', error);
-                } finally {
-                    setLoadingData(false);
-                }
-            };
-            reloadAll();
-        } else {
-            // Normal reload: just reload current tab data
-            loadTabData(activeTab);
-        }
-    }, [activeTab, selectedDate, dateFilter, selectedManagerId, initialLoadDone, hierarchyDepth]); // Removed loadingData and loadTabData from deps
-
-    // Recargar estadísticas mensuales cuando se cambia el mes (independiente de dateFilter)
-    const prevSelectedMonthRef = useRef(selectedMonth);
-    useEffect(() => {
-        // Solo recargar si el mes realmente cambió (no en la carga inicial)
-        if (prevSelectedMonthRef.current === selectedMonth) return;
-        prevSelectedMonthRef.current = selectedMonth;
-        if (!initialLoadDone || !user?.id || !selectedManagerId) return;
-
-        const [year, month] = selectedMonth.split('-').map(Number);
-        if (!year || !month) return;
-
-        (async () => {
-            const result = await getTeamMonthlyStats(selectedManagerId, year, month, hierarchyDepth);
-            if (result.success && result.stats) {
-                setMonthlyStats(result.stats);
-            }
-        })();
-    }, [selectedMonth, initialLoadDone, selectedManagerId, hierarchyDepth, user?.id]);
-
-    // Handlers
-    const handleViewHourBankHistory = async (employee: Employee) => {
-        setHourBankDialog({ open: true, employee });
-        setHourBankMovements([]);
-        const result = await getHourBankMovements(employee.id);
-        if (result.success && result.movements) {
-            setHourBankMovements(result.movements);
-        }
-    };
-
-    const handleJustifyTardiness = async () => {
-        if (!justifyTardinessDialog.record || !justificationReason.trim() || !user || !justificationType) return;
-
-        setSubmitting(true);
-        try {
-            const result = await justifyTardiness(
-                justifyTardinessDialog.record.id,
-                justificationReason,
-                user.uid || user.id || '',
-                user.fullName || user.displayName || user.email || 'Admin',
-                useHourBank,
-                justificationType
-            );
-
-            if (result.success) {
-                setJustifyTardinessDialog({ open: false });
-                setJustificationReason('');
-                setJustificationType(undefined);
-                const wasHourBank = useHourBank;
-                setUseHourBank(false);
-                loadTabData('tardiness');
-                // Refrescar bolsa de horas si se usó
-                if (wasHourBank) {
-                    loadTabData('hour-bank');
-                }
-                toast({ title: 'Retardo justificado', description: wasHourBank ? 'El retardo ha sido justificado y registrado en la bolsa de horas.' : 'El retardo ha sido justificado correctamente.' });
-            } else {
-                toast({ title: 'Error', description: result.error || 'No se pudo justificar el retardo.', variant: 'destructive' });
-            }
-        } catch (err) {
-            console.error('[Team] Error justifying tardiness:', err);
-            toast({ title: 'Error', description: 'Error inesperado al justificar retardo.', variant: 'destructive' });
-        } finally {
-            setSubmitting(false);
-        }
-    };
-
-    const handleJustifyDeparture = async () => {
-        if (!justifyDepartureDialog.record || !justificationReason.trim() || !user || !justificationType) return;
-
-        setSubmitting(true);
-        try {
-            const result = await justifyEarlyDeparture(
-                justifyDepartureDialog.record.id,
-                justificationReason,
-                user.uid || user.id || '',
-                user.fullName || user.displayName || user.email || 'Admin',
-                useHourBank,
-                justificationType
-            );
-
-            if (result.success) {
-                setJustifyDepartureDialog({ open: false });
-                setJustificationReason('');
-                setJustificationType(undefined);
-                const wasHourBank = useHourBank;
-                setUseHourBank(false);
-                loadTabData('early-departures');
-                // Refrescar bolsa de horas si se usó
-                if (wasHourBank) {
-                    loadTabData('hour-bank');
-                }
-                toast({ title: 'Salida temprana justificada', description: wasHourBank ? 'La salida ha sido justificada y registrada en la bolsa de horas.' : 'La salida temprana ha sido justificada correctamente.' });
-            } else {
-                toast({ title: 'Error', description: result.error || 'No se pudo justificar la salida temprana.', variant: 'destructive' });
-            }
-        } catch (err) {
-            console.error('[Team] Error justifying early departure:', err);
-            toast({ title: 'Error', description: 'Error inesperado al justificar salida temprana.', variant: 'destructive' });
-        } finally {
-            setSubmitting(false);
-        }
-    };
-
-    const handleMarkTardinessUnjustified = async (record: TardinessRecord) => {
-        if (!user) return;
-        setSubmitting(true);
-        try {
-            const result = await markTardinessUnjustified(
-                record.id,
-                user.id || '',
-                user.fullName || 'Admin'
-            );
-
-            if (result.success) {
-                loadTabData('tardiness');
-                toast({
-                    title: "Marcado como injustificado",
-                    description: "El retardo ha sido marcado como injustificado.",
-                    variant: "default"
-                });
-            } else {
-                toast({
-                    title: "Error",
-                    description: "No se pudo marcar como injustificado.",
-                    variant: "destructive"
-                });
-            }
-        } finally {
-            setSubmitting(false);
-        }
-    };
-
-    const handleMarkDepartureUnjustified = async (record: EarlyDeparture) => {
-        if (!user) return;
-        setSubmitting(true);
-        try {
-            const result = await markEarlyDepartureUnjustified(
-                record.id,
-                user.id || '',
-                user.fullName || 'Admin'
-            );
-
-            if (result.success) {
-                loadTabData('early-departures');
-                toast({
-                    title: "Marcado como injustificado",
-                    description: "La salida temprana ha sido marcada como injustificada.",
-                    variant: "default"
-                });
-            } else {
-                toast({
-                    title: "Error",
-                    description: "No se pudo marcar como injustificada.",
-                    variant: "destructive"
-                });
-            }
-        } finally {
-            setSubmitting(false);
-        }
-    };
-
-    const handleApproveOvertime = async (partial: boolean) => {
-        if (!overtimeDialog.request || !user?.id) return;
-
-        setSubmitting(true);
-        try {
-            const requestedHours = overtimeDialog.request.hoursRequested;
-            let approvedHours = partial ? parseFloat(hoursToApprove) : requestedHours;
-
-            // --- DEBT DEDUCTION LOGIC ---
-            // 1. Get current debt
-            const hb = hourBanks.find(h => h.employeeId === overtimeDialog.request?.employeeId);
-            const currentDebt = hb?.balanceMinutes && hb.balanceMinutes > 0 ? hb.balanceMinutes : 0;
-            const approvedMinutes = approvedHours * 60;
-
-            // 2. Calculate amortization
-            const amortizedMinutes = Math.min(currentDebt, approvedMinutes);
-            const paidMinutes = Math.max(0, approvedMinutes - amortizedMinutes);
-            const paidHours = paidMinutes / 60;
-
-            // 3. Register movement if paying debt
-            if (amortizedMinutes > 0) {
-                const moveResult = await manualHourBankAdjustment({
-                    employeeId: overtimeDialog.request.employeeId,
-                    date: new Date().toISOString(),
-                    minutes: -amortizedMinutes, // Negative to reduce positive debt (Debe 60 -> -10 -> Debe 50)
-                    reason: `Compensación automática por Horas Extras (${formatMinutesToReadable(amortizedMinutes)})`,
-                    createdById: user.id,
-                    createdByName: user.displayName || 'Manager'
-                });
-
-                if (!moveResult.success) {
-                    console.error('Error registering debt payment:', moveResult.error);
-                    // Continue anyway? Optional: throw error
-                }
-            }
-
-            // 4. Approve only the PAID hours (net)
-            // If all went to debt (paidHours === 0), it's still "approved" but with 0 paid hours
-            const result = await approveOvertimeRequest(
-                overtimeDialog.request.id,
-                user.id,
-                user.displayName || 'Manager',
-                paidHours // Use NET hours
-            );
-
-            if (result.success) {
-                setOvertimeDialog({ open: false });
-                loadTabData('overtime');
-                // Refresh hour banks too to show updated debt
-                loadTabData('hour-bank');
-            }
-        } catch (error) {
-            console.error('Error approving overtime:', error);
-        } finally {
-            setSubmitting(false);
-        }
-    };
-
-    // Helper needed inside the scope
-    const formatMins = (mins: number) => {
-        const h = Math.floor(mins / 60);
-        const m = Math.round(mins % 60);
-        return `${h}h ${m}m`;
-    };
-
-    const handleRejectOvertime = async () => {
-        if (!overtimeDialog.request || !rejectionReason.trim() || !user) return;
-
-        setSubmitting(true);
-        try {
-            const result = await rejectOvertimeRequest(
-                overtimeDialog.request.id,
-                user.id || '',
-                user.fullName || user.email || '',
-                rejectionReason
-            );
-
-            if (result.success) {
-                setOvertimeDialog({ open: false });
-                setRejectionReason('');
-                loadTabData('overtime');
-            }
-        } finally {
-            setSubmitting(false);
-        }
-    };
-
-    const handleAssignShift = async () => {
-        if (!shiftDialog.employee || !shiftForm.shiftId || !user) return;
-
-        setSubmitting(true);
-        try {
-            const selectedShift = shifts.find(s => s.id === shiftForm.shiftId);
-            const result = await assignShift(
-                shiftDialog.employee.id,
-                shiftDialog.employee.fullName,
-                shiftForm.shiftId,
-                selectedShift?.name || '',
-                shiftForm.type,
-                shiftForm.startDate,
-                shiftForm.reason,
-                user.id || '',
-                user.fullName || user.email || '',
-                shiftForm.type === 'temporary' ? shiftForm.endDate : undefined
-            );
-
-            if (result.success) {
-                setShiftDialog({ open: false });
-                setShiftForm({ shiftId: '', type: 'temporary', startDate: new Date().toISOString().split('T')[0], endDate: '', reason: '' });
-                loadTabData('shifts');
-            }
-        } finally {
-            setSubmitting(false);
-        }
-    };
-
-    const handleCancelShiftAssignment = async () => {
-        if (!cancelShiftDialog.assignment || !user) return;
-
-        setSubmitting(true);
-        try {
-            const result = await cancelShiftAssignment(
-                cancelShiftDialog.assignment.id,
-                user.id || '',
-                user.fullName || user.email || ''
-            );
-
-            if (result.success) {
-                setCancelShiftDialog({ open: false });
-                loadTabData('shifts');
-            }
-        } finally {
-            setSubmitting(false);
-        }
-    };
-
-    const handleViewShiftHistory = async (employee: Employee) => {
-        setShiftHistoryDialog({ open: true, employee });
-        setShiftHistory([]);
-        const result = await getEmployeeShiftHistory(employee.id);
-        if (result.success && result.history) {
-            setShiftHistory(result.history);
-        }
-    };
-
-    const getCurrentShift = (employee: Employee) => {
-        // 1. Check for active temporary assignments covering today
-        const today = new Date().toISOString().split('T')[0];
-        // Sort by start date desc to get latest
-        const activeAssignment = shiftAssignments
-            .filter(a =>
-                a.employeeId === employee.id &&
-                a.status === 'active' &&
-                a.startDate <= today &&
-                (!a.endDate || a.endDate >= today)
-            )
-            .sort((a, b) => b.startDate.localeCompare(a.startDate))[0];
-
-        if (activeAssignment) {
-            return {
-                name: activeAssignment.newShiftName,
-                isTemp: activeAssignment.assignmentType === 'temporary', // It could be permanent too if permanent assignment is stored as 'active'
-                isOverride: true
-            };
-        }
-
-        // 2. Fallback to employee's permanent shift (customShiftId)
-        if (employee.customShiftId) {
-            const customShift = shifts.find(s => s.id === employee.customShiftId);
-            if (customShift) return { name: customShift.name, isTemp: false, isOverride: false };
-        }
-
-        // 3. Fallback to legacy shiftType
-        const legacyName = employee.shiftType === 'diurnal' ? 'Diurno' :
-            employee.shiftType === 'nocturnal' ? 'Nocturno' : 'Mixto';
-        return { name: legacyName, isTemp: false, isOverride: false };
-    };
-
-
-
-
-
-
-    // Missing Punches Handlers
-    const handleJustifyMissingPunch = async () => {
-        if (!justifyMissingPunchDialog.punch || !user) return;
-
-        const punch = justifyMissingPunchDialog.punch;
-        const employee = employees.find(e => e.id === punch.employeeId);
-
-        if (!employee) {
-            toast({
-                title: "Error",
-                description: "No se encontró el empleado",
-                variant: "destructive"
-            });
-            return;
-        }
-
-        // Validar que se haya proporcionado al menos una hora
-        if (!providedEntryTime && !providedExitTime) {
-            toast({
-                title: "Error",
-                description: "Debes proporcionar al menos una hora (entrada o salida)",
-                variant: "destructive"
-            });
-            return;
-        }
-
-        setSubmitting(true);
-        try {
-            // Obtener horarios del shift del empleado
-            // 1. Buscar asignación activa en shiftAssignments
-            // 2. Fallback: turno base del empleado (customShiftId o shiftId)
-            // 3. Fallback: leer del registro de asistencia (attendance record)
-            // 4. Fallback: horario por defecto 09:00-18:00
-            let scheduledStart = '09:00';
-            let scheduledEnd = '18:00';
-            let shiftResolved = false;
-
-            const employeeAssignment = shiftAssignments.find(sa =>
-                sa.employeeId === punch.employeeId &&
-                sa.status === 'active'
-            );
-
-            if (employeeAssignment) {
-                const shift = shifts.find(s => s.id === employeeAssignment.newShiftId);
-                if (shift) {
-                    scheduledStart = shift.startTime;
-                    scheduledEnd = shift.endTime;
-                    shiftResolved = true;
-                }
-            }
-
-            if (!shiftResolved) {
-                // Fallback: turno base del empleado (customShiftId o shiftId)
-                const baseShiftId = (employee as any).customShiftId || (employee as any).shiftId;
-                if (baseShiftId) {
-                    const baseShift = shifts.find(s => s.id === baseShiftId);
-                    if (baseShift) {
-                        scheduledStart = baseShift.startTime;
-                        scheduledEnd = baseShift.endTime;
-                        shiftResolved = true;
-                    }
-                }
-            }
-
-            if (!shiftResolved && punch.attendanceRecordId && firestore) {
-                // Fallback: leer horario del registro de asistencia importado
-                try {
-                    const { doc, getDoc } = await import('firebase/firestore');
-                    const attRef = doc(firestore, 'attendance', punch.attendanceRecordId);
-                    const attSnap = await getDoc(attRef);
-                    if (attSnap.exists()) {
-                        const attData = attSnap.data();
-                        if (attData.scheduledStart) scheduledStart = attData.scheduledStart;
-                        if (attData.scheduledEnd) scheduledEnd = attData.scheduledEnd;
-                        shiftResolved = true;
-                        console.log(`[HCM] Shift resolved from attendance record: ${scheduledStart}-${scheduledEnd}`);
-                    }
-                } catch (attErr) {
-                    console.warn('[HCM] Could not read attendance record for shift:', attErr);
-                }
-            }
-
-            if (!shiftResolved) {
-                console.warn(`[HCM] No se encontró turno para ${employee.fullName}, usando horario por defecto: ${scheduledStart}-${scheduledEnd}`);
-            }
-
-            console.log(`[HCM] justifyMissingPunch handler: employee=${employee.fullName}, scheduledStart=${scheduledStart}, scheduledEnd=${scheduledEnd}, providedEntry=${providedEntryTime}, providedExit=${providedExitTime}`);
-
-            const result = await justifyMissingPunch(
-                punch.id,
-                justificationReason || 'Justificado por manager',
-                providedEntryTime || undefined,
-                providedExitTime || undefined,
-                scheduledStart,
-                scheduledEnd,
-                user.id || '',
-                user.fullName || user.email || '',
-                10 // toleranceMinutes - TODO: obtener de location
-            );
-
-            if (result.success) {
-                toast({
-                    title: "Marcaje justificado",
-                    description: result.generatedTardinessId || result.generatedEarlyDepartureId
-                        ? "Se generó un registro de retardo/salida temprana automáticamente"
-                        : "El marcaje fue justificado exitosamente",
-                });
-
-                setJustifyMissingPunchDialog({ open: false });
-                setJustificationReason('');
-                setProvidedEntryTime('');
-                setProvidedExitTime('');
-
-                // ⚠️ REGLA CRÍTICA (team-management-module):
-                // justifyMissingPunch puede generar registros en tardiness_records
-                // y/o early_departures además de actualizar missing_punches.
-                // Siempre recargar los tres tabs para que los nuevos registros
-                // aparezcan en sus pestañas correspondientes.
-                // NO reducir estas llamadas a solo 'missing-punches'.
-                loadTabData('missing-punches');
-                if (result.generatedTardinessId) loadTabData('tardiness');
-                if (result.generatedEarlyDepartureId) loadTabData('early-departures');
-            } else {
-                throw new Error(result.error || 'Error al justificar marcaje');
-            }
-        } catch (error) {
-            console.error('Error justifying missing punch:', error);
-            toast({
-                title: "Error",
-                description: error instanceof Error ? error.message : "No se pudo justificar el marcaje",
-                variant: "destructive"
-            });
-        } finally {
-            setSubmitting(false);
-        }
-    };
-
-    const handleMarkMissingPunchAsFault = async (punch: any) => {
-        if (!user || !firestore) return;
-
-        const confirmed = window.confirm(
-            '¿Estás seguro de marcar este marcaje faltante como FALTA?\n\n' +
-            'Esta acción generará una falta injustificada para el empleado.'
-        );
-
-        if (!confirmed) return;
-
-        setSubmitting(true);
-        try {
-            await runTransaction(firestore, async (transaction) => {
-                const punchRef = doc(firestore, 'missing_punches', punch.id);
-                // MUST READ BEFORE WRITE in Firestore transactions
-                const punchDoc = await transaction.get(punchRef);
-                
-                if (!punchDoc.exists()) {
-                    throw new Error("El marcaje faltante ya no existe o fue eliminado.");
-                }
-
-                // Si existe attendanceRecordId, lo actualizamos en la misma transacción
-                if (punch.attendanceRecordId && punch.attendanceRecordId !== '__pending__') {
-                    const attendanceRef = doc(firestore, 'attendance', punch.attendanceRecordId);
-                    const attendanceDoc = await transaction.get(attendanceRef);
-                    
-                    if (attendanceDoc.exists()) {
-                        transaction.update(attendanceRef, {
-                            status: 'absence_unjustified',
-                            nomipaqCode: '1FINJ',
-                            updatedAt: serverTimestamp(),
-                            // Agregar el evento al array podría requerir manipulación adicional, 
-                            // por ahora solo actualizamos el status principal.
-                        });
-                    }
-                }
-
-                transaction.update(punchRef, {
-                    status: 'absence_unjustified',
-                    resultedInAbsence: true,
-                    processed: true,
-                    processedAt: serverTimestamp(),
-                    processedBy: user.uid || user.id || 'system',
-                    updatedAt: serverTimestamp(),
-                });
-            });
-
-            toast({
-                title: "Marcaje marcado como falta",
-                description: "El marcaje faltante se marcó como falta injustificada",
-            });
-
-            // Recargar datos
-            loadTabData('missing-punches');
-
-        } catch (error) {
-            console.error('Error marking missing punch as fault:', error);
-            toast({
-                title: "Error",
-                description: error instanceof Error ? error.message : "No se pudo marcar como falta",
-                variant: "destructive"
-            });
-        } finally {
-            setSubmitting(false);
-        }
-    };
-
-
-    // Computed values
-    const pendingTardiness = tardiness.filter(t => !t.isJustified && t.justificationStatus !== 'unjustified');
-    const pendingDepartures = earlyDepartures.filter(d => !d.isJustified && d.justificationStatus !== 'unjustified');
-    const pendingOvertime = overtimeRequests.filter(o => o.status === 'pending');
-    const pendingMissingPunches = missingPunches.filter(p => !p.isJustified && !p.resultedInAbsence);
-
-    // Filter employees by shift in the list
-    const filteredEmployees = employees.filter(emp =>
-        (selectedShiftFilter === 'all' || emp.shiftType === selectedShiftFilter) &&
-        (selectedEmployeeFilter === 'all' || emp.id === selectedEmployeeFilter)
-    ).filter(emp =>
-        !searchTerm || emp.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        emp.email.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-
-    // We can build a quick map from the 'employees' list
-    const employeeShiftMap = useMemo(() => {
-        const map = new Map<string, ShiftType>();
-        employees.forEach(e => map.set(e.id, e.shiftType || 'diurnal'));
-        return map;
-    }, [employees]);
-
-    const filterByShift = (employeeId: string) => {
-        if (selectedShiftFilter === 'all') return true;
-        return employeeShiftMap.get(employeeId) === selectedShiftFilter;
-    };
-
-    // Calculate active date range from batch
-    const activeBatchRange = useMemo(() => {
-        if (selectedBatchId === 'all') return null;
-        const batch = importBatches.find(b => b.id === selectedBatchId);
-        if (batch && batch.dateRangeStart && batch.dateRangeEnd) {
-            return { start: batch.dateRangeStart, end: batch.dateRangeEnd };
-        }
-        return null;
-    }, [selectedBatchId, importBatches]);
-
-
-    const filteredTardiness = tardiness.filter(record => {
-        const matchesSearch = !searchTerm ||
-            ((record as any).employeeName || employees.find(e => e.id === record.employeeId)?.fullName || '').toLowerCase().includes(searchTerm.toLowerCase());
-        const matchesStatus = statusFilter === 'all' ||
-            (statusFilter === 'pending'
-                ? (!record.isJustified && record.justificationStatus !== 'unjustified')
-                : (record.isJustified || record.justificationStatus === 'unjustified'));
-        const matchesEmployee = selectedEmployeeFilter === 'all' || record.employeeId === selectedEmployeeFilter;
-        // Los pendientes siempre son visibles. Solo los procesados se filtran por rango de fecha.
-        const isPending = !record.isJustified && record.justificationStatus !== 'unjustified';
-        const matchesDate = isPending || !activeBatchRange || (record.date >= activeBatchRange.start && record.date <= activeBatchRange.end);
-
-        return matchesSearch && matchesStatus && filterByShift(record.employeeId) && matchesEmployee && matchesDate;
-    }).sort((a, b) => a.date.localeCompare(b.date));
-
-    const filteredDepartures = earlyDepartures.filter(record => {
-        const matchesSearch = !searchTerm ||
-            (record.employeeName || '').toLowerCase().includes(searchTerm.toLowerCase());
-        const matchesStatus = statusFilter === 'all' ||
-            (statusFilter === 'pending'
-                ? (!record.isJustified && record.justificationStatus !== 'unjustified')
-                : (record.isJustified || record.justificationStatus === 'unjustified'));
-        const matchesEmployee = selectedEmployeeFilter === 'all' || record.employeeId === selectedEmployeeFilter;
-        // Los pendientes siempre son visibles. Solo los procesados se filtran por rango de fecha.
-        const isPending = !record.isJustified && record.justificationStatus !== 'unjustified';
-        const matchesDate = isPending || !activeBatchRange || (record.date >= activeBatchRange.start && record.date <= activeBatchRange.end);
-
-        return matchesSearch && matchesStatus && filterByShift(record.employeeId) && matchesEmployee && matchesDate;
-    }).sort((a, b) => a.date.localeCompare(b.date));
-
-    const filteredOvertime = overtimeRequests.filter(r => {
-        const matchesEmployee = selectedEmployeeFilter === 'all' || r.employeeId === selectedEmployeeFilter;
-        // Las solicitudes pendientes SIEMPRE son visibles sin importar el rango de fecha
-        // El backend ya inyectó los pendientes vía dual-query; aquí solo garantizamos que
-        // el filtro de fecha en el cliente tampoco los excluya.
-        const isPending = r.status === 'pending';
-        const matchesDate = isPending || !activeBatchRange || (r.date >= activeBatchRange.start && r.date <= activeBatchRange.end);
-        return filterByShift(r.employeeId) && matchesEmployee && matchesDate;
-    }).sort((a, b) => a.date.localeCompare(b.date));
-
-    const calculatedOvertimeStats = useMemo(() => {
-        let pending = 0;
-        let approved = 0;
-        let rejected = 0;
-        let partial = 0;
-        let totalHoursApproved = 0;
-        let totalHoursPending = 0;
-
-        filteredOvertime.forEach(req => {
-            switch (req.status) {
-                case 'pending':
-                    pending++;
-                    totalHoursPending += req.hoursRequested || 0;
-                    break;
-                case 'approved':
-                    approved++;
-                    totalHoursApproved += req.hoursApproved ?? req.hoursRequested ?? 0;
-                    break;
-                case 'rejected':
-                    rejected++;
-                    break;
-                case 'partial':
-                    partial++;
-                    totalHoursApproved += req.hoursApproved ?? 0;
-                    break;
-            }
-        });
-
-        return { pending, approved, rejected, partial, totalHoursApproved, totalHoursPending };
-    }, [filteredOvertime]);
-
-    const filteredAssignments = shiftAssignments.filter(r => {
-        const matchesEmployee = selectedEmployeeFilter === 'all' || r.employeeId === selectedEmployeeFilter;
-        // Date Filter for assignments (overlap check)
-        const assignmentEnd = r.endDate || '9999-12-31';
-        const matchesDate = !activeBatchRange || (r.startDate <= activeBatchRange.end && assignmentEnd >= activeBatchRange.start);
-
-        return filterByShift(r.employeeId) && matchesEmployee && matchesDate;
-    });
-
-    const filteredMissingPunches = missingPunches.filter(p => {
-        const matchesEmployee = selectedEmployeeFilter === 'all' || p.employeeId === selectedEmployeeFilter;
-        // Los marcajes sin procesar siempre son visibles. Solo los procesados se filtran por rango.
-        const isPending = !p.isJustified && !p.resultedInAbsence && !p.processed;
-        const matchesDate = isPending || !activeBatchRange || (p.date >= activeBatchRange.start && p.date <= activeBatchRange.end);
-        return matchesEmployee && matchesDate;
-    }).sort((a, b) => a.date.localeCompare(b.date));
-
-
-    const filteredMonthlyStats = monthlyStats.filter(stat => {
-        const matchesSearch = !searchTerm || stat.employeeName.toLowerCase().includes(searchTerm.toLowerCase());
-        const matchesEmployee = selectedEmployeeFilter === 'all' || stat.employeeId === selectedEmployeeFilter;
-        return matchesSearch && filterByShift(stat.employeeId) && matchesEmployee;
-    });
-
-    // Helper to change date
-    const changeDate = (days: number) => {
-        const date = new Date(selectedDate);
-        date.setDate(date.getDate() + days);
-        setSelectedDate(date.toISOString().split('T')[0]);
-    };
+    const {
+        permissions,
+        activeBatchRange, activeLocks, activeTab, availableManagers, calculatedOvertimeStats,
+        canEmployeeUseTimeBank, cancelShiftDialog, changeDate, dailyStats, dateFilter,
+        earlyDepartures, employeeShiftMap, employees, filterByShift, filteredAssignments,
+        filteredDepartures, filteredEmployees, filteredMissingPunches, filteredMonthlyStats, filteredOvertime,
+        filteredTardiness, formatMins, getCurrentShift, handleApproveOvertime, handleAssignShift,
+        handleCancelShiftAssignment, handleJustifyDeparture, handleJustifyMissingPunch, handleJustifyTardiness, handleMarkDepartureUnjustified,
+        handleMarkMissingPunchAsFault, handleMarkTardinessUnjustified, handleRejectOvertime, handleViewHourBankHistory, handleViewShiftHistory,
+        hasSubordinates, hourBankAdjustment, hourBankDialog, hourBankMovements, hourBanks,
+        hoursToApprove, importBatches, initialLoadDone, isDateLocked, isPeriodClosed,
+        justificationReason, justificationType, justifyDepartureDialog, justifyMissingPunchDialog, justifyTardinessDialog,
+        lastUrlSync, loadImportBatches, loadTabData, loadingData, loadingPeriodStatus,
+        missingPunches, monthlyStats, overtimeDialog, overtimeRequests, overtimeStats,
+        pendingDepartures, pendingMissingPunches, pendingOvertime, pendingTardiness, positionsQuery,
+        prevManagerRef, prevSelectedMonthRef, providedEntryTime, providedExitTime, refreshing,
+        rejectionReason, searchTerm, selectedBatchId, selectedDate, selectedEmployeeFilter,
+        selectedManagerId, selectedMonth, selectedShiftFilter, setActiveLocks, setActiveTab,
+        setAvailableManagers, setCancelShiftDialog, setDailyStats, setDateFilter, setEarlyDepartures,
+        setEmployees, setHasSubordinates, setHourBankAdjustment, setHourBankDialog, setHourBankMovements,
+        setHourBanks, setHoursToApprove, setImportBatches, setInitialLoadDone, setIsPeriodClosed,
+        setJustificationReason, setJustificationType, setJustifyDepartureDialog, setJustifyMissingPunchDialog, setJustifyTardinessDialog,
+        setLoadingData, setLoadingPeriodStatus, setMissingPunches, setMonthlyStats, setOvertimeDialog,
+        setOvertimeRequests, setOvertimeStats, setProvidedEntryTime, setProvidedExitTime, setRefreshing,
+        setRejectionReason, setSearchTerm, setSelectedBatchId, setSelectedDate, setSelectedEmployeeFilter,
+        setSelectedManagerId, setSelectedMonth, setSelectedShiftFilter, setShiftAssignments, setShiftDialog,
+        setShiftForm, setShiftHistory, setShiftHistoryDialog, setShifts, setStatusFilter,
+        setSubmitting, setTardiness, setUseHourBank, shiftAssignments, shiftDialog,
+        shiftForm, shiftHistory, shiftHistoryDialog, shifts, statusFilter,
+        submitting, tardiness, useHourBank,
+    } = useTeamManagement();
+
+    const { user, isUserLoading } = useFirebase();
+    const { isLoading: loadingPermissions } = usePermissions();
+
+    // Adaptadores de firma: traducen tipos estrictos del hook a la interfaz (val: string) => void
+    // que esperan los tabs, sin modificar ni el hook ni los componentes.
+    const setStatusFilterAdapter = (val: string) =>
+        setStatusFilter(val as 'all' | 'pending' | 'justified');
+    const hasPermissionAdapter = (perms: any, resource: string, action: string): boolean =>
+        hasPermission(perms, resource as any, action as any);
 
     if (isUserLoading || loadingPermissions || loadingData) {
         return (
@@ -1452,11 +163,23 @@ function TeamManagementContent() {
             <div className="space-y-6">
                 {/* Header */}
                 <div className="flex items-center justify-between">
-                    <div>
-                        <h1 className="text-3xl font-bold">Gestión de Equipo</h1>
-                        <p className="text-muted-foreground">
-                            Administra retardos, horas extras y turnos de tu equipo
-                        </p>
+                    <div className="flex items-center gap-4">
+                        <Button
+                            variant="outline"
+                            size="icon"
+                            className="border-blue-500 text-blue-600 hover:bg-blue-50 shrink-0"
+                            asChild
+                        >
+                            <Link href="/hcm">
+                                <ArrowLeft className="h-4 w-4" />
+                            </Link>
+                        </Button>
+                        <div>
+                            <h1 className="text-3xl font-bold">Gestión de Equipo</h1>
+                            <p className="text-muted-foreground">
+                                Administra retardos, horas extras y turnos de tu equipo
+                            </p>
+                        </div>
                     </div>
                     <div className="flex items-center gap-4">
                         {/* Manager Selector for Global Access */}
@@ -1634,830 +357,120 @@ function TeamManagementContent() {
 
                     {/* Overview Tab */}
                     <TabsContent value="overview" className="space-y-4">
-                        {/* Date Navigation */}
-                        <Card>
-                            <CardHeader>
-                                <div className="flex items-center justify-between">
-                                    <CardTitle>Vista Diaria</CardTitle>
-                                    <div className="flex items-center gap-2">
-                                        <Select value={selectedEmployeeFilter} onValueChange={setSelectedEmployeeFilter}>
-                                            <SelectTrigger className="w-[220px]">
-                                                <SelectValue placeholder="Todos los empleados" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="all">Todos los empleados</SelectItem>
-                                                {employees.map(emp => (
-                                                    <SelectItem key={emp.id} value={emp.id}>
-                                                        {emp.fullName}
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-                                        <Button variant="outline" size="icon" onClick={() => changeDate(-1)}>
-                                            <ChevronLeft className="h-4 w-4" />
-                                        </Button>
-                                        <Input
-                                            type="date"
-                                            value={selectedDate}
-                                            onChange={(e) => setSelectedDate(e.target.value)}
-                                            className="w-40"
-                                        />
-                                        <Button variant="outline" size="icon" onClick={() => changeDate(1)}>
-                                            <ChevronRight className="h-4 w-4" />
-                                        </Button>
-                                    </div>
-                                </div>
-                            </CardHeader>
-                            <CardContent>
-                                <Table>
-                                    <TableHeader>
-                                        <TableRow>
-                                            <TableHead>Empleado</TableHead>
-                                            <TableHead>Entrada</TableHead>
-                                            <TableHead>Salida</TableHead>
-                                            <TableHead>Retardo</TableHead>
-                                            <TableHead>Salida Temprana</TableHead>
-                                            <TableHead>Horas Extras</TableHead>
-                                            <TableHead>Sin Registro</TableHead>
-                                            <TableHead>Incidencia</TableHead>
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {dailyStats.filter(s => selectedEmployeeFilter === 'all' || s.employeeId === selectedEmployeeFilter).length === 0 ? (
-                                            <TableRow>
-                                                <TableCell colSpan={8} className="text-center text-muted-foreground">
-                                                    Sin registros para este día
-                                                </TableCell>
-                                            </TableRow>
-                                        ) : (
-                                            dailyStats.filter(s => selectedEmployeeFilter === 'all' || s.employeeId === selectedEmployeeFilter).map((stat) => (
-                                                <TableRow key={stat.employeeId}>
-                                                    <TableCell className="font-medium">{stat.employeeName}</TableCell>
-                                                    <TableCell>
-                                                        {stat.isRestDay && !stat.checkIn && !stat.checkOut
-                                                            ? <span className="text-blue-500 font-medium">Descanso</span>
-                                                            : stat.checkIn || '-'}
-                                                    </TableCell>
-                                                    <TableCell>
-                                                        {stat.isRestDay && !stat.checkIn && !stat.checkOut
-                                                            ? <span className="text-blue-500 font-medium">Descanso</span>
-                                                            : stat.checkOut || '-'}
-                                                    </TableCell>
-                                                    <TableCell>
-                                                        {stat.tardinessMinutes ? (
-                                                            <Badge variant="outline" className={stat.tardinessJustified ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'}>
-                                                                {stat.tardinessMinutes} min
-                                                            </Badge>
-                                                        ) : '-'}
-                                                    </TableCell>
-                                                    <TableCell>
-                                                        {stat.earlyDepartureMinutes ? (
-                                                            <Badge variant="outline" className={stat.earlyDepartureJustified ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'}>
-                                                                {stat.earlyDepartureMinutes} min
-                                                            </Badge>
-                                                        ) : '-'}
-                                                    </TableCell>
-                                                    <TableCell>
-                                                        {stat.overtimeHoursRequested ? (
-                                                            <Badge variant="outline" className={
-                                                                stat.overtimeStatus === 'approved' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-                                                                    stat.overtimeStatus === 'rejected' ? 'bg-rose-50 text-rose-700 border-rose-200' :
-                                                                        stat.overtimeStatus === 'partial' ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-amber-50 text-amber-700 border-amber-200'
-                                                            }>
-                                                                {stat.overtimeHoursApproved || stat.overtimeHoursRequested}h
-                                                            </Badge>
-                                                        ) : '-'}
-                                                    </TableCell>
-                                                    <TableCell>
-                                                        {stat.hasMissingPunch ? (
-                                                            <Badge variant="outline" className={stat.missingPunchJustified ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'}>
-                                                                {stat.missingPunchType === 'both' ? 'Entrada + Salida' :
-                                                                    stat.missingPunchType === 'entry' ? 'Entrada' : 'Salida'}
-                                                            </Badge>
-                                                        ) : '-'}
-                                                    </TableCell>
-                                                    <TableCell>
-                                                        {stat.hasIncidence ? (
-                                                            <Badge variant="outline" className={stat.incidenceStatus === 'approved' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'}>
-                                                                {stat.incidenceType === 'vacation' ? 'Vacaciones' :
-                                                                    stat.incidenceType === 'sick_leave' ? 'Incapacidad' :
-                                                                        stat.incidenceType === 'personal_leave' ? 'Permiso Personal' :
-                                                                            stat.incidenceType === 'maternity' ? 'Maternidad' :
-                                                                                stat.incidenceType === 'paternity' ? 'Paternidad' :
-                                                                                    stat.incidenceType === 'bereavement' ? 'Duelo' :
-                                                                                        stat.incidenceType === 'marriage' ? 'Matrimonio' :
-                                                                                            stat.incidenceType === 'unpaid_leave' ? 'Permiso sin Goce' :
-                                                                                                stat.incidenceType === 'unjustified_absence' ? 'Falta Injustificada' :
-                                                                                                    stat.incidenceType === 'abandono_empleo' ? 'Abandono de Empleo' :
-                                                                                                        stat.incidenceType || '-'}
-                                                            </Badge>
-                                                        ) : '-'}
-                                                    </TableCell>
-                                                </TableRow>
-                                            ))
-                                        )}
-                                    </TableBody>
-                                </Table>
-                            </CardContent>
-                        </Card>
-
-                        {/* Monthly Stats */}
-                        <Card>
-                            <CardHeader>
-                                <div className="flex items-center justify-between">
-                                    <CardTitle>Estadísticas Mensuales</CardTitle>
-                                    <div className="flex items-center gap-2">
-                                        <Input
-                                            placeholder="Buscar empleado..."
-                                            value={searchTerm}
-                                            onChange={(e) => setSearchTerm(e.target.value)}
-                                            className="w-48"
-                                        />
-                                        <Button variant="outline" size="icon" onClick={() => {
-                                            const [y, m] = selectedMonth.split('-').map(Number);
-                                            const d = new Date(y, m - 2, 1);
-                                            setSelectedMonth(`${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}`);
-                                        }}>
-                                            <ChevronLeft className="h-4 w-4" />
-                                        </Button>
-                                        <Input
-                                            type="month"
-                                            value={selectedMonth}
-                                            onChange={(e) => setSelectedMonth(e.target.value)}
-                                            className="w-52"
-                                        />
-                                        <Button variant="outline" size="icon" onClick={() => {
-                                            const [y, m] = selectedMonth.split('-').map(Number);
-                                            const d = new Date(y, m, 1);
-                                            setSelectedMonth(`${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}`);
-                                        }}>
-                                            <ChevronRight className="h-4 w-4" />
-                                        </Button>
-                                    </div>
-                                </div>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                    {filteredMonthlyStats.map((stat) => (
-                                        <Card key={stat.employeeId} className="border">
-                                            <CardHeader className="pb-2">
-                                                <div className="flex items-center gap-3">
-                                                    <Avatar>
-                                                        <AvatarImage src={stat.avatarUrl} />
-                                                        <AvatarFallback>{stat.employeeName.charAt(0)}</AvatarFallback>
-                                                    </Avatar>
-                                                    <div>
-                                                        <CardTitle className="text-base">{stat.employeeName}</CardTitle>
-                                                        <CardDescription>{stat.positionTitle}</CardDescription>
-                                                    </div>
-                                                </div>
-                                            </CardHeader>
-                                            <CardContent className="space-y-2">
-                                                <div className="flex justify-between text-sm">
-                                                    <span>Retardos</span>
-                                                    <span className={stat.unjustifiedTardiness > 0 ? 'text-red-500 font-medium' : ''}>
-                                                        {stat.justifiedTardiness}/{stat.totalTardiness}
-                                                    </span>
-                                                </div>
-                                                <div className="flex justify-between text-sm">
-                                                    <span>Salidas Tempranas</span>
-                                                    <span>
-                                                        {stat.justifiedEarlyDepartures}/{stat.totalEarlyDepartures}
-                                                    </span>
-                                                </div>
-                                                <div className="flex justify-between text-sm">
-                                                    <span>HE Aprobadas</span>
-                                                    <span className="text-green-600 font-medium">
-                                                        {stat.overtimeHoursApproved}h
-                                                    </span>
-                                                </div>
-                                                {stat.overtimeRequestsPending > 0 && (
-                                                    <Badge variant="outline" className="w-full justify-center">
-                                                        {stat.overtimeRequestsPending} solicitudes pendientes
-                                                    </Badge>
-                                                )}
-                                            </CardContent>
-                                        </Card>
-                                    ))}
-                                </div>
-                            </CardContent>
-                        </Card>
+                        <TeamOverviewTab
+                            dailyStats={dailyStats}
+                            selectedEmployeeFilter={selectedEmployeeFilter}
+                            setSelectedEmployeeFilter={setSelectedEmployeeFilter}
+                            employees={employees}
+                            changeDate={changeDate}
+                            selectedDate={selectedDate}
+                            setSelectedDate={setSelectedDate}
+                            searchTerm={searchTerm}
+                            setSearchTerm={setSearchTerm}
+                            selectedMonth={selectedMonth}
+                            setSelectedMonth={setSelectedMonth}
+                            filteredMonthlyStats={filteredMonthlyStats}
+                        />
                     </TabsContent>
 
                     {/* Tardiness Tab */}
                     <TabsContent value="tardiness">
-                        <Card>
-                            <CardHeader>
-                                <div className="flex items-center justify-between">
-                                    <div>
-                                        <CardTitle>Retardos del Equipo</CardTitle>
-                                        <CardDescription>Justifica los retardos pendientes de tu equipo</CardDescription>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <Input
-                                            placeholder="Buscar empleado..."
-                                            value={searchTerm}
-                                            onChange={(e) => setSearchTerm(e.target.value)}
-                                            className="w-48"
-                                        />
-                                        <Select value={selectedEmployeeFilter} onValueChange={setSelectedEmployeeFilter}>
-                                            <SelectTrigger className="w-48">
-                                                <SelectValue placeholder="Filtrar por empleado" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="all">Todos los empleados</SelectItem>
-                                                {employees.map(emp => (
-                                                    <SelectItem key={emp.id} value={emp.id}>
-                                                        {emp.fullName}
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-                                        <Select value={statusFilter} onValueChange={(v: any) => setStatusFilter(v)}>
-                                            <SelectTrigger className="w-32">
-                                                <SelectValue placeholder="Estado" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="all">Todos</SelectItem>
-                                                <SelectItem value="pending">Pendientes</SelectItem>
-                                                <SelectItem value="justified">Justificados</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-                                </div>
-                            </CardHeader>
-                            <CardContent>
-                                <Table>
-                                    <TableHeader>
-                                        <TableRow>
-                                            <TableHead>Fecha</TableHead>
-                                            <TableHead>Empleado</TableHead>
-                                            <TableHead>Hora Prog.</TableHead>
-                                            <TableHead>Hora Real</TableHead>
-                                            <TableHead>Minutos</TableHead>
-                                            <TableHead>Estado</TableHead>
-                                            <TableHead className="text-right">Acciones</TableHead>
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {filteredTardiness.length === 0 ? (
-                                            <TableRow>
-                                                <TableCell colSpan={7} className="text-center text-muted-foreground">
-                                                    Sin registros para los filtros seleccionados
-                                                </TableCell>
-                                            </TableRow>
-                                        ) : (
-                                            filteredTardiness.map((record) => (
-                                                <TableRow key={record.id}>
-                                                    <TableCell>{formatDateDDMMYYYY(record.date)}</TableCell>
-                                                    <TableCell className="font-medium">
-                                                        {(record as any).employeeName || employees.find(e => e.id === record.employeeId)?.fullName || record.employeeId}
-                                                    </TableCell>
-                                                    <TableCell>{record.scheduledTime}</TableCell>
-                                                    <TableCell>{record.actualTime}</TableCell>
-                                                    <TableCell>
-                                                        <Badge variant="outline">{record.minutesLate} min</Badge>
-                                                    </TableCell>
-                                                    <TableCell>
-                                                        {record.justificationStatus === 'unjustified' ? (
-                                                            <Badge variant="outline" className="bg-rose-50 text-rose-700 border-rose-200">Injustificado</Badge>
-                                                        ) : record.isJustified ? (
-                                                            <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200">Justificado</Badge>
-                                                        ) : (
-                                                            <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">Pendiente</Badge>
-                                                        )}
-                                                    </TableCell>
-                                                    <TableCell className="text-right">
-                                                        {!record.isJustified && record.justificationStatus !== 'unjustified' && hasPermission(permissions, 'hcm_team_tardiness', 'write') && (
-                                                            <div className="flex justify-end gap-2">
-                                                                <Button
-                                                                    variant="ghost"
-                                                                    size="sm"
-                                                                    className="text-destructive hover:text-destructive/90 hover:bg-destructive/10"
-                                                                    disabled={isPeriodClosed || submitting}
-                                                                    onClick={() => handleMarkTardinessUnjustified(record)}
-                                                                >
-                                                                    Injustificado
-                                                                </Button>
-                                                                <Button
-                                                                    size="sm"
-                                                                    disabled={isPeriodClosed}
-                                                                    onClick={() => {
-                                                                        setJustifyTardinessDialog({ open: true, record, employeeName: employees.find(e => e.id === record.employeeId)?.fullName || record.employeeId });
-                                                                        setJustificationReason('');
-                                                                        setJustificationType(undefined);
-                                                                        setUseHourBank(false);
-                                                                    }}
-                                                                >
-                                                                    Justificar
-                                                                </Button>
-                                                            </div>
-                                                        )}
-                                                    </TableCell>
-                                                </TableRow>
-                                            ))
-                                        )}
-                                    </TableBody>
-                                </Table>
-                            </CardContent>
-                        </Card>
+                        <TeamTardinessTab
+                            searchTerm={searchTerm}
+                            setSearchTerm={setSearchTerm}
+                            selectedEmployeeFilter={selectedEmployeeFilter}
+                            setSelectedEmployeeFilter={setSelectedEmployeeFilter}
+                            employees={employees}
+                            statusFilter={statusFilter}
+                            setStatusFilter={setStatusFilterAdapter}
+                            filteredTardiness={filteredTardiness}
+                            permissions={permissions}
+                            hasPermission={hasPermissionAdapter}
+                            isPeriodClosed={isPeriodClosed}
+                            submitting={submitting}
+                            handleMarkTardinessUnjustified={handleMarkTardinessUnjustified}
+                            setJustifyTardinessDialog={setJustifyTardinessDialog}
+                            setJustificationReason={setJustificationReason}
+                            setJustificationType={setJustificationType}
+                            setUseHourBank={setUseHourBank}
+                        />
                     </TabsContent>
 
                     {/* Early Departures Tab */}
                     <TabsContent value="early-departures">
-                        <Card>
-                            <CardHeader>
-                                <div className="flex items-center justify-between">
-                                    <div>
-                                        <CardTitle>Salidas Tempranas</CardTitle>
-                                        <CardDescription>Justifica las salidas tempranas de tu equipo</CardDescription>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <Input
-                                            placeholder="Buscar empleado..."
-                                            value={searchTerm}
-                                            onChange={(e) => setSearchTerm(e.target.value)}
-                                            className="w-48"
-                                        />
-                                        <Select value={selectedEmployeeFilter} onValueChange={setSelectedEmployeeFilter}>
-                                            <SelectTrigger className="w-48">
-                                                <SelectValue placeholder="Filtrar por empleado" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="all">Todos los empleados</SelectItem>
-                                                {employees.map(emp => (
-                                                    <SelectItem key={emp.id} value={emp.id}>
-                                                        {emp.fullName}
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-                                        <Select value={statusFilter} onValueChange={(v: any) => setStatusFilter(v)}>
-                                            <SelectTrigger className="w-32">
-                                                <SelectValue placeholder="Estado" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="all">Todos</SelectItem>
-                                                <SelectItem value="pending">Pendientes</SelectItem>
-                                                <SelectItem value="justified">Justificados</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-                                </div>
-                            </CardHeader>
-                            <CardContent>
-                                <Table>
-                                    <TableHeader>
-                                        <TableRow>
-                                            <TableHead>Fecha</TableHead>
-                                            <TableHead>Empleado</TableHead>
-                                            <TableHead>Salida Prog.</TableHead>
-                                            <TableHead>Salida Real</TableHead>
-                                            <TableHead>Minutos</TableHead>
-                                            <TableHead>Estado</TableHead>
-                                            <TableHead className="text-right">Acciones</TableHead>
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {filteredDepartures.length === 0 ? (
-                                            <TableRow>
-                                                <TableCell colSpan={7} className="text-center text-muted-foreground">
-                                                    Sin registros para los filtros seleccionados
-                                                </TableCell>
-                                            </TableRow>
-                                        ) : (
-                                            filteredDepartures.map((record) => (
-                                                <TableRow key={record.id}>
-                                                    <TableCell>{formatDateDDMMYYYY(record.date)}</TableCell>
-                                                    <TableCell className="font-medium">{record.employeeName}</TableCell>
-                                                    <TableCell>{record.scheduledTime || record.scheduledEndTime}</TableCell>
-                                                    <TableCell>{record.actualTime || record.actualEndTime}</TableCell>
-                                                    <TableCell>
-                                                        <Badge variant="outline">{record.minutesEarly} min</Badge>
-                                                    </TableCell>
-                                                    <TableCell>
-                                                        {record.justificationStatus === 'unjustified' ? (
-                                                            <Badge variant="outline" className="bg-rose-50 text-rose-700 border-rose-200">Injustificado</Badge>
-                                                        ) : record.isJustified ? (
-                                                            <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200">Justificado</Badge>
-                                                        ) : (
-                                                            <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">Pendiente</Badge>
-                                                        )}
-                                                    </TableCell>
-                                                    <TableCell className="text-right">
-                                                        {!record.isJustified && record.justificationStatus !== 'unjustified' && hasPermission(permissions, 'hcm_team_departures', 'write') && (
-                                                            <div className="flex justify-end gap-2">
-                                                                <Button
-                                                                    variant="ghost"
-                                                                    size="sm"
-                                                                    className="text-destructive hover:text-destructive/90 hover:bg-destructive/10"
-                                                                    disabled={isPeriodClosed || submitting}
-                                                                    onClick={() => handleMarkDepartureUnjustified(record)}
-                                                                >
-                                                                    Injustificado
-                                                                </Button>
-                                                                <Button
-                                                                    size="sm"
-                                                                    disabled={isPeriodClosed}
-                                                                    onClick={() => {
-                                                                        setJustifyDepartureDialog({ open: true, record, employeeName: employees.find(e => e.id === record.employeeId)?.fullName || record.employeeId });
-                                                                        setJustificationReason('');
-                                                                        setJustificationType(undefined);
-                                                                        setUseHourBank(false);
-                                                                    }}
-                                                                >
-                                                                    Justificar
-                                                                </Button>
-                                                            </div>
-                                                        )}
-                                                    </TableCell>
-                                                </TableRow>
-                                            ))
-                                        )}
-                                    </TableBody>
-                                </Table>
-                            </CardContent>
-                        </Card>
+                        <TeamEarlyDeparturesTab
+                            searchTerm={searchTerm}
+                            setSearchTerm={setSearchTerm}
+                            selectedEmployeeFilter={selectedEmployeeFilter}
+                            setSelectedEmployeeFilter={setSelectedEmployeeFilter}
+                            employees={employees}
+                            statusFilter={statusFilter}
+                            setStatusFilter={setStatusFilterAdapter}
+                            filteredDepartures={filteredDepartures}
+                            permissions={permissions}
+                            hasPermission={hasPermissionAdapter}
+                            isPeriodClosed={isPeriodClosed}
+                            submitting={submitting}
+                            handleMarkDepartureUnjustified={handleMarkDepartureUnjustified}
+                            setJustifyDepartureDialog={setJustifyDepartureDialog}
+                            setJustificationReason={setJustificationReason}
+                            setJustificationType={setJustificationType}
+                            setUseHourBank={setUseHourBank}
+                        />
                     </TabsContent>
 
                     {/* Missing Punches Tab */}
                     <TabsContent value="missing-punches">
-                        <Card>
-                            <CardHeader>
-                                <div className="flex items-center justify-between">
-                                    <div>
-                                        <CardTitle>Marcajes Faltantes</CardTitle>
-                                        <CardDescription>Justifica o marca como falta los registros incompletos de entrada/salida</CardDescription>
-                                    </div>
-                                    <Select value={selectedEmployeeFilter} onValueChange={setSelectedEmployeeFilter}>
-                                        <SelectTrigger className="w-48">
-                                            <SelectValue placeholder="Filtrar por empleado" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="all">Todos los empleados</SelectItem>
-                                            {employees.map(emp => (
-                                                <SelectItem key={emp.id} value={emp.id}>
-                                                    {emp.fullName}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                            </CardHeader>
-                            <CardContent>
-                                <Table>
-                                    <TableHeader>
-                                        <TableRow>
-                                            <TableHead>Fecha</TableHead>
-                                            <TableHead>Empleado</TableHead>
-                                            <TableHead>Tipo Faltante</TableHead>
-                                            <TableHead>Estado</TableHead>
-                                            <TableHead className="text-right">Acciones</TableHead>
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {filteredMissingPunches.length === 0 ? (
-                                            <TableRow>
-                                                <TableCell colSpan={5} className="text-center text-muted-foreground">
-                                                    Sin marcajes faltantes para los filtros seleccionados
-                                                </TableCell>
-                                            </TableRow>
-                                        ) : (
-                                            filteredMissingPunches
-                                                .map((punch) => {
-                                                    const employee = employees.find(e => e.id === punch.employeeId);
-                                                    const missingTypeLabels = {
-                                                        entry: 'Entrada',
-                                                        exit: 'Salida',
-                                                        both: 'Ambos'
-                                                    };
-
-                                                    return (
-                                                        <TableRow key={punch.id}>
-                                                            <TableCell>{punch.date}</TableCell>
-                                                            <TableCell>
-                                                                <div className="flex items-center gap-2">
-                                                                    <div className="font-medium">{employee?.fullName || punch.employeeName}</div>
-                                                                    {punch.isHomeOffice && (
-                                                                        <Badge
-                                                                            variant="outline"
-                                                                            className="bg-blue-100 text-blue-700 border-blue-300 text-[10px] px-1.5 py-0 font-bold tracking-wide"
-                                                                        >
-                                                                            HO
-                                                                        </Badge>
-                                                                    )}
-                                                                    {(employee?.workMode === 'remote' || employee?.workMode === 'field') && (
-                                                                        <span
-                                                                            title={employee.workMode === 'remote' ? 'Trabajo Remoto' : 'En Campo'}
-                                                                            className={`inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0 rounded border ${
-                                                                                employee.workMode === 'remote'
-                                                                                    ? 'bg-violet-100 text-violet-700 border-violet-300'
-                                                                                    : 'bg-amber-100 text-amber-700 border-amber-300'
-                                                                            }`}
-                                                                        >
-                                                                            <MapPin className="h-2.5 w-2.5" />
-                                                                            {employee.workMode === 'remote' ? 'REM' : 'CAM'}
-                                                                        </span>
-                                                                    )}
-                                                                </div>
-                                                            </TableCell>
-                                                            <TableCell>
-                                                                <Badge className={cn(
-                                                                    "gap-1.5 px-3 py-1 font-semibold shadow-sm border-2",
-                                                                    punch.missingType === 'entry' ? 'bg-emerald-100 text-emerald-800 border-emerald-300' :
-                                                                        punch.missingType === 'exit' ? 'bg-indigo-100 text-indigo-800 border-indigo-300' :
-                                                                            'bg-rose-100 text-rose-800 border-rose-300'
-                                                                )} variant="outline">
-                                                                    {punch.missingType === 'entry' && <LogIn className="w-3.5 h-3.5" />}
-                                                                    {punch.missingType === 'exit' && <LogOut className="w-3.5 h-3.5" />}
-                                                                    {punch.missingType === 'both' && <ArrowLeftRight className="w-3.5 h-3.5" />}
-                                                                    {missingTypeLabels[punch.missingType as keyof typeof missingTypeLabels]}
-                                                                </Badge>
-                                                            </TableCell>
-                                                            <TableCell>
-                                                                {punch.isJustified ? (
-                                                                    <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200">Justificado</Badge>
-                                                                ) : punch.resultedInAbsence ? (
-                                                                    <Badge variant="outline" className="bg-rose-50 text-rose-700 border-rose-200">Falta</Badge>
-                                                                ) : (
-                                                                    <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">Pendiente</Badge>
-                                                                )}
-                                                            </TableCell>
-                                                            <TableCell className="text-right">
-                                                                {!punch.isJustified && !punch.resultedInAbsence && hasPermission(permissions, 'hcm_team_tardiness', 'write') && (
-                                                                    <div className="flex justify-end gap-2">
-                                                                        <Button
-                                                                            variant="ghost"
-                                                                            size="sm"
-                                                                            className="text-destructive hover:text-destructive/90 hover:bg-destructive/10"
-                                                                            disabled={isPeriodClosed || submitting}
-                                                                            onClick={() => handleMarkMissingPunchAsFault(punch)}
-                                                                        >
-                                                                            Marcar Falta
-                                                                        </Button>
-                                                                        <Button
-                                                                            size="sm"
-                                                                            disabled={isPeriodClosed || submitting}
-                                                                            onClick={() => {
-                                                                                setJustifyMissingPunchDialog({
-                                                                                    open: true,
-                                                                                    punch,
-                                                                                    employeeName: employee?.fullName || punch.employeeName
-                                                                                });
-                                                                                setJustificationReason('');
-                                                                                setProvidedEntryTime('');
-                                                                                setProvidedExitTime('');
-                                                                            }}
-                                                                        >
-                                                                            Justificar
-                                                                        </Button>
-                                                                    </div>
-                                                                )}
-                                                            </TableCell>
-                                                        </TableRow>
-                                                    );
-                                                })
-                                        )}
-                                    </TableBody>
-                                </Table>
-                            </CardContent>
-                        </Card>
+                        <TeamMissingPunchesTab
+                            selectedEmployeeFilter={selectedEmployeeFilter}
+                            setSelectedEmployeeFilter={setSelectedEmployeeFilter}
+                            employees={employees}
+                            filteredMissingPunches={filteredMissingPunches}
+                            permissions={permissions}
+                            hasPermission={hasPermissionAdapter}
+                            isPeriodClosed={isPeriodClosed}
+                            submitting={submitting}
+                            handleMarkMissingPunchAsFault={handleMarkMissingPunchAsFault}
+                            setJustifyMissingPunchDialog={setJustifyMissingPunchDialog}
+                            setJustificationReason={setJustificationReason}
+                            setProvidedEntryTime={setProvidedEntryTime}
+                            setProvidedExitTime={setProvidedExitTime}
+                        />
                     </TabsContent>
 
                     {/* Overtime Tab */}
 
                     <TabsContent value="overtime">
-                        <Card>
-                            <CardHeader>
-                                <div className="flex items-center justify-between">
-                                    <div>
-                                        <CardTitle>Solicitudes de Horas Extras</CardTitle>
-                                        <CardDescription>
-                                            Aprobadas: {Number(overtimeStats.totalHoursApproved).toFixed(2)}h |
-                                            Pendientes: {Number(overtimeStats.totalHoursPending).toFixed(2)}h
-                                        </CardDescription>
-                                    </div>
-                                    <div className="flex gap-2">
-                                        <Select value={selectedEmployeeFilter} onValueChange={setSelectedEmployeeFilter}>
-                                            <SelectTrigger className="w-48">
-                                                <SelectValue placeholder="Filtrar por empleado" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="all">Todos los empleados</SelectItem>
-                                                {employees.map(emp => (
-                                                    <SelectItem key={emp.id} value={emp.id}>
-                                                        {emp.fullName}
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-                                        <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200">{overtimeStats.approved} aprobadas</Badge>
-                                        <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">{overtimeStats.pending} pendientes</Badge>
-                                        <Badge variant="outline" className="bg-rose-50 text-rose-700 border-rose-200">{overtimeStats.rejected} rechazadas</Badge>
-                                    </div>
-                                </div>
-                            </CardHeader>
-                            <CardContent>
-                                <Table>
-                                    <TableHeader>
-                                        <TableRow>
-                                            <TableHead>Fecha</TableHead>
-                                            <TableHead>Empleado</TableHead>
-                                            <TableHead>Deuda B. Horas</TableHead>
-                                            <TableHead>Horas Solicitadas</TableHead>
-                                            <TableHead>Razón</TableHead>
-                                            <TableHead>Estado</TableHead>
-                                            <TableHead>Aprobadas</TableHead>
-                                            <TableHead>Dobles</TableHead>
-                                            <TableHead>Triples</TableHead>
-                                            <TableHead className="text-right">Acciones</TableHead>
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {filteredOvertime.length === 0 ? (
-                                            <TableRow>
-                                                <TableCell colSpan={9} className="text-center text-muted-foreground">
-                                                    Sin solicitudes de horas extras
-                                                </TableCell>
-                                            </TableRow>
-                                        ) : (
-                                            filteredOvertime.map((request) => (
-                                                <TableRow key={request.id}>
-                                                    <TableCell>{formatDateDDMMYYYY(request.date)}</TableCell>
-                                                    <TableCell className="font-medium">{request.employeeName}</TableCell>
-                                                    <TableCell>
-                                                        {(() => {
-                                                            const hb = hourBanks.find(h => h.employeeId === request.employeeId);
-                                                            const balance = hb?.balanceMinutes || 0;
-                                                            if (balance > 0) {
-                                                                const debt = Math.abs(balance);
-                                                                const hours = Math.floor(debt / 60);
-                                                                const mins = debt % 60;
-                                                                return (
-                                                                    <Badge variant="outline" className="bg-rose-50 text-rose-700 border-rose-200 font-bold">
-                                                                        -{hours}h {mins}m
-                                                                    </Badge>
-                                                                );
-                                                            }
-                                                            return <span className="text-muted-foreground">-</span>;
-                                                        })()}
-                                                    </TableCell>
-                                                    <TableCell>
-                                                        <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 font-semibold">
-                                                            {Number(request.hoursRequested).toFixed(2)}h
-                                                        </Badge>
-                                                    </TableCell>
-                                                    <TableCell className="max-w-xs truncate">{request.reason}</TableCell>
-                                                    <TableCell>
-                                                        <Badge className={cn(
-                                                            "gap-1.5 px-3 py-1 font-semibold shadow-sm border-2",
-                                                            request.status === 'approved' ? 'bg-emerald-100 text-emerald-800 border-emerald-300' :
-                                                                request.status === 'rejected' ? 'bg-rose-100 text-rose-800 border-rose-300' :
-                                                                    request.status === 'partial' ? 'bg-indigo-100 text-indigo-800 border-indigo-300' : 
-                                                                    'bg-amber-100 text-amber-800 border-amber-300'
-                                                        )} variant="outline">
-                                                            {request.status === 'approved' && <CheckCircle2 className="w-3.5 h-3.5" />}
-                                                            {request.status === 'rejected' && <XCircle className="w-3.5 h-3.5" />}
-                                                            {request.status === 'partial' && <Clock className="w-3.5 h-3.5" />}
-                                                            {request.status === 'pending' && <AlertCircle className="w-3.5 h-3.5" />}
-                                                            {request.status === 'approved' ? 'Aprobada' :
-                                                                request.status === 'rejected' ? 'Rechazada' :
-                                                                    request.status === 'partial' ? 'Parcial' : 'Pendiente'}
-                                                        </Badge>
-                                                    </TableCell>
-                                                    <TableCell>
-                                                        {request.hoursApproved !== undefined ? `${Number(request.hoursApproved).toFixed(2)}h` : '-'}
-                                                    </TableCell>
-                                                    <TableCell>
-                                                        {request.doubleHours !== undefined ? `${Number(request.doubleHours).toFixed(2)}h` : '-'}
-                                                    </TableCell>
-                                                    <TableCell>
-                                                        {request.tripleHours !== undefined ? `${Number(request.tripleHours).toFixed(2)}h` : '-'}
-                                                    </TableCell>
-                                                    <TableCell className="text-right">
-                                                        {request.status === 'pending' && hasPermission(permissions, 'hcm_team_overtime', 'write') && (
-                                                            <Button
-                                                                size="sm"
-                                                                disabled={isPeriodClosed}
-                                                                onClick={() => {
-                                                                    setOvertimeDialog({ open: true, request });
-                                                                    setHoursToApprove(request.hoursRequested.toString());
-                                                                    setRejectionReason('');
-                                                                }}
-                                                            >
-                                                                Revisar
-                                                            </Button>
-                                                        )}
-                                                    </TableCell>
-                                                </TableRow>
-                                            ))
-                                        )}
-                                    </TableBody>
-                                </Table>
-                            </CardContent>
-                        </Card>
+                        <TeamOvertimeTab
+                            overtimeStats={overtimeStats}
+                            selectedEmployeeFilter={selectedEmployeeFilter}
+                            setSelectedEmployeeFilter={setSelectedEmployeeFilter}
+                            employees={employees}
+                            filteredOvertime={filteredOvertime}
+                            hourBanks={hourBanks}
+                            permissions={permissions}
+                            hasPermission={hasPermissionAdapter}
+                            isPeriodClosed={isPeriodClosed}
+                            setOvertimeDialog={setOvertimeDialog}
+                            setHoursToApprove={setHoursToApprove}
+                            setRejectionReason={setRejectionReason}
+                        />
                     </TabsContent>
 
                     {/* Shifts Tab */}
                     <TabsContent value="shifts">
-                        <Card>
-                            <CardHeader>
-                                <div className="flex items-center justify-between">
-                                    <div>
-                                        <CardTitle>Turnos y Horarios del Equipo</CardTitle>
-                                        <CardDescription>Asigna turnos o modifica horarios de tus subordinados</CardDescription>
-                                    </div>
-                                    <Select value={selectedEmployeeFilter} onValueChange={setSelectedEmployeeFilter}>
-                                        <SelectTrigger className="w-64 bg-slate-900 border-slate-800 text-slate-50 focus:ring-slate-400 font-medium shadow-md">
-                                            <div className="flex items-center gap-2">
-                                                <Filter className="h-4 w-4 text-indigo-400" />
-                                                <SelectValue placeholder="Filtrar por empleado" />
-                                            </div>
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="all">Todos los empleados</SelectItem>
-                                            {employees.map(emp => (
-                                                <SelectItem key={emp.id} value={emp.id}>
-                                                    {emp.fullName}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                            </CardHeader>
-                            <CardContent>
-                                <Table>
-                                    <TableHeader>
-                                        <TableRow>
-                                            <TableHead>Empleado</TableHead>
-                                            <TableHead>Puesto</TableHead>
-                                            <TableHead>Turno Actual</TableHead>
-                                            <TableHead className="text-right">Acciones</TableHead>
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {filteredEmployees.map((employee) => {
-                                            const currentShift = getCurrentShift(employee);
-                                            return (
-                                                <TableRow key={employee.id}>
-                                                    <TableCell>
-                                                        <div className="flex items-center gap-3">
-                                                            <Avatar className="h-8 w-8">
-                                                                <AvatarImage src={employee.avatarUrl} />
-                                                                <AvatarFallback>{employee.fullName?.charAt(0)}</AvatarFallback>
-                                                            </Avatar>
-                                                            <span className="font-medium">{employee.fullName}</span>
-                                                        </div>
-                                                    </TableCell>
-                                                    <TableCell>{employee.positionTitle}</TableCell>
-                                                    <TableCell>
-                                                        <div className="flex flex-col">
-                                                            <Badge className={cn(
-                                                                "w-fit gap-1.5 px-3 py-1 font-semibold shadow-sm border-2",
-                                                                (currentShift?.name || '').toLowerCase().includes('diurno') ? 'bg-emerald-100 text-emerald-800 border-emerald-300' :
-                                                                    (currentShift?.name || '').toLowerCase().includes('nocturno') ? 'bg-slate-900 text-slate-50 border-slate-700 ring-1 ring-slate-600' :
-                                                                        (currentShift?.name || '').toLowerCase().includes('mixto') ? 'bg-amber-100 text-amber-800 border-amber-300' :
-                                                                            'bg-blue-100 text-blue-800 border-blue-300'
-                                                            )} variant="outline">
-                                                                {(currentShift?.name || '').toLowerCase().includes('diurno') && <Sun className="w-3.5 h-3.5 text-emerald-600" />}
-                                                                {(currentShift?.name || '').toLowerCase().includes('nocturno') && <Moon className="w-3.5 h-3.5 text-indigo-300" />}
-                                                                {(currentShift?.name || '').toLowerCase().includes('mixto') && <SunMoon className="w-3.5 h-3.5 text-amber-600" />}
-                                                                {currentShift?.name || 'Sin turno'}
-                                                            </Badge>
-                                                            {currentShift.isTemp && <span className="text-xs text-muted-foreground mt-1">Temporal</span>}
-                                                        </div>
-                                                    </TableCell>
-                                                    <TableCell className="text-right">
-                                                        <div className="flex gap-2 justify-end">
-                                                            <Button
-                                                                size="sm"
-                                                                variant="ghost"
-                                                                onClick={() => handleViewShiftHistory(employee)}
-                                                            >
-                                                                <History className="h-4 w-4 mr-1" />
-                                                            </Button>
-                                                            {hasPermission(permissions, 'hcm_team_shifts', 'write') && (
-                                                                <Button
-                                                                    size="sm"
-                                                                    variant="outline"
-                                                                    onClick={() => {
-                                                                        setShiftDialog({ open: true, employee });
-                                                                        setShiftForm({ shiftId: '', type: 'temporary', startDate: new Date().toISOString().split('T')[0], endDate: '', reason: '' });
-                                                                    }}
-                                                                >
-                                                                    <CalendarDays className="h-4 w-4 mr-1" />
-                                                                    Asignar Turno
-                                                                </Button>
-                                                            )}
-                                                        </div>
-                                                    </TableCell>
-                                                </TableRow>
-                                            );
-                                        })}
-                                    </TableBody>
-                                </Table>
-                            </CardContent>
-                        </Card>
+                        <TeamShiftsTab
+                            selectedEmployeeFilter={selectedEmployeeFilter}
+                            setSelectedEmployeeFilter={setSelectedEmployeeFilter}
+                            employees={employees}
+                            filteredEmployees={filteredEmployees}
+                            permissions={permissions}
+                            hasPermission={hasPermissionAdapter}
+                            getCurrentShift={getCurrentShift}
+                            handleViewShiftHistory={handleViewShiftHistory}
+                            setShiftDialog={setShiftDialog}
+                            setShiftForm={setShiftForm}
+                        />
                     </TabsContent>
 
 
@@ -2465,110 +478,15 @@ function TeamManagementContent() {
                     {/* Hour Bank Tab */}
                     {hasPermission(permissions, 'hcm_team_hour_bank', 'read') && (
                         <TabsContent value="hour-bank">
-                            <Card>
-                                <CardHeader>
-                                    <div className="flex items-center justify-between">
-                                        <CardTitle>Bolsa de Horas del Equipo</CardTitle>
-                                        <Select value={selectedEmployeeFilter} onValueChange={setSelectedEmployeeFilter}>
-                                            <SelectTrigger className="w-64 bg-slate-900 border-slate-800 text-slate-50 focus:ring-slate-400 font-medium shadow-md">
-                                                <div className="flex items-center gap-2">
-                                                    <Filter className="h-4 w-4 text-indigo-400" />
-                                                    <SelectValue placeholder="Filtrar por empleado" />
-                                                </div>
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="all">Todos los empleados</SelectItem>
-                                                {employees.map(emp => (
-                                                    <SelectItem key={emp.id} value={emp.id}>
-                                                        {emp.fullName}
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-                                    <CardDescription>Gestiona el saldo de horas de tu equipo</CardDescription>
-                                </CardHeader>
-                                <CardContent>
-                                    <Table>
-                                        <TableHeader>
-                                            <TableRow>
-                                                <TableHead>Empleado</TableHead>
-                                                <TableHead>Puesto</TableHead>
-                                                <TableHead>Saldo Actual</TableHead>
-                                                <TableHead>Acumulado Histórico</TableHead>
-                                                <TableHead>Compensado Histórico</TableHead>
-                                                <TableHead className="text-right">Acciones</TableHead>
-                                            </TableRow>
-                                        </TableHeader>
-                                        <TableBody>
-                                            {employees.filter(e => selectedEmployeeFilter === 'all' || e.id === selectedEmployeeFilter).map((employee) => {
-                                                const hb = hourBanks.find(h => h.employeeId === employee.id);
-                                                const balance = hb?.balanceMinutes || 0;
-                                                const formatted = formatHourBankBalance(balance);
-
-                                                return (
-                                                    <TableRow key={employee.id}>
-                                                        <TableCell>
-                                                            <div className="flex items-center gap-3">
-                                                                <Avatar className="h-8 w-8">
-                                                                    <AvatarImage src={employee.avatarUrl} />
-                                                                    <AvatarFallback>{employee.fullName?.charAt(0)}</AvatarFallback>
-                                                                </Avatar>
-                                                                <div>
-                                                                    <div className="font-medium">{employee.fullName}</div>
-                                                                    <div className="text-xs text-muted-foreground">{employee.email}</div>
-                                                                </div>
-                                                            </div>
-                                                        </TableCell>
-                                                        <TableCell>{employee.positionTitle}</TableCell>
-                                                        <TableCell>
-                                                            <Badge 
-                                                                variant="outline" 
-                                                                className={cn(
-                                                                    "font-bold px-2.5 py-0.5",
-                                                                    balance > 0 ? "bg-rose-50 text-rose-700 border-rose-200" : 
-                                                                    balance < 0 ? "bg-emerald-50 text-emerald-700 border-emerald-200" : 
-                                                                    "bg-slate-50 text-slate-600 border-slate-200"
-                                                                )}
-                                                            >
-                                                                {formatted.text}
-                                                            </Badge>
-                                                        </TableCell>
-                                                        <TableCell>
-                                                            {hb?.totalDebtAccumulated ? (
-                                                                <Badge variant="outline" className="bg-rose-50 text-rose-700 border-rose-200 font-medium">
-                                                                    {`${Math.floor(hb.totalDebtAccumulated / 60)}h ${hb.totalDebtAccumulated % 60}min`}
-                                                                </Badge>
-                                                            ) : (
-                                                                <span className="text-muted-foreground">-</span>
-                                                            )}
-                                                        </TableCell>
-                                                        <TableCell>
-                                                            {hb?.totalCompensated ? (
-                                                                <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 font-medium">
-                                                                    {`${Math.floor(hb.totalCompensated / 60)}h ${hb.totalCompensated % 60}min`}
-                                                                </Badge>
-                                                            ) : (
-                                                                <span className="text-muted-foreground">-</span>
-                                                            )}
-                                                        </TableCell>
-                                                        <TableCell className="text-right">
-                                                            <Button
-                                                                variant="outline"
-                                                                size="sm"
-                                                                onClick={() => handleViewHourBankHistory(employee)}
-                                                            >
-                                                                Ver Historial
-                                                            </Button>
-                                                        </TableCell>
-                                                    </TableRow>
-                                                );
-                                            })}
-                                        </TableBody>
-                                    </Table>
-                                </CardContent>
-                            </Card>
-                        </TabsContent>
+                        <TeamHourBankTab
+                            selectedEmployeeFilter={selectedEmployeeFilter}
+                            setSelectedEmployeeFilter={setSelectedEmployeeFilter}
+                            employees={employees}
+                            hourBanks={hourBanks}
+                            formatHourBankBalance={formatHourBankBalance}
+                            handleViewHourBankHistory={handleViewHourBankHistory}
+                        />
+                    </TabsContent>
                     )}
                 </Tabs>
 
@@ -2582,567 +500,94 @@ function TeamManagementContent() {
                 </div>
             </div>
 
-            {/* Justify Tardiness Dialog */}
-            <Dialog open={justifyTardinessDialog.open} onOpenChange={(open) => setJustifyTardinessDialog({ open })}>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>Justificar Retardo</DialogTitle>
-                        <DialogDescription>
-                            Ingresa el motivo de la justificación para el retardo del {justifyTardinessDialog.record && formatDateDDMMYYYY(justifyTardinessDialog.record.date)}.
-                        </DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-4 py-4">
-                        <div className="space-y-2">
-                            <Label>Tipo de Justificación</Label>
-                            <Select
-                                value={justificationType}
-                                onValueChange={(v) => setJustificationType(v as JustificationType)}
-                            >
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Seleccionar motivo..." />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {Object.entries(JUSTIFICATION_TYPE_LABELS).map(([key, label]) => (
-                                        <SelectItem key={key} value={key}>
-                                            {label}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        <div className="space-y-2">
-                            <Label>Comentario / Detalle</Label>
-                            <Textarea
-                                value={justificationReason}
-                                onChange={(e) => setJustificationReason(e.target.value)}
-                                placeholder="Ej. Tráfico pesado, cita médica..."
-                            />
-                        </div>
-                        <div className="flex items-center justify-between">
-                            <Label htmlFor="compensate-tardiness" className="flex flex-col space-y-1">
-                                <span>Compensar con Bolsa de Horas</span>
-                            </Label>
-                            <Switch
-                                id="compensate-tardiness"
-                                checked={useHourBank}
-                                onCheckedChange={setUseHourBank}
-                            />
-                        </div>
-                    </div>
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setJustifyTardinessDialog({ open: false })}>Cancelar</Button>
-                        <Button onClick={handleJustifyTardiness} disabled={submitting || !justificationType || !justificationReason.trim()}>
-                            {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                            Confirmar
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
+            <JustifyTardinessDialog
+                open={justifyTardinessDialog.open}
+                record={justifyTardinessDialog.record}
+                justificationType={justificationType ?? ''}
+                setJustificationType={setJustificationType}
+                justificationReason={justificationReason}
+                setJustificationReason={setJustificationReason}
+                useHourBank={useHourBank}
+                setUseHourBank={setUseHourBank}
+                submitting={submitting}
+                onConfirm={handleJustifyTardiness}
+                onClose={() => setJustifyTardinessDialog({ open: false })}
+            />
 
-            {/* Justify Early Departure Dialog */}
-            <Dialog open={justifyDepartureDialog.open} onOpenChange={(open) => setJustifyDepartureDialog({ ...justifyDepartureDialog, open })}>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>Justificar Salida Temprana</DialogTitle>
-                        <DialogDescription>
-                            Ingresa el motivo de la justificación para la salida temprana del {justifyDepartureDialog.record && formatDateDDMMYYYY(justifyDepartureDialog.record.date)}.
-                        </DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-4 py-4">
-                        <div className="space-y-2">
-                            <Label>Tipo de Justificación</Label>
-                            <Select
-                                value={justificationType}
-                                onValueChange={(v) => setJustificationType(v as JustificationType)}
-                            >
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Seleccionar motivo..." />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {Object.entries(JUSTIFICATION_TYPE_LABELS).map(([key, label]) => (
-                                        <SelectItem key={key} value={key}>
-                                            {label}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        <div className="space-y-2">
-                            <Label>Comentario / Detalle</Label>
-                            <Textarea
-                                value={justificationReason}
-                                onChange={(e) => setJustificationReason(e.target.value)}
-                                placeholder="Ej. Permiso personal, trabajo remoto..."
-                            />
-                        </div>
-                        {canEmployeeUseTimeBank(justifyDepartureDialog.record?.employeeId) && (
-                            <div className="flex items-center space-x-2">
-                                <Switch id="departure-hourbank" checked={useHourBank} onCheckedChange={setUseHourBank} />
-                                <Label htmlFor="departure-hourbank">Compensar con Bolsa de Horas</Label>
-                            </div>
-                        )}
-                    </div>
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setJustifyDepartureDialog({ open: false })}>Cancelar</Button>
-                        <Button onClick={handleJustifyDeparture} disabled={submitting || !justificationType || !justificationReason.trim()}>
-                            {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                            Confirmar
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
+            <JustifyDepartureDialog
+                open={justifyDepartureDialog.open}
+                record={justifyDepartureDialog.record}
+                justificationType={justificationType ?? ''}
+                setJustificationType={setJustificationType}
+                justificationReason={justificationReason}
+                setJustificationReason={setJustificationReason}
+                useHourBank={useHourBank}
+                setUseHourBank={setUseHourBank}
+                submitting={submitting}
+                canEmployeeUseTimeBank={canEmployeeUseTimeBank}
+                onConfirm={handleJustifyDeparture}
+                onClose={() => setJustifyDepartureDialog({ open: false })}
+            />
 
-            {/* Overtime Approval Dialog */}
-            <Dialog open={overtimeDialog.open} onOpenChange={(open) => setOvertimeDialog({ open })}>
-                <DialogContent className="max-w-2xl">
-                    <DialogHeader>
-                        <DialogTitle>Revisar Solicitud de Horas Extras</DialogTitle>
-                        <DialogDescription>
-                            {overtimeDialog.request && (
-                                <>
-                                    {overtimeDialog.request.employeeName} solicita {overtimeDialog.request.hoursRequested} horas extras
-                                </>
-                            )}
-                        </DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-6 py-4">
-                        <div className="bg-muted p-3 rounded-lg">
-                            <p className="text-sm font-medium">Razón:</p>
-                            <p className="text-sm text-muted-foreground">{overtimeDialog.request?.reason}</p>
-                        </div>
-                        <div className="grid gap-4">
-                            {(() => {
-                                const hb = hourBanks.find(h => h.employeeId === overtimeDialog.request?.employeeId);
-                                const currentDebt = hb?.balanceMinutes && hb.balanceMinutes > 0 ? hb.balanceMinutes : 0;
-                                const requestedMinutes = (parseFloat(hoursToApprove || '0')) * 60;
+            <OvertimeApprovalDialog
+                overtimeDialog={overtimeDialog}
+                hoursToApprove={hoursToApprove}
+                setHoursToApprove={setHoursToApprove}
+                rejectionReason={rejectionReason}
+                setRejectionReason={setRejectionReason}
+                submitting={submitting}
+                hourBanks={hourBanks}
+                onApprove={handleApproveOvertime}
+                onReject={handleRejectOvertime}
+                onClose={() => setOvertimeDialog({ open: false })}
+            />
 
-                                const amortizedMinutes = Math.min(currentDebt, requestedMinutes);
-                                const paidMinutes = Math.max(0, requestedMinutes - amortizedMinutes);
 
-                                const formatMins = (mins: number) => {
-                                    const h = Math.floor(mins / 60);
-                                    const m = Math.round(mins % 60);
-                                    return `${h}h ${m}m`;
-                                };
+            <ShiftAssignmentDialog
+                shiftDialog={shiftDialog}
+                shiftForm={shiftForm}
+                setShiftForm={setShiftForm}
+                shifts={shifts}
+                submitting={submitting}
+                onConfirm={handleAssignShift}
+                onClose={() => setShiftDialog({ open: false })}
+            />
 
-                                return (
-                                    <>
-                                        {currentDebt > 0 && (
-                                            <div className="bg-red-50 p-3 rounded-lg border border-red-100 space-y-2">
-                                                <div className="flex justify-between items-center text-sm">
-                                                    <span className="text-red-700 font-medium">Deuda Actual:</span>
-                                                    <span className="font-bold text-red-700">{formatMins(currentDebt)}</span>
-                                                </div>
-                                                <div className="flex justify-between items-center text-sm">
-                                                    <span className="text-green-700 font-medium">Se abonará a deuda:</span>
-                                                    <span className="font-bold text-green-700">-{formatMins(amortizedMinutes)}</span>
-                                                </div>
-                                                <div className="border-t border-red-200 pt-1 mt-1 flex justify-between items-center text-sm">
-                                                    <span className="text-muted-foreground">Restante a Pagar:</span>
-                                                    <span className="font-bold text-slate-900">{formatMins(paidMinutes)}</span>
-                                                </div>
-                                            </div>
-                                        )}
-                                        <div className="space-y-2">
-                                            <Label>Horas a Aprobar (para aprobación parcial)</Label>
-                                            <div className="flex items-center gap-2">
-                                                <Input
-                                                    type="number"
-                                                    step="0.5"
-                                                    min="0"
-                                                    max={overtimeDialog.request?.hoursRequested}
-                                                    value={hoursToApprove}
-                                                    onChange={(e) => setHoursToApprove(e.target.value)}
-                                                    className={parseFloat(hoursToApprove) > (overtimeDialog.request?.hoursRequested || 0) ? "w-32 border-red-500" : "w-32"}
-                                                />
-                                                <span className="text-sm text-muted-foreground">horas</span>
-                                            </div>
-                                            {parseFloat(hoursToApprove) > (overtimeDialog.request?.hoursRequested || 0) && (
-                                                <p className="text-xs text-red-500 font-medium">
-                                                    No puedes aprobar más de las horas solicitadas ({overtimeDialog.request?.hoursRequested}h)
-                                                </p>
-                                            )}
-                                        </div>
-                                    </>
-                                );
-                            })()}
-                        </div>
-                        <div>
-                            <Label>Razón de Rechazo (solo si rechaza)</Label>
-                            <Textarea
-                                value={rejectionReason}
-                                onChange={(e) => setRejectionReason(e.target.value)}
-                                placeholder="Solo requerido si rechaza la solicitud..."
-                                rows={4}
-                            />
-                        </div>
-                    </div>
-                    <DialogFooter className="flex flex-col-reverse sm:flex-row gap-2 sm:justify-end">
-                        <Button variant="outline" onClick={() => setOvertimeDialog({ open: false })} className="mt-2 sm:mt-0">
-                            Cancelar
-                        </Button>
-                        <Button
-                            variant="destructive"
-                            onClick={handleRejectOvertime}
-                            disabled={submitting || !rejectionReason.trim()}
-                        >
-                            <X className="h-4 w-4 mr-1" />
-                            Rechazar
-                        </Button>
-                        <Button
-                            variant="secondary"
-                            onClick={() => handleApproveOvertime(true)}
-                            disabled={
-                                submitting ||
-                                !hoursToApprove ||
-                                parseFloat(hoursToApprove) > (overtimeDialog.request?.hoursRequested || 0) ||
-                                parseFloat(hoursToApprove) <= 0
-                            }
-                        >
-                            Aprobar Parcial
-                        </Button>
-                        <Button onClick={() => handleApproveOvertime(false)} disabled={submitting}>
-                            {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Check className="h-4 w-4 mr-1" />}
-                            Aprobar Total
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
 
-            {/* Shift Assignment Dialog */}
-            <Dialog open={shiftDialog.open} onOpenChange={(open) => setShiftDialog({ open })}>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>Asignar Turno</DialogTitle>
-                        <DialogDescription>
-                            Asignar nuevo turno a {shiftDialog.employee?.fullName}
-                        </DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-4">
-                        <div>
-                            <Label>Turno</Label>
-                            <Select value={shiftForm.shiftId} onValueChange={(v) => setShiftForm(prev => ({ ...prev, shiftId: v }))}>
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Seleccionar turno" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {shifts.map((shift) => (
-                                        <SelectItem key={shift.id} value={shift.id}>
-                                            {shift.name} ({shift.startTime} - {shift.endTime})
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        <div>
-                            <Label>Tipo de Asignación</Label>
-                            <Select value={shiftForm.type} onValueChange={(v: 'temporary' | 'permanent') => setShiftForm(prev => ({ ...prev, type: v }))}>
-                                <SelectTrigger>
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="temporary">Temporal</SelectItem>
-                                    <SelectItem value="permanent">Permanente</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <Label>Fecha Inicio</Label>
-                                <Input
-                                    type="date"
-                                    value={shiftForm.startDate}
-                                    onChange={(e) => setShiftForm(prev => ({ ...prev, startDate: e.target.value }))}
-                                />
-                            </div>
-                            {shiftForm.type === 'temporary' && (
-                                <div>
-                                    <Label>Fecha Fin</Label>
-                                    <Input
-                                        type="date"
-                                        value={shiftForm.endDate}
-                                        onChange={(e) => setShiftForm(prev => ({ ...prev, endDate: e.target.value }))}
-                                    />
-                                </div>
-                            )}
-                        </div>
-                        <div>
-                            <Label>Razón del Cambio</Label>
-                            <Textarea
-                                value={shiftForm.reason}
-                                onChange={(e) => setShiftForm(prev => ({ ...prev, reason: e.target.value }))}
-                                placeholder="Describe la razón del cambio de turno..."
-                                rows={2}
-                            />
-                        </div>
-                    </div>
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setShiftDialog({ open: false })}>
-                            Cancelar
-                        </Button>
-                        <Button
-                            onClick={handleAssignShift}
-                            disabled={submitting || !shiftForm.shiftId || !shiftForm.reason.trim() || (shiftForm.type === 'temporary' && !shiftForm.endDate)}
-                        >
-                            {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                            Asignar Turno
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
+            <CancelShiftDialog
+                cancelShiftDialog={cancelShiftDialog}
+                submitting={submitting}
+                onConfirm={handleCancelShiftAssignment}
+                onClose={() => setCancelShiftDialog({ open: false })}
+            />
 
-            {/* Cancel Shift Dialog */}
-            <Dialog open={cancelShiftDialog.open} onOpenChange={(open) => setCancelShiftDialog({ open })}>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>Cancelar Asignación de Turno</DialogTitle>
-                        <DialogDescription>
-                            ¿Estás seguro de cancelar esta asignación para {cancelShiftDialog.assignment?.employeeName}?
-                        </DialogDescription>
-                    </DialogHeader>
-                    <div className="py-4">
-                        <p className="text-sm text-muted-foreground">
-                            Esta acción revertirá al empleado a su turno anterior si existe, o al turno predeterminado.
-                        </p>
-                    </div>
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setCancelShiftDialog({ open: false })}>
-                            No, mantener
-                        </Button>
-                        <Button variant="destructive" onClick={handleCancelShiftAssignment} disabled={submitting}>
-                            {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                            Sí, cancelar asignación
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
 
-            {/* Shift History Dialog */}
-            <Dialog open={shiftHistoryDialog.open} onOpenChange={(open) => setShiftHistoryDialog({ open })}>
-                <DialogContent className="max-w-3xl">
-                    <DialogHeader>
-                        <DialogTitle>Historial de Turnos</DialogTitle>
-                        <DialogDescription>
-                            Historial de asignaciones de turno para {shiftHistoryDialog.employee?.fullName}
-                        </DialogDescription>
-                    </DialogHeader>
-                    <div className="max-h-[60vh] overflow-y-auto">
-                        <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead>Turno</TableHead>
-                                    <TableHead>Tipo</TableHead>
-                                    <TableHead>Fecha Inicio</TableHead>
-                                    <TableHead>Fecha Fin</TableHead>
-                                    <TableHead>Razón</TableHead>
-                                    <TableHead>Asignado Por</TableHead>
-                                    <TableHead>Estado</TableHead>
-                                    <TableHead className="text-right">Acciones</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {shiftHistory.length === 0 ? (
-                                    <TableRow>
-                                        <TableCell colSpan={8} className="text-center text-muted-foreground">
-                                            No hay historial de turnos
-                                        </TableCell>
-                                    </TableRow>
-                                ) : (
-                                    shiftHistory.map((assign) => (
-                                        <TableRow key={assign.id}>
-                                            <TableCell className="font-medium">{assign.newShiftName}</TableCell>
-                                            <TableCell>
-                                                <Badge variant={assign.assignmentType === 'permanent' ? 'default' : 'secondary'}>
-                                                    {assign.assignmentType === 'permanent' ? 'Permanente' : 'Temporal'}
-                                                </Badge>
-                                            </TableCell>
-                                            <TableCell>{assign.startDate}</TableCell>
-                                            <TableCell>{assign.endDate || '-'}</TableCell>
-                                            <TableCell className="max-w-[200px] truncate" title={assign.reason}>
-                                                {assign.reason}
-                                            </TableCell>
-                                            <TableCell className="text-xs text-muted-foreground">
-                                                {assign.assignedByName}
-                                                <div className="text-[10px]">{formatDateDDMMYYYY(assign.createdAt)}</div>
-                                            </TableCell>
-                                            <TableCell>
-                                                <Badge variant={assign.status === 'active' ? 'outline' : 'destructive'} className="text-[10px]">
-                                                    {assign.status === 'active' ? 'Activo' : 'Cancelado'}
-                                                </Badge>
-                                            </TableCell>
-                                            <TableCell className="text-right">
-                                                {assign.status === 'active' && (
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="sm"
-                                                        className="h-8 px-2 text-destructive hover:text-destructive"
-                                                        onClick={() => setCancelShiftDialog({ open: true, assignment: assign })}
-                                                    >
-                                                        Cancelar
-                                                    </Button>
-                                                )}
-                                            </TableCell>
-                                        </TableRow>
-                                    ))
-                                )}
-                            </TableBody>
-                        </Table>
-                    </div>
-                    <DialogFooter>
-                        <Button onClick={() => setShiftHistoryDialog({ open: false })}>Cerrar</Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
-            {/* Hour Bank History Dialog */}
-            {/* Hour Bank History Dialog */}
-            <Dialog open={hourBankDialog.open} onOpenChange={(open) => setHourBankDialog({ open })}>
-                <DialogContent className="max-w-3xl">
-                    <DialogHeader>
-                        <DialogTitle>Historial de Bolsa de Horas</DialogTitle>
-                        <DialogDescription>
-                            Movimientos registrados para {hourBankDialog.employee?.fullName}
-                        </DialogDescription>
-                    </DialogHeader>
-                    <div className="max-h-[60vh] overflow-y-auto">
-                        <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead>Fecha</TableHead>
-                                    <TableHead>Tipo</TableHead>
-                                    <TableHead>Minutos</TableHead>
-                                    <TableHead>Motivo</TableHead>
-                                    <TableHead>Registrado Por</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {hourBankMovements.length === 0 ? (
-                                    <TableRow>
-                                        <TableCell colSpan={5} className="text-center text-muted-foreground">
-                                            No hay movimientos registrados
-                                        </TableCell>
-                                    </TableRow>
-                                ) : (
-                                    hourBankMovements.map((move) => (
-                                        <TableRow key={move.id}>
-                                            <TableCell>{formatDateDDMMYYYY(move.date)}</TableCell>
-                                            <TableCell>
-                                                <Badge variant="outline">
-                                                    {move.type === 'tardiness' ? 'Retardo' :
-                                                        move.type === 'early_departure' ? 'Salida Temprana' :
-                                                            move.type === 'overtime_compensation' ? 'Compensación' :
-                                                                move.type === 'manual_adjustment' ? 'Ajuste Manual' : move.type}
-                                                </Badge>
-                                            </TableCell>
-                                            <TableCell>
-                                                <span className={move.minutes > 0 ? 'text-red-500 font-bold' : 'text-green-600 font-bold'}>
-                                                    {move.minutes > 0 ? '+' : ''}{move.minutes} min
-                                                </span>
-                                            </TableCell>
-                                            <TableCell className="max-w-[200px] truncate" title={move.reason}>
-                                                {move.reason}
-                                            </TableCell>
-                                            <TableCell className="text-xs text-muted-foreground">
-                                                {move.createdByName || 'Sistema'}
-                                            </TableCell>
-                                        </TableRow>
-                                    ))
-                                )}
-                            </TableBody>
-                        </Table>
-                    </div>
-                    <DialogFooter>
-                        <Button onClick={() => setHourBankDialog({ open: false })}>Cerrar</Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
+            <ShiftHistoryDialog
+                shiftHistoryDialog={shiftHistoryDialog}
+                shiftHistory={shiftHistory}
+                setShiftHistoryDialog={setShiftHistoryDialog}
+                setCancelShiftDialog={setCancelShiftDialog}
+            />
 
-            {/* Justify Missing Punch Dialog */}
-            <Dialog open={justifyMissingPunchDialog.open} onOpenChange={(open) => setJustifyMissingPunchDialog({ open })}>
-                <DialogContent className="max-w-2xl">
-                    <DialogHeader>
-                        <DialogTitle>Justificar Marcaje Faltante</DialogTitle>
-                        <DialogDescription>
-                            Proporciona la hora de entrada/salida para {justifyMissingPunchDialog.employeeName}
-                        </DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-4 py-4">
-                        {justifyMissingPunchDialog.punch && (
-                            <div className="bg-muted p-3 rounded-lg space-y-2">
-                                <div className="flex justify-between">
-                                    <span className="font-medium">Fecha:</span>
-                                    <span>{justifyMissingPunchDialog.punch.date}</span>
-                                </div>
-                                <div className="flex justify-between">
-                                    <span className="font-medium">Tipo Faltante:</span>
-                                    <span>
-                                        {justifyMissingPunchDialog.punch.missingType === 'entry' && 'Entrada'}
-                                        {justifyMissingPunchDialog.punch.missingType === 'exit' && 'Salida'}
-                                        {justifyMissingPunchDialog.punch.missingType === 'both' && 'Ambos (Entrada y Salida)'}
-                                    </span>
-                                </div>
-                            </div>
-                        )}
+            <HourBankHistoryDialog
+                hourBankDialog={hourBankDialog}
+                hourBankMovements={hourBankMovements}
+                setHourBankDialog={setHourBankDialog}
+            />
 
-                        {/* Entrada */}
-                        {justifyMissingPunchDialog.punch?.missingType !== 'exit' && (
-                            <div className="space-y-2">
-                                <Label htmlFor="provided-entry-time">Hora de Entrada</Label>
-                                <Input
-                                    id="provided-entry-time"
-                                    type="time"
-                                    value={providedEntryTime}
-                                    onChange={(e) => setProvidedEntryTime(e.target.value)}
-                                    placeholder="HH:mm"
-                                />
-                                <p className="text-xs text-muted-foreground">
-                                    Si la hora genera retardo, se creará automáticamente un registro de retardo
-                                </p>
-                            </div>
-                        )}
 
-                        {/* Salida */}
-                        {justifyMissingPunchDialog.punch?.missingType !== 'entry' && (
-                            <div className="space-y-2">
-                                <Label htmlFor="provided-exit-time">Hora de Salida</Label>
-                                <Input
-                                    id="provided-exit-time"
-                                    type="time"
-                                    value={providedExitTime}
-                                    onChange={(e) => setProvidedExitTime(e.target.value)}
-                                    placeholder="HH:mm"
-                                />
-                                <p className="text-xs text-muted-foreground">
-                                    Si la hora genera salida temprana, se creará automáticamente un registro
-                                </p>
-                            </div>
-                        )}
-
-                        {/* Razón */}
-                        <div className="space-y-2">
-                            <Label htmlFor="missing-punch-reason">Razón de la Justificación</Label>
-                            <Textarea
-                                id="missing-punch-reason"
-                                value={justificationReason}
-                                onChange={(e) => setJustificationReason(e.target.value)}
-                                placeholder="Explica por qué se justifica este marcaje faltante..."
-                                rows={3}
-                            />
-                        </div>
-                    </div>
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setJustifyMissingPunchDialog({ open: false })}>
-                            Cancelar
-                        </Button>
-                        <Button
-                            onClick={handleJustifyMissingPunch}
-                            disabled={submitting || (!providedEntryTime && !providedExitTime) || !justificationReason.trim()}
-                        >
-                            {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                            Confirmar
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
+            <JustifyMissingPunchDialog
+                dialogState={justifyMissingPunchDialog}
+                providedEntryTime={providedEntryTime}
+                setProvidedEntryTime={setProvidedEntryTime}
+                providedExitTime={providedExitTime}
+                setProvidedExitTime={setProvidedExitTime}
+                justificationReason={justificationReason}
+                setJustificationReason={setJustificationReason}
+                submitting={submitting}
+                onConfirm={handleJustifyMissingPunch}
+                onClose={() => setJustifyMissingPunchDialog({ open: false })}
+            />
 
         </SiteLayout>
     );

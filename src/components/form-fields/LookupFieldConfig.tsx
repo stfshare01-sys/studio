@@ -14,7 +14,8 @@ import {
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Plus, Trash2, ArrowRight, Database, Link2 } from 'lucide-react';
-import type { LookupConfig, LookupMapping, FormField, MasterList } from '@/lib/types';
+import type { LookupConfig, LookupMapping, FormField } from "@/types/workflow.types";
+import type { MasterList } from "@/types/common.types";
 
 interface LookupFieldConfigProps {
   value: LookupConfig | undefined;

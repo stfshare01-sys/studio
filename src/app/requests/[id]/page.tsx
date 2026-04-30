@@ -7,7 +7,7 @@ import { notFound, useParams } from "next/navigation";
 import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser, useStorage } from "@/firebase";
 import { doc, collection, query, serverTimestamp, orderBy, updateDoc, collectionGroup, where, getDocs, limit, getDoc } from "firebase/firestore";
 import { ref, deleteObject } from "firebase/storage";
-import type { Request as RequestType, EnrichedRequest, User, EnrichedWorkflowStep, Template, Comment as CommentType, EnrichedComment, AuditLog, FormField, Document as DocumentType, Task, WorkflowStepDefinition, TableColumnDefinition } from "@/lib/types";
+import type { User, AuditLog } from '@/types/auth.types';
 import DOMPurify from 'dompurify';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ArrowLeft, User as UserIcon, Paperclip, Send, Trash2, CheckCircle, AlertTriangle } from "lucide-react";
@@ -41,6 +41,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { completeTaskAndProgressWorkflow } from "@/lib/workflow-engine";
 import { usePermissions } from "@/hooks/use-permissions";
+import type { Request as RequestType, EnrichedRequest, EnrichedWorkflowStep, Template, Comment as CommentType, EnrichedComment, FormField, Document as DocumentType, Task, WorkflowStepDefinition, TableColumnDefinition } from "@/types/workflow.types";
 
 function SubmittedBy({ userId }: { userId: string }) {
     const firestore = useFirestore();

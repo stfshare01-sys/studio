@@ -19,7 +19,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
 import { es } from "date-fns/locale";
-import type { Notification } from "@/lib/types";
+import type { Notification } from "@/types/hcm.types";
 
 export function NotificationCenter() {
   const { firestore, user } = useFirebase();
@@ -135,7 +135,12 @@ export function NotificationCenter() {
                     <div className="flex-1">
                       <span className="font-medium text-foreground block">{notification.title}</span>
                       <span className="text-[10px] text-muted-foreground whitespace-nowrap block">
-                        {formatDistanceToNow(new Date(notification.createdAt), { locale: es, addSuffix: true })}
+                        {formatDistanceToNow(
+                          (notification.createdAt as any)?.toDate 
+                            ? (notification.createdAt as any).toDate() 
+                            : new Date((notification.createdAt as string | number) || Date.now()), 
+                          { locale: es, addSuffix: true }
+                        )}
                       </span>
                     </div>
                   </div>

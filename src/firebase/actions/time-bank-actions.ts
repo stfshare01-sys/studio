@@ -18,7 +18,7 @@
 import { doc, getDoc } from 'firebase/firestore';
 import { initializeFirebase } from '@/firebase';
 import { setDocumentNonBlocking } from '../non-blocking-updates';
-import type { TimeBank } from '@/lib/types';
+import type { TimeBank } from "@/types/hcm.types";
 
 // =========================================================================
 // TIME BANK
@@ -33,7 +33,7 @@ export async function updateTimeBank(
 ): Promise<{ success: boolean; error?: string }> {
     try {
         const { firestore } = initializeFirebase();
-        const now = new Date().toISOString();
+        const nowISO = new Date().toISOString(); // used in movement array and display strings
 
         const timeBankRef = doc(firestore, 'time_bank', employeeId);
         const timeBankSnap = await getDoc(timeBankRef);
@@ -50,7 +50,7 @@ export async function updateTimeBank(
                 hoursUsed: 0,
                 hoursBalance: 0,
                 hoursExpired: 0,
-                lastUpdated: now,
+                lastUpdated: nowISO,
                 movements: []
             };
         }
@@ -59,7 +59,7 @@ export async function updateTimeBank(
             id: `mov_${Date.now()}`,
             type,
             hours,
-            date: now,
+            date: nowISO,
             description,
             approvedById
         };
@@ -68,7 +68,7 @@ export async function updateTimeBank(
         else currentBank.hoursUsed += hours;
 
         currentBank.hoursBalance = currentBank.hoursEarned - currentBank.hoursUsed - currentBank.hoursExpired;
-        currentBank.lastUpdated = now;
+        currentBank.lastUpdated = nowISO;
         currentBank.movements = [...currentBank.movements, movement].slice(-50);
 
         setDocumentNonBlocking(timeBankRef, currentBank, { merge: true });

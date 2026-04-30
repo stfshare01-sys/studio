@@ -1,6 +1,6 @@
 
-import { Incidence, IncidenceType } from './types';
 import { differenceInCalendarDays, parseISO, getYear } from 'date-fns';
+import { Incidence, IncidenceType } from "@/types/hcm.types";
 
 export interface IncidenceRule {
     minDays?: number;
