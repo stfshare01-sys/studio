@@ -4,11 +4,6 @@ trigger: always_on
 
 # Rule: Monitor de Salud — Archivos de Rules y Workflows
 
-## Configuración de Trigger
-Always On — se evalúa al final de cualquier sesión donde se haya
-modificado, creado o actualizado un archivo de rules o workflows,
-o cuando el usuario mencione agregar contenido nuevo a una rule existente.
-
 ---
 
 ## Principio central
@@ -120,3 +115,51 @@ Además del tamaño, reportar si se detecta cualquiera de estas señales:
 
 Para ejecutar correcciones → invocar `/maintain-rules`
 Para auditoría completa del proyecto → invocar `/audit-project`
+
+---
+
+## Monitor de Código Fuente — Cierre de Sesión
+
+**Trigger adicional:** Al final de cualquier sesión donde se haya creado,
+modificado o movido un archivo `.ts` o `.tsx` de código fuente (no rules).
+
+### Verificación obligatoria de README
+
+Al cerrar una sesión de código, verificar:
+
+```
+¿Se creó un componente, hook, función o archivo nuevo?
+│
+├── SÍ → ¿Existe README.md en el módulo?
+│         ├── SÍ → ¿Lo menciona? → Si no → actualizar README ahora mismo
+│         └── NO → Crear README con plantilla de module-boundaries.md
+│
+└── NO → No se requiere acción
+```
+
+### Archivos de código con READMEs requeridos
+
+```
+src/app/hcm/team-management/README.md   ← EXISTE (Abril 2026)
+src/app/hcm/prenomina/README.md         ← pendiente
+src/firebase/actions/README.md          ← pendiente
+```
+
+### Señal de alerta al cerrar sesión de código
+
+Si se creó algo nuevo y el README no fue actualizado, añadir al final de la
+respuesta de cierre:
+
+```
+─────────────────────────────────────────
+📋 README PENDIENTE — [módulo]
+   Se creó/modificó: [archivo o función]
+   Acción: El README debe reflejar este cambio antes de cerrar
+   Path: src/app/hcm/[modulo]/README.md
+─────────────────────────────────────────
+```
+
+### Lo que NO hace este monitor de código
+- No modifica READMEs automáticamente
+- Solo avisa si detecta que quedó pendiente al final de sesión
+- La actualización la ejecuta el AI en esa misma sesión, nunca en la siguiente

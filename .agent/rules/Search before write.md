@@ -201,38 +201,80 @@ Cuando se detecte cualquiera de estas señales, reportar antes de continuar:
 
 ---
 
-## REGISTRO DE FUNCIONES CLAVE DEL PROYECTO
+## DESCUBRIMIENTO DE FUNCIONES — Protocolo activo
 
-> Este registro debe mantenerse actualizado cuando: 
-- Se creen funciones de alto impacto o alta reutilización 
-- Se renombra o depreca una función existente 
-- Se mueve una función a otro archivo 
-Es el mapa que evita el código fantasma.
+> **PRINCIPIO:** El código es el registro. No mantener listas manuales que envejecen.
+> Antes de crear cualquier función, ejecutar los comandos de descubrimiento.
 
-> Mapa técnico completo del módulo HCM → ver docs/hcm/ANALYSIS_HCM_STRUCTURE.md
+### Paso A — Descubrir qué funciones ya existen en el dominio
 
-### Consultas de empleados
-- `getEmployeeById(id)` → `employee-queries.ts` — perfil completo por ID
-- `getActiveEmployees()` → `employee-queries.ts` — lista de empleados activos
+```bash
+# Ver todas las funciones exportadas en firebase/actions/
+grep -rn "^export.*function\|^export const" src/firebase/actions/ --include="*.ts"
 
-### Permisos
-- `usePermissions()` → `use-permissions.ts` — hook principal de permisos
-- `canRead(module)` / `canWrite(module)` → vía `usePermissions()`
+# Ver hooks existentes
+grep -rn "^export.*function use" src/hooks/ --include="*.ts"
+grep -rn "^export.*function use" src/app/ --include="*.ts" -r
 
-### Asistencia e Incidencias
-- `checkDateConflict(employeeId, start, end, incidences)` → `hcm-utils.ts` — detecta solapamientos entre fechas de incidencias
-- `determineDayStatus(date, attendance, incidences, shift, holidays)` → `hcm-utils.ts` — estado final del día para pre-nómina (`ASI`, `FINJ`, `VAC`, etc.)
-- `isIncidencePaid(type)` → `hcm-utils.ts` — devuelve `true` si la incidencia es con goce de sueldo
-- `getDefaultIncidenceDays(type)` → `hcm-utils.ts` — duración default por tipo (home_office = 1 día)
-- `validateIncidencePolicy(type, start, end, days, incidences)` → `hcm-validation.ts` — valida límites de frecuencia y duración por tipo
-- `INCIDENCE_RULES` → `hcm-validation.ts` — reglas de política por tipo de incidencia (duración máx, frecuencia anual/semanal)
-- `createIncidence(payload)` → `incidence-actions.ts` — crea solicitud de incidencia en Firestore
+# Ver funciones en lib/
+grep -rn "^export.*function\|^export const" src/lib/ --include="*.ts"
+```
 
-### Tipos base
-- `Employee` → `hcm.types.ts`
-- `AttendanceRecord` → `hcm.types.ts`
-- `AppModule` → `auth.types.ts`
-- `UserRole` → `auth.types.ts`
+### Paso B — Buscar por concepto antes de crear
+
+```bash
+# Buscar por nombre o concepto clave
+grep -rn "getEmployee\|fetchEmployee" src/ --include="*.ts" --include="*.tsx"
+
+# Buscar por colección de Firestore
+grep -rn "collection.*'employees'\|collection.*'attendance'" src/firebase/ --include="*.ts"
+```
+
+### Paso C — Leer el README del módulo antes de trabajar en él
+
+Cada módulo tiene un `README.md` en su carpeta raíz que lista:
+- Qué hace el módulo
+- Qué archivos clave existen
+- Qué funciones principales exporta
+
+```
+src/app/hcm/team-management/README.md   ← leer antes de tocar team-management
+src/app/hcm/prenomina/README.md         ← leer antes de tocar prenomina
+```
+
+Si el README no existe → crearlo como primer paso antes de escribir código.
+
+---
+
+## OBLIGACIÓN DE CIERRE DE SESIÓN (CRÍTICO)
+
+**Al terminar cualquier sesión donde se creó o modificó una función exportada:**
+
+```
+OBLIGATORIO antes de cerrar:
+[ ] ¿Creé una función nueva? → Verificar que el README del módulo la menciona
+[ ] ¿Modifiqué una función existente? → Verificar que el README refleja el cambio
+[ ] ¿Cambié la ubicación de algo? → Actualizar el README de ambos módulos afectados
+```
+
+> Esta es la garantía de que la próxima sesión (cualquier modelo, cualquier chat)
+> encuentre el README actualizado y no regenere lo que ya existe.
+
+**Ubicación de READMEs por módulo:**
+- `src/app/hcm/team-management/README.md`
+- `src/app/hcm/prenomina/README.md`
+- `src/app/hcm/[modulo]/README.md` (crear si no existe)
+- `src/firebase/actions/README.md` (registro de actions disponibles)
+
+### Funciones base que siempre existen (no regenerar)
+- `getEmployeeById(id)` → `employee-queries.ts`
+- `getActiveEmployees()` → `employee-queries.ts`
+- `usePermissions()` → `use-permissions.ts`
+- `hasPermission(perms, module, action)` → `firebase/role-actions.ts`
+- `useTeamManagement()` → `team-management/hooks/use-team-management.ts`
+- `formatHourBankBalance(minutes)` → `firebase/actions/hour-bank-actions.ts`
+- `determineDayStatus(...)` → `lib/hcm-utils.ts`
+- `checkDateConflict(...)` → `lib/hcm-utils.ts`
 
 ---
 
